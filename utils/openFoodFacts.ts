@@ -230,10 +230,16 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
 /**
  * Fetch with timeout wrapper
  * Ensures requests never hang indefinitely
+ * CRITICAL: This function implements the hard timeout requirement
  */
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 8000): Promise<Response> {
+  console.log(`[OpenFoodFacts] fetchWithTimeout: ${url} (timeout: ${timeoutMs}ms)`);
+  
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => {
+    console.log(`[OpenFoodFacts] ⏱️ Timeout reached (${timeoutMs}ms), aborting request`);
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -241,12 +247,15 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
+    console.log(`[OpenFoodFacts] ✅ Request completed successfully (status: ${response.status})`);
     return response;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
+      console.log(`[OpenFoodFacts] ❌ Request aborted due to timeout`);
       throw new Error('Request timeout - please check your internet connection');
     }
+    console.log(`[OpenFoodFacts] ❌ Request failed:`, error);
     throw error;
   }
 }
@@ -256,18 +265,21 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
  * Extracts a clean product name from OpenFoodFacts barcode lookup
  * Returns null if product not found or name unavailable
  * NEVER throws - always returns string or null
+ * HARD TIMEOUT: 8 seconds
  */
 export async function getProductNameByBarcode(barcode: string): Promise<string | null> {
   try {
-    console.log(`[OpenFoodFacts] STEP 1: Getting product name for barcode: ${barcode}`);
+    console.log(`[OpenFoodFacts] ========== STEP 1: GET PRODUCT NAME ==========`);
+    console.log(`[OpenFoodFacts] Barcode: ${barcode}`);
+    
     const response = await fetchWithTimeout(
       `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
       {},
-      8000
+      8000 // 8 second timeout
     );
     
     if (!response.ok) {
-      console.log(`[OpenFoodFacts] Product not found for barcode: ${barcode} (status: ${response.status})`);
+      console.log(`[OpenFoodFacts] ⚠️ Product not found for barcode: ${barcode} (status: ${response.status})`);
       return null;
     }
 
@@ -278,7 +290,7 @@ export async function getProductNameByBarcode(barcode: string): Promise<string |
       const productName = data.product.product_name || data.product.generic_name;
       
       if (!productName || typeof productName !== 'string' || productName.trim().length === 0) {
-        console.log(`[OpenFoodFacts] No valid product name found for barcode: ${barcode}`);
+        console.log(`[OpenFoodFacts] ⚠️ No valid product name found for barcode: ${barcode}`);
         return null;
       }
 
@@ -289,18 +301,18 @@ export async function getProductNameByBarcode(barcode: string): Promise<string |
         .trim();
 
       if (cleanedName.length === 0) {
-        console.log(`[OpenFoodFacts] Product name became empty after cleaning: ${productName}`);
+        console.log(`[OpenFoodFacts] ⚠️ Product name became empty after cleaning: ${productName}`);
         return productName.trim(); // Return original if cleaning removed everything
       }
 
-      console.log(`[OpenFoodFacts] ✅ Found product name: "${cleanedName}"`);
+      console.log(`[OpenFoodFacts] ✅ STEP 1 SUCCESS: Found product name: "${cleanedName}"`);
       return cleanedName;
     }
 
-    console.log(`[OpenFoodFacts] No product data for barcode: ${barcode}`);
+    console.log(`[OpenFoodFacts] ⚠️ No product data for barcode: ${barcode}`);
     return null;
   } catch (error) {
-    console.error('[OpenFoodFacts] Error getting product name by barcode:', error);
+    console.error('[OpenFoodFacts] ❌ STEP 1 ERROR: Error getting product name by barcode:', error);
     if (error instanceof Error) {
       console.error('[OpenFoodFacts] Error message:', error.message);
     }
@@ -311,6 +323,7 @@ export async function getProductNameByBarcode(barcode: string): Promise<string |
 /**
  * Fetch product by barcode from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
+ * HARD TIMEOUT: 8 seconds
  */
 export async function fetchProductByBarcode(barcode: string): Promise<OpenFoodFactsProduct | null> {
   try {
@@ -318,7 +331,7 @@ export async function fetchProductByBarcode(barcode: string): Promise<OpenFoodFa
     const response = await fetchWithTimeout(
       `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
       {},
-      8000
+      8000 // 8 second timeout
     );
     
     if (!response.ok) {
@@ -348,14 +361,17 @@ export async function fetchProductByBarcode(barcode: string): Promise<OpenFoodFa
 /**
  * STEP 2: Search products by text query from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
+ * HARD TIMEOUT: 8 seconds
  */
 export async function searchProducts(query: string, page: number = 1, pageSize: number = 20): Promise<OpenFoodFactsSearchResult | null> {
   try {
-    console.log(`[OpenFoodFacts] 🔍 Searching products: "${query}"`);
+    console.log(`[OpenFoodFacts] ========== STEP 2: SEARCH FOOD LIBRARY ==========`);
+    console.log(`[OpenFoodFacts] Query: "${query}"`);
+    
     const response = await fetchWithTimeout(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&json=true`,
       {},
-      8000
+      8000 // 8 second timeout
     );
     
     if (!response.ok) {
@@ -364,10 +380,13 @@ export async function searchProducts(query: string, page: number = 1, pageSize: 
     }
 
     const data = await response.json();
-    console.log(`[OpenFoodFacts] ✅ Found ${data.count} products`);
+    console.log(`[OpenFoodFacts] ✅ STEP 2 SUCCESS: Found ${data.count} products`);
+    
+    // CRITICAL: Return ALL products, do NOT filter here
+    // Filtering happens in the barcode scanner for auto-selection
     return data;
   } catch (error) {
-    console.error('[OpenFoodFacts] ❌ Error searching products:', error);
+    console.error('[OpenFoodFacts] ❌ STEP 2 ERROR: Error searching products:', error);
     if (error instanceof Error) {
       console.error('[OpenFoodFacts] Error message:', error.message);
     }

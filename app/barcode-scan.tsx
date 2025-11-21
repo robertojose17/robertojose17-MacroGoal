@@ -11,6 +11,14 @@ import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractN
 
 type ScanState = 'scanning' | 'searching' | 'not-found' | 'error';
 
+// Debug info for development
+interface DebugInfo {
+  stepA: string; // Barcode read
+  stepB: string; // Name lookup result
+  stepC: string; // Library results count
+  stepD: string; // Selected index
+}
+
 export default function BarcodeScanScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -24,6 +32,12 @@ export default function BarcodeScanScreen() {
   const [scanState, setScanState] = useState<ScanState>('scanning');
   const [scannedBarcode, setScannedBarcode] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [debugInfo, setDebugInfo] = useState<DebugInfo>({
+    stepA: '',
+    stepB: '',
+    stepC: '',
+    stepD: '',
+  });
   const hasScannedRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -44,39 +58,37 @@ export default function BarcodeScanScreen() {
 
   /**
    * Auto-select the best match from search results
-   * Rules:
-   * 1. If only one result, auto-select it
-   * 2. Prefer results with non-100g default servings
-   * 3. If all are 100g, pick the most relevant (branded, closest name match, most complete nutrition)
+   * CRITICAL: This function MUST ALWAYS return a product if the array is not empty
+   * NEVER wait for a "perfect match" - pick immediately
    */
   const selectBestMatch = (products: OpenFoodFactsProduct[], searchQuery: string): OpenFoodFactsProduct => {
     console.log('[BarcodeScanner] Auto-selecting best match from', products.length, 'results');
 
-    // Rule C: If only one result, auto-select it
+    // Rule C: If only one result, auto-select it IMMEDIATELY
     if (products.length === 1) {
       console.log('[BarcodeScanner] Only one result, auto-selecting:', products[0].product_name);
+      setDebugInfo(prev => ({ ...prev, stepD: '0 (only result)' }));
       return products[0];
     }
 
     // Categorize products by serving size
-    const non100gProducts: OpenFoodFactsProduct[] = [];
-    const is100gProducts: OpenFoodFactsProduct[] = [];
+    const non100gProducts: Array<{ product: OpenFoodFactsProduct; index: number }> = [];
+    const is100gProducts: Array<{ product: OpenFoodFactsProduct; index: number }> = [];
 
-    products.forEach(product => {
+    products.forEach((product, index) => {
       const serving = extractServingSize(product);
       
       // Check if serving is NOT 100g
       // A serving is considered "100g" if:
-      // - grams is exactly 100
-      // - OR description is just "100 g" or "100g"
+      // - grams is exactly 100 AND description is just "100 g" or "100g"
       const is100g = 
-        Math.abs(serving.grams - 100) < 0.1 || 
+        Math.abs(serving.grams - 100) < 0.1 && 
         serving.description.match(/^100\s*g$/i);
 
       if (is100g) {
-        is100gProducts.push(product);
+        is100gProducts.push({ product, index });
       } else {
-        non100gProducts.push(product);
+        non100gProducts.push({ product, index });
       }
     });
 
@@ -84,13 +96,18 @@ export default function BarcodeScanScreen() {
 
     // Rule A: Prefer non-100g servings
     if (non100gProducts.length > 0) {
-      console.log('[BarcodeScanner] Selecting first non-100g product:', non100gProducts[0].product_name);
-      return non100gProducts[0];
+      const selected = non100gProducts[0];
+      console.log('[BarcodeScanner] Selecting first non-100g product:', selected.product.product_name);
+      setDebugInfo(prev => ({ ...prev, stepD: `${selected.index} (non-100g)` }));
+      return selected.product;
     }
 
     // Rule B: All are 100g, pick the most relevant
     console.log('[BarcodeScanner] All products are 100g, selecting most relevant');
-    return selectMostRelevant(is100gProducts, searchQuery);
+    const best = selectMostRelevant(is100gProducts.map(p => p.product), searchQuery);
+    const bestIndex = products.findIndex(p => p.code === best.code);
+    setDebugInfo(prev => ({ ...prev, stepD: `${bestIndex} (best 100g)` }));
+    return best;
   };
 
   /**
@@ -160,33 +177,52 @@ export default function BarcodeScanScreen() {
     setScannedBarcode(data);
     setScanState('searching');
 
+    console.log('[BarcodeScanner] ========== BARCODE SCAN STARTED ==========');
     console.log('[BarcodeScanner] Scanned barcode:', data);
     console.log('[BarcodeScanner] Platform:', Platform.OS);
 
-    // Set a failsafe timeout (10 seconds total)
+    // Initialize debug info
+    setDebugInfo({
+      stepA: data,
+      stepB: 'pending...',
+      stepC: 'pending...',
+      stepD: 'pending...',
+    });
+
+    // Set a HARD TIMEOUT (10 seconds total for entire flow)
     timeoutRef.current = setTimeout(() => {
-      console.log('[BarcodeScanner] Timeout after 10 seconds');
+      console.log('[BarcodeScanner] ❌ TIMEOUT after 10 seconds');
+      setDebugInfo(prev => ({ ...prev, stepB: 'TIMEOUT', stepC: 'TIMEOUT', stepD: 'TIMEOUT' }));
       setErrorMessage('Request timed out. Please check your internet connection and try again.');
       setScanState('error');
     }, 10000);
 
     try {
-      // Get product name by barcode
-      const name = await getProductNameByBarcode(data);
+      // ========== STEP 1: GET PRODUCT NAME BY BARCODE (8 second timeout) ==========
+      console.log('[BarcodeScanner] STEP 1: Getting product name...');
+      setDebugInfo(prev => ({ ...prev, stepB: 'fetching...' }));
+      
+      const namePromise = getProductNameByBarcode(data);
+      const nameTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+      const name = await Promise.race([namePromise, nameTimeout]);
 
-      let searchQuery = name;
-
-      if (!name) {
-        console.log('[BarcodeScanner] No product name found, using barcode digits as fallback');
-        searchQuery = data; // Use raw barcode as fallback
+      if (name) {
+        console.log('[BarcodeScanner] ✅ STEP 1 SUCCESS: Found product name:', name);
+        setDebugInfo(prev => ({ ...prev, stepB: `ok: "${name}"` }));
       } else {
-        console.log('[BarcodeScanner] Found product name:', name);
+        console.log('[BarcodeScanner] ⚠️ STEP 1: No product name found, using barcode as fallback');
+        setDebugInfo(prev => ({ ...prev, stepB: 'not found (using barcode)' }));
       }
 
-      // Search by name using Food Library
-      console.log('[BarcodeScanner] Searching Food Library for:', searchQuery);
+      const searchQuery = name || data;
 
-      const searchData = await searchProducts(searchQuery);
+      // ========== STEP 2: SEARCH FOOD LIBRARY (8 second timeout) ==========
+      console.log('[BarcodeScanner] STEP 2: Searching Food Library for:', searchQuery);
+      setDebugInfo(prev => ({ ...prev, stepC: 'searching...' }));
+
+      const searchPromise = searchProducts(searchQuery);
+      const searchTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+      const searchData = await Promise.race([searchPromise, searchTimeout]);
 
       // Clear timeout if request completes
       if (timeoutRef.current) {
@@ -194,43 +230,61 @@ export default function BarcodeScanScreen() {
         timeoutRef.current = null;
       }
 
+      // Handle timeout
       if (searchData === null) {
-        console.error('[BarcodeScanner] Search returned null (API error)');
-        setErrorMessage('Failed to connect to OpenFoodFacts. Please check your internet connection and try again.');
+        console.error('[BarcodeScanner] ❌ STEP 2 TIMEOUT or ERROR');
+        setDebugInfo(prev => ({ ...prev, stepC: 'timeout/error', stepD: 'N/A' }));
+        setErrorMessage('Search timed out. Please check your internet connection and try again.');
         setScanState('error');
         return;
       }
 
-      if (searchData.products && searchData.products.length > 0) {
-        console.log('[BarcodeScanner] Found', searchData.products.length, 'products from Food Library');
-        
-        // Filter out products with no name
-        const validProducts = searchData.products.filter(p => p.product_name && p.product_name.trim().length > 0);
-        
-        if (validProducts.length === 0) {
-          console.log('[BarcodeScanner] No valid products after filtering');
-          setScanState('not-found');
-          return;
-        }
-
-        // AUTO-SELECT BEST MATCH
-        const bestMatch = selectBestMatch(validProducts, searchQuery);
-        console.log('[BarcodeScanner] Auto-selected best match:', bestMatch.product_name);
-        
-        // Navigate directly to Food Details screen
-        router.push({
-          pathname: '/food-details',
-          params: {
-            meal: mealType,
-            date: date,
-            offData: JSON.stringify(bestMatch),
-            source: 'barcode',
-          },
-        });
-      } else {
-        console.log('[BarcodeScanner] No results found for query:', searchQuery);
+      // Handle no results
+      if (!searchData.products || searchData.products.length === 0) {
+        console.log('[BarcodeScanner] ⚠️ STEP 2: No results found for query:', searchQuery);
+        setDebugInfo(prev => ({ ...prev, stepC: '0', stepD: 'N/A' }));
         setScanState('not-found');
+        return;
       }
+
+      console.log('[BarcodeScanner] ✅ STEP 2 SUCCESS: Found', searchData.products.length, 'products from Food Library');
+      setDebugInfo(prev => ({ ...prev, stepC: searchData.products.length.toString() }));
+      
+      // ========== CRITICAL: DO NOT FILTER OUT RESULTS ==========
+      // Accept ALL products, even if they have missing data
+      // We'll handle missing data in the Food Details screen
+      const allProducts = searchData.products;
+      
+      console.log('[BarcodeScanner] Total products (no filtering):', allProducts.length);
+
+      // If we somehow have zero products after this (shouldn't happen), show not found
+      if (allProducts.length === 0) {
+        console.log('[BarcodeScanner] ⚠️ No products after processing (unexpected)');
+        setDebugInfo(prev => ({ ...prev, stepD: 'N/A (no products)' }));
+        setScanState('not-found');
+        return;
+      }
+
+      // ========== STEP 3: AUTO-SELECT BEST MATCH (IMMEDIATE, NON-BLOCKING) ==========
+      console.log('[BarcodeScanner] STEP 3: Auto-selecting best match...');
+      setDebugInfo(prev => ({ ...prev, stepD: 'selecting...' }));
+      
+      const bestMatch = selectBestMatch(allProducts, searchQuery);
+      console.log('[BarcodeScanner] ✅ STEP 3 SUCCESS: Auto-selected:', bestMatch.product_name);
+      
+      // ========== STEP 4: NAVIGATE TO FOOD DETAILS (IMMEDIATE) ==========
+      console.log('[BarcodeScanner] STEP 4: Navigating to Food Details...');
+      console.log('[BarcodeScanner] ========== BARCODE SCAN COMPLETE ==========');
+      
+      router.push({
+        pathname: '/food-details',
+        params: {
+          meal: mealType,
+          date: date,
+          offData: JSON.stringify(bestMatch),
+          source: 'barcode',
+        },
+      });
     } catch (error) {
       // Clear timeout if error occurs
       if (timeoutRef.current) {
@@ -238,7 +292,8 @@ export default function BarcodeScanScreen() {
         timeoutRef.current = null;
       }
 
-      console.error('[BarcodeScanner] Error in search:', error);
+      console.error('[BarcodeScanner] ❌ ERROR in search:', error);
+      setDebugInfo(prev => ({ ...prev, stepB: 'error', stepC: 'error', stepD: 'error' }));
       
       let errorMsg = 'Unknown error occurred';
       
@@ -272,7 +327,18 @@ export default function BarcodeScanScreen() {
     hasScannedRef.current = false;
     setScannedBarcode('');
     setErrorMessage('');
+    setDebugInfo({
+      stepA: '',
+      stepB: '',
+      stepC: '',
+      stepD: '',
+    });
     setScanState('scanning');
+  };
+
+  const handleSearchManually = () => {
+    console.log('[BarcodeScanner] Navigating to food search');
+    router.push(`/food-search?meal=${mealType}&date=${date}`);
   };
 
   const handleAddManually = () => {
@@ -351,7 +417,7 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.notFoundContainer}>
+        <ScrollView contentContainerStyle={styles.notFoundContainer}>
           <Text style={styles.notFoundIcon}>⚠️</Text>
           <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Connection Error
@@ -365,6 +431,25 @@ export default function BarcodeScanScreen() {
             </Text>
           )}
 
+          {/* DEBUG INFO (temporary for development) */}
+          <View style={[styles.debugCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.debugTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Debug Info (Dev Only)
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step A: barcode = {debugInfo.stepA || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step B: name lookup = {debugInfo.stepB || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step C: library results = {debugInfo.stepC || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step D: selected index = {debugInfo.stepD || 'N/A'}
+            </Text>
+          </View>
+
           <View style={styles.notFoundButtons}>
             <TouchableOpacity
               style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
@@ -377,7 +462,22 @@ export default function BarcodeScanScreen() {
                 color={colors.primary}
               />
               <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Scan Another Barcode
+                Rescan
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
+              onPress={handleSearchManually}
+            >
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                Search Food Library
               </Text>
             </TouchableOpacity>
 
@@ -392,11 +492,11 @@ export default function BarcodeScanScreen() {
                 color="#FFFFFF"
               />
               <Text style={[styles.notFoundButtonText, { color: '#FFFFFF' }]}>
-                Add Manually
+                Quick Add
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -420,7 +520,7 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.notFoundContainer}>
+        <ScrollView contentContainerStyle={styles.notFoundContainer}>
           <Text style={styles.notFoundIcon}>🔍</Text>
           <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Food Not Found
@@ -434,6 +534,25 @@ export default function BarcodeScanScreen() {
             </Text>
           )}
 
+          {/* DEBUG INFO (temporary for development) */}
+          <View style={[styles.debugCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.debugTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Debug Info (Dev Only)
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step A: barcode = {debugInfo.stepA || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step B: name lookup = {debugInfo.stepB || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step C: library results = {debugInfo.stepC || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step D: selected index = {debugInfo.stepD || 'N/A'}
+            </Text>
+          </View>
+
           <View style={styles.notFoundButtons}>
             <TouchableOpacity
               style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
@@ -446,7 +565,22 @@ export default function BarcodeScanScreen() {
                 color={colors.primary}
               />
               <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Scan Another Barcode
+                Rescan
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
+              onPress={handleSearchManually}
+            >
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                Search Food Library
               </Text>
             </TouchableOpacity>
 
@@ -461,16 +595,16 @@ export default function BarcodeScanScreen() {
                 color="#FFFFFF"
               />
               <Text style={[styles.notFoundButtonText, { color: '#FFFFFF' }]}>
-                Add Manually
+                Quick Add
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // Show loading screen (clean, no step text)
+  // Show loading screen (clean, with debug info)
   if (scanState === 'searching') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -494,6 +628,25 @@ export default function BarcodeScanScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Searching…
           </Text>
+
+          {/* DEBUG INFO (temporary for development) */}
+          <View style={[styles.debugCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.debugTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Debug Info (Dev Only)
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step A: barcode = {debugInfo.stepA || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step B: name lookup = {debugInfo.stepB || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step C: library results = {debugInfo.stepC || 'N/A'}
+            </Text>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Step D: selected index = {debugInfo.stepD || 'N/A'}
+            </Text>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -626,10 +779,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   notFoundContainer: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   notFoundIcon: {
     fontSize: 80,
@@ -651,6 +805,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  debugCard: {
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    width: '100%',
+    maxWidth: 400,
+  },
+  debugTitle: {
+    ...typography.bodyBold,
+    marginBottom: spacing.sm,
+    fontSize: 12,
+  },
+  debugText: {
+    ...typography.caption,
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    marginBottom: 4,
   },
   notFoundButtons: {
     width: '100%',
