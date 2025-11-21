@@ -28,33 +28,17 @@ export default function AddFoodScreen() {
     console.log('[AddFood] Params:', { mealType, date });
   }, []);
 
-  const handleNavigateToSearch = () => {
-    console.log('[AddFood] Navigating to food-search with params:', { meal: mealType, date });
-    // Use replace to dismiss this screen and navigate to search
-    router.replace(`/food-search?meal=${mealType}&date=${date}`);
-  };
-
   const handleNavigateToQuickAdd = () => {
     console.log('[AddFood] Navigating to quick-add with params:', { meal: mealType, date });
-    // Use replace to dismiss this screen and navigate to quick add
     router.replace(`/quick-add?meal=${mealType}&date=${date}`);
   };
 
   const handleNavigateToBarcodeScan = () => {
     console.log('[AddFood] Navigating to barcode-scan with params:', { meal: mealType, date });
-    // Use replace to dismiss this screen and navigate to barcode scan
     router.replace(`/barcode-scan?meal=${mealType}&date=${date}`);
   };
 
   const options = [
-    {
-      id: 'search',
-      title: 'Search Food Library',
-      description: 'Search OpenFoodFacts database',
-      icon: 'magnifyingglass',
-      androidIcon: 'search',
-      onPress: handleNavigateToSearch,
-    },
     {
       id: 'barcode',
       title: 'Scan Barcode',
@@ -130,17 +114,6 @@ export default function AddFoodScreen() {
             </TouchableOpacity>
           </React.Fragment>
         ))}
-
-        {/* Info card */}
-        <View style={[styles.infoCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.infoTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            ℹ️ About OpenFoodFacts
-          </Text>
-          <Text style={[styles.infoText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            OpenFoodFacts is a free, open database of food products from around the world. 
-            It contains nutrition information for thousands of products.
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -201,20 +174,5 @@ const styles = StyleSheet.create({
   },
   optionDescription: {
     ...typography.caption,
-  },
-  infoCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  infoTitle: {
-    ...typography.bodyBold,
-    marginBottom: spacing.sm,
-  },
-  infoText: {
-    ...typography.caption,
-    lineHeight: 18,
   },
 });

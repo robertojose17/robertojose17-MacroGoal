@@ -2,7 +2,7 @@
 /**
  * OpenFoodFacts API Integration
  * Public API for food database lookup
- * This is the ONLY food data provider for the app
+ * This module handles BARCODE LOOKUP ONLY
  */
 
 export interface OpenFoodFactsProduct {
@@ -26,15 +26,6 @@ export interface OpenFoodFactsProduct {
     'sugars_100g'?: number;
     'sugars_serving'?: number;
   };
-}
-
-export interface OpenFoodFactsSearchResult {
-  products: OpenFoodFactsProduct[];
-  count: number;
-  page: number;
-  page_size: number;
-  statusCode?: number; // For debug purposes
-  url?: string; // For debug purposes
 }
 
 export interface ServingSizeInfo {
@@ -468,132 +459,6 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
       console.error('[OpenFoodFacts] Error message:', error.message);
     }
     return null;
-  }
-}
-
-/**
- * Search products by text query from OpenFoodFacts
- * NEVER throws errors - always returns a valid result object (never null)
- * HARD TIMEOUT: 10 seconds (increased from 8 for mobile reliability)
- * 
- * UPDATED: Uses API v2 search endpoint for better mobile compatibility
- * MOBILE COMPATIBILITY: Adds User-Agent header and uses HTTPS
- * 
- * CRITICAL FIX: This function now ALWAYS returns a valid OpenFoodFactsSearchResult object,
- * never null. Empty results are represented as an object with an empty products array.
- */
-export async function searchProducts(query: string, page: number = 1, pageSize: number = 20): Promise<OpenFoodFactsSearchResult | null> {
-  // Build the URL first for debugging
-  const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&fields=code,product_name,brands,nutriments,serving_size,serving_quantity,serving_unit,quantity,image_front_small_url&sort_by=popularity_key&page_size=${pageSize}&page=${page}`;
-  
-  try {
-    console.log(`[OpenFoodFacts] ========== SEARCH FOOD LIBRARY ==========`);
-    console.log(`[OpenFoodFacts] Query: "${query}"`);
-    console.log(`[OpenFoodFacts] Page: ${page}, PageSize: ${pageSize}`);
-    console.log(`[OpenFoodFacts] Full URL: ${url}`);
-    console.log(`[OpenFoodFacts] Using HTTPS: YES`);
-    console.log(`[OpenFoodFacts] User-Agent: EliteMacroTracker/1.0 (iOS)`);
-    
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method: 'GET',
-      },
-      10000 // 10 second timeout for mobile reliability
-    );
-    
-    console.log(`[OpenFoodFacts] Response status: ${response.status}`);
-    console.log(`[OpenFoodFacts] Response ok: ${response.ok}`);
-    
-    if (!response.ok) {
-      console.log(`[OpenFoodFacts] ❌ Search failed for query: ${query} (status: ${response.status})`);
-      // Return result with status code for debugging - NOT NULL
-      return {
-        products: [],
-        count: 0,
-        page: page,
-        page_size: pageSize,
-        statusCode: response.status,
-        url: url,
-      };
-    }
-
-    // Parse the JSON response
-    let data: any;
-    try {
-      data = await response.json();
-      console.log(`[OpenFoodFacts] ✅ JSON parsed successfully`);
-    } catch (jsonError) {
-      console.error(`[OpenFoodFacts] ❌ Failed to parse JSON response:`, jsonError);
-      // Return empty result with error info - NOT NULL
-      return {
-        products: [],
-        count: 0,
-        page: page,
-        page_size: pageSize,
-        statusCode: response.status,
-        url: url,
-      };
-    }
-    
-    console.log(`[OpenFoodFacts] Response keys:`, Object.keys(data));
-    console.log(`[OpenFoodFacts] Products count: ${data.count || 0}`);
-    console.log(`[OpenFoodFacts] Products array length: ${data.products?.length || 0}`);
-    
-    // Validate response structure
-    // API v2 returns: { products: [...], count: n, page: n, page_size: n }
-    if (!data.products || !Array.isArray(data.products)) {
-      console.log(`[OpenFoodFacts] ⚠️ Invalid response structure - no products array`);
-      console.log(`[OpenFoodFacts] Response data:`, JSON.stringify(data, null, 2));
-      // Return empty result - NOT NULL
-      return {
-        products: [],
-        count: 0,
-        page: page,
-        page_size: pageSize,
-        statusCode: response.status,
-        url: url,
-      };
-    }
-    
-    // Filter out products with no name
-    const validProducts = data.products.filter((p: OpenFoodFactsProduct) => {
-      const hasName = p.product_name && p.product_name.trim().length > 0;
-      if (!hasName) {
-        console.log(`[OpenFoodFacts] Filtering out product with no name:`, p.code);
-      }
-      return hasName;
-    });
-    
-    console.log(`[OpenFoodFacts] ✅ Returning ${validProducts.length} valid products`);
-    
-    // ALWAYS return a valid result object - NEVER NULL
-    return {
-      products: validProducts,
-      count: data.count || validProducts.length,
-      page: data.page || page,
-      page_size: data.page_size || pageSize,
-      statusCode: response.status,
-      url: url,
-    };
-  } catch (error) {
-    console.error('[OpenFoodFacts] ❌ Error searching products:', error);
-    if (error instanceof Error) {
-      console.error('[OpenFoodFacts] Error name:', error.name);
-      console.error('[OpenFoodFacts] Error message:', error.message);
-      console.error('[OpenFoodFacts] Error stack:', error.stack);
-    }
-    
-    // CRITICAL: Return empty result with error info - NEVER NULL
-    // This ensures the UI can display the error properly
-    return {
-      products: [],
-      count: 0,
-      page: page,
-      page_size: pageSize,
-      statusCode: 0, // 0 indicates network/exception error
-      url: url,
-    };
   }
 }
 

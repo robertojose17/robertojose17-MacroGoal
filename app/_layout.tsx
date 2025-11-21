@@ -285,14 +285,6 @@ export default function RootLayout() {
               />
               
               <Stack.Screen
-                name="food-search"
-                options={{
-                  headerShown: false,
-                  presentation: "card",
-                }}
-              />
-              
-              <Stack.Screen
                 name="food-details"
                 options={{
                   headerShown: false,
