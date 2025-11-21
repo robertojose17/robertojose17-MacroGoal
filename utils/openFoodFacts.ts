@@ -252,6 +252,63 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 }
 
 /**
+ * STEP 1: Get product name by barcode
+ * Extracts a clean product name from OpenFoodFacts barcode lookup
+ * Returns null if product not found or name unavailable
+ * NEVER throws - always returns string or null
+ */
+export async function getProductNameByBarcode(barcode: string): Promise<string | null> {
+  try {
+    console.log(`[OpenFoodFacts] STEP 1: Getting product name for barcode: ${barcode}`);
+    const response = await fetchWithTimeout(
+      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
+      {},
+      8000
+    );
+    
+    if (!response.ok) {
+      console.log(`[OpenFoodFacts] Product not found for barcode: ${barcode} (status: ${response.status})`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (data.status === 1 && data.product) {
+      // Prefer product_name, fallback to generic_name
+      const productName = data.product.product_name || data.product.generic_name;
+      
+      if (!productName || typeof productName !== 'string' || productName.trim().length === 0) {
+        console.log(`[OpenFoodFacts] No valid product name found for barcode: ${barcode}`);
+        return null;
+      }
+
+      // Clean the product name - strip size-only text like "500g", "1L", etc.
+      const cleanedName = productName
+        .replace(/[\d.]+\s*(g|kg|ml|l|oz|lb|cl)\b/gi, '') // Remove size indicators
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
+
+      if (cleanedName.length === 0) {
+        console.log(`[OpenFoodFacts] Product name became empty after cleaning: ${productName}`);
+        return productName.trim(); // Return original if cleaning removed everything
+      }
+
+      console.log(`[OpenFoodFacts] ✅ Found product name: "${cleanedName}"`);
+      return cleanedName;
+    }
+
+    console.log(`[OpenFoodFacts] No product data for barcode: ${barcode}`);
+    return null;
+  } catch (error) {
+    console.error('[OpenFoodFacts] Error getting product name by barcode:', error);
+    if (error instanceof Error) {
+      console.error('[OpenFoodFacts] Error message:', error.message);
+    }
+    return null;
+  }
+}
+
+/**
  * Fetch product by barcode from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
  */
@@ -289,7 +346,7 @@ export async function fetchProductByBarcode(barcode: string): Promise<OpenFoodFa
 }
 
 /**
- * Search products by text query from OpenFoodFacts
+ * STEP 2: Search products by text query from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
  */
 export async function searchProducts(query: string, page: number = 1, pageSize: number = 20): Promise<OpenFoodFactsSearchResult | null> {
