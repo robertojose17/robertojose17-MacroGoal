@@ -176,12 +176,13 @@ export default function BarcodeScanScreen() {
   /**
    * STEP 5: USER MANUAL SELECTION
    * User taps a result to open Food Details
-   * CRITICAL FIX: Ensure this function is called and navigation works
+   * CRITICAL FIX: Enhanced for iOS mobile touch handling
    */
   const handleSelectFood = (product: OpenFoodFactsProduct) => {
     console.log('[BarcodeScan] ========== USER TAPPED RESULT ==========');
     console.log('[BarcodeScan] Product name:', product.product_name);
     console.log('[BarcodeScan] Product code:', product.code);
+    console.log('[BarcodeScan] Platform:', Platform.OS);
     console.log('[BarcodeScan] Navigating to food-details with params:', {
       meal: mealType,
       date: date,
@@ -207,6 +208,9 @@ export default function BarcodeScanScreen() {
       console.log('[BarcodeScan] ✅ Navigation triggered successfully');
     } catch (error) {
       console.error('[BarcodeScan] ❌ Error navigating to food details:', error);
+      // Show inline error instead of ignoring the tap
+      setErrorMessage('Failed to open food details. Please try again.');
+      setFlowState('error');
     }
   };
 
@@ -516,7 +520,7 @@ export default function BarcodeScanScreen() {
   }
 
   // STEP 4: SHOW ALL RESULTS (NO AUTO-SELECTION)
-  // CRITICAL FIX: Ensure TouchableOpacity is properly configured for mobile taps
+  // CRITICAL FIX FOR iOS MOBILE: Enhanced touch handling
   if (flowState === 'results') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -549,11 +553,17 @@ export default function BarcodeScanScreen() {
           </Text>
         </View>
 
+        {/* CRITICAL FIX: FlatList with proper iOS touch handling */}
         <FlatList
           data={searchResults}
           keyExtractor={(item, index) => `${item.code || index}`}
           contentContainerStyle={styles.resultsList}
           showsVerticalScrollIndicator={false}
+          // CRITICAL: Ensure list receives touches on iOS
+          scrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          // CRITICAL: Remove any pointer event blocking
+          pointerEvents="auto"
           renderItem={({ item: product }) => {
             const nutrition = extractNutrition(product);
             const brandText = product.brands || '';
@@ -562,13 +572,19 @@ export default function BarcodeScanScreen() {
               <TouchableOpacity
                 style={[styles.resultCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
                 onPress={() => {
+                  console.log('[BarcodeScan] ========== TOUCH DETECTED ON iOS ==========');
                   console.log('[BarcodeScan] TouchableOpacity onPress triggered for:', product.product_name);
                   handleSelectFood(product);
                 }}
-                activeOpacity={0.7}
+                // CRITICAL: Enhanced iOS touch handling
+                activeOpacity={0.6}
                 accessible={true}
                 accessibilityRole="button"
                 accessibilityLabel={`Select ${product.product_name}`}
+                // CRITICAL: Ensure this component receives touches
+                pointerEvents="auto"
+                // CRITICAL: Increase hit area for better mobile touch
+                hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
               >
                 <View style={styles.resultContent}>
                   <View style={styles.resultHeader}>
@@ -604,11 +620,16 @@ export default function BarcodeScanScreen() {
           }}
         />
 
-        <View style={styles.bottomActions}>
+        {/* CRITICAL FIX: Bottom actions with proper pointer events to not block list */}
+        <View 
+          style={styles.bottomActions}
+          pointerEvents="box-none"
+        >
           <TouchableOpacity
             style={[styles.bottomButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
             onPress={handleTryAgain}
             activeOpacity={0.7}
+            pointerEvents="auto"
           >
             <IconSymbol
               ios_icon_name="camera"
@@ -625,6 +646,7 @@ export default function BarcodeScanScreen() {
             style={[styles.bottomButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
             onPress={handleSearchManually}
             activeOpacity={0.7}
+            pointerEvents="auto"
           >
             <IconSymbol
               ios_icon_name="magnifyingglass"
@@ -899,7 +921,8 @@ const styles = StyleSheet.create({
   },
   resultsList: {
     paddingHorizontal: spacing.md,
-    paddingBottom: 100,
+    // CRITICAL: Add bottom padding to prevent overlap with bottom actions
+    paddingBottom: 120,
   },
   resultCard: {
     flexDirection: 'row',
@@ -909,6 +932,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
+    // CRITICAL: Ensure minimum height for better touch target
+    minHeight: 80,
   },
   resultContent: {
     flex: 1,
@@ -946,6 +971,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     gap: spacing.sm,
+    // CRITICAL: Use transparent background to allow touches through
     backgroundColor: 'transparent',
   },
   bottomButton: {
