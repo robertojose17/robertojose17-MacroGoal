@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, ScrollView, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, FlatList } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -56,7 +56,6 @@ export default function BarcodeScanScreen() {
 
     console.log('[BarcodeScanner] ========== BARCODE SCAN STARTED ==========');
     console.log('[BarcodeScanner] Scanned barcode:', data);
-    console.log('[BarcodeScanner] Platform:', Platform.OS);
 
     // Set a HARD TIMEOUT (10 seconds total for entire flow)
     timeoutRef.current = setTimeout(() => {
@@ -66,8 +65,8 @@ export default function BarcodeScanScreen() {
     }, 10000);
 
     try {
-      // ========== STEP 1: GET PRODUCT NAME BY BARCODE (8 second timeout) ==========
-      console.log('[BarcodeScanner] STEP 1: Getting product name...');
+      // ========== STEP 1: GET PRODUCT NAME BY BARCODE ==========
+      console.log('[BarcodeScanner] STEP 1: Getting product name from barcode...');
       
       const namePromise = getProductNameByBarcode(data);
       const nameTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
@@ -79,10 +78,11 @@ export default function BarcodeScanScreen() {
         console.log('[BarcodeScanner] ⚠️ STEP 1: No product name found, using barcode as fallback');
       }
 
+      // Use extracted name OR fallback to barcode digits
       const searchQuery = name || data;
 
-      // ========== STEP 2: SEARCH FOOD LIBRARY (8 second timeout) ==========
-      console.log('[BarcodeScanner] STEP 2: Searching Food Library for:', searchQuery);
+      // ========== STEP 2: SEARCH FULL LIBRARY BY NAME ==========
+      console.log('[BarcodeScanner] STEP 2: Searching Full Library for:', searchQuery);
 
       const searchPromise = searchProducts(searchQuery);
       const searchTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
@@ -109,7 +109,7 @@ export default function BarcodeScanScreen() {
         return;
       }
 
-      console.log('[BarcodeScanner] ✅ STEP 2 SUCCESS: Found', searchData.products.length, 'products from Food Library');
+      console.log('[BarcodeScanner] ✅ STEP 2 SUCCESS: Found', searchData.products.length, 'products from Full Library');
       
       // Filter out products with no name
       const validProducts = searchData.products.filter(p => p.product_name && p.product_name.trim().length > 0);
@@ -121,8 +121,11 @@ export default function BarcodeScanScreen() {
       }
 
       // ========== STEP 3: STOP HERE AND SHOW ALL RESULTS ==========
-      console.log('[BarcodeScanner] STEP 3: Displaying', validProducts.length, 'results to user');
-      console.log('[BarcodeScanner] ========== STOPPING AT RESULTS LIST ==========');
+      // CRITICAL: NO AUTO-SELECTION
+      // Display ALL matches and let the user choose
+      console.log('[BarcodeScanner] ========== STEP 3: SHOWING ALL RESULTS ==========');
+      console.log('[BarcodeScanner] Displaying', validProducts.length, 'results to user');
+      console.log('[BarcodeScanner] NO AUTO-SELECTION - User must manually select');
       
       setSearchResults(validProducts);
       setScanState('showing-results');
@@ -156,6 +159,7 @@ export default function BarcodeScanScreen() {
   };
 
   const handleSelectFood = (product: OpenFoodFactsProduct) => {
+    console.log('[BarcodeScanner] ========== USER MANUAL SELECTION ==========');
     console.log('[BarcodeScanner] User selected product:', product.product_name);
     router.push({
       pathname: '/food-details',
@@ -265,7 +269,7 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.notFoundContainer}>
+        <View style={styles.notFoundContainer}>
           <Text style={styles.notFoundIcon}>⚠️</Text>
           <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Connection Error
@@ -306,7 +310,7 @@ export default function BarcodeScanScreen() {
                 color={colors.primary}
               />
               <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Search Manually
+                Search Full Library
               </Text>
             </TouchableOpacity>
 
@@ -325,7 +329,7 @@ export default function BarcodeScanScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }
@@ -349,7 +353,7 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.notFoundContainer}>
+        <View style={styles.notFoundContainer}>
           <Text style={styles.notFoundIcon}>🔍</Text>
           <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
             No Results Found
@@ -390,7 +394,7 @@ export default function BarcodeScanScreen() {
                 color={colors.primary}
               />
               <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Search Manually
+                Search Full Library
               </Text>
             </TouchableOpacity>
 
@@ -409,7 +413,7 @@ export default function BarcodeScanScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }
@@ -443,7 +447,7 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show search results list (CRITICAL: NEW STATE)
+  // Show search results list (CRITICAL: STOP HERE - NO AUTO-SELECTION)
   if (scanState === 'showing-results') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -471,6 +475,9 @@ export default function BarcodeScanScreen() {
               Barcode: {scannedBarcode}
             </Text>
           )}
+          <Text style={[styles.instructionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Tap any item to view details and add to your meal
+          </Text>
         </View>
 
         <FlatList
@@ -593,7 +600,7 @@ export default function BarcodeScanScreen() {
               <View style={[styles.corner, styles.bottomLeft]} />
               <View style={[styles.corner, styles.bottomRight]} />
             </View>
-            <Text style={styles.instructionText}>
+            <Text style={styles.cameraInstructionText}>
               Position barcode within the frame
             </Text>
             <Text style={styles.offBadge}>
@@ -683,7 +690,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   notFoundContainer: {
-    flexGrow: 1,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
@@ -782,7 +789,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 4,
     borderRightWidth: 4,
   },
-  instructionText: {
+  cameraInstructionText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
@@ -819,6 +826,11 @@ const styles = StyleSheet.create({
   resultsCount: {
     ...typography.bodyBold,
     fontSize: 16,
+  },
+  instructionText: {
+    ...typography.caption,
+    fontSize: 13,
+    marginTop: spacing.xs,
   },
   resultsList: {
     paddingHorizontal: spacing.md,
