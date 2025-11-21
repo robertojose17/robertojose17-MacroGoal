@@ -60,6 +60,7 @@ export default function BarcodeScanScreen() {
    * Auto-select the best match from search results
    * CRITICAL: This function MUST ALWAYS return a product if the array is not empty
    * NEVER wait for a "perfect match" - pick immediately
+   * FIXED: Removed strict filtering that was blocking results
    */
   const selectBestMatch = (products: OpenFoodFactsProduct[], searchQuery: string): OpenFoodFactsProduct => {
     console.log('[BarcodeScanner] Auto-selecting best match from', products.length, 'results');
@@ -71,54 +72,15 @@ export default function BarcodeScanScreen() {
       return products[0];
     }
 
-    // Categorize products by serving size
-    const non100gProducts: Array<{ product: OpenFoodFactsProduct; index: number }> = [];
-    const is100gProducts: Array<{ product: OpenFoodFactsProduct; index: number }> = [];
+    // FIXED: Categorize products by serving size with RELAXED criteria
+    // We want to prefer non-100g servings, but NOT reject 100g servings entirely
+    const non100gProducts: Array<{ product: OpenFoodFactsProduct; index: number; score: number }> = [];
+    const is100gProducts: Array<{ product: OpenFoodFactsProduct; index: number; score: number }> = [];
 
     products.forEach((product, index) => {
       const serving = extractServingSize(product);
       
-      // Check if serving is NOT 100g
-      // A serving is considered "100g" if:
-      // - grams is exactly 100 AND description is just "100 g" or "100g"
-      const is100g = 
-        Math.abs(serving.grams - 100) < 0.1 && 
-        serving.description.match(/^100\s*g$/i);
-
-      if (is100g) {
-        is100gProducts.push({ product, index });
-      } else {
-        non100gProducts.push({ product, index });
-      }
-    });
-
-    console.log('[BarcodeScanner] Found', non100gProducts.length, 'non-100g products and', is100gProducts.length, '100g products');
-
-    // Rule A: Prefer non-100g servings
-    if (non100gProducts.length > 0) {
-      const selected = non100gProducts[0];
-      console.log('[BarcodeScanner] Selecting first non-100g product:', selected.product.product_name);
-      setDebugInfo(prev => ({ ...prev, stepD: `${selected.index} (non-100g)` }));
-      return selected.product;
-    }
-
-    // Rule B: All are 100g, pick the most relevant
-    console.log('[BarcodeScanner] All products are 100g, selecting most relevant');
-    const best = selectMostRelevant(is100gProducts.map(p => p.product), searchQuery);
-    const bestIndex = products.findIndex(p => p.code === best.code);
-    setDebugInfo(prev => ({ ...prev, stepD: `${bestIndex} (best 100g)` }));
-    return best;
-  };
-
-  /**
-   * Select the most relevant product when all have 100g servings
-   * Criteria:
-   * - Closest name match to search query
-   * - Branded item over generic
-   * - Higher completeness of nutrition fields
-   */
-  const selectMostRelevant = (products: OpenFoodFactsProduct[], searchQuery: string): OpenFoodFactsProduct => {
-    const scoredProducts = products.map(product => {
+      // Calculate relevance score for this product
       let score = 0;
 
       // Score 1: Name similarity (case-insensitive)
@@ -152,18 +114,43 @@ export default function BarcodeScanScreen() {
       
       score += nutritionFields; // 0-6 points
 
-      console.log('[BarcodeScanner] Product:', product.product_name, 'Score:', score);
+      // FIXED: More lenient check for "100g" servings
+      // Only consider it "100g" if:
+      // 1. Grams is exactly 100 (or very close)
+      // 2. AND the description is ONLY "100 g" with no other info
+      // 3. AND hasValidGrams is false (meaning it's a fallback)
+      const isDefault100g = 
+        Math.abs(serving.grams - 100) < 1 && 
+        !serving.hasValidGrams &&
+        serving.description.match(/^100\s*g$/i);
 
-      return { product, score };
+      if (isDefault100g) {
+        is100gProducts.push({ product, index, score });
+        console.log('[BarcodeScanner] Product categorized as 100g (default):', product.product_name, 'Score:', score);
+      } else {
+        non100gProducts.push({ product, index, score });
+        console.log('[BarcodeScanner] Product categorized as non-100g:', product.product_name, 'Serving:', serving.displayText, 'Score:', score);
+      }
     });
 
-    // Sort by score descending
-    scoredProducts.sort((a, b) => b.score - a.score);
+    console.log('[BarcodeScanner] Found', non100gProducts.length, 'non-100g products and', is100gProducts.length, '100g products');
 
-    const best = scoredProducts[0].product;
-    console.log('[BarcodeScanner] Most relevant product:', best.product_name, 'with score:', scoredProducts[0].score);
-    
-    return best;
+    // Rule A: Prefer non-100g servings (sort by score)
+    if (non100gProducts.length > 0) {
+      non100gProducts.sort((a, b) => b.score - a.score);
+      const selected = non100gProducts[0];
+      console.log('[BarcodeScanner] Selecting best non-100g product:', selected.product.product_name, 'Score:', selected.score);
+      setDebugInfo(prev => ({ ...prev, stepD: `${selected.index} (non-100g, score: ${selected.score})` }));
+      return selected.product;
+    }
+
+    // Rule B: All are 100g (or default), pick the most relevant by score
+    console.log('[BarcodeScanner] All products are 100g defaults, selecting most relevant');
+    is100gProducts.sort((a, b) => b.score - a.score);
+    const best = is100gProducts[0];
+    console.log('[BarcodeScanner] Selected best 100g product:', best.product.product_name, 'Score:', best.score);
+    setDebugInfo(prev => ({ ...prev, stepD: `${best.index} (best 100g, score: ${best.score})` }));
+    return best.product;
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
@@ -250,14 +237,18 @@ export default function BarcodeScanScreen() {
       console.log('[BarcodeScanner] ✅ STEP 2 SUCCESS: Found', searchData.products.length, 'products from Food Library');
       setDebugInfo(prev => ({ ...prev, stepC: searchData.products.length.toString() }));
       
-      // ========== CRITICAL: DO NOT FILTER OUT RESULTS ==========
-      // Accept ALL products, even if they have missing data
-      // We'll handle missing data in the Food Details screen
+      // ========== CRITICAL FIX: ACCEPT ALL PRODUCTS, NO FILTERING ==========
+      // DO NOT filter out products based on:
+      // - Missing serving size
+      // - Missing nutrients
+      // - Default 100g serving
+      // - Any undefined fields
+      // Accept ALL raw search results, then rank them
       const allProducts = searchData.products;
       
-      console.log('[BarcodeScanner] Total products (no filtering):', allProducts.length);
+      console.log('[BarcodeScanner] Total products (NO FILTERING APPLIED):', allProducts.length);
 
-      // If we somehow have zero products after this (shouldn't happen), show not found
+      // If we somehow have zero products (shouldn't happen), show not found
       if (allProducts.length === 0) {
         console.log('[BarcodeScanner] ⚠️ No products after processing (unexpected)');
         setDebugInfo(prev => ({ ...prev, stepD: 'N/A (no products)' }));
@@ -266,9 +257,11 @@ export default function BarcodeScanScreen() {
       }
 
       // ========== STEP 3: AUTO-SELECT BEST MATCH (IMMEDIATE, NON-BLOCKING) ==========
-      console.log('[BarcodeScanner] STEP 3: Auto-selecting best match...');
+      console.log('[BarcodeScanner] STEP 3: Auto-selecting best match (IMMEDIATE)...');
       setDebugInfo(prev => ({ ...prev, stepD: 'selecting...' }));
       
+      // CRITICAL: This MUST return a product immediately
+      // NEVER wait for a "perfect match"
       const bestMatch = selectBestMatch(allProducts, searchQuery);
       console.log('[BarcodeScanner] ✅ STEP 3 SUCCESS: Auto-selected:', bestMatch.product_name);
       
