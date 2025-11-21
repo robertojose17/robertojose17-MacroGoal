@@ -176,20 +176,38 @@ export default function BarcodeScanScreen() {
   /**
    * STEP 5: USER MANUAL SELECTION
    * User taps a result to open Food Details
+   * CRITICAL FIX: Ensure this function is called and navigation works
    */
   const handleSelectFood = (product: OpenFoodFactsProduct) => {
-    console.log('[BarcodeScan] ========== USER MANUAL SELECTION ==========');
-    console.log('[BarcodeScan] User selected product:', product.product_name);
-    
-    router.push({
-      pathname: '/food-details',
-      params: {
-        meal: mealType,
-        date: date,
-        offData: JSON.stringify(product),
-        source: 'barcode',
-      },
+    console.log('[BarcodeScan] ========== USER TAPPED RESULT ==========');
+    console.log('[BarcodeScan] Product name:', product.product_name);
+    console.log('[BarcodeScan] Product code:', product.code);
+    console.log('[BarcodeScan] Navigating to food-details with params:', {
+      meal: mealType,
+      date: date,
+      source: 'barcode',
     });
+    
+    try {
+      // Serialize the product data
+      const offDataString = JSON.stringify(product);
+      console.log('[BarcodeScan] Serialized product data length:', offDataString.length);
+      
+      // Navigate to food details
+      router.push({
+        pathname: '/food-details',
+        params: {
+          meal: mealType,
+          date: date,
+          offData: offDataString,
+          source: 'barcode',
+        },
+      });
+      
+      console.log('[BarcodeScan] ✅ Navigation triggered successfully');
+    } catch (error) {
+      console.error('[BarcodeScan] ❌ Error navigating to food details:', error);
+    }
   };
 
   /**
@@ -498,6 +516,7 @@ export default function BarcodeScanScreen() {
   }
 
   // STEP 4: SHOW ALL RESULTS (NO AUTO-SELECTION)
+  // CRITICAL FIX: Ensure TouchableOpacity is properly configured for mobile taps
   if (flowState === 'results') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -542,7 +561,14 @@ export default function BarcodeScanScreen() {
             return (
               <TouchableOpacity
                 style={[styles.resultCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-                onPress={() => handleSelectFood(product)}
+                onPress={() => {
+                  console.log('[BarcodeScan] TouchableOpacity onPress triggered for:', product.product_name);
+                  handleSelectFood(product);
+                }}
+                activeOpacity={0.7}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${product.product_name}`}
               >
                 <View style={styles.resultContent}>
                   <View style={styles.resultHeader}>
@@ -582,6 +608,7 @@ export default function BarcodeScanScreen() {
           <TouchableOpacity
             style={[styles.bottomButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
             onPress={handleTryAgain}
+            activeOpacity={0.7}
           >
             <IconSymbol
               ios_icon_name="camera"
@@ -597,6 +624,7 @@ export default function BarcodeScanScreen() {
           <TouchableOpacity
             style={[styles.bottomButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
             onPress={handleSearchManually}
+            activeOpacity={0.7}
           >
             <IconSymbol
               ios_icon_name="magnifyingglass"
