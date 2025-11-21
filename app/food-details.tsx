@@ -7,7 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
-import { FDCFood, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/foodDataCentral';
+import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 
 export default function FoodDetailsScreen() {
   const router = useRouter();
@@ -17,10 +17,10 @@ export default function FoodDetailsScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const fdcDataString = params.fdcData as string;
+  const offDataString = params.offData as string;
   const source = (params.source as string) || 'search';
 
-  const [food, setFood] = useState<FDCFood | null>(null);
+  const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
   const [nutrition, setNutrition] = useState<any>(null);
   const [grams, setGrams] = useState('100');
@@ -28,16 +28,15 @@ export default function FoodDetailsScreen() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    console.log('[FoodDetails] Component mounted, parsing FDC data...');
+    console.log('[FoodDetails] Component mounted, parsing OpenFoodFacts data...');
     
-    if (fdcDataString) {
+    if (offDataString) {
       try {
-        const parsed = JSON.parse(fdcDataString);
-        console.log('[FoodDetails] FDC food parsed:', parsed.description);
-        console.log('[FoodDetails] Data type:', parsed.dataType);
-        setFood(parsed);
+        const parsed = JSON.parse(offDataString);
+        console.log('[FoodDetails] OpenFoodFacts product parsed:', parsed.product_name);
+        setProduct(parsed);
         
-        // Extract serving size information from FDC
+        // Extract serving size information from OpenFoodFacts
         // This function NEVER throws and always returns a valid ServingSizeInfo
         const serving = extractServingSize(parsed);
         console.log('[FoodDetails] Extracted serving info:', serving);
@@ -54,7 +53,7 @@ export default function FoodDetailsScreen() {
         setIsReady(true);
         console.log('[FoodDetails] Screen ready to display');
       } catch (error) {
-        console.error('[FoodDetails] Error parsing FDC data:', error);
+        console.error('[FoodDetails] Error parsing OpenFoodFacts data:', error);
         
         // Even on error, show something to the user
         Alert.alert(
@@ -65,17 +64,14 @@ export default function FoodDetailsScreen() {
               text: 'OK',
               onPress: () => {
                 // Set minimal defaults so user can still interact
-                setFood({
-                  fdcId: 0,
-                  description: 'Unknown Product',
-                  dataType: 'Unknown',
-                  servingSize: 100,
-                  servingSizeUnit: 'g',
-                } as FDCFood);
+                setProduct({
+                  code: '',
+                  product_name: 'Unknown Product',
+                } as OpenFoodFactsProduct);
                 setServingInfo({
                   description: '100 g',
                   grams: 100,
-                  displayText: '100 g (no serving size provided)',
+                  displayText: '100 g',
                   hasValidGrams: false,
                 });
                 setNutrition({
@@ -94,7 +90,7 @@ export default function FoodDetailsScreen() {
         );
       }
     } else {
-      console.error('[FoodDetails] No FDC data provided');
+      console.error('[FoodDetails] No OpenFoodFacts data provided');
       Alert.alert('Error', 'No product data available', [
         {
           text: 'OK',
@@ -102,10 +98,10 @@ export default function FoodDetailsScreen() {
         },
       ]);
     }
-  }, [fdcDataString]);
+  }, [offDataString]);
 
   // Show loading only briefly while parsing
-  if (!isReady || !food || !servingInfo || !nutrition) {
+  if (!isReady || !product || !servingInfo || !nutrition) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
@@ -179,14 +175,14 @@ export default function FoodDetailsScreen() {
 
       console.log('[FoodDetails] Starting save process for meal:', mealType, 'date:', date);
 
-      // Check if this food already exists in our database (by FDC ID)
+      // Check if this food already exists in our database (by barcode)
       let foodId: string | null = null;
 
-      if (food.fdcId) {
+      if (product.code) {
         const { data: existingFood } = await supabase
           .from('foods')
           .select('id')
-          .eq('fdc_id', food.fdcId)
+          .eq('barcode', product.code)
           .maybeSingle();
 
         if (existingFood) {
@@ -200,19 +196,17 @@ export default function FoodDetailsScreen() {
         const { data: newFood, error: foodError } = await supabase
           .from('foods')
           .insert({
-            name: food.description,
-            brand: food.brandOwner || food.brandName || null,
-            serving_amount: 100, // FDC uses per 100g for calculations
+            name: product.product_name || 'Unknown Product',
+            brand: product.brands || null,
+            serving_amount: 100, // OpenFoodFacts uses per 100g for calculations
             serving_unit: 'g',
             calories: nutrition.calories,
             protein: nutrition.protein,
             carbs: nutrition.carbs,
             fats: nutrition.fat,
             fiber: nutrition.fiber,
-            barcode: food.gtinUpc || null,
+            barcode: product.code || null,
             user_created: false,
-            fdc_id: food.fdcId,
-            data_type: food.dataType,
           })
           .select()
           .single();
@@ -334,22 +328,19 @@ export default function FoodDetailsScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-            <View style={styles.fdcBadgeContainer}>
-              <Text style={[styles.fdcBadge, { color: colors.primary }]}>
-                ✓ FoodData Central (USDA)
-              </Text>
-              <Text style={[styles.dataType, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {food.dataType}
+            <View style={styles.offBadgeContainer}>
+              <Text style={[styles.offBadge, { color: colors.primary }]}>
+                ✓ OpenFoodFacts
               </Text>
             </View>
             
             <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {food.description || 'Unknown Product'}
+              {product.product_name || 'Unknown Product'}
             </Text>
             
-            {(food.brandOwner || food.brandName) && (
+            {product.brands && (
               <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {food.brandOwner || food.brandName}
+                {product.brands}
               </Text>
             )}
             
@@ -367,15 +358,11 @@ export default function FoodDetailsScreen() {
               )}
             </View>
             
-            {food.gtinUpc && (
+            {product.code && (
               <Text style={[styles.barcode, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                UPC: {food.gtinUpc}
+                Barcode: {product.code}
               </Text>
             )}
-            
-            <Text style={[styles.fdcId, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              FDC ID: {food.fdcId}
-            </Text>
           </View>
 
           <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
@@ -577,20 +564,15 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
-  fdcBadgeContainer: {
+  offBadgeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  fdcBadge: {
+  offBadge: {
     fontSize: 12,
     fontWeight: '700',
-  },
-  dataType: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
   },
   foodName: {
     ...typography.h2,
@@ -620,10 +602,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontStyle: 'italic',
     marginBottom: 2,
-  },
-  fdcId: {
-    ...typography.caption,
-    fontStyle: 'italic',
   },
   sectionTitle: {
     ...typography.h3,

@@ -2,6 +2,7 @@
 /**
  * OpenFoodFacts API Integration
  * Public API for food database lookup
+ * This is the ONLY food data provider for the app
  */
 
 export interface OpenFoodFactsProduct {
@@ -21,6 +22,8 @@ export interface OpenFoodFactsProduct {
     'fat_serving'?: number;
     'fiber_100g'?: number;
     'fiber_serving'?: number;
+    'sugars_100g'?: number;
+    'sugars_serving'?: number;
   };
 }
 
@@ -53,7 +56,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
   const defaultServing: ServingSizeInfo = {
     description: '100 g',
     grams: 100,
-    displayText: '100 g (no serving size provided)',
+    displayText: '100 g',
     hasValidGrams: false,
   };
 
@@ -186,7 +189,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
     return {
       description: servingSize,
       grams: 100,
-      displayText: `${servingSize} (100 g default)`,
+      displayText: `${servingSize} (100 g)`,
       hasValidGrams: false,
     };
   } catch (error) {
@@ -197,55 +200,120 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
 }
 
 /**
+ * Extract nutrition data from OpenFoodFacts product
+ * Returns calories and macros per 100g
+ */
+export function extractNutrition(product: OpenFoodFactsProduct): {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugars: number;
+} {
+  console.log('[OpenFoodFacts] Extracting nutrition for:', product.product_name);
+
+  const nutriments = product.nutriments || {};
+
+  const calories = nutriments['energy-kcal_100g'] || 0;
+  const protein = nutriments['proteins_100g'] || 0;
+  const carbs = nutriments['carbohydrates_100g'] || 0;
+  const fat = nutriments['fat_100g'] || 0;
+  const fiber = nutriments['fiber_100g'] || 0;
+  const sugars = nutriments['sugars_100g'] || 0;
+
+  console.log('[OpenFoodFacts] Extracted nutrition:', { calories, protein, carbs, fat, fiber, sugars });
+
+  return { calories, protein, carbs, fat, fiber, sugars };
+}
+
+/**
+ * Fetch with timeout wrapper
+ * Ensures requests never hang indefinitely
+ */
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout - please check your internet connection');
+    }
+    throw error;
+  }
+}
+
+/**
  * Fetch product by barcode from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
  */
 export async function fetchProductByBarcode(barcode: string): Promise<OpenFoodFactsProduct | null> {
   try {
-    console.log(`[OpenFoodFacts] Fetching product by barcode: ${barcode}`);
-    const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    console.log(`[OpenFoodFacts] 📷 Fetching product by barcode: ${barcode}`);
+    const response = await fetchWithTimeout(
+      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
+      {},
+      8000
+    );
     
     if (!response.ok) {
-      console.log(`[OpenFoodFacts] Product not found for barcode: ${barcode}`);
+      console.log(`[OpenFoodFacts] ⚠️ Product not found for barcode: ${barcode} (status: ${response.status})`);
       return null;
     }
 
     const data = await response.json();
     
     if (data.status === 1 && data.product) {
-      console.log(`[OpenFoodFacts] Product found:`, data.product.product_name);
+      console.log(`[OpenFoodFacts] ✅ Product found:`, data.product.product_name);
       console.log(`[OpenFoodFacts] Serving size:`, data.product.serving_size);
       return data.product;
     }
 
-    console.log(`[OpenFoodFacts] No product data for barcode: ${barcode}`);
+    console.log(`[OpenFoodFacts] ⚠️ No product data for barcode: ${barcode}`);
     return null;
   } catch (error) {
-    console.error('[OpenFoodFacts] Error fetching product by barcode:', error);
+    console.error('[OpenFoodFacts] ❌ Error fetching product by barcode:', error);
+    if (error instanceof Error) {
+      console.error('[OpenFoodFacts] Error message:', error.message);
+    }
     return null;
   }
 }
 
 /**
  * Search products by text query from OpenFoodFacts
+ * NEVER throws errors - always returns null on failure
  */
 export async function searchProducts(query: string, page: number = 1, pageSize: number = 20): Promise<OpenFoodFactsSearchResult | null> {
   try {
-    console.log(`[OpenFoodFacts] Searching products: ${query}`);
-    const response = await fetch(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&json=true`
+    console.log(`[OpenFoodFacts] 🔍 Searching products: "${query}"`);
+    const response = await fetchWithTimeout(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&json=true`,
+      {},
+      8000
     );
     
     if (!response.ok) {
-      console.log(`[OpenFoodFacts] Search failed for query: ${query}`);
+      console.log(`[OpenFoodFacts] ❌ Search failed for query: ${query} (status: ${response.status})`);
       return null;
     }
 
     const data = await response.json();
-    console.log(`[OpenFoodFacts] Found ${data.count} products`);
+    console.log(`[OpenFoodFacts] ✅ Found ${data.count} products`);
     return data;
   } catch (error) {
-    console.error('[OpenFoodFacts] Error searching products:', error);
+    console.error('[OpenFoodFacts] ❌ Error searching products:', error);
+    if (error instanceof Error) {
+      console.error('[OpenFoodFacts] Error message:', error.message);
+    }
     return null;
   }
 }
@@ -254,30 +322,19 @@ export async function searchProducts(query: string, page: number = 1, pageSize: 
  * Map OpenFoodFacts product to internal Food format
  */
 export function mapOpenFoodFactsToFood(product: OpenFoodFactsProduct): any {
-  const nutriments = product.nutriments || {};
-  
-  // Parse serving size (e.g., "100g" -> 100, "g")
-  let servingAmount = 100;
-  let servingUnit = 'g';
-  
-  if (product.serving_size) {
-    const match = product.serving_size.match(/(\d+\.?\d*)\s*([a-zA-Z]+)/);
-    if (match) {
-      servingAmount = parseFloat(match[1]);
-      servingUnit = match[2];
-    }
-  }
+  const nutrition = extractNutrition(product);
+  const serving = extractServingSize(product);
 
   return {
     name: product.product_name || 'Unknown Product',
     brand: product.brands || undefined,
-    serving_amount: servingAmount,
-    serving_unit: servingUnit,
-    calories: nutriments['energy-kcal_100g'] || 0,
-    protein: nutriments['proteins_100g'] || 0,
-    carbs: nutriments['carbohydrates_100g'] || 0,
-    fats: nutriments['fat_100g'] || 0,
-    fiber: nutriments['fiber_100g'] || 0,
+    serving_amount: 100, // OpenFoodFacts uses per 100g for calculations
+    serving_unit: 'g',
+    calories: nutrition.calories,
+    protein: nutrition.protein,
+    carbs: nutrition.carbs,
+    fats: nutrition.fat,
+    fiber: nutrition.fiber,
     barcode: product.code,
     user_created: false,
     is_favorite: false,

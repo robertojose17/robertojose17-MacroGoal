@@ -1,9 +1,10 @@
 
 /**
  * FoodData Central (FDC) API Integration
- * USDA's official food database with high-quality nutrition data
+ * DISABLED - This file is no longer used
  * 
- * IMPORTANT: Set FOODDATA_CENTRAL_API_KEY environment variable before using
+ * The app now uses OpenFoodFacts as the sole food data provider.
+ * This file is kept for reference only.
  */
 
 import Constants from 'expo-constants';

@@ -7,7 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { searchByBarcode } from '@/utils/foodDataCentral';
+import { fetchProductByBarcode } from '@/utils/openFoodFacts';
 
 type ScanState = 'scanning' | 'loading' | 'not-found' | 'error';
 
@@ -55,7 +55,7 @@ export default function BarcodeScanScreen() {
 
     console.log('[BarcodeScanner] 📷 Scanned barcode:', data);
     console.log('[BarcodeScanner] 📱 Platform:', Platform.OS);
-    console.log('[BarcodeScanner] Camera stopped, fetching product from FDC...');
+    console.log('[BarcodeScanner] Camera stopped, fetching product from OpenFoodFacts...');
 
     // Set a failsafe timeout (8 seconds)
     timeoutRef.current = setTimeout(() => {
@@ -65,8 +65,8 @@ export default function BarcodeScanScreen() {
     }, 8000);
 
     try {
-      // Fetch product from FDC
-      const food = await searchByBarcode(data);
+      // Fetch product from OpenFoodFacts
+      const product = await fetchProductByBarcode(data);
 
       // Clear timeout if request completes
       if (timeoutRef.current) {
@@ -80,9 +80,8 @@ export default function BarcodeScanScreen() {
         return;
       }
 
-      if (food) {
-        console.log('[BarcodeScanner] ✅ Food found from FDC:', food.description);
-        console.log('[BarcodeScanner] Data type:', food.dataType);
+      if (product) {
+        console.log('[BarcodeScanner] ✅ Product found from OpenFoodFacts:', product.product_name);
         console.log('[BarcodeScanner] Navigating directly to food-details');
         
         // Navigate directly to food-details
@@ -91,12 +90,12 @@ export default function BarcodeScanScreen() {
           params: {
             meal: mealType,
             date: date,
-            fdcData: JSON.stringify(food),
+            offData: JSON.stringify(product),
             source: 'barcode',
           },
         });
       } else {
-        console.log('[BarcodeScanner] ⚠️ Food not found in FDC (null returned)');
+        console.log('[BarcodeScanner] ⚠️ Product not found in OpenFoodFacts (null returned)');
         setScanState('not-found');
       }
     } catch (error) {
@@ -114,14 +113,12 @@ export default function BarcodeScanScreen() {
         errorMsg = error.message;
         
         // Check for specific error types
-        if (errorMsg.includes('API key')) {
-          errorMsg = 'FDC API key invalid or misconfigured.\n\nPlease set the FOODDATA_CENTRAL_API_KEY environment variable and restart the app.';
-        } else if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+        if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
           errorMsg = 'Request timed out. Please check your internet connection and try again.';
         } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
           errorMsg = 'Network error. Please check your internet connection and try again.';
         } else {
-          errorMsg = 'Error contacting FoodData Central. Please try again or add manually.';
+          errorMsg = 'Error contacting OpenFoodFacts. Please try again or add manually.';
         }
       }
       
@@ -204,8 +201,6 @@ export default function BarcodeScanScreen() {
 
   // Show error screen
   if (scanState === 'error') {
-    const isAuthError = errorMessage.includes('API key');
-    
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -224,9 +219,9 @@ export default function BarcodeScanScreen() {
         </View>
 
         <View style={styles.notFoundContainer}>
-          <Text style={styles.notFoundIcon}>{isAuthError ? '🔐' : '⚠️'}</Text>
+          <Text style={styles.notFoundIcon}>⚠️</Text>
           <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            {isAuthError ? 'API Key Error' : 'Connection Error'}
+            Connection Error
           </Text>
           <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {errorMessage}
@@ -298,7 +293,7 @@ export default function BarcodeScanScreen() {
             Food Not Found
           </Text>
           <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            No food found for this barcode in FoodData Central.
+            No food found for this barcode in OpenFoodFacts.
           </Text>
           {scannedBarcode && (
             <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -364,7 +359,7 @@ export default function BarcodeScanScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Searching in FoodData Central…
+            Searching in OpenFoodFacts…
           </Text>
           <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             This should only take a few seconds
@@ -419,8 +414,8 @@ export default function BarcodeScanScreen() {
             <Text style={styles.instructionText}>
               Position barcode within the frame
             </Text>
-            <Text style={styles.fdcBadge}>
-              Powered by FoodData Central (USDA)
+            <Text style={styles.offBadge}>
+              Powered by OpenFoodFacts
             </Text>
           </View>
         </SafeAreaView>
@@ -610,7 +605,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  fdcBadge: {
+  offBadge: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '500',

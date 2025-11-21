@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { searchFoods, FDCFood, extractNutrition } from '@/utils/foodDataCentral';
+import { searchProducts, OpenFoodFactsProduct, extractNutrition } from '@/utils/openFoodFacts';
 
 export default function FoodSearchScreen() {
   const router = useRouter();
@@ -19,11 +19,10 @@ export default function FoodSearchScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<FDCFood[]>([]);
+  const [results, setResults] = useState<OpenFoodFactsProduct[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [screenLoaded, setScreenLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'auth' | 'network' | 'unknown' | null>(null);
 
   // Debounce timer ref
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -47,7 +46,6 @@ export default function FoodSearchScreen() {
       setResults([]);
       setHasSearched(false);
       setErrorMessage(null);
-      setErrorType(null);
       return;
     }
 
@@ -72,75 +70,47 @@ export default function FoodSearchScreen() {
     setSearching(true);
     setHasSearched(true);
     setErrorMessage(null);
-    setErrorType(null);
 
     try {
-      console.log('[FoodSearch] 🔍 Searching FDC for:', query);
+      console.log('[FoodSearch] 🔍 Searching OpenFoodFacts for:', query);
       console.log('[FoodSearch] 📱 Running on:', Platform.OS);
       
-      const data = await searchFoods(query);
+      const data = await searchProducts(query);
       
       if (data === null) {
         console.error('[FoodSearch] ❌ Search returned null (API error)');
-        
-        // Try to determine error type from console logs
-        // In a real scenario, we'd return error info from searchFoods
-        setErrorType('network');
-        setErrorMessage('Failed to connect to FoodData Central. This could be due to:\n\n• Invalid or missing API key\n• Network connection issues\n• FDC service temporarily unavailable\n\nPlease check the console logs for details.');
+        setErrorMessage('Failed to connect to OpenFoodFacts. Please check your internet connection and try again.');
         setResults([]);
-      } else if (data.foods && data.foods.length > 0) {
-        console.log('[FoodSearch] ✅ Found', data.foods.length, 'foods from FDC');
+      } else if (data.products && data.products.length > 0) {
+        console.log('[FoodSearch] ✅ Found', data.products.length, 'products from OpenFoodFacts');
         
-        // Sort results: Branded first, then Foundation, then others
-        const sortedFoods = [...data.foods].sort((a, b) => {
-          const typeOrder: { [key: string]: number } = {
-            'Branded': 1,
-            'Foundation': 2,
-            'Survey (FNDDS)': 3,
-            'SR Legacy': 4,
-          };
-          
-          const orderA = typeOrder[a.dataType] || 999;
-          const orderB = typeOrder[b.dataType] || 999;
-          
-          return orderA - orderB;
-        });
+        // Filter out products with no name
+        const validProducts = data.products.filter(p => p.product_name && p.product_name.trim().length > 0);
         
-        setResults(sortedFoods);
+        setResults(validProducts);
         setErrorMessage(null);
-        setErrorType(null);
       } else {
         console.log('[FoodSearch] ⚠️ No results found for query:', query);
         setResults([]);
         setErrorMessage(null);
-        setErrorType(null);
       }
     } catch (error) {
       console.error('[FoodSearch] ❌ Error searching:', error);
-      
-      // Check if it's an API key configuration error
-      if (error instanceof Error && error.message.includes('API key')) {
-        setErrorType('auth');
-        setErrorMessage('FDC API key invalid or misconfigured.\n\nPlease set the FOODDATA_CENTRAL_API_KEY environment variable and restart the app.');
-      } else {
-        setErrorType('unknown');
-        setErrorMessage('An unexpected error occurred. Please try again.');
-      }
-      
+      setErrorMessage('An unexpected error occurred. Please try again.');
       setResults([]);
     } finally {
       setSearching(false);
     }
   };
 
-  const handleSelectFood = (food: FDCFood) => {
-    console.log('[FoodSearch] Selected food:', food.description);
+  const handleSelectFood = (product: OpenFoodFactsProduct) => {
+    console.log('[FoodSearch] Selected product:', product.product_name);
     router.push({
       pathname: '/food-details',
       params: {
         meal: mealType,
         date: date,
-        fdcData: JSON.stringify(food),
+        offData: JSON.stringify(product),
         source: 'search',
       },
     });
@@ -152,7 +122,7 @@ export default function FoodSearchScreen() {
       {screenLoaded && (
         <View style={styles.debugBanner}>
           <Text style={styles.debugText}>
-            ✓ Food Library (FDC) - {Platform.OS}
+            ✓ Food Library (OpenFoodFacts) - {Platform.OS}
           </Text>
         </View>
       )}
@@ -211,7 +181,7 @@ export default function FoodSearchScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Searching FoodData Central (USDA)...
+              Searching OpenFoodFacts...
             </Text>
             <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Platform: {Platform.OS}
@@ -221,11 +191,9 @@ export default function FoodSearchScreen() {
 
         {errorMessage && (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorIcon}>
-              {errorType === 'auth' ? '🔐' : '⚠️'}
-            </Text>
+            <Text style={styles.errorIcon}>⚠️</Text>
             <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              {errorType === 'auth' ? 'API Key Error' : 'Connection Error'}
+              Connection Error
             </Text>
             <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               {errorMessage}
@@ -258,7 +226,7 @@ export default function FoodSearchScreen() {
               Search for food
             </Text>
             <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Start typing to see live results from FoodData Central (USDA)
+              Start typing to see live results from OpenFoodFacts
             </Text>
           </View>
         )}
@@ -268,32 +236,21 @@ export default function FoodSearchScreen() {
             <Text style={[styles.resultsCount, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Found {results.length} results
             </Text>
-            {results.map((food, index) => {
-              const nutrition = extractNutrition(food);
-              const brandText = food.brandOwner || food.brandName || '';
+            {results.map((product, index) => {
+              const nutrition = extractNutrition(product);
+              const brandText = product.brands || '';
               
               return (
                 <React.Fragment key={index}>
                   <TouchableOpacity
                     style={[styles.resultCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-                    onPress={() => handleSelectFood(food)}
+                    onPress={() => handleSelectFood(product)}
                   >
                     <View style={styles.resultContent}>
                       <View style={styles.resultHeader}>
                         <Text style={[styles.resultName, { color: isDark ? colors.textDark : colors.text }]}>
-                          {food.description || 'Unknown Product'}
+                          {product.product_name || 'Unknown Product'}
                         </Text>
-                        <View style={[styles.dataTypeBadge, { 
-                          backgroundColor: food.dataType === 'Branded' ? colors.primary : 
-                                         food.dataType === 'Foundation' ? colors.success : 
-                                         colors.textSecondary 
-                        }]}>
-                          <Text style={styles.dataTypeBadgeText}>
-                            {food.dataType === 'Branded' ? 'BRANDED' : 
-                             food.dataType === 'Foundation' ? 'FOUNDATION' : 
-                             food.dataType.toUpperCase()}
-                          </Text>
-                        </View>
                       </View>
                       
                       {brandText && (
@@ -306,9 +263,9 @@ export default function FoodSearchScreen() {
                         Per 100g: {Math.round(nutrition.calories)} kcal • P: {Math.round(nutrition.protein)}g • C: {Math.round(nutrition.carbs)}g • F: {Math.round(nutrition.fat)}g
                       </Text>
                       
-                      {food.householdServingFullText && (
+                      {product.serving_size && (
                         <Text style={[styles.resultServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                          Serving: {food.householdServingFullText}
+                          Serving: {product.serving_size}
                         </Text>
                       )}
                     </View>
@@ -469,16 +426,6 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 16,
     flex: 1,
-  },
-  dataTypeBadge: {
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    borderRadius: borderRadius.sm,
-  },
-  dataTypeBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
   },
   resultBrand: {
     ...typography.caption,

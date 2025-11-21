@@ -58,7 +58,7 @@ export default function AddFoodScreen() {
     {
       id: 'barcode',
       title: 'Scan Barcode',
-      description: 'Scan product barcode',
+      description: 'Scan product barcode with OpenFoodFacts',
       icon: 'qrcode',
       androidIcon: 'qr_code_scanner',
       onPress: handleNavigateToBarcode,
@@ -131,19 +131,14 @@ export default function AddFoodScreen() {
           </React.Fragment>
         ))}
 
-        {/* Debug info */}
-        <View style={[styles.debugCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.debugTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Debug Info
+        {/* Info card */}
+        <View style={[styles.infoCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <Text style={[styles.infoTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            ℹ️ About OpenFoodFacts
           </Text>
-          <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Platform: {Platform.OS}
-          </Text>
-          <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Meal: {mealType}
-          </Text>
-          <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Date: {date}
+          <Text style={[styles.infoText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            OpenFoodFacts is a free, open database of food products from around the world. 
+            It contains nutrition information for thousands of products.
           </Text>
         </View>
       </ScrollView>
@@ -207,19 +202,19 @@ const styles = StyleSheet.create({
   optionDescription: {
     ...typography.caption,
   },
-  debugCard: {
+  infoCard: {
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginTop: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  debugTitle: {
+  infoTitle: {
     ...typography.bodyBold,
     marginBottom: spacing.sm,
   },
-  debugText: {
+  infoText: {
     ...typography.caption,
-    marginBottom: 2,
+    lineHeight: 18,
   },
 });
