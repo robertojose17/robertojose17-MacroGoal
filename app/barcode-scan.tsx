@@ -9,7 +9,20 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractNutrition } from '@/utils/openFoodFacts';
 
-type ScanState = 'scanning' | 'searching' | 'showing-results' | 'not-found' | 'error';
+/**
+ * BARCODE SCAN FLOW - REBUILT FROM ZERO
+ * 
+ * This is a complete rebuild following the exact flow:
+ * 1) SCAN - Open camera, detect barcode, pause camera, show loading
+ * 2) GET PRODUCT NAME - Extract name from barcode lookup (or use barcode as fallback)
+ * 3) SEARCH FULL LIBRARY - Use the same search as Food Library
+ * 4) SHOW ALL RESULTS - Display full list, NO auto-selection
+ * 5) USER MANUAL SELECTION - User taps a result to open Food Details
+ * 6) ADD TO MEAL - Food Details handles the add operation
+ * 7) NOT FOUND/ERROR/TIMEOUT - Show clear error UI with options
+ */
+
+type FlowState = 'scanning' | 'loading' | 'results' | 'not-found' | 'error';
 
 export default function BarcodeScanScreen() {
   const router = useRouter();
@@ -21,15 +34,21 @@ export default function BarcodeScanScreen() {
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
 
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanState, setScanState] = useState<ScanState>('scanning');
+  const [flowState, setFlowState] = useState<FlowState>('scanning');
   const [scannedBarcode, setScannedBarcode] = useState<string>('');
   const [searchResults, setSearchResults] = useState<OpenFoodFactsProduct[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  
+  // Prevent duplicate scans
   const hasScannedRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    console.log('[BarcodeScanner] Screen mounted on platform:', Platform.OS);
+    console.log('[BarcodeScan] ========== SCREEN MOUNTED ==========');
+    console.log('[BarcodeScan] Platform:', Platform.OS);
+    console.log('[BarcodeScan] Meal:', mealType, 'Date:', date);
+
+    // Request permission if needed
     if (permission && !permission.granted) {
       requestPermission();
     }
@@ -43,50 +62,50 @@ export default function BarcodeScanScreen() {
     };
   }, [permission]);
 
+  /**
+   * STEP 1: BARCODE DETECTED
+   * Immediately pause camera and start the lookup flow
+   */
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    // Prevent multiple scans
-    if (hasScannedRef.current || scanState !== 'scanning') {
-      console.log('[BarcodeScanner] Ignoring duplicate scan');
+    // Prevent duplicate scans
+    if (hasScannedRef.current || flowState !== 'scanning') {
+      console.log('[BarcodeScan] Ignoring duplicate scan');
       return;
     }
 
     hasScannedRef.current = true;
     setScannedBarcode(data);
-    setScanState('searching');
+    setFlowState('loading');
 
-    console.log('[BarcodeScanner] ========== BARCODE SCAN STARTED ==========');
-    console.log('[BarcodeScanner] Scanned barcode:', data);
+    console.log('[BarcodeScan] ========== BARCODE DETECTED ==========');
+    console.log('[BarcodeScan] Barcode:', data);
 
-    // Set a HARD TIMEOUT (10 seconds total for entire flow)
+    // Set HARD TIMEOUT (10 seconds for entire flow)
     timeoutRef.current = setTimeout(() => {
-      console.log('[BarcodeScanner] ❌ TIMEOUT after 10 seconds');
-      setErrorMessage('Request timed out. Please check your internet connection and try again.');
-      setScanState('error');
+      console.log('[BarcodeScan] ❌ TIMEOUT after 10 seconds');
+      setErrorMessage('Request timed out. Please check your internet connection.');
+      setFlowState('error');
     }, 10000);
 
     try {
-      // ========== STEP 1: GET PRODUCT NAME BY BARCODE ==========
-      console.log('[BarcodeScanner] STEP 1: Getting product name from barcode...');
+      // ========== STEP 2: GET PRODUCT NAME FROM BARCODE ==========
+      console.log('[BarcodeScan] STEP 2: Getting product name from barcode...');
       
-      const namePromise = getProductNameByBarcode(data);
-      const nameTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-      const name = await Promise.race([namePromise, nameTimeout]);
-
-      if (name) {
-        console.log('[BarcodeScanner] ✅ STEP 1 SUCCESS: Found product name:', name);
-      } else {
-        console.log('[BarcodeScanner] ⚠️ STEP 1: No product name found, using barcode as fallback');
-      }
-
+      const name = await getProductNameByBarcode(data);
+      
       // Use extracted name OR fallback to barcode digits
       const searchQuery = name || data;
+      
+      if (name) {
+        console.log('[BarcodeScan] ✅ Found product name:', name);
+      } else {
+        console.log('[BarcodeScan] ⚠️ No product name found, using barcode as fallback:', data);
+      }
 
-      // ========== STEP 2: SEARCH FULL LIBRARY BY NAME ==========
-      console.log('[BarcodeScanner] STEP 2: Searching Full Library for:', searchQuery);
+      // ========== STEP 3: SEARCH FULL LIBRARY BY NAME ==========
+      console.log('[BarcodeScan] STEP 3: Searching Full Library for:', searchQuery);
 
-      const searchPromise = searchProducts(searchQuery);
-      const searchTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-      const searchData = await Promise.race([searchPromise, searchTimeout]);
+      const searchData = await searchProducts(searchQuery);
 
       // Clear timeout if request completes
       if (timeoutRef.current) {
@@ -94,41 +113,41 @@ export default function BarcodeScanScreen() {
         timeoutRef.current = null;
       }
 
-      // Handle timeout
+      // Handle timeout or error
       if (searchData === null) {
-        console.error('[BarcodeScanner] ❌ STEP 2 TIMEOUT or ERROR');
-        setErrorMessage('Search timed out. Please check your internet connection and try again.');
-        setScanState('error');
+        console.error('[BarcodeScan] ❌ Search returned null (timeout or error)');
+        setErrorMessage('Failed to connect to OpenFoodFacts. Please check your internet connection.');
+        setFlowState('error');
         return;
       }
 
       // Handle no results
       if (!searchData.products || searchData.products.length === 0) {
-        console.log('[BarcodeScanner] ⚠️ STEP 2: No results found for query:', searchQuery);
-        setScanState('not-found');
+        console.log('[BarcodeScan] ⚠️ No results found for query:', searchQuery);
+        setFlowState('not-found');
         return;
       }
 
-      console.log('[BarcodeScanner] ✅ STEP 2 SUCCESS: Found', searchData.products.length, 'products from Full Library');
+      console.log('[BarcodeScan] ✅ Found', searchData.products.length, 'products from Full Library');
       
       // Filter out products with no name
       const validProducts = searchData.products.filter(p => p.product_name && p.product_name.trim().length > 0);
       
       if (validProducts.length === 0) {
-        console.log('[BarcodeScanner] ⚠️ No valid products after filtering');
-        setScanState('not-found');
+        console.log('[BarcodeScan] ⚠️ No valid products after filtering');
+        setFlowState('not-found');
         return;
       }
 
-      // ========== STEP 3: STOP HERE AND SHOW ALL RESULTS ==========
+      // ========== STEP 4: STOP HERE AND SHOW ALL RESULTS ==========
       // CRITICAL: NO AUTO-SELECTION
       // Display ALL matches and let the user choose
-      console.log('[BarcodeScanner] ========== STEP 3: SHOWING ALL RESULTS ==========');
-      console.log('[BarcodeScanner] Displaying', validProducts.length, 'results to user');
-      console.log('[BarcodeScanner] NO AUTO-SELECTION - User must manually select');
+      console.log('[BarcodeScan] ========== STEP 4: SHOWING ALL RESULTS ==========');
+      console.log('[BarcodeScan] Displaying', validProducts.length, 'results to user');
+      console.log('[BarcodeScan] NO AUTO-SELECTION - User must manually select');
       
       setSearchResults(validProducts);
-      setScanState('showing-results');
+      setFlowState('results');
     } catch (error) {
       // Clear timeout if error occurs
       if (timeoutRef.current) {
@@ -136,31 +155,31 @@ export default function BarcodeScanScreen() {
         timeoutRef.current = null;
       }
 
-      console.error('[BarcodeScanner] ❌ ERROR in search:', error);
+      console.error('[BarcodeScan] ❌ ERROR in flow:', error);
       
-      let errorMsg = 'Unknown error occurred';
+      let errorMsg = 'An unexpected error occurred. Please try again.';
       
       if (error instanceof Error) {
-        errorMsg = error.message;
-        
-        // Check for specific error types
-        if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
-          errorMsg = 'Request timed out. Please check your internet connection and try again.';
-        } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
-          errorMsg = 'Network error. Please check your internet connection and try again.';
-        } else {
-          errorMsg = 'Error contacting OpenFoodFacts. Please try again or add manually.';
+        if (error.message.includes('timeout') || error.message.includes('timed out')) {
+          errorMsg = 'Request timed out. Please check your internet connection.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMsg = 'Network error. Please check your internet connection.';
         }
       }
       
       setErrorMessage(errorMsg);
-      setScanState('error');
+      setFlowState('error');
     }
   };
 
+  /**
+   * STEP 5: USER MANUAL SELECTION
+   * User taps a result to open Food Details
+   */
   const handleSelectFood = (product: OpenFoodFactsProduct) => {
-    console.log('[BarcodeScanner] ========== USER MANUAL SELECTION ==========');
-    console.log('[BarcodeScanner] User selected product:', product.product_name);
+    console.log('[BarcodeScan] ========== USER MANUAL SELECTION ==========');
+    console.log('[BarcodeScan] User selected product:', product.product_name);
+    
     router.push({
       pathname: '/food-details',
       params: {
@@ -172,8 +191,12 @@ export default function BarcodeScanScreen() {
     });
   };
 
+  /**
+   * RESTART FLOW
+   * Reset all state and start scanning again
+   */
   const handleTryAgain = () => {
-    console.log('[BarcodeScanner] Restarting scanner');
+    console.log('[BarcodeScan] Restarting scanner');
     
     // Clear any existing timeout
     if (timeoutRef.current) {
@@ -185,29 +208,31 @@ export default function BarcodeScanScreen() {
     setScannedBarcode('');
     setSearchResults([]);
     setErrorMessage('');
-    setScanState('scanning');
+    setFlowState('scanning');
   };
 
   const handleSearchManually = () => {
-    console.log('[BarcodeScanner] Navigating to food search');
+    console.log('[BarcodeScan] Navigating to food search');
     router.push(`/food-search?meal=${mealType}&date=${date}`);
   };
 
-  const handleAddManually = () => {
-    console.log('[BarcodeScanner] Navigating to quick add');
+  const handleQuickAdd = () => {
+    console.log('[BarcodeScan] Navigating to quick add');
     router.push(`/quick-add?meal=${mealType}&date=${date}`);
   };
 
+  // Loading permission
   if (!permission) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.loadingContainer}>
+        <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </SafeAreaView>
     );
   }
 
+  // Permission not granted
   if (!permission.granted) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -226,7 +251,7 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.permissionContainer}>
+        <View style={styles.centerContainer}>
           <IconSymbol
             ios_icon_name="camera"
             android_material_icon_name="camera_alt"
@@ -250,8 +275,8 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show error screen
-  if (scanState === 'error') {
+  // STEP 7: ERROR STATE
+  if (flowState === 'error') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -269,12 +294,12 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.notFoundContainer}>
-          <Text style={styles.notFoundIcon}>⚠️</Text>
-          <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Connection Error
           </Text>
-          <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+          <Text style={[styles.errorSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {errorMessage}
           </Text>
           {scannedBarcode && (
@@ -283,9 +308,9 @@ export default function BarcodeScanScreen() {
             </Text>
           )}
 
-          <View style={styles.notFoundButtons}>
+          <View style={styles.actionButtons}>
             <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
+              style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
               onPress={handleTryAgain}
             >
               <IconSymbol
@@ -294,13 +319,13 @@ export default function BarcodeScanScreen() {
                 size={24}
                 color={colors.primary}
               />
-              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+              <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
                 Scan Again
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
+              style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
               onPress={handleSearchManually}
             >
               <IconSymbol
@@ -309,14 +334,14 @@ export default function BarcodeScanScreen() {
                 size={24}
                 color={colors.primary}
               />
-              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+              <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
                 Search Full Library
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: colors.primary }]}
-              onPress={handleAddManually}
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
+              onPress={handleQuickAdd}
             >
               <IconSymbol
                 ios_icon_name="pencil"
@@ -324,7 +349,7 @@ export default function BarcodeScanScreen() {
                 size={24}
                 color="#FFFFFF"
               />
-              <Text style={[styles.notFoundButtonText, { color: '#FFFFFF' }]}>
+              <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>
                 Quick Add
               </Text>
             </TouchableOpacity>
@@ -334,8 +359,8 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show "not found" screen
-  if (scanState === 'not-found') {
+  // STEP 7: NOT FOUND STATE
+  if (flowState === 'not-found') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -353,12 +378,12 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.notFoundContainer}>
-          <Text style={styles.notFoundIcon}>🔍</Text>
-          <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorIcon}>🔍</Text>
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
             No Results Found
           </Text>
-          <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+          <Text style={[styles.errorSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             No food found for this barcode in the Food Library.
           </Text>
           {scannedBarcode && (
@@ -367,9 +392,9 @@ export default function BarcodeScanScreen() {
             </Text>
           )}
 
-          <View style={styles.notFoundButtons}>
+          <View style={styles.actionButtons}>
             <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
+              style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
               onPress={handleTryAgain}
             >
               <IconSymbol
@@ -378,13 +403,13 @@ export default function BarcodeScanScreen() {
                 size={24}
                 color={colors.primary}
               />
-              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+              <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
                 Scan Again
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
+              style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
               onPress={handleSearchManually}
             >
               <IconSymbol
@@ -393,14 +418,14 @@ export default function BarcodeScanScreen() {
                 size={24}
                 color={colors.primary}
               />
-              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+              <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
                 Search Full Library
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: colors.primary }]}
-              onPress={handleAddManually}
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
+              onPress={handleQuickAdd}
             >
               <IconSymbol
                 ios_icon_name="pencil"
@@ -408,7 +433,7 @@ export default function BarcodeScanScreen() {
                 size={24}
                 color="#FFFFFF"
               />
-              <Text style={[styles.notFoundButtonText, { color: '#FFFFFF' }]}>
+              <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>
                 Quick Add
               </Text>
             </TouchableOpacity>
@@ -418,8 +443,8 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show loading screen (clean, no debug text)
-  if (scanState === 'searching') {
+  // LOADING STATE (simple spinner, no debug text)
+  if (flowState === 'loading') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -437,18 +462,15 @@ export default function BarcodeScanScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.loadingContainer}>
+        <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Searching…
-          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Show search results list (CRITICAL: STOP HERE - NO AUTO-SELECTION)
-  if (scanState === 'showing-results') {
+  // STEP 4: SHOW ALL RESULTS (NO AUTO-SELECTION)
+  if (flowState === 'results') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -563,7 +585,7 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show camera view (scanning state)
+  // STEP 1: SCANNING STATE (camera view)
   return (
     <View style={styles.fullScreenContainer}>
       <CameraView
@@ -621,7 +643,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  loadingContainer: {
+  centerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -662,12 +684,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  permissionContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
   permissionText: {
     ...typography.h3,
     marginTop: spacing.lg,
@@ -689,23 +705,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  notFoundContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl,
-  },
-  notFoundIcon: {
+  errorIcon: {
     fontSize: 80,
     marginBottom: spacing.lg,
   },
-  notFoundTitle: {
+  errorTitle: {
     ...typography.h2,
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
-  notFoundSubtext: {
+  errorSubtext: {
     ...typography.body,
     textAlign: 'center',
     marginBottom: spacing.md,
@@ -722,12 +731,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
-  notFoundButtons: {
+  actionButtons: {
     width: '100%',
     gap: spacing.md,
     marginTop: spacing.xl,
   },
-  notFoundButton: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -736,7 +745,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     gap: spacing.sm,
   },
-  notFoundButtonText: {
+  actionButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },
@@ -812,12 +821,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
     opacity: 0.8,
   },
-  loadingText: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: spacing.lg,
-    textAlign: 'center',
-  },
   resultsHeader: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
@@ -834,7 +837,7 @@ const styles = StyleSheet.create({
   },
   resultsList: {
     paddingHorizontal: spacing.md,
-    paddingBottom: 100, // Space for bottom actions
+    paddingBottom: 100,
   },
   resultCard: {
     flexDirection: 'row',
