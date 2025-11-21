@@ -63,6 +63,7 @@ export default function FoodSearchScreen() {
       setResults([]);
       setErrorMessage(null);
       setHasSearched(false);
+      setLoading(false);
       return;
     }
 
@@ -73,16 +74,32 @@ export default function FoodSearchScreen() {
   }, [searchQuery]);
 
   const performSearch = async (query: string) => {
-    console.log('[FoodSearch] Performing search for:', query);
+    console.log('[FoodSearch] ========== PERFORMING SEARCH ==========');
+    console.log('[FoodSearch] Query:', query);
     
     setLoading(true);
     setErrorMessage(null);
     setHasSearched(true);
 
     try {
+      // Call OpenFoodFacts search
+      // This function NEVER throws - it always returns an array (empty on failure)
       const products = await searchOpenFoodFacts(query);
       
-      console.log('[FoodSearch] Search returned', products.length, 'products');
+      console.log('[FoodSearch] Search completed, products returned:', products.length);
+
+      // If no products returned, it could be:
+      // 1) No results found (legitimate empty result)
+      // 2) Network error (function returned empty array)
+      // 3) API error (function returned empty array)
+      
+      if (products.length === 0) {
+        console.log('[FoodSearch] No products returned - could be no results or network error');
+        setResults([]);
+        setErrorMessage('No foods found. Try a different search term or check your internet connection.');
+        setLoading(false);
+        return;
+      }
 
       // Transform products into display items
       const items: SearchResultItem[] = products.map((product) => {
@@ -110,17 +127,21 @@ export default function FoodSearchScreen() {
         };
       });
 
+      console.log('[FoodSearch] ✅ Transformed', items.length, 'items for display');
       setResults(items);
       setLoading(false);
     } catch (error) {
-      console.error('[FoodSearch] Search error:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to connect to OpenFoodFacts. Try again.');
+      // This should never happen since searchOpenFoodFacts never throws
+      // But we handle it just in case
+      console.error('[FoodSearch] ❌ Unexpected error in performSearch:', error);
+      setErrorMessage('Unable to connect to OpenFoodFacts. Please check your internet connection and try again.');
       setResults([]);
       setLoading(false);
     }
   };
 
   const handleRetry = () => {
+    console.log('[FoodSearch] Retry button pressed');
     if (searchQuery.trim()) {
       performSearch(searchQuery.trim());
     }
@@ -303,7 +324,7 @@ export default function FoodSearchScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.primary} />
             <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Searching...
+              Searching OpenFoodFacts...
             </Text>
           </View>
         )}

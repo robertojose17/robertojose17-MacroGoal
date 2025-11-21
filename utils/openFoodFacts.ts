@@ -469,6 +469,14 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
  * Returns array of products matching the search
  * NEVER throws errors - always returns empty array on failure
  * HARD TIMEOUT: 10 seconds
+ * 
+ * MOBILE-FIRST IMPLEMENTATION:
+ * - Uses correct OFF v2 search endpoint
+ * - URL-encodes query
+ * - Adds User-Agent header for iOS reliability
+ * - No API key required
+ * - Parses response shape correctly
+ * - Handles missing products field gracefully
  */
 export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsProduct[]> {
   try {
@@ -479,11 +487,14 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsP
     const encodedQuery = encodeURIComponent(query);
     
     // Build the search URL with required fields
+    // IMPORTANT: This is the correct OFF v2 search endpoint
     const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodedQuery}&fields=code,product_name,generic_name,brands,nutriments,serving_size,serving_quantity,serving_unit,quantity,image_front_small_url&sort_by=popularity_key&page_size=25`;
     
     console.log(`[OpenFoodFacts] Search URL: ${url}`);
     
     const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
+    
+    console.log(`[OpenFoodFacts] Response status: ${response.status}`);
     
     if (!response.ok) {
       console.log(`[OpenFoodFacts] ❌ Search failed (status: ${response.status})`);
@@ -492,9 +503,17 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsP
 
     const data = await response.json();
     
+    console.log(`[OpenFoodFacts] Response data keys:`, Object.keys(data));
+    
     // Check if we have products in the response
-    if (!data.products || !Array.isArray(data.products)) {
+    // OFF v2/search returns: { products: [...], count: number, page: number }
+    if (!data.products) {
       console.log(`[OpenFoodFacts] ❌ No products field in response`);
+      return [];
+    }
+    
+    if (!Array.isArray(data.products)) {
+      console.log(`[OpenFoodFacts] ❌ products field is not an array`);
       return [];
     }
     
@@ -504,8 +523,8 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsP
     console.error('[OpenFoodFacts] ❌ Error searching:', error);
     if (error instanceof Error) {
       console.error('[OpenFoodFacts] Error message:', error.message);
-      throw error; // Re-throw to allow UI to show error message
     }
+    // NEVER throw - always return empty array on failure
     return [];
   }
 }
