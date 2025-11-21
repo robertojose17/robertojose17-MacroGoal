@@ -38,69 +38,18 @@ export interface OpenFoodFactsSearchResult {
 export interface ServingSizeInfo {
   description: string; // e.g., "1 egg", "2 slices", "1 bar"
   grams: number; // gram equivalent
-  displayText: string; // e.g., "1 egg (50 g)", "2 slices (≈ 28 g)", "1 slice (estimated as 100g)"
+  displayText: string; // e.g., "1 egg (50 g)", "2 slices (28 g)", "1 slice (estimated as 100g)"
   hasValidGrams: boolean; // true if grams were successfully parsed/converted, false if using fallback
-  isEstimated: boolean; // true if conversion is estimated (ml, tbsp, etc.)
+  isEstimated: boolean; // true if conversion is estimated (household units without grams)
 }
 
 /**
- * Determine if a product is oil/fat based on name and categories
+ * Convert milliliters to grams using 1:1 conversion
+ * NEW RULE: Treat milliliters as grams 1:1 for default serving
  */
-function isOilOrFat(product: OpenFoodFactsProduct): boolean {
-  const name = (product.product_name || '').toLowerCase();
-  const categories = (product.categories || '').toLowerCase();
-  
-  const oilKeywords = ['oil', 'olive oil', 'vegetable oil', 'coconut oil', 'butter', 'margarine', 'fat', 'lard', 'shortening'];
-  
-  for (const keyword of oilKeywords) {
-    if (name.includes(keyword) || categories.includes(keyword)) {
-      console.log('[OpenFoodFacts] Product identified as oil/fat:', keyword);
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-/**
- * Determine if a product is a beverage/liquid
- */
-function isBeverage(product: OpenFoodFactsProduct): boolean {
-  const name = (product.product_name || '').toLowerCase();
-  const categories = (product.categories || '').toLowerCase();
-  
-  const beverageKeywords = ['water', 'juice', 'soda', 'drink', 'beverage', 'milk', 'tea', 'coffee', 'beer', 'wine', 'liquor'];
-  
-  for (const keyword of beverageKeywords) {
-    if (name.includes(keyword) || categories.includes(keyword)) {
-      console.log('[OpenFoodFacts] Product identified as beverage:', keyword);
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-/**
- * Convert milliliters to grams based on product type
- */
-function mlToGrams(ml: number, product: OpenFoodFactsProduct): { grams: number; density: number } {
-  let density = 1.0; // Default to water density
-  
-  if (isOilOrFat(product)) {
-    density = 0.91; // Oil/fat density
-    console.log('[OpenFoodFacts] Using oil/fat density: 0.91 g/ml');
-  } else if (isBeverage(product)) {
-    density = 1.0; // Water-like density
-    console.log('[OpenFoodFacts] Using water density: 1.0 g/ml');
-  } else {
-    // Unknown liquid, use water as fallback
-    density = 1.0;
-    console.log('[OpenFoodFacts] Using default water density: 1.0 g/ml');
-  }
-  
-  const grams = ml * density;
-  return { grams, density };
+function mlToGrams(ml: number): number {
+  console.log('[OpenFoodFacts] Converting ml to grams using 1:1 ratio:', ml);
+  return ml * 1.0; // 1:1 conversion
 }
 
 /**
@@ -267,18 +216,19 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
     if (mlMatch) {
       const ml = parseFloat(mlMatch[1]);
       if (!isNaN(ml) && ml > 0) {
-        const { grams, density } = mlToGrams(ml, product);
-        console.log('[OpenFoodFacts] Milliliters detected:', { ml, grams, density });
+        const grams = mlToGrams(ml);
+        console.log('[OpenFoodFacts] Milliliters detected:', { ml, grams });
         
         // Extract full description
         const description = servingSize.trim();
         
+        // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
           grams: Math.round(grams),
-          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          displayText: `${description} (${Math.round(grams)} g)`,
           hasValidGrams: true,
-          isEstimated: true,
+          isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
       }
     }
@@ -291,18 +241,19 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       const tbsp = parseFloat(tbspMatch[1]);
       if (!isNaN(tbsp) && tbsp > 0) {
         const ml = tbsp * 15; // 1 tbsp = 15 ml
-        const { grams, density } = mlToGrams(ml, product);
-        console.log('[OpenFoodFacts] Tablespoons detected:', { tbsp, ml, grams, density });
+        const grams = mlToGrams(ml);
+        console.log('[OpenFoodFacts] Tablespoons detected:', { tbsp, ml, grams });
         
         // Extract full description
         const description = servingSize.trim();
         
+        // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
           grams: Math.round(grams),
-          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          displayText: `${description} (${Math.round(grams)} g)`,
           hasValidGrams: true,
-          isEstimated: true,
+          isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
       }
     }
@@ -315,18 +266,19 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       const tsp = parseFloat(tspMatch[1]);
       if (!isNaN(tsp) && tsp > 0) {
         const ml = tsp * 5; // 1 tsp = 5 ml
-        const { grams, density } = mlToGrams(ml, product);
-        console.log('[OpenFoodFacts] Teaspoons detected:', { tsp, ml, grams, density });
+        const grams = mlToGrams(ml);
+        console.log('[OpenFoodFacts] Teaspoons detected:', { tsp, ml, grams });
         
         // Extract full description
         const description = servingSize.trim();
         
+        // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
           grams: Math.round(grams),
-          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          displayText: `${description} (${Math.round(grams)} g)`,
           hasValidGrams: true,
-          isEstimated: true,
+          isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
       }
     }
@@ -339,18 +291,19 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       const cups = parseFloat(cupMatch[1]);
       if (!isNaN(cups) && cups > 0) {
         const ml = cups * 240; // 1 cup = 240 ml
-        const { grams, density } = mlToGrams(ml, product);
-        console.log('[OpenFoodFacts] Cups detected:', { cups, ml, grams, density });
+        const grams = mlToGrams(ml);
+        console.log('[OpenFoodFacts] Cups detected:', { cups, ml, grams });
         
         // Extract full description
         const description = servingSize.trim();
         
+        // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
           grams: Math.round(grams),
-          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          displayText: `${description} (${Math.round(grams)} g)`,
           hasValidGrams: true,
-          isEstimated: true,
+          isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
       }
     }
