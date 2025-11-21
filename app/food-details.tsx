@@ -18,7 +18,6 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
-  const source = (params.source as string) || 'search';
 
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);

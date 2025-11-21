@@ -45,28 +45,6 @@ export async function getAllFoods(): Promise<Food[]> {
 }
 
 /**
- * Find food by barcode in internal database
- */
-export async function findFoodByBarcode(barcode: string): Promise<Food | null> {
-  try {
-    console.log(`[FoodDB] Searching for barcode: ${barcode}`);
-    const foods = await getAllFoods();
-    const found = foods.find(food => food.barcode === barcode);
-    
-    if (found) {
-      console.log(`[FoodDB] Found food: ${found.name}`);
-    } else {
-      console.log(`[FoodDB] No food found for barcode: ${barcode}`);
-    }
-    
-    return found || null;
-  } catch (error) {
-    console.error('[FoodDB] Error finding food by barcode:', error);
-    return null;
-  }
-}
-
-/**
  * Search foods by name or brand in internal database
  */
 export async function searchInternalFoods(query: string): Promise<Food[]> {

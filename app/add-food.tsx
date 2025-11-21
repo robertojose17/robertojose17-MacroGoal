@@ -34,12 +34,6 @@ export default function AddFoodScreen() {
     router.replace(`/food-search?meal=${mealType}&date=${date}`);
   };
 
-  const handleNavigateToBarcode = () => {
-    console.log('[AddFood] Navigating to barcode-scan with params:', { meal: mealType, date });
-    // Use replace to dismiss this screen and navigate to barcode
-    router.replace(`/barcode-scan?meal=${mealType}&date=${date}`);
-  };
-
   const handleNavigateToQuickAdd = () => {
     console.log('[AddFood] Navigating to quick-add with params:', { meal: mealType, date });
     // Use replace to dismiss this screen and navigate to quick add
@@ -54,14 +48,6 @@ export default function AddFoodScreen() {
       icon: 'magnifyingglass',
       androidIcon: 'search',
       onPress: handleNavigateToSearch,
-    },
-    {
-      id: 'barcode',
-      title: 'Scan Barcode',
-      description: 'Scan product barcode with OpenFoodFacts',
-      icon: 'qrcode',
-      androidIcon: 'qr_code_scanner',
-      onPress: handleNavigateToBarcode,
     },
     {
       id: 'quick',
