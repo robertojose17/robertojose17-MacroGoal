@@ -7,7 +7,9 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getRecentFoods, getFavoriteFoods } from '@/utils/foodDatabase';
+import { getMyMeals, calculateMyMealSummary } from '@/utils/myMealsDatabase';
 import { Food } from '@/types';
+import { MyMeal } from '@/types/myMeals';
 
 type TabType = 'all' | 'my-meals' | 'favorites' | 'quick-add';
 
@@ -23,6 +25,7 @@ export default function AddFoodScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favoriteFoods, setFavoriteFoods] = useState<Food[]>([]);
+  const [myMeals, setMyMeals] = useState<MyMeal[]>([]);
 
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
@@ -34,18 +37,20 @@ export default function AddFoodScreen() {
   useEffect(() => {
     console.log('[AddFood] Screen mounted on platform:', Platform.OS);
     console.log('[AddFood] Params:', { mealType, date });
-    loadFoods();
+    loadData();
   }, []);
 
-  const loadFoods = async () => {
+  const loadData = async () => {
     try {
       const recent = await getRecentFoods();
       const favorites = await getFavoriteFoods();
+      const meals = await getMyMeals();
       setRecentFoods(recent);
       setFavoriteFoods(favorites);
-      console.log('[AddFood] Loaded foods:', { recent: recent.length, favorites: favorites.length });
+      setMyMeals(meals);
+      console.log('[AddFood] Loaded data:', { recent: recent.length, favorites: favorites.length, myMeals: meals.length });
     } catch (error) {
-      console.error('[AddFood] Error loading foods:', error);
+      console.error('[AddFood] Error loading data:', error);
     }
   };
 
@@ -72,6 +77,31 @@ export default function AddFoodScreen() {
   const handleAddFood = (food: Food) => {
     console.log('[AddFood] Adding food:', food.name);
     router.push(`/food-details?foodId=${food.id}&meal=${mealType}&date=${date}`);
+  };
+
+  const handleMyMealPress = (meal: MyMeal) => {
+    console.log('[AddFood] Opening My Meal:', meal.name);
+    router.push({
+      pathname: '/my-meals-details',
+      params: {
+        mealId: meal.id,
+        meal: mealType,
+        date: date,
+        fromAddFood: 'true',
+      },
+    });
+  };
+
+  const handleViewAllMyMeals = () => {
+    console.log('[AddFood] Viewing all My Meals');
+    router.push({
+      pathname: '/my-meals-list',
+      params: {
+        meal: mealType,
+        date: date,
+        fromAddFood: 'true',
+      },
+    });
   };
 
   const renderFoodItem = (food: Food, index: number) => {
@@ -113,12 +143,51 @@ export default function AddFoodScreen() {
     );
   };
 
+  const renderMyMealCard = (meal: MyMeal, index: number) => {
+    const items = meal.items || [];
+    const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
+
+    return (
+      <TouchableOpacity
+        key={index}
+        style={[
+          styles.myMealCard,
+          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+        ]}
+        onPress={() => handleMyMealPress(meal)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.myMealInfo}>
+          <Text style={[styles.myMealName, { color: isDark ? colors.textDark : colors.text }]}>
+            {meal.name}
+          </Text>
+          {summary && (
+            <React.Fragment>
+              <Text style={[styles.myMealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {Math.round(summary.totalCalories)} kcal • {summary.itemCount} {summary.itemCount === 1 ? 'item' : 'items'}
+              </Text>
+              <Text style={[styles.myMealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                P: {Math.round(summary.totalProtein)}g • C: {Math.round(summary.totalCarbs)}g • F: {Math.round(summary.totalFat)}g
+              </Text>
+            </React.Fragment>
+          )}
+        </View>
+        <IconSymbol
+          ios_icon_name="chevron.right"
+          android_material_icon_name="chevron_right"
+          size={20}
+          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   const getDisplayFoods = () => {
     switch (activeTab) {
       case 'favorites':
         return favoriteFoods;
       case 'my-meals':
-        return []; // TODO: Implement my meals
+        return [];
       case 'quick-add':
         return [];
       case 'all':
@@ -290,7 +359,7 @@ export default function AddFoodScreen() {
           </React.Fragment>
         )}
 
-        {/* Recent Foods / Favorites / My Meals */}
+        {/* Recent Foods / Favorites */}
         {activeTab === 'all' && (
           <React.Fragment>
             <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -325,12 +394,41 @@ export default function AddFoodScreen() {
           </React.Fragment>
         )}
 
+        {/* My Meals Tab */}
         {activeTab === 'my-meals' && (
-          <View style={styles.emptyState}>
-            <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              My Meals feature coming soon
-            </Text>
-          </View>
+          <React.Fragment>
+            <View style={styles.myMealsHeader}>
+              <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Saved Meals
+              </Text>
+              <TouchableOpacity onPress={handleViewAllMyMeals}>
+                <Text style={[styles.viewAllText, { color: colors.primary }]}>
+                  View All
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {myMeals.length > 0 ? (
+              myMeals.slice(0, 5).map((meal, index) => renderMyMealCard(meal, index))
+            ) : (
+              <View style={styles.emptyState}>
+                <IconSymbol
+                  ios_icon_name="fork.knife"
+                  android_material_icon_name="restaurant"
+                  size={48}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+                <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+                  No saved meals yet
+                </Text>
+                <TouchableOpacity
+                  style={[styles.createMealButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
+                  onPress={handleViewAllMyMeals}
+                >
+                  <Text style={styles.createMealButtonText}>Create Your First Meal</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </React.Fragment>
         )}
 
         {activeTab === 'quick-add' && (
@@ -509,6 +607,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  myMealsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  viewAllText: {
+    ...typography.bodyBold,
+    fontSize: 14,
+  },
+  myMealCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+    elevation: 1,
+  },
+  myMealInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  myMealName: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  myMealCalories: {
+    ...typography.caption,
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  myMealMacros: {
+    ...typography.caption,
+    fontSize: 12,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -517,6 +653,16 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     fontSize: 15,
+  },
+  createMealButton: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  createMealButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   quickAddContainer: {
     paddingTop: spacing.md,
