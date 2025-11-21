@@ -34,18 +34,36 @@ export default function FoodDetailsScreen() {
       try {
         const parsed = JSON.parse(offDataString);
         console.log('[FoodDetails] OpenFoodFacts product parsed:', parsed.product_name);
-        setProduct(parsed);
+        
+        // Apply defaults for missing fields - NEVER block the UI
+        const productWithDefaults: OpenFoodFactsProduct = {
+          code: parsed.code || '',
+          product_name: parsed.product_name || 'Unknown Product',
+          brands: parsed.brands || 'Unknown Brand',
+          serving_size: parsed.serving_size || '100 g',
+          nutriments: {
+            'energy-kcal_100g': parsed.nutriments?.['energy-kcal_100g'] || 0,
+            'proteins_100g': parsed.nutriments?.['proteins_100g'] || 0,
+            'carbohydrates_100g': parsed.nutriments?.['carbohydrates_100g'] || 0,
+            'fat_100g': parsed.nutriments?.['fat_100g'] || 0,
+            'fiber_100g': parsed.nutriments?.['fiber_100g'] || 0,
+            'sugars_100g': parsed.nutriments?.['sugars_100g'] || 0,
+          },
+        };
+        
+        console.log('[FoodDetails] Product with defaults:', productWithDefaults);
+        setProduct(productWithDefaults);
         
         // Extract serving size information from OpenFoodFacts
         // This function NEVER throws and always returns a valid ServingSizeInfo
-        const serving = extractServingSize(parsed);
+        const serving = extractServingSize(productWithDefaults);
         console.log('[FoodDetails] Extracted serving info:', serving);
         
         setServingInfo(serving);
         setGrams(serving.grams.toString());
         
         // Extract nutrition information
-        const nutritionData = extractNutrition(parsed);
+        const nutritionData = extractNutrition(productWithDefaults);
         console.log('[FoodDetails] Extracted nutrition:', nutritionData);
         setNutrition(nutritionData);
         
@@ -55,39 +73,38 @@ export default function FoodDetailsScreen() {
       } catch (error) {
         console.error('[FoodDetails] Error parsing OpenFoodFacts data:', error);
         
-        // Even on error, show something to the user
-        Alert.alert(
-          'Error',
-          'There was an issue loading the product data. Using default values.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Set minimal defaults so user can still interact
-                setProduct({
-                  code: '',
-                  product_name: 'Unknown Product',
-                } as OpenFoodFactsProduct);
-                setServingInfo({
-                  description: '100 g',
-                  grams: 100,
-                  displayText: '100 g',
-                  hasValidGrams: false,
-                });
-                setNutrition({
-                  calories: 0,
-                  protein: 0,
-                  carbs: 0,
-                  fat: 0,
-                  fiber: 0,
-                  sugars: 0,
-                });
-                setGrams('100');
-                setIsReady(true);
-              },
-            },
-          ]
-        );
+        // Even on error, show something to the user with defaults
+        console.log('[FoodDetails] Using complete defaults due to parse error');
+        setProduct({
+          code: '',
+          product_name: 'Unknown Product',
+          brands: 'Unknown Brand',
+          serving_size: '100 g',
+          nutriments: {
+            'energy-kcal_100g': 0,
+            'proteins_100g': 0,
+            'carbohydrates_100g': 0,
+            'fat_100g': 0,
+            'fiber_100g': 0,
+            'sugars_100g': 0,
+          },
+        } as OpenFoodFactsProduct);
+        setServingInfo({
+          description: '100 g',
+          grams: 100,
+          displayText: '100 g',
+          hasValidGrams: false,
+        });
+        setNutrition({
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          fiber: 0,
+          sugars: 0,
+        });
+        setGrams('100');
+        setIsReady(true);
       }
     } else {
       console.error('[FoodDetails] No OpenFoodFacts data provided');
@@ -301,6 +318,12 @@ export default function FoodDetailsScreen() {
     }
   };
 
+  // Check if product has missing data
+  const hasMissingData = 
+    product.product_name === 'Unknown Product' || 
+    product.brands === 'Unknown Brand' ||
+    (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <KeyboardAvoidingView 
@@ -327,6 +350,20 @@ export default function FoodDetailsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {hasMissingData && (
+            <View style={[styles.warningCard, { backgroundColor: 'rgba(255, 149, 0, 0.1)', borderColor: colors.warning || '#FF9500' }]}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle"
+                android_material_icon_name="warning"
+                size={24}
+                color={colors.warning || '#FF9500'}
+              />
+              <Text style={[styles.warningText, { color: colors.warning || '#FF9500' }]}>
+                Some product information is missing. You can still add this food and manually enter nutrition info later.
+              </Text>
+            </View>
+          )}
+
           <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <View style={styles.offBadgeContainer}>
               <Text style={[styles.offBadge, { color: colors.primary }]}>
@@ -439,6 +476,9 @@ export default function FoodDetailsScreen() {
               <View style={styles.noNutritionContainer}>
                 <Text style={[styles.noNutritionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   ⚠️ No nutrient data available for this food
+                </Text>
+                <Text style={[styles.noNutritionSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  You can still add this food and manually enter nutrition info later
                 </Text>
               </View>
             ) : (
@@ -556,6 +596,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xxl,
+  },
+  warningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
   card: {
     borderRadius: borderRadius.lg,
@@ -677,6 +731,11 @@ const styles = StyleSheet.create({
   },
   noNutritionText: {
     ...typography.body,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  noNutritionSubtext: {
+    ...typography.caption,
     textAlign: 'center',
   },
   nutritionGrid: {

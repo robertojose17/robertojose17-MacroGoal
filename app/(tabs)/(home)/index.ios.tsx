@@ -95,6 +95,8 @@ export default function HomeScreen() {
             carbs,
             fats,
             fiber,
+            serving_description,
+            grams,
             foods (
               id,
               name,
@@ -260,6 +262,34 @@ export default function HomeScreen() {
   const isToday = () => {
     const today = new Date();
     return selectedDate.toDateString() === today.toDateString();
+  };
+
+  // Helper function to get serving description for display
+  // ALWAYS use the logged serving_description if available
+  const getServingDisplayText = (item: any): string => {
+    // Priority 1: Use the stored serving_description (this is what the user selected)
+    if (item.serving_description) {
+      console.log('[Home iOS] Using stored serving_description:', item.serving_description);
+      return item.serving_description;
+    }
+
+    // Priority 2: If grams is available, show that
+    if (item.grams) {
+      console.log('[Home iOS] Using grams fallback:', item.grams);
+      return `${Math.round(item.grams)} g`;
+    }
+
+    // Priority 3: Last resort fallback (should rarely happen)
+    console.log('[Home iOS] Using quantity fallback');
+    const quantity = item.quantity || 1;
+    const servingAmount = item.foods?.serving_amount || 100;
+    const servingUnit = item.foods?.serving_unit || 'g';
+    
+    if (quantity === 1) {
+      return `${servingAmount} ${servingUnit}`;
+    }
+    
+    return `${quantity}x ${servingAmount} ${servingUnit}`;
   };
 
   if (loading) {
@@ -454,7 +484,7 @@ export default function HomeScreen() {
                             </Text>
                           )}
                           <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.foods?.serving_amount || 1} {item.foods?.serving_unit || 'serving'}
+                            {getServingDisplayText(item)}
                           </Text>
                         </View>
                         <View style={styles.foodActions}>

@@ -263,18 +263,22 @@ export default function HomeScreen() {
   };
 
   // Helper function to get serving description for display
+  // ALWAYS use the logged serving_description if available
   const getServingDisplayText = (item: any): string => {
-    // Priority 1: Use the stored serving_description if available
+    // Priority 1: Use the stored serving_description (this is what the user selected)
     if (item.serving_description) {
+      console.log('[Home] Using stored serving_description:', item.serving_description);
       return item.serving_description;
     }
 
-    // Priority 2: Use grams if available
+    // Priority 2: If grams is available, show that
     if (item.grams) {
+      console.log('[Home] Using grams fallback:', item.grams);
       return `${Math.round(item.grams)} g`;
     }
 
-    // Priority 3: Fallback to quantity * serving_amount
+    // Priority 3: Last resort fallback (should rarely happen)
+    console.log('[Home] Using quantity fallback');
     const quantity = item.quantity || 1;
     const servingAmount = item.foods?.serving_amount || 100;
     const servingUnit = item.foods?.serving_unit || 'g';

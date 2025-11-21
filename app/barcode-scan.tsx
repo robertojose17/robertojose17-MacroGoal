@@ -80,24 +80,49 @@ export default function BarcodeScanScreen() {
         return;
       }
 
-      if (product) {
-        console.log('[BarcodeScanner] ✅ Product found from OpenFoodFacts:', product.product_name);
-        console.log('[BarcodeScanner] Navigating directly to food-details');
-        
-        // Navigate directly to food-details
-        router.push({
-          pathname: '/food-details',
-          params: {
-            meal: mealType,
-            date: date,
-            offData: JSON.stringify(product),
-            source: 'barcode',
-          },
-        });
-      } else {
-        console.log('[BarcodeScanner] ⚠️ Product not found in OpenFoodFacts (null returned)');
-        setScanState('not-found');
-      }
+      // ALWAYS navigate to food-details, even if product is null or incomplete
+      // Apply defaults for missing fields
+      const productWithDefaults = product ? {
+        ...product,
+        product_name: product.product_name || 'Unknown Product',
+        brands: product.brands || 'Unknown Brand',
+        serving_size: product.serving_size || '100 g',
+        nutriments: {
+          'energy-kcal_100g': product.nutriments?.['energy-kcal_100g'] || 0,
+          'proteins_100g': product.nutriments?.['proteins_100g'] || 0,
+          'carbohydrates_100g': product.nutriments?.['carbohydrates_100g'] || 0,
+          'fat_100g': product.nutriments?.['fat_100g'] || 0,
+          'fiber_100g': product.nutriments?.['fiber_100g'] || 0,
+          'sugars_100g': product.nutriments?.['sugars_100g'] || 0,
+        },
+      } : {
+        code: data,
+        product_name: 'Unknown Product',
+        brands: 'Unknown Brand',
+        serving_size: '100 g',
+        nutriments: {
+          'energy-kcal_100g': 0,
+          'proteins_100g': 0,
+          'carbohydrates_100g': 0,
+          'fat_100g': 0,
+          'fiber_100g': 0,
+          'sugars_100g': 0,
+        },
+      };
+
+      console.log('[BarcodeScanner] ✅ Navigating to food-details with product:', productWithDefaults.product_name);
+      console.log('[BarcodeScanner] Product has defaults applied for missing fields');
+      
+      // Navigate directly to food-details
+      router.push({
+        pathname: '/food-details',
+        params: {
+          meal: mealType,
+          date: date,
+          offData: JSON.stringify(productWithDefaults),
+          source: 'barcode',
+        },
+      });
     } catch (error) {
       // Clear timeout if error occurs
       if (timeoutRef.current) {
@@ -268,7 +293,7 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show "not found" screen (camera is stopped)
+  // Show "not found" screen (camera is stopped) - REMOVED, we always navigate to food-details now
   if (scanState === 'not-found') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
