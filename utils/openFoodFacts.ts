@@ -261,6 +261,46 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 }
 
 /**
+ * Lookup a product by barcode from OpenFoodFacts
+ * NEVER throws errors - always returns null on failure
+ * HARD TIMEOUT: 10 seconds
+ */
+export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodFactsProduct | null> {
+  try {
+    console.log(`[OpenFoodFacts] ========== BARCODE LOOKUP ==========`);
+    console.log(`[OpenFoodFacts] Barcode: "${barcode}"`);
+    
+    const response = await fetchWithTimeout(
+      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
+      {},
+      10000 // 10 second timeout
+    );
+    
+    if (!response.ok) {
+      console.log(`[OpenFoodFacts] ❌ Barcode lookup failed (status: ${response.status})`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Check if product was found
+    if (data.status === 0 || !data.product) {
+      console.log(`[OpenFoodFacts] ❌ Product not found for barcode: ${barcode}`);
+      return null;
+    }
+    
+    console.log(`[OpenFoodFacts] ✅ Product found:`, data.product.product_name);
+    return data.product;
+  } catch (error) {
+    console.error('[OpenFoodFacts] ❌ Error looking up barcode:', error);
+    if (error instanceof Error) {
+      console.error('[OpenFoodFacts] Error message:', error.message);
+    }
+    return null;
+  }
+}
+
+/**
  * Search products by text query from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
  * HARD TIMEOUT: 8 seconds

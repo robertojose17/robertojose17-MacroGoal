@@ -40,6 +40,12 @@ export default function AddFoodScreen() {
     router.replace(`/quick-add?meal=${mealType}&date=${date}`);
   };
 
+  const handleNavigateToBarcodeScan = () => {
+    console.log('[AddFood] Navigating to barcode-scan with params:', { meal: mealType, date });
+    // Use replace to dismiss this screen and navigate to barcode scan
+    router.replace(`/barcode-scan?meal=${mealType}&date=${date}`);
+  };
+
   const options = [
     {
       id: 'search',
@@ -48,6 +54,14 @@ export default function AddFoodScreen() {
       icon: 'magnifyingglass',
       androidIcon: 'search',
       onPress: handleNavigateToSearch,
+    },
+    {
+      id: 'barcode',
+      title: 'Scan Barcode',
+      description: 'Scan product barcode with camera',
+      icon: 'barcode.viewfinder',
+      androidIcon: 'qr_code_scanner',
+      onPress: handleNavigateToBarcodeScan,
     },
     {
       id: 'quick',
