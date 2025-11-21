@@ -9,7 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractNutrition, extractServingSize } from '@/utils/openFoodFacts';
 
-type ScanState = 'scanning' | 'searching' | 'showing-results' | 'not-found' | 'error';
+type ScanState = 'scanning' | 'searching' | 'not-found' | 'error';
 
 export default function BarcodeScanScreen() {
   const router = useRouter();
@@ -23,14 +23,12 @@ export default function BarcodeScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>('scanning');
   const [scannedBarcode, setScannedBarcode] = useState<string>('');
-  const [productName, setProductName] = useState<string>('');
-  const [searchResults, setSearchResults] = useState<OpenFoodFactsProduct[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const hasScannedRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    console.log('[BarcodeScanner] ✓ Screen mounted on platform:', Platform.OS);
+    console.log('[BarcodeScanner] Screen mounted on platform:', Platform.OS);
     if (permission && !permission.granted) {
       requestPermission();
     }
@@ -162,48 +160,31 @@ export default function BarcodeScanScreen() {
     setScannedBarcode(data);
     setScanState('searching');
 
-    console.log('[BarcodeScanner] 📷 Scanned barcode:', data);
-    console.log('[BarcodeScanner] 📱 Platform:', Platform.OS);
-    console.log('[BarcodeScanner] Camera stopped, starting 2-step search...');
+    console.log('[BarcodeScanner] Scanned barcode:', data);
+    console.log('[BarcodeScanner] Platform:', Platform.OS);
 
-    // STEP 1: GET PRODUCT NAME BY BARCODE
-    console.log('[BarcodeScanner] STEP 1: Finding product name...');
-    
-    // Set a failsafe timeout (8 seconds for step 1)
+    // Set a failsafe timeout (10 seconds total)
     timeoutRef.current = setTimeout(() => {
-      console.log('[BarcodeScanner] ⏱️ Step 1 timeout after 8 seconds');
+      console.log('[BarcodeScanner] Timeout after 10 seconds');
       setErrorMessage('Request timed out. Please check your internet connection and try again.');
       setScanState('error');
-    }, 8000);
+    }, 10000);
 
     try {
+      // Get product name by barcode
       const name = await getProductNameByBarcode(data);
-
-      // Clear timeout if request completes
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
 
       let searchQuery = name;
 
       if (!name) {
-        console.log('[BarcodeScanner] ⚠️ No product name found, using barcode digits as fallback');
+        console.log('[BarcodeScanner] No product name found, using barcode digits as fallback');
         searchQuery = data; // Use raw barcode as fallback
       } else {
-        console.log('[BarcodeScanner] ✅ Found product name:', name);
-        setProductName(name);
+        console.log('[BarcodeScanner] Found product name:', name);
       }
 
-      // STEP 2: SEARCH BY NAME USING FOOD LIBRARY
-      console.log('[BarcodeScanner] STEP 2: Searching Food Library for:', searchQuery);
-
-      // Set a new timeout for step 2 (8 seconds)
-      timeoutRef.current = setTimeout(() => {
-        console.log('[BarcodeScanner] ⏱️ Step 2 timeout after 8 seconds');
-        setErrorMessage('Search timed out. Please check your internet connection and try again.');
-        setScanState('error');
-      }, 8000);
+      // Search by name using Food Library
+      console.log('[BarcodeScanner] Searching Food Library for:', searchQuery);
 
       const searchData = await searchProducts(searchQuery);
 
@@ -214,27 +195,27 @@ export default function BarcodeScanScreen() {
       }
 
       if (searchData === null) {
-        console.error('[BarcodeScanner] ❌ Search returned null (API error)');
+        console.error('[BarcodeScanner] Search returned null (API error)');
         setErrorMessage('Failed to connect to OpenFoodFacts. Please check your internet connection and try again.');
         setScanState('error');
         return;
       }
 
       if (searchData.products && searchData.products.length > 0) {
-        console.log('[BarcodeScanner] ✅ Found', searchData.products.length, 'products from Food Library');
+        console.log('[BarcodeScanner] Found', searchData.products.length, 'products from Food Library');
         
         // Filter out products with no name
         const validProducts = searchData.products.filter(p => p.product_name && p.product_name.trim().length > 0);
         
         if (validProducts.length === 0) {
-          console.log('[BarcodeScanner] ⚠️ No valid products after filtering');
+          console.log('[BarcodeScanner] No valid products after filtering');
           setScanState('not-found');
           return;
         }
 
         // AUTO-SELECT BEST MATCH
         const bestMatch = selectBestMatch(validProducts, searchQuery);
-        console.log('[BarcodeScanner] 🎯 Auto-selected best match:', bestMatch.product_name);
+        console.log('[BarcodeScanner] Auto-selected best match:', bestMatch.product_name);
         
         // Navigate directly to Food Details screen
         router.push({
@@ -247,7 +228,7 @@ export default function BarcodeScanScreen() {
           },
         });
       } else {
-        console.log('[BarcodeScanner] ⚠️ No results found for query:', searchQuery);
+        console.log('[BarcodeScanner] No results found for query:', searchQuery);
         setScanState('not-found');
       }
     } catch (error) {
@@ -257,7 +238,7 @@ export default function BarcodeScanScreen() {
         timeoutRef.current = null;
       }
 
-      console.error('[BarcodeScanner] ❌ Error in 2-step search:', error);
+      console.error('[BarcodeScanner] Error in search:', error);
       
       let errorMsg = 'Unknown error occurred';
       
@@ -279,19 +260,6 @@ export default function BarcodeScanScreen() {
     }
   };
 
-  const handleSelectProduct = (product: OpenFoodFactsProduct) => {
-    console.log('[BarcodeScanner] User selected product:', product.product_name);
-    router.push({
-      pathname: '/food-details',
-      params: {
-        meal: mealType,
-        date: date,
-        offData: JSON.stringify(product),
-        source: 'barcode',
-      },
-    });
-  };
-
   const handleTryAgain = () => {
     console.log('[BarcodeScanner] Restarting scanner');
     
@@ -303,8 +271,6 @@ export default function BarcodeScanScreen() {
     
     hasScannedRef.current = false;
     setScannedBarcode('');
-    setProductName('');
-    setSearchResults([]);
     setErrorMessage('');
     setScanState('scanning');
   };
@@ -467,11 +433,6 @@ export default function BarcodeScanScreen() {
               Barcode: {scannedBarcode}
             </Text>
           )}
-          {productName && (
-            <Text style={[styles.productNameText, { color: isDark ? colors.textDark : colors.text }]}>
-              Product: {productName}
-            </Text>
-          )}
 
           <View style={styles.notFoundButtons}>
             <TouchableOpacity
@@ -509,7 +470,7 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show loading screen (unified for both steps)
+  // Show loading screen (clean, no step text)
   if (scanState === 'searching') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -533,100 +494,7 @@ export default function BarcodeScanScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Searching…
           </Text>
-          {scannedBarcode && (
-            <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Barcode: {scannedBarcode}
-            </Text>
-          )}
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show search results (optional - auto-select should skip this)
-  if (scanState === 'showing-results') {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleTryAgain}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Select Food
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {productName && (
-            <View style={[styles.searchInfoCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-              <Text style={[styles.searchInfoLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Searched for:
-              </Text>
-              <Text style={[styles.searchInfoText, { color: isDark ? colors.textDark : colors.text }]}>
-                {productName}
-              </Text>
-            </View>
-          )}
-
-          <Text style={[styles.resultsCount, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Found {searchResults.length} results
-          </Text>
-
-          {searchResults.map((product, index) => {
-            const nutrition = extractNutrition(product);
-            const brandText = product.brands || '';
-            
-            return (
-              <React.Fragment key={index}>
-                <TouchableOpacity
-                  style={[styles.resultCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-                  onPress={() => handleSelectProduct(product)}
-                >
-                  <View style={styles.resultContent}>
-                    <View style={styles.resultHeader}>
-                      <Text style={[styles.resultName, { color: isDark ? colors.textDark : colors.text }]}>
-                        {product.product_name || 'Unknown Product'}
-                      </Text>
-                    </View>
-                    
-                    {brandText && (
-                      <Text style={[styles.resultBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                        {brandText}
-                      </Text>
-                    )}
-                    
-                    <Text style={[styles.resultNutrition, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Per 100g: {Math.round(nutrition.calories)} kcal • P: {Math.round(nutrition.protein)}g • C: {Math.round(nutrition.carbs)}g • F: {Math.round(nutrition.fat)}g
-                    </Text>
-                    
-                    {product.serving_size && (
-                      <Text style={[styles.resultServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                        Serving: {product.serving_size}
-                      </Text>
-                    )}
-                  </View>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
-                    size={24}
-                    color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </React.Fragment>
-            );
-          })}
-
-          <View style={styles.bottomSpacer} />
-        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -784,12 +652,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
-  productNameText: {
-    ...typography.body,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    fontWeight: '600',
-  },
   notFoundButtons: {
     width: '100%',
     gap: spacing.md,
@@ -885,67 +747,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: spacing.lg,
     textAlign: 'center',
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
-  },
-  searchInfoCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  searchInfoLabel: {
-    ...typography.caption,
-    marginBottom: 4,
-  },
-  searchInfoText: {
-    ...typography.bodyBold,
-    fontSize: 16,
-  },
-  resultsCount: {
-    ...typography.caption,
-    marginBottom: spacing.md,
-  },
-  resultCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  resultContent: {
-    flex: 1,
-  },
-  resultHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-    gap: spacing.sm,
-  },
-  resultName: {
-    ...typography.bodyBold,
-    fontSize: 16,
-    flex: 1,
-  },
-  resultBrand: {
-    ...typography.caption,
-    marginBottom: 4,
-  },
-  resultNutrition: {
-    ...typography.caption,
-    marginBottom: 2,
-  },
-  resultServing: {
-    ...typography.caption,
-    fontStyle: 'italic',
-  },
-  bottomSpacer: {
-    height: 100,
   },
 });
