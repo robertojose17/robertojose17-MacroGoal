@@ -11,6 +11,7 @@ export interface OpenFoodFactsProduct {
   brands?: string;
   serving_size?: string;
   serving_quantity?: string;
+  categories?: string;
   nutriments?: {
     'energy-kcal_100g'?: number;
     'energy-kcal_serving'?: number;
@@ -37,14 +38,81 @@ export interface OpenFoodFactsSearchResult {
 export interface ServingSizeInfo {
   description: string; // e.g., "1 egg", "2 slices", "1 bar"
   grams: number; // gram equivalent
-  displayText: string; // e.g., "1 egg (50 g)", "2 slices (28 g)"
-  hasValidGrams: boolean; // true if grams were successfully parsed, false if using fallback
+  displayText: string; // e.g., "1 egg (50 g)", "2 slices (≈ 28 g)", "1 slice (estimated as 100g)"
+  hasValidGrams: boolean; // true if grams were successfully parsed/converted, false if using fallback
+  isEstimated: boolean; // true if conversion is estimated (ml, tbsp, etc.)
+}
+
+/**
+ * Determine if a product is oil/fat based on name and categories
+ */
+function isOilOrFat(product: OpenFoodFactsProduct): boolean {
+  const name = (product.product_name || '').toLowerCase();
+  const categories = (product.categories || '').toLowerCase();
+  
+  const oilKeywords = ['oil', 'olive oil', 'vegetable oil', 'coconut oil', 'butter', 'margarine', 'fat', 'lard', 'shortening'];
+  
+  for (const keyword of oilKeywords) {
+    if (name.includes(keyword) || categories.includes(keyword)) {
+      console.log('[OpenFoodFacts] Product identified as oil/fat:', keyword);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Determine if a product is a beverage/liquid
+ */
+function isBeverage(product: OpenFoodFactsProduct): boolean {
+  const name = (product.product_name || '').toLowerCase();
+  const categories = (product.categories || '').toLowerCase();
+  
+  const beverageKeywords = ['water', 'juice', 'soda', 'drink', 'beverage', 'milk', 'tea', 'coffee', 'beer', 'wine', 'liquor'];
+  
+  for (const keyword of beverageKeywords) {
+    if (name.includes(keyword) || categories.includes(keyword)) {
+      console.log('[OpenFoodFacts] Product identified as beverage:', keyword);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Convert milliliters to grams based on product type
+ */
+function mlToGrams(ml: number, product: OpenFoodFactsProduct): { grams: number; density: number } {
+  let density = 1.0; // Default to water density
+  
+  if (isOilOrFat(product)) {
+    density = 0.91; // Oil/fat density
+    console.log('[OpenFoodFacts] Using oil/fat density: 0.91 g/ml');
+  } else if (isBeverage(product)) {
+    density = 1.0; // Water-like density
+    console.log('[OpenFoodFacts] Using water density: 1.0 g/ml');
+  } else {
+    // Unknown liquid, use water as fallback
+    density = 1.0;
+    console.log('[OpenFoodFacts] Using default water density: 1.0 g/ml');
+  }
+  
+  const grams = ml * density;
+  return { grams, density };
 }
 
 /**
  * Extract serving size information from OpenFoodFacts product
  * Returns the serving description and gram equivalent
  * NEVER throws errors or blocks - always returns a valid ServingSizeInfo
+ * 
+ * PRIORITY ORDER:
+ * 1) Serving label that already includes grams → use directly
+ * 2) Serving label with oz/ml/tbsp/tsp/cup → convert to grams → use
+ * 3) Household unit without grams → show unit, estimate grams as 100g but mark estimated
+ * 4) No serving label at all → default to 100g
  */
 export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeInfo {
   console.log('[OpenFoodFacts] extractServingSize called with:', {
@@ -58,6 +126,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
     grams: 100,
     displayText: '100 g',
     hasValidGrams: false,
+    isEstimated: false,
   };
 
   // If no serving_size at all, return default immediately
@@ -77,14 +146,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
   console.log('[OpenFoodFacts] Parsing serving size:', servingSize);
 
   try {
-    // Try to extract grams from serving_size
-    // Examples:
-    // "1 egg (50g)" -> description: "1 egg", grams: 50
-    // "2 slices (28g)" -> description: "2 slices", grams: 28
-    // "1 bar (40 g)" -> description: "1 bar", grams: 40
-    // "30g" -> description: "30 g", grams: 30
-    // "100 g" -> description: "100 g", grams: 100
-
+    // ========== PRIORITY 1: GRAMS ALREADY IN SERVING SIZE ==========
+    
     // Pattern 1: "X unit (Yg)" or "X unit (Y g)"
     const pattern1 = /^(.+?)\s*\((\d+\.?\d*)\s*g\)$/i;
     const match1 = servingSize.match(pattern1);
@@ -93,12 +156,13 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       const grams = parseFloat(match1[2]);
       
       if (!isNaN(grams) && grams > 0) {
-        console.log('[OpenFoodFacts] Pattern 1 matched:', { description, grams });
+        console.log('[OpenFoodFacts] Pattern 1 matched (grams in parentheses):', { description, grams });
         return {
           description,
           grams,
           displayText: `${description} (${Math.round(grams)} g)`,
           hasValidGrams: true,
+          isEstimated: false,
         };
       }
     }
@@ -116,6 +180,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
           grams,
           displayText: `${Math.round(grams)} g`,
           hasValidGrams: true,
+          isEstimated: false,
         };
       }
     }
@@ -128,12 +193,13 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       const grams = parseFloat(match3[2]);
       
       if (!isNaN(grams) && grams > 0) {
-        console.log('[OpenFoodFacts] Pattern 3 matched:', { description, grams });
+        console.log('[OpenFoodFacts] Pattern 3 matched (grams with dash):', { description, grams });
         return {
           description,
           grams,
           displayText: `${description} (${Math.round(grams)} g)`,
           hasValidGrams: true,
+          isEstimated: false,
         };
       }
     }
@@ -147,7 +213,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       if (!isNaN(grams) && grams > 0) {
         // Try to extract description before the grams
         const description = servingSize.replace(pattern4, '').trim();
-        console.log('[OpenFoodFacts] Pattern 4 matched:', { description, grams });
+        console.log('[OpenFoodFacts] Pattern 4 matched (grams anywhere):', { description, grams });
         
         if (description && description.length > 0) {
           return {
@@ -155,6 +221,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
             grams,
             displayText: `${description} (${Math.round(grams)} g)`,
             hasValidGrams: true,
+            isEstimated: false,
           };
         }
         
@@ -163,11 +230,134 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
           grams,
           displayText: `${Math.round(grams)} g`,
           hasValidGrams: true,
+          isEstimated: false,
         };
       }
     }
 
-    // If we can't parse grams from serving_size, try serving_quantity
+    // ========== PRIORITY 2: CONVERT OTHER UNITS TO GRAMS ==========
+    
+    // A) OUNCES (oz)
+    // Pattern: "X oz" or "X ounce" or "X ounces"
+    const ozPattern = /(\d+\.?\d*)\s*(oz|ounce|ounces)/i;
+    const ozMatch = servingSize.match(ozPattern);
+    if (ozMatch) {
+      const oz = parseFloat(ozMatch[1]);
+      if (!isNaN(oz) && oz > 0) {
+        const grams = oz * 28.3495;
+        console.log('[OpenFoodFacts] Ounces detected:', { oz, grams });
+        
+        // Extract full description
+        const description = servingSize.trim();
+        
+        return {
+          description,
+          grams: Math.round(grams),
+          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          hasValidGrams: true,
+          isEstimated: true,
+        };
+      }
+    }
+
+    // B) MILLILITERS (ml)
+    // Pattern: "X ml" or "X milliliter" or "X milliliters"
+    const mlPattern = /(\d+\.?\d*)\s*(ml|milliliter|milliliters|mL)/i;
+    const mlMatch = servingSize.match(mlPattern);
+    if (mlMatch) {
+      const ml = parseFloat(mlMatch[1]);
+      if (!isNaN(ml) && ml > 0) {
+        const { grams, density } = mlToGrams(ml, product);
+        console.log('[OpenFoodFacts] Milliliters detected:', { ml, grams, density });
+        
+        // Extract full description
+        const description = servingSize.trim();
+        
+        return {
+          description,
+          grams: Math.round(grams),
+          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          hasValidGrams: true,
+          isEstimated: true,
+        };
+      }
+    }
+
+    // C) TABLESPOONS (tbsp)
+    // Pattern: "X tbsp" or "X tablespoon" or "X tablespoons"
+    const tbspPattern = /(\d+\.?\d*)\s*(tbsp|tablespoon|tablespoons|Tbsp|TBSP)/i;
+    const tbspMatch = servingSize.match(tbspPattern);
+    if (tbspMatch) {
+      const tbsp = parseFloat(tbspMatch[1]);
+      if (!isNaN(tbsp) && tbsp > 0) {
+        const ml = tbsp * 15; // 1 tbsp = 15 ml
+        const { grams, density } = mlToGrams(ml, product);
+        console.log('[OpenFoodFacts] Tablespoons detected:', { tbsp, ml, grams, density });
+        
+        // Extract full description
+        const description = servingSize.trim();
+        
+        return {
+          description,
+          grams: Math.round(grams),
+          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          hasValidGrams: true,
+          isEstimated: true,
+        };
+      }
+    }
+
+    // D) TEASPOONS (tsp)
+    // Pattern: "X tsp" or "X teaspoon" or "X teaspoons"
+    const tspPattern = /(\d+\.?\d*)\s*(tsp|teaspoon|teaspoons|Tsp|TSP)/i;
+    const tspMatch = servingSize.match(tspPattern);
+    if (tspMatch) {
+      const tsp = parseFloat(tspMatch[1]);
+      if (!isNaN(tsp) && tsp > 0) {
+        const ml = tsp * 5; // 1 tsp = 5 ml
+        const { grams, density } = mlToGrams(ml, product);
+        console.log('[OpenFoodFacts] Teaspoons detected:', { tsp, ml, grams, density });
+        
+        // Extract full description
+        const description = servingSize.trim();
+        
+        return {
+          description,
+          grams: Math.round(grams),
+          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          hasValidGrams: true,
+          isEstimated: true,
+        };
+      }
+    }
+
+    // E) CUPS
+    // Pattern: "X cup" or "X cups"
+    const cupPattern = /(\d+\.?\d*)\s*(cup|cups)/i;
+    const cupMatch = servingSize.match(cupPattern);
+    if (cupMatch) {
+      const cups = parseFloat(cupMatch[1]);
+      if (!isNaN(cups) && cups > 0) {
+        const ml = cups * 240; // 1 cup = 240 ml
+        const { grams, density } = mlToGrams(ml, product);
+        console.log('[OpenFoodFacts] Cups detected:', { cups, ml, grams, density });
+        
+        // Extract full description
+        const description = servingSize.trim();
+        
+        return {
+          description,
+          grams: Math.round(grams),
+          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          hasValidGrams: true,
+          isEstimated: true,
+        };
+      }
+    }
+
+    // ========== PRIORITY 3: HOUSEHOLD UNITS WITHOUT GRAMS ==========
+    
+    // Check if serving_quantity provides a gram value
     if (product.serving_quantity) {
       const quantityStr = String(product.serving_quantity).trim();
       const grams = parseFloat(quantityStr);
@@ -179,18 +369,38 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
           grams,
           displayText: `${servingSize} (${Math.round(grams)} g)`,
           hasValidGrams: true,
+          isEstimated: false,
         };
       }
     }
 
-    // Fallback: We have a serving description but no parseable grams
+    // Household units pattern: "X slice", "X egg", "X piece", "X bar", etc.
+    const householdPattern = /(\d+\.?\d*)\s*(slice|slices|egg|eggs|piece|pieces|bar|bars|serving|servings|item|items|unit|units)/i;
+    const householdMatch = servingSize.match(householdPattern);
+    if (householdMatch) {
+      console.log('[OpenFoodFacts] Household unit detected without grams:', servingSize);
+      
+      // Return the unit as-is with 100g estimate
+      return {
+        description: servingSize,
+        grams: 100,
+        displayText: `${servingSize} (estimated as 100g)`,
+        hasValidGrams: false,
+        isEstimated: true,
+      };
+    }
+
+    // ========== PRIORITY 4: FALLBACK ==========
+    
+    // Fallback: We have a serving description but no parseable grams or convertible units
     // Return the description as-is with 100g default for calculations
-    console.log('[OpenFoodFacts] Could not parse grams, using description with 100g fallback');
+    console.log('[OpenFoodFacts] Could not parse grams or convert units, using description with 100g fallback');
     return {
       description: servingSize,
       grams: 100,
-      displayText: `${servingSize} (100 g)`,
+      displayText: `${servingSize} (estimated as 100g)`,
       hasValidGrams: false,
+      isEstimated: true,
     };
   } catch (error) {
     // If ANY error occurs during parsing, return default

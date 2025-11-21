@@ -40,6 +40,7 @@ export default function FoodDetailsScreen() {
           product_name: parsed.product_name || 'Unknown Product',
           brands: parsed.brands || 'Unknown Brand',
           serving_size: parsed.serving_size || '100 g',
+          categories: parsed.categories || '',
           nutriments: {
             'energy-kcal_100g': parsed.nutriments?.['energy-kcal_100g'] || 0,
             'proteins_100g': parsed.nutriments?.['proteins_100g'] || 0,
@@ -79,6 +80,7 @@ export default function FoodDetailsScreen() {
           product_name: 'Unknown Product',
           brands: 'Unknown Brand',
           serving_size: '100 g',
+          categories: '',
           nutriments: {
             'energy-kcal_100g': 0,
             'proteins_100g': 0,
@@ -93,6 +95,7 @@ export default function FoodDetailsScreen() {
           grams: 100,
           displayText: '100 g',
           hasValidGrams: false,
+          isEstimated: false,
         });
         setNutrition({
           calories: 0,
@@ -161,11 +164,19 @@ export default function FoodDetailsScreen() {
         
         // If it's close to a whole number, use that
         if (Math.abs(newCount - Math.round(newCount)) < 0.1) {
-          return `${Math.round(newCount)} ${unit} (${Math.round(currentGrams)} g)`;
+          if (servingInfo.isEstimated) {
+            return `${Math.round(newCount)} ${unit} (≈ ${Math.round(currentGrams)} g)`;
+          } else {
+            return `${Math.round(newCount)} ${unit} (${Math.round(currentGrams)} g)`;
+          }
         }
         
         // Otherwise show decimal
-        return `${newCount.toFixed(1)} ${unit} (${Math.round(currentGrams)} g)`;
+        if (servingInfo.isEstimated) {
+          return `${newCount.toFixed(1)} ${unit} (≈ ${Math.round(currentGrams)} g)`;
+        } else {
+          return `${newCount.toFixed(1)} ${unit} (${Math.round(currentGrams)} g)`;
+        }
       }
     }
     
@@ -387,9 +398,14 @@ export default function FoodDetailsScreen() {
               <Text style={[styles.servingSize, { color: colors.primary }]}>
                 {servingInfo.displayText}
               </Text>
-              {!servingInfo.hasValidGrams && (
+              {servingInfo.isEstimated && !servingInfo.hasValidGrams && (
                 <Text style={[styles.servingWarning, { color: colors.warning || '#FF9500' }]}>
-                  ⚠️ No gram value found - using 100g for calculations
+                  ⚠️ Estimated - no gram value found, using 100g for calculations
+                </Text>
+              )}
+              {servingInfo.isEstimated && servingInfo.hasValidGrams && (
+                <Text style={[styles.servingInfo, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  ℹ️ Converted using estimated density
                 </Text>
               )}
             </View>
@@ -405,7 +421,7 @@ export default function FoodDetailsScreen() {
             <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Your Portion
             </Text>
-            <Text style={[styles.servingInfo, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            <Text style={[styles.servingInfoText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Adjust the amount in grams
             </Text>
             
@@ -651,6 +667,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     fontStyle: 'italic',
   },
+  servingInfo: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
   barcode: {
     ...typography.caption,
     fontStyle: 'italic',
@@ -660,7 +681,7 @@ const styles = StyleSheet.create({
     ...typography.h3,
     marginBottom: spacing.sm,
   },
-  servingInfo: {
+  servingInfoText: {
     ...typography.caption,
     marginBottom: spacing.md,
   },
