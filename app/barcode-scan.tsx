@@ -7,9 +7,9 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractNutrition } from '@/utils/openFoodFacts';
+import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractNutrition, extractServingSize } from '@/utils/openFoodFacts';
 
-type ScanState = 'scanning' | 'finding-name' | 'searching-library' | 'showing-results' | 'not-found' | 'error';
+type ScanState = 'scanning' | 'searching' | 'showing-results' | 'not-found' | 'error';
 
 export default function BarcodeScanScreen() {
   const router = useRouter();
@@ -44,6 +44,113 @@ export default function BarcodeScanScreen() {
     };
   }, [permission]);
 
+  /**
+   * Auto-select the best match from search results
+   * Rules:
+   * 1. If only one result, auto-select it
+   * 2. Prefer results with non-100g default servings
+   * 3. If all are 100g, pick the most relevant (branded, closest name match, most complete nutrition)
+   */
+  const selectBestMatch = (products: OpenFoodFactsProduct[], searchQuery: string): OpenFoodFactsProduct => {
+    console.log('[BarcodeScanner] Auto-selecting best match from', products.length, 'results');
+
+    // Rule C: If only one result, auto-select it
+    if (products.length === 1) {
+      console.log('[BarcodeScanner] Only one result, auto-selecting:', products[0].product_name);
+      return products[0];
+    }
+
+    // Categorize products by serving size
+    const non100gProducts: OpenFoodFactsProduct[] = [];
+    const is100gProducts: OpenFoodFactsProduct[] = [];
+
+    products.forEach(product => {
+      const serving = extractServingSize(product);
+      
+      // Check if serving is NOT 100g
+      // A serving is considered "100g" if:
+      // - grams is exactly 100
+      // - OR description is just "100 g" or "100g"
+      const is100g = 
+        Math.abs(serving.grams - 100) < 0.1 || 
+        serving.description.match(/^100\s*g$/i);
+
+      if (is100g) {
+        is100gProducts.push(product);
+      } else {
+        non100gProducts.push(product);
+      }
+    });
+
+    console.log('[BarcodeScanner] Found', non100gProducts.length, 'non-100g products and', is100gProducts.length, '100g products');
+
+    // Rule A: Prefer non-100g servings
+    if (non100gProducts.length > 0) {
+      console.log('[BarcodeScanner] Selecting first non-100g product:', non100gProducts[0].product_name);
+      return non100gProducts[0];
+    }
+
+    // Rule B: All are 100g, pick the most relevant
+    console.log('[BarcodeScanner] All products are 100g, selecting most relevant');
+    return selectMostRelevant(is100gProducts, searchQuery);
+  };
+
+  /**
+   * Select the most relevant product when all have 100g servings
+   * Criteria:
+   * - Closest name match to search query
+   * - Branded item over generic
+   * - Higher completeness of nutrition fields
+   */
+  const selectMostRelevant = (products: OpenFoodFactsProduct[], searchQuery: string): OpenFoodFactsProduct => {
+    const scoredProducts = products.map(product => {
+      let score = 0;
+
+      // Score 1: Name similarity (case-insensitive)
+      const productName = (product.product_name || '').toLowerCase();
+      const query = searchQuery.toLowerCase();
+      
+      if (productName.includes(query)) {
+        score += 10;
+      }
+      
+      // Exact match bonus
+      if (productName === query) {
+        score += 20;
+      }
+
+      // Score 2: Has brand (branded over generic)
+      if (product.brands && product.brands.trim().length > 0) {
+        score += 5;
+      }
+
+      // Score 3: Nutrition completeness
+      const nutrition = extractNutrition(product);
+      let nutritionFields = 0;
+      
+      if (nutrition.calories > 0) nutritionFields++;
+      if (nutrition.protein > 0) nutritionFields++;
+      if (nutrition.carbs > 0) nutritionFields++;
+      if (nutrition.fat > 0) nutritionFields++;
+      if (nutrition.fiber > 0) nutritionFields++;
+      if (nutrition.sugars > 0) nutritionFields++;
+      
+      score += nutritionFields; // 0-6 points
+
+      console.log('[BarcodeScanner] Product:', product.product_name, 'Score:', score);
+
+      return { product, score };
+    });
+
+    // Sort by score descending
+    scoredProducts.sort((a, b) => b.score - a.score);
+
+    const best = scoredProducts[0].product;
+    console.log('[BarcodeScanner] Most relevant product:', best.product_name, 'with score:', scoredProducts[0].score);
+    
+    return best;
+  };
+
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     // Prevent multiple scans
     if (hasScannedRef.current || scanState !== 'scanning') {
@@ -53,7 +160,7 @@ export default function BarcodeScanScreen() {
 
     hasScannedRef.current = true;
     setScannedBarcode(data);
-    setScanState('finding-name');
+    setScanState('searching');
 
     console.log('[BarcodeScanner] 📷 Scanned barcode:', data);
     console.log('[BarcodeScanner] 📱 Platform:', Platform.OS);
@@ -90,7 +197,6 @@ export default function BarcodeScanScreen() {
 
       // STEP 2: SEARCH BY NAME USING FOOD LIBRARY
       console.log('[BarcodeScanner] STEP 2: Searching Food Library for:', searchQuery);
-      setScanState('searching-library');
 
       // Set a new timeout for step 2 (8 seconds)
       timeoutRef.current = setTimeout(() => {
@@ -126,8 +232,20 @@ export default function BarcodeScanScreen() {
           return;
         }
 
-        setSearchResults(validProducts);
-        setScanState('showing-results');
+        // AUTO-SELECT BEST MATCH
+        const bestMatch = selectBestMatch(validProducts, searchQuery);
+        console.log('[BarcodeScanner] 🎯 Auto-selected best match:', bestMatch.product_name);
+        
+        // Navigate directly to Food Details screen
+        router.push({
+          pathname: '/food-details',
+          params: {
+            meal: mealType,
+            date: date,
+            offData: JSON.stringify(bestMatch),
+            source: 'barcode',
+          },
+        });
       } else {
         console.log('[BarcodeScanner] ⚠️ No results found for query:', searchQuery);
         setScanState('not-found');
@@ -391,8 +509,8 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show loading screen for step 1 (finding product name)
-  if (scanState === 'finding-name') {
+  // Show loading screen (unified for both steps)
+  if (scanState === 'searching') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -413,10 +531,7 @@ export default function BarcodeScanScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Finding product name…
-          </Text>
-          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Step 1 of 2
+            Searching…
           </Text>
           {scannedBarcode && (
             <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -428,44 +543,7 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // Show loading screen for step 2 (searching food library)
-  if (scanState === 'searching-library') {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Scan Barcode
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Searching Food Library…
-          </Text>
-          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Step 2 of 2
-          </Text>
-          {productName && (
-            <Text style={[styles.productNameText, { color: isDark ? colors.textDark : colors.text }]}>
-              Searching for: {productName}
-            </Text>
-          )}
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show search results
+  // Show search results (optional - auto-select should skip this)
   if (scanState === 'showing-results') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -806,11 +884,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginTop: spacing.lg,
-    textAlign: 'center',
-  },
-  loadingSubtext: {
-    fontSize: 14,
-    marginTop: spacing.sm,
     textAlign: 'center',
   },
   scrollContent: {
