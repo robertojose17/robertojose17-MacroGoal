@@ -23,6 +23,7 @@ export default function FoodSearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [screenLoaded, setScreenLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<{ url?: string; statusCode?: number } | null>(null);
 
   // Debounce timer ref
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -46,6 +47,7 @@ export default function FoodSearchScreen() {
       setResults([]);
       setHasSearched(false);
       setErrorMessage(null);
+      setDebugInfo(null);
       return;
     }
 
@@ -77,6 +79,7 @@ export default function FoodSearchScreen() {
     setSearching(true);
     setHasSearched(true);
     setErrorMessage(null);
+    setDebugInfo(null);
 
     try {
       console.log('[FoodSearch] Calling searchProducts...');
@@ -91,23 +94,36 @@ export default function FoodSearchScreen() {
       if (data === null) {
         console.error('[FoodSearch] ❌ Search returned null (API error)');
         console.error('[FoodSearch] This indicates a network or API failure');
-        setErrorMessage('Failed to connect to OpenFoodFacts. Please check your internet connection and try again.');
+        setErrorMessage('Unable to connect to OpenFoodFacts. Please check your internet connection and try again.');
         setResults([]);
-      } else if (data.products && data.products.length > 0) {
-        console.log('[FoodSearch] ✅ SUCCESS! Found', data.products.length, 'products from OpenFoodFacts');
-        console.log('[FoodSearch] First product:', data.products[0].product_name);
-        
-        // Filter out products with no name
-        const validProducts = data.products.filter(p => p.product_name && p.product_name.trim().length > 0);
-        
-        console.log('[FoodSearch] Valid products after filtering:', validProducts.length);
-        setResults(validProducts);
-        setErrorMessage(null);
+        setDebugInfo(null);
       } else {
-        console.log('[FoodSearch] ⚠️ No results found for query:', query);
-        console.log('[FoodSearch] Response data:', JSON.stringify(data, null, 2));
-        setResults([]);
-        setErrorMessage(null);
+        // Store debug info
+        setDebugInfo({
+          url: data.url,
+          statusCode: data.statusCode,
+        });
+        
+        if (data.statusCode && data.statusCode !== 200) {
+          console.error('[FoodSearch] ❌ Non-200 status code:', data.statusCode);
+          setErrorMessage(`OpenFoodFacts returned status ${data.statusCode}. Please try again.`);
+          setResults([]);
+        } else if (data.products && data.products.length > 0) {
+          console.log('[FoodSearch] ✅ SUCCESS! Found', data.products.length, 'products from OpenFoodFacts');
+          console.log('[FoodSearch] First product:', data.products[0].product_name);
+          
+          // Filter out products with no name
+          const validProducts = data.products.filter(p => p.product_name && p.product_name.trim().length > 0);
+          
+          console.log('[FoodSearch] Valid products after filtering:', validProducts.length);
+          setResults(validProducts);
+          setErrorMessage(null);
+        } else {
+          console.log('[FoodSearch] ⚠️ No results found for query:', query);
+          console.log('[FoodSearch] Response data:', JSON.stringify(data, null, 2));
+          setResults([]);
+          setErrorMessage(null);
+        }
       }
     } catch (error) {
       console.error('[FoodSearch] ❌ EXCEPTION during search');
@@ -117,6 +133,7 @@ export default function FoodSearchScreen() {
       
       setErrorMessage('An unexpected error occurred. Please try again.');
       setResults([]);
+      setDebugInfo(null);
     } finally {
       setSearching(false);
       console.log('[FoodSearch] Search process completed');
@@ -141,6 +158,7 @@ export default function FoodSearchScreen() {
   const handleRetry = () => {
     console.log('[FoodSearch] Retry button pressed');
     setErrorMessage(null);
+    setDebugInfo(null);
     if (searchQuery.trim()) {
       performSearch(searchQuery);
     }
@@ -152,7 +170,7 @@ export default function FoodSearchScreen() {
       {screenLoaded && (
         <View style={styles.debugBanner}>
           <Text style={styles.debugText}>
-            ✓ Food Library (OpenFoodFacts) - {Platform.OS}
+            ✓ Food Library (OpenFoodFacts API v2) - {Platform.OS}
           </Text>
         </View>
       )}
@@ -221,6 +239,16 @@ export default function FoodSearchScreen() {
             <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Query: &quot;{searchQuery}&quot;
             </Text>
+            {debugInfo?.url && (
+              <View style={styles.debugContainer}>
+                <Text style={[styles.debugLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Debug Info:
+                </Text>
+                <Text style={[styles.debugUrl, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]} numberOfLines={3}>
+                  URL: {debugInfo.url}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -236,6 +264,23 @@ export default function FoodSearchScreen() {
             <Text style={[styles.errorDebug, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Platform: {Platform.OS} • Query: &quot;{searchQuery}&quot;
             </Text>
+            {debugInfo && (
+              <View style={styles.debugContainer}>
+                <Text style={[styles.debugLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Debug Info:
+                </Text>
+                {debugInfo.statusCode && (
+                  <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Status Code: {debugInfo.statusCode}
+                  </Text>
+                )}
+                {debugInfo.url && (
+                  <Text style={[styles.debugUrl, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]} numberOfLines={3}>
+                    URL: {debugInfo.url}
+                  </Text>
+                )}
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.retryButton, { backgroundColor: colors.primary }]}
               onPress={handleRetry}
@@ -257,6 +302,23 @@ export default function FoodSearchScreen() {
             <Text style={[styles.emptyDebug, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Searched for: &quot;{searchQuery}&quot;
             </Text>
+            {debugInfo && (
+              <View style={styles.debugContainer}>
+                <Text style={[styles.debugLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Debug Info:
+                </Text>
+                {debugInfo.statusCode && (
+                  <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Status Code: {debugInfo.statusCode}
+                  </Text>
+                )}
+                {debugInfo.url && (
+                  <Text style={[styles.debugUrl, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]} numberOfLines={3}>
+                    URL: {debugInfo.url}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         )}
 
@@ -302,6 +364,13 @@ export default function FoodSearchScreen() {
             <Text style={[styles.resultsCount, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Found {results.length} results from OpenFoodFacts
             </Text>
+            {debugInfo && (
+              <View style={styles.debugContainerSuccess}>
+                <Text style={[styles.debugLabel, { color: colors.success }]}>
+                  ✓ Status: {debugInfo.statusCode || 200}
+                </Text>
+              </View>
+            )}
             {results.map((product, index) => {
               const nutrition = extractNutrition(product);
               const brandText = product.brands || '';
@@ -417,6 +486,29 @@ const styles = StyleSheet.create({
     ...typography.caption,
     marginTop: spacing.xs,
   },
+  debugContainer: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: borderRadius.sm,
+    width: '100%',
+  },
+  debugContainerSuccess: {
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: borderRadius.sm,
+  },
+  debugLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  debugUrl: {
+    ...typography.caption,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 10,
+  },
   errorContainer: {
     alignItems: 'center',
     paddingVertical: spacing.xxl,
@@ -446,6 +538,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
+    marginTop: spacing.md,
   },
   retryButtonText: {
     color: '#FFFFFF',

@@ -33,6 +33,8 @@ export interface OpenFoodFactsSearchResult {
   count: number;
   page: number;
   page_size: number;
+  statusCode?: number; // For debug purposes
+  url?: string; // For debug purposes
 }
 
 export interface ServingSizeInfo {
@@ -394,8 +396,9 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
  * Fetch with timeout wrapper
  * Ensures requests never hang indefinitely
  * CRITICAL: This function implements the hard timeout requirement
+ * MOBILE COMPATIBILITY: Adds User-Agent header for mobile network compatibility
  */
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 8000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 10000): Promise<Response> {
   console.log(`[OpenFoodFacts] fetchWithTimeout: ${url} (timeout: ${timeoutMs}ms)`);
   
   const controller = new AbortController();
@@ -409,7 +412,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
       ...options,
       signal: controller.signal,
       headers: {
-        'User-Agent': 'EliteMacroTracker/1.0',
+        'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
         'Accept': 'application/json',
         ...options.headers,
       },
@@ -474,6 +477,7 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
  * HARD TIMEOUT: 10 seconds (increased from 8 for mobile reliability)
  * 
  * UPDATED: Uses API v2 search endpoint for better mobile compatibility
+ * MOBILE COMPATIBILITY: Adds User-Agent header and uses HTTPS
  */
 export async function searchProducts(query: string, page: number = 1, pageSize: number = 20): Promise<OpenFoodFactsSearchResult | null> {
   try {
@@ -481,11 +485,13 @@ export async function searchProducts(query: string, page: number = 1, pageSize: 
     console.log(`[OpenFoodFacts] Query: "${query}"`);
     console.log(`[OpenFoodFacts] Page: ${page}, PageSize: ${pageSize}`);
     
-    // Use API v2 search endpoint for better reliability
+    // OPTION A (RECOMMENDED): Use API v2 search endpoint for better reliability and mobile compatibility
     // This endpoint is more stable and works better on mobile networks
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&json=true&fields=code,product_name,brands,serving_size,serving_quantity,categories,nutriments`;
+    const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&fields=code,product_name,brands,nutriments,serving_size,serving_quantity,serving_unit,quantity,image_front_small_url&sort_by=popularity_key&page_size=${pageSize}&page=${page}`;
     
     console.log(`[OpenFoodFacts] Full URL: ${url}`);
+    console.log(`[OpenFoodFacts] Using HTTPS: YES`);
+    console.log(`[OpenFoodFacts] User-Agent: EliteMacroTracker/1.0 (iOS)`);
     
     const response = await fetchWithTimeout(
       url,
@@ -495,25 +501,41 @@ export async function searchProducts(query: string, page: number = 1, pageSize: 
       10000 // 10 second timeout for mobile reliability
     );
     
+    console.log(`[OpenFoodFacts] Response status: ${response.status}`);
+    console.log(`[OpenFoodFacts] Response ok: ${response.ok}`);
+    
     if (!response.ok) {
       console.log(`[OpenFoodFacts] ❌ Search failed for query: ${query} (status: ${response.status})`);
-      return null;
-    }
-
-    const data = await response.json();
-    
-    console.log(`[OpenFoodFacts] ✅ Search response received`);
-    console.log(`[OpenFoodFacts] Products count: ${data.count || 0}`);
-    console.log(`[OpenFoodFacts] Products array length: ${data.products?.length || 0}`);
-    
-    // Validate response structure
-    if (!data.products || !Array.isArray(data.products)) {
-      console.log(`[OpenFoodFacts] ⚠️ Invalid response structure - no products array`);
+      // Return result with status code for debugging
       return {
         products: [],
         count: 0,
         page: page,
         page_size: pageSize,
+        statusCode: response.status,
+        url: url,
+      };
+    }
+
+    const data = await response.json();
+    
+    console.log(`[OpenFoodFacts] ✅ Search response received`);
+    console.log(`[OpenFoodFacts] Response keys:`, Object.keys(data));
+    console.log(`[OpenFoodFacts] Products count: ${data.count || 0}`);
+    console.log(`[OpenFoodFacts] Products array length: ${data.products?.length || 0}`);
+    
+    // Validate response structure
+    // API v2 returns: { products: [...], count: n, page: n, page_size: n }
+    if (!data.products || !Array.isArray(data.products)) {
+      console.log(`[OpenFoodFacts] ⚠️ Invalid response structure - no products array`);
+      console.log(`[OpenFoodFacts] Response data:`, JSON.stringify(data, null, 2));
+      return {
+        products: [],
+        count: 0,
+        page: page,
+        page_size: pageSize,
+        statusCode: response.status,
+        url: url,
       };
     }
     
@@ -530,9 +552,11 @@ export async function searchProducts(query: string, page: number = 1, pageSize: 
     
     return {
       products: validProducts,
-      count: validProducts.length,
+      count: data.count || validProducts.length,
       page: data.page || page,
       page_size: data.page_size || pageSize,
+      statusCode: response.status,
+      url: url,
     };
   } catch (error) {
     console.error('[OpenFoodFacts] ❌ Error searching products:', error);
