@@ -408,6 +408,11 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
+      headers: {
+        'User-Agent': 'EliteMacroTracker/1.0',
+        'Accept': 'application/json',
+        ...options.headers,
+      },
     });
     clearTimeout(timeoutId);
     console.log(`[OpenFoodFacts] ✅ Request completed successfully (status: ${response.status})`);
@@ -466,17 +471,28 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
 /**
  * Search products by text query from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
- * HARD TIMEOUT: 8 seconds
+ * HARD TIMEOUT: 10 seconds (increased from 8 for mobile reliability)
+ * 
+ * UPDATED: Uses API v2 search endpoint for better mobile compatibility
  */
 export async function searchProducts(query: string, page: number = 1, pageSize: number = 20): Promise<OpenFoodFactsSearchResult | null> {
   try {
     console.log(`[OpenFoodFacts] ========== SEARCH FOOD LIBRARY ==========`);
     console.log(`[OpenFoodFacts] Query: "${query}"`);
+    console.log(`[OpenFoodFacts] Page: ${page}, PageSize: ${pageSize}`);
+    
+    // Use API v2 search endpoint for better reliability
+    // This endpoint is more stable and works better on mobile networks
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&json=true&fields=code,product_name,brands,serving_size,serving_quantity,categories,nutriments`;
+    
+    console.log(`[OpenFoodFacts] Full URL: ${url}`);
     
     const response = await fetchWithTimeout(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&json=true`,
-      {},
-      8000 // 8 second timeout
+      url,
+      {
+        method: 'GET',
+      },
+      10000 // 10 second timeout for mobile reliability
     );
     
     if (!response.ok) {
@@ -485,13 +501,45 @@ export async function searchProducts(query: string, page: number = 1, pageSize: 
     }
 
     const data = await response.json();
-    console.log(`[OpenFoodFacts] ✅ Found ${data.count} products`);
     
-    return data;
+    console.log(`[OpenFoodFacts] ✅ Search response received`);
+    console.log(`[OpenFoodFacts] Products count: ${data.count || 0}`);
+    console.log(`[OpenFoodFacts] Products array length: ${data.products?.length || 0}`);
+    
+    // Validate response structure
+    if (!data.products || !Array.isArray(data.products)) {
+      console.log(`[OpenFoodFacts] ⚠️ Invalid response structure - no products array`);
+      return {
+        products: [],
+        count: 0,
+        page: page,
+        page_size: pageSize,
+      };
+    }
+    
+    // Filter out products with no name
+    const validProducts = data.products.filter((p: OpenFoodFactsProduct) => {
+      const hasName = p.product_name && p.product_name.trim().length > 0;
+      if (!hasName) {
+        console.log(`[OpenFoodFacts] Filtering out product with no name:`, p.code);
+      }
+      return hasName;
+    });
+    
+    console.log(`[OpenFoodFacts] ✅ Returning ${validProducts.length} valid products`);
+    
+    return {
+      products: validProducts,
+      count: validProducts.length,
+      page: data.page || page,
+      page_size: data.page_size || pageSize,
+    };
   } catch (error) {
     console.error('[OpenFoodFacts] ❌ Error searching products:', error);
     if (error instanceof Error) {
+      console.error('[OpenFoodFacts] Error name:', error.name);
       console.error('[OpenFoodFacts] Error message:', error.message);
+      console.error('[OpenFoodFacts] Error stack:', error.stack);
     }
     return null;
   }
