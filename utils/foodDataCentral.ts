@@ -330,6 +330,30 @@ export function extractNutrition(food: FDCFood): {
 }
 
 /**
+ * Fetch with timeout wrapper
+ * Ensures requests never hang indefinitely
+ */
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout - please check your internet connection');
+    }
+    throw error;
+  }
+}
+
+/**
  * Search foods by text query from FoodData Central
  * Uses the configured API key from environment variable
  * NEVER throws errors - always returns null on failure
@@ -339,18 +363,18 @@ export async function searchFoods(
   page: number = 1,
   pageSize: number = 25
 ): Promise<FDCSearchResult | null> {
-  const apiKey = getFDCApiKey();
-  
-  if (!apiKey) {
-    console.error('[FDC] ❌ Cannot search: API key not configured');
-    return null;
-  }
-  
-  console.log(`[FDC] 🔍 Searching foods: "${query}"`);
-  console.log(`[FDC] 📱 Platform: ${typeof navigator !== 'undefined' ? 'mobile/web' : 'native'}`);
-  console.log(`[FDC] 🔑 Using API key: ${apiKey.substring(0, 8)}...`);
-
   try {
+    const apiKey = getFDCApiKey();
+    
+    if (!apiKey) {
+      console.error('[FDC] ❌ Cannot search: API key not configured');
+      return null;
+    }
+    
+    console.log(`[FDC] 🔍 Searching foods: "${query}"`);
+    console.log(`[FDC] 📱 Platform: ${typeof navigator !== 'undefined' ? 'mobile/web' : 'native'}`);
+    console.log(`[FDC] 🔑 Using API key: ${apiKey.substring(0, 8)}...`);
+
     const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`;
     
     const requestBody = {
@@ -363,16 +387,14 @@ export async function searchFoods(
     };
 
     console.log('[FDC] 📤 Sending request to FDC API...');
-    console.log('[FDC] URL:', url.replace(apiKey, '***'));
-    console.log('[FDC] Request body:', JSON.stringify(requestBody, null, 2));
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-    });
+    }, 8000);
 
     console.log(`[FDC] 📥 Response status: ${response.status} ${response.statusText}`);
 
@@ -403,7 +425,6 @@ export async function searchFoods(
     console.error('[FDC] ❌ Error searching foods:', error);
     if (error instanceof Error) {
       console.error('[FDC] Error message:', error.message);
-      console.error('[FDC] Error stack:', error.stack);
     }
     return null;
   }
@@ -415,20 +436,19 @@ export async function searchFoods(
  * NEVER throws errors - always returns null on failure
  */
 export async function fetchFoodById(fdcId: number): Promise<FDCFood | null> {
-  const apiKey = getFDCApiKey();
-  
-  if (!apiKey) {
-    console.error('[FDC] ❌ Cannot fetch food: API key not configured');
-    return null;
-  }
-  
-  console.log(`[FDC] 🔍 Fetching food by ID: ${fdcId}`);
-
   try {
-    const url = `https://api.nal.usda.gov/fdc/v1/food/${fdcId}?api_key=${encodeURIComponent(apiKey)}`;
-    console.log('[FDC] 📤 Request URL:', url.replace(apiKey, '***'));
+    const apiKey = getFDCApiKey();
+    
+    if (!apiKey) {
+      console.error('[FDC] ❌ Cannot fetch food: API key not configured');
+      return null;
+    }
+    
+    console.log(`[FDC] 🔍 Fetching food by ID: ${fdcId}`);
 
-    const response = await fetch(url);
+    const url = `https://api.nal.usda.gov/fdc/v1/food/${fdcId}?api_key=${encodeURIComponent(apiKey)}`;
+
+    const response = await fetchWithTimeout(url, {}, 8000);
 
     console.log(`[FDC] 📥 Response status: ${response.status} ${response.statusText}`);
 
@@ -465,18 +485,18 @@ export async function fetchFoodById(fdcId: number): Promise<FDCFood | null> {
  * NEVER throws errors - always returns null on failure
  */
 export async function searchByBarcode(barcode: string): Promise<FDCFood | null> {
-  const apiKey = getFDCApiKey();
-  
-  if (!apiKey) {
-    console.error('[FDC] ❌ Cannot search barcode: API key not configured');
-    return null;
-  }
-  
-  console.log(`[FDC] 📷 Searching by barcode: ${barcode}`);
-  console.log(`[FDC] 📱 Platform: ${typeof navigator !== 'undefined' ? 'mobile/web' : 'native'}`);
-  console.log(`[FDC] 🔑 Using API key: ${apiKey.substring(0, 8)}...`);
-
   try {
+    const apiKey = getFDCApiKey();
+    
+    if (!apiKey) {
+      console.error('[FDC] ❌ Cannot search barcode: API key not configured');
+      return null;
+    }
+    
+    console.log(`[FDC] 📷 Searching by barcode: ${barcode}`);
+    console.log(`[FDC] 📱 Platform: ${typeof navigator !== 'undefined' ? 'mobile/web' : 'native'}`);
+    console.log(`[FDC] 🔑 Using API key: ${apiKey.substring(0, 8)}...`);
+
     const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`;
     
     // Search using the barcode as query
@@ -488,16 +508,14 @@ export async function searchByBarcode(barcode: string): Promise<FDCFood | null> 
     };
 
     console.log('[FDC] 📤 Sending barcode request to FDC API...');
-    console.log('[FDC] URL:', url.replace(apiKey, '***'));
-    console.log('[FDC] Request body:', JSON.stringify(requestBody, null, 2));
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-    });
+    }, 8000);
 
     console.log(`[FDC] 📥 Response status: ${response.status} ${response.statusText}`);
 
@@ -509,6 +527,7 @@ export async function searchByBarcode(barcode: string): Promise<FDCFood | null> 
       // Check for authentication errors
       if (response.status === 401 || response.status === 403) {
         console.error('[FDC] 🔐 Authentication error: API key is invalid or misconfigured');
+        throw new Error('FDC API key is invalid or misconfigured');
       }
       
       return null;
@@ -525,7 +544,7 @@ export async function searchByBarcode(barcode: string): Promise<FDCFood | null> 
       
       // Try searching foundation foods as fallback
       const foundationUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`;
-      const foundationResponse = await fetch(foundationUrl, {
+      const foundationResponse = await fetchWithTimeout(foundationUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -536,7 +555,7 @@ export async function searchByBarcode(barcode: string): Promise<FDCFood | null> 
           pageSize: 10,
           pageNumber: 1,
         }),
-      });
+      }, 8000);
 
       if (foundationResponse.ok) {
         const foundationData = await foundationResponse.json();
@@ -569,7 +588,10 @@ export async function searchByBarcode(barcode: string): Promise<FDCFood | null> 
     console.error('[FDC] ❌ Error searching by barcode:', error);
     if (error instanceof Error) {
       console.error('[FDC] Error message:', error.message);
-      console.error('[FDC] Error stack:', error.stack);
+      // Re-throw API key errors so they can be caught by the UI
+      if (error.message.includes('API key')) {
+        throw error;
+      }
     }
     return null;
   }

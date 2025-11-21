@@ -25,12 +25,21 @@ export default function BarcodeScanScreen() {
   const [scannedBarcode, setScannedBarcode] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const hasScannedRef = useRef(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     console.log('[BarcodeScanner] ✓ Screen mounted on platform:', Platform.OS);
     if (permission && !permission.granted) {
       requestPermission();
     }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, [permission]);
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
@@ -48,23 +57,35 @@ export default function BarcodeScanScreen() {
     console.log('[BarcodeScanner] 📱 Platform:', Platform.OS);
     console.log('[BarcodeScanner] Camera stopped, fetching product from FDC...');
 
+    // Set a failsafe timeout (8 seconds)
+    timeoutRef.current = setTimeout(() => {
+      console.log('[BarcodeScanner] ⏱️ Request timeout after 8 seconds');
+      setErrorMessage('Request timed out. Please check your internet connection and try again.');
+      setScanState('error');
+    }, 8000);
+
     try {
-      // Fetch product with a timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000)
-      );
-      
-      const fetchPromise = searchByBarcode(data);
-      
-      const food = await Promise.race([fetchPromise, timeoutPromise]) as any;
+      // Fetch product from FDC
+      const food = await searchByBarcode(data);
+
+      // Clear timeout if request completes
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      // Check if we're still in loading state (timeout might have fired)
+      if (scanState !== 'loading') {
+        console.log('[BarcodeScanner] State changed during request, ignoring result');
+        return;
+      }
 
       if (food) {
         console.log('[BarcodeScanner] ✅ Food found from FDC:', food.description);
         console.log('[BarcodeScanner] Data type:', food.dataType);
-        console.log('[BarcodeScanner] Navigating directly to food-details (NOT diary)');
+        console.log('[BarcodeScanner] Navigating directly to food-details');
         
         // Navigate directly to food-details
-        // IMPORTANT: Always navigate, even if serving size is incomplete
         router.push({
           pathname: '/food-details',
           params: {
@@ -75,24 +96,32 @@ export default function BarcodeScanScreen() {
           },
         });
       } else {
-        console.log('[BarcodeScanner] ⚠️ Food not found in FDC');
+        console.log('[BarcodeScanner] ⚠️ Food not found in FDC (null returned)');
         setScanState('not-found');
       }
     } catch (error) {
+      // Clear timeout if error occurs
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       console.error('[BarcodeScanner] ❌ Error fetching product:', error);
       
-      let errorMsg = 'Unknown error';
+      let errorMsg = 'Unknown error occurred';
       
       if (error instanceof Error) {
         errorMsg = error.message;
         
-        // Check if it's an API key error
+        // Check for specific error types
         if (errorMsg.includes('API key')) {
           errorMsg = 'FDC API key invalid or misconfigured.\n\nPlease set the FOODDATA_CENTRAL_API_KEY environment variable and restart the app.';
-        } else if (errorMsg.includes('timeout')) {
+        } else if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
           errorMsg = 'Request timed out. Please check your internet connection and try again.';
+        } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+          errorMsg = 'Network error. Please check your internet connection and try again.';
         } else {
-          errorMsg = 'Temporary connection error. Please try again.';
+          errorMsg = 'Error contacting FoodData Central. Please try again or add manually.';
         }
       }
       
@@ -103,6 +132,13 @@ export default function BarcodeScanScreen() {
 
   const handleTryAgain = () => {
     console.log('[BarcodeScanner] Restarting scanner');
+    
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    
     hasScannedRef.current = false;
     setScannedBarcode('');
     setErrorMessage('');
@@ -213,7 +249,7 @@ export default function BarcodeScanScreen() {
                 color={colors.primary}
               />
               <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Try Again
+                Scan Another Barcode
               </Text>
             </TouchableOpacity>
 
@@ -259,10 +295,10 @@ export default function BarcodeScanScreen() {
         <View style={styles.notFoundContainer}>
           <Text style={styles.notFoundIcon}>🔍</Text>
           <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Food not found in database
+            Food Not Found
           </Text>
           <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            This product is not available in the FoodData Central database
+            No food found for this barcode in FoodData Central.
           </Text>
           {scannedBarcode && (
             <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -328,10 +364,10 @@ export default function BarcodeScanScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Looking up product in FoodData Central...
+            Searching in FoodData Central…
           </Text>
           <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Platform: {Platform.OS}
+            This should only take a few seconds
           </Text>
           {scannedBarcode && (
             <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -385,9 +421,6 @@ export default function BarcodeScanScreen() {
             </Text>
             <Text style={styles.fdcBadge}>
               Powered by FoodData Central (USDA)
-            </Text>
-            <Text style={styles.platformBadge}>
-              Running on {Platform.OS}
             </Text>
           </View>
         </SafeAreaView>
@@ -496,6 +529,7 @@ const styles = StyleSheet.create({
   barcodeText: {
     ...typography.caption,
     textAlign: 'center',
+    marginTop: spacing.md,
     marginBottom: spacing.xl,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
@@ -587,18 +621,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
     opacity: 0.8,
-  },
-  platformBadge: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '500',
-    marginTop: spacing.xs,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-    opacity: 0.6,
   },
   loadingText: {
     fontSize: 18,
