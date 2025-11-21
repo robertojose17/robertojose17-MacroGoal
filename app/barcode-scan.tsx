@@ -10,15 +10,14 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractNutrition } from '@/utils/openFoodFacts';
 
 /**
- * BARCODE SCAN FLOW - ROLLBACK TO LAST WORKING VERSION
+ * BARCODE SCAN FLOW - WITH TEMPORARY AUTO-PICK
  * 
  * FLOW:
  * 1) SCAN - Open camera, detect barcode, pause camera
  * 2) GET PRODUCT NAME - Extract name from barcode lookup
  * 3) SEARCH FULL LIBRARY - Use the same search as Food Library
- * 4) SHOW ALL RESULTS - Display full list, NO auto-selection
- * 5) USER TAPS RESULT - Open Food Details
- * 6) ADD TO MEAL - Food Details handles the add operation
+ * 4) AUTO-PICK FIRST RESULT - Temporary workaround for broken taps on iPhone
+ * 5) OPEN FOOD DETAILS - Navigate to details screen
  */
 
 type FlowState = 'scanning' | 'loading' | 'results' | 'not-found' | 'error';
@@ -50,7 +49,7 @@ export default function BarcodeScanScreen() {
   }, [permission]);
 
   /**
-   * BARCODE DETECTED - Start the 2-step lookup flow
+   * BARCODE DETECTED - Start the 2-step lookup flow with auto-pick
    */
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (hasScannedRef.current || flowState !== 'scanning') {
@@ -105,10 +104,18 @@ export default function BarcodeScanScreen() {
         return;
       }
 
-      // SHOW ALL RESULTS - NO AUTO-SELECTION
-      console.log('[BarcodeScan] Showing', validProducts.length, 'results');
+      console.log('[BarcodeScan] Found', validProducts.length, 'results');
       setSearchResults(validProducts);
-      setFlowState('results');
+
+      // TEMPORARY AUTO-PICK: Automatically select the first result
+      console.log('[BarcodeScan] ⚡ AUTO-PICKING FIRST RESULT (temporary workaround for broken taps)');
+      setLoadingMessage('Opening product details...');
+      
+      // Small delay to show the message
+      setTimeout(() => {
+        handleSelectFood(validProducts[0]);
+      }, 500);
+      
     } catch (error) {
       console.error('[BarcodeScan] Error in flow:', error);
       setErrorMessage('An unexpected error occurred. Please try again.');
@@ -120,8 +127,7 @@ export default function BarcodeScanScreen() {
    * USER TAPS RESULT - Navigate to Food Details
    */
   const handleSelectFood = (product: OpenFoodFactsProduct) => {
-    console.log('[BarcodeScan] User tapped result:', product.product_name);
-    console.log('[BarcodeScan] Navigating to food-details...');
+    console.log('[BarcodeScan] Navigating to food-details for:', product.product_name);
     
     try {
       const offDataString = JSON.stringify(product);
@@ -408,7 +414,7 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // RESULTS STATE - SIMPLIFIED FOR iOS MOBILE TOUCH
+  // RESULTS STATE - Kept for fallback, but auto-pick should bypass this
   if (flowState === 'results') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -438,7 +444,6 @@ export default function BarcodeScanScreen() {
           )}
         </View>
 
-        {/* SIMPLIFIED SCROLLVIEW WITH PRESSABLE - BETTER iOS TOUCH HANDLING */}
         <ScrollView
           style={styles.resultsScrollView}
           contentContainerStyle={styles.resultsContent}
@@ -492,7 +497,6 @@ export default function BarcodeScanScreen() {
             );
           })}
 
-          {/* Bottom action buttons inside ScrollView */}
           <View style={styles.bottomActionsInScroll}>
             <TouchableOpacity
               style={[styles.bottomButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
