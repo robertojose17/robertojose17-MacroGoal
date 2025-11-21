@@ -3,6 +3,12 @@
  * OpenFoodFacts API Integration
  * Public API for food database lookup
  * This module handles BARCODE LOOKUP and TEXT SEARCH
+ * 
+ * OPTIMIZED FOR MOBILE:
+ * - Minimal payload (no images)
+ * - Request cancellation support
+ * - Timeout handling
+ * - Only essential nutrition fields
  */
 
 export interface OpenFoodFactsProduct {
@@ -12,8 +18,7 @@ export interface OpenFoodFactsProduct {
   brands?: string;
   serving_size?: string;
   serving_quantity?: string;
-  categories?: string;
-  image_front_small_url?: string;
+  serving_unit?: string;
   nutriments?: {
     'energy-kcal_100g'?: number;
     'energy-kcal_serving'?: number;
@@ -360,6 +365,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
 /**
  * Extract nutrition data from OpenFoodFacts product
  * Returns calories and macros per 100g
+ * OPTIMIZED: Only extracts essential macros for display
  */
 export function extractNutrition(product: OpenFoodFactsProduct): {
   calories: number;
@@ -369,8 +375,6 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
   fiber: number;
   sugars: number;
 } {
-  console.log('[OpenFoodFacts] Extracting nutrition for:', product.product_name);
-
   const nutriments = product.nutriments || {};
 
   const calories = nutriments['energy-kcal_100g'] || 0;
@@ -380,8 +384,6 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
   const fiber = nutriments['fiber_100g'] || 0;
   const sugars = nutriments['sugars_100g'] || 0;
 
-  console.log('[OpenFoodFacts] Extracted nutrition:', { calories, protein, carbs, fat, fiber, sugars });
-
   return { calories, protein, carbs, fat, fiber, sugars };
 }
 
@@ -390,20 +392,48 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
  * Ensures requests never hang indefinitely
  * CRITICAL: This function implements the hard timeout requirement
  * MOBILE COMPATIBILITY: Adds User-Agent header for mobile network compatibility
+ * SUPPORTS CANCELLATION: Accepts optional AbortSignal for request cancellation
  */
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 10000): Promise<Response> {
+async function fetchWithTimeout(
+  url: string, 
+  options: RequestInit = {}, 
+  timeoutMs: number = 10000
+): Promise<Response> {
   console.log(`[OpenFoodFacts] fetchWithTimeout: ${url} (timeout: ${timeoutMs}ms)`);
   
-  const controller = new AbortController();
+  // Create internal timeout controller
+  const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
     console.log(`[OpenFoodFacts] ⏱️ Timeout reached (${timeoutMs}ms), aborting request`);
-    controller.abort();
+    timeoutController.abort();
   }, timeoutMs);
+
+  // Combine external signal (if provided) with internal timeout signal
+  const externalSignal = options.signal;
+  let combinedSignal: AbortSignal;
+
+  if (externalSignal) {
+    // If external signal is already aborted, abort immediately
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      throw new DOMException('Request was cancelled', 'AbortError');
+    }
+
+    // Create a combined signal that aborts if either signal aborts
+    const combinedController = new AbortController();
+    combinedSignal = combinedController.signal;
+
+    const abortBoth = () => combinedController.abort();
+    externalSignal.addEventListener('abort', abortBoth);
+    timeoutController.signal.addEventListener('abort', abortBoth);
+  } else {
+    combinedSignal = timeoutController.signal;
+  }
 
   try {
     const response = await fetch(url, {
       ...options,
-      signal: controller.signal,
+      signal: combinedSignal,
       headers: {
         'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
         'Accept': 'application/json',
@@ -416,8 +446,8 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
-      console.log(`[OpenFoodFacts] ❌ Request aborted due to timeout`);
-      throw new Error('Request timeout - please check your internet connection');
+      console.log(`[OpenFoodFacts] ❌ Request aborted`);
+      throw new Error('Request cancelled');
     }
     console.log(`[OpenFoodFacts] ❌ Request failed:`, error);
     throw error;
@@ -428,6 +458,8 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
  * Lookup a product by barcode from OpenFoodFacts
  * NEVER throws errors - always returns null on failure
  * HARD TIMEOUT: 10 seconds
+ * 
+ * NOTE: This is for BARCODE SCAN only - DO NOT MODIFY
  */
 export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodFactsProduct | null> {
   try {
@@ -468,17 +500,22 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
  * Search OpenFoodFacts by text query
  * Returns array of products matching the search
  * NEVER throws errors - always returns empty array on failure
- * HARD TIMEOUT: 10 seconds
+ * HARD TIMEOUT: 8 seconds (optimized for mobile)
  * 
- * MOBILE-FIRST IMPLEMENTATION:
+ * MOBILE-FIRST OPTIMIZATIONS:
+ * - MINIMAL PAYLOAD: Only requests essential fields (NO IMAGES)
  * - Uses correct OFF v2 search endpoint
  * - URL-encodes query
  * - Adds User-Agent header for iOS reliability
  * - No API key required
  * - Parses response shape correctly
  * - Handles missing products field gracefully
+ * - SUPPORTS CANCELLATION: Accepts optional AbortSignal
  */
-export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsProduct[]> {
+export async function searchOpenFoodFacts(
+  query: string,
+  signal?: AbortSignal
+): Promise<OpenFoodFactsProduct[]> {
   try {
     console.log(`[OpenFoodFacts] ========== TEXT SEARCH ==========`);
     console.log(`[OpenFoodFacts] Query: "${query}"`);
@@ -486,13 +523,17 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsP
     // URL-encode the query
     const encodedQuery = encodeURIComponent(query);
     
-    // Build the search URL with required fields
-    // IMPORTANT: This is the correct OFF v2 search endpoint
-    const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodedQuery}&fields=code,product_name,generic_name,brands,nutriments,serving_size,serving_quantity,serving_unit,quantity,image_front_small_url&sort_by=popularity_key&page_size=25`;
+    // Build the search URL with MINIMAL fields (NO IMAGES)
+    // OPTIMIZED: Only request essential nutrition data
+    const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodedQuery}&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,serving_unit,nutriments&page_size=25&sort_by=popularity_key`;
     
     console.log(`[OpenFoodFacts] Search URL: ${url}`);
     
-    const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
+    const response = await fetchWithTimeout(
+      url, 
+      { signal }, 
+      8000 // 8 second timeout (optimized for mobile)
+    );
     
     console.log(`[OpenFoodFacts] Response status: ${response.status}`);
     
@@ -520,6 +561,12 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsP
     console.log(`[OpenFoodFacts] ✅ Search returned ${data.products.length} products`);
     return data.products;
   } catch (error) {
+    // Check if it was a cancellation
+    if (error instanceof Error && error.message === 'Request cancelled') {
+      console.log('[OpenFoodFacts] 🚫 Search cancelled by user');
+      return [];
+    }
+    
     console.error('[OpenFoodFacts] ❌ Error searching:', error);
     if (error instanceof Error) {
       console.error('[OpenFoodFacts] Error message:', error.message);

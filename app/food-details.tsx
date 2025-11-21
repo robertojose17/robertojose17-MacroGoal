@@ -40,7 +40,6 @@ export default function FoodDetailsScreen() {
           product_name: parsed.product_name || 'Unknown Product',
           brands: parsed.brands || 'Unknown Brand',
           serving_size: parsed.serving_size || '100 g',
-          categories: parsed.categories || '',
           nutriments: {
             'energy-kcal_100g': parsed.nutriments?.['energy-kcal_100g'] || 0,
             'proteins_100g': parsed.nutriments?.['proteins_100g'] || 0,
@@ -80,7 +79,6 @@ export default function FoodDetailsScreen() {
           product_name: 'Unknown Product',
           brands: 'Unknown Brand',
           serving_size: '100 g',
-          categories: '',
           nutriments: {
             'energy-kcal_100g': 0,
             'proteins_100g': 0,
