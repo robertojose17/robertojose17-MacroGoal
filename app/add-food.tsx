@@ -28,9 +28,9 @@ export default function AddFoodScreen() {
     console.log('[AddFood] Params:', { mealType, date });
   }, []);
 
-  const handleNavigateToQuickAdd = () => {
-    console.log('[AddFood] Navigating to quick-add with params:', { meal: mealType, date });
-    router.replace(`/quick-add?meal=${mealType}&date=${date}`);
+  const handleNavigateToFoodSearch = () => {
+    console.log('[AddFood] Navigating to food-search with params:', { meal: mealType, date });
+    router.replace(`/food-search?meal=${mealType}&date=${date}`);
   };
 
   const handleNavigateToBarcodeScan = () => {
@@ -38,7 +38,20 @@ export default function AddFoodScreen() {
     router.replace(`/barcode-scan?meal=${mealType}&date=${date}`);
   };
 
+  const handleNavigateToQuickAdd = () => {
+    console.log('[AddFood] Navigating to quick-add with params:', { meal: mealType, date });
+    router.replace(`/quick-add?meal=${mealType}&date=${date}`);
+  };
+
   const options = [
+    {
+      id: 'search',
+      title: 'Search Food Library',
+      description: 'Search OpenFoodFacts database',
+      icon: 'magnifyingglass',
+      androidIcon: 'search',
+      onPress: handleNavigateToFoodSearch,
+    },
     {
       id: 'barcode',
       title: 'Scan Barcode',

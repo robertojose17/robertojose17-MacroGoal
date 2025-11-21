@@ -2,16 +2,18 @@
 /**
  * OpenFoodFacts API Integration
  * Public API for food database lookup
- * This module handles BARCODE LOOKUP ONLY
+ * This module handles BARCODE LOOKUP and TEXT SEARCH
  */
 
 export interface OpenFoodFactsProduct {
   code: string;
   product_name?: string;
+  generic_name?: string;
   brands?: string;
   serving_size?: string;
   serving_quantity?: string;
   categories?: string;
+  image_front_small_url?: string;
   nutriments?: {
     'energy-kcal_100g'?: number;
     'energy-kcal_serving'?: number;
@@ -459,6 +461,52 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
       console.error('[OpenFoodFacts] Error message:', error.message);
     }
     return null;
+  }
+}
+
+/**
+ * Search OpenFoodFacts by text query
+ * Returns array of products matching the search
+ * NEVER throws errors - always returns empty array on failure
+ * HARD TIMEOUT: 10 seconds
+ */
+export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsProduct[]> {
+  try {
+    console.log(`[OpenFoodFacts] ========== TEXT SEARCH ==========`);
+    console.log(`[OpenFoodFacts] Query: "${query}"`);
+    
+    // URL-encode the query
+    const encodedQuery = encodeURIComponent(query);
+    
+    // Build the search URL with required fields
+    const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodedQuery}&fields=code,product_name,generic_name,brands,nutriments,serving_size,serving_quantity,serving_unit,quantity,image_front_small_url&sort_by=popularity_key&page_size=25`;
+    
+    console.log(`[OpenFoodFacts] Search URL: ${url}`);
+    
+    const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
+    
+    if (!response.ok) {
+      console.log(`[OpenFoodFacts] ❌ Search failed (status: ${response.status})`);
+      return [];
+    }
+
+    const data = await response.json();
+    
+    // Check if we have products in the response
+    if (!data.products || !Array.isArray(data.products)) {
+      console.log(`[OpenFoodFacts] ❌ No products field in response`);
+      return [];
+    }
+    
+    console.log(`[OpenFoodFacts] ✅ Search returned ${data.products.length} products`);
+    return data.products;
+  } catch (error) {
+    console.error('[OpenFoodFacts] ❌ Error searching:', error);
+    if (error instanceof Error) {
+      console.error('[OpenFoodFacts] Error message:', error.message);
+      throw error; // Re-throw to allow UI to show error message
+    }
+    return [];
   }
 }
 
