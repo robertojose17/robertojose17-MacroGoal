@@ -33,11 +33,11 @@ export default function FoodSearchScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [httpStatus, setHttpStatus] = useState<number | null>(null);
 
   const searchInputRef = useRef<TextInput>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const latestSearchIdRef = useRef<number>(0);
+  const latestQueryRef = useRef<string>('');
 
   useEffect(() => {
     console.log('[FoodSearch] Screen mounted, meal:', mealType, 'date:', date);
@@ -55,12 +55,6 @@ export default function FoodSearchScreen() {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-      
-      // Cancel any in-flight request
-      if (abortControllerRef.current) {
-        console.log('[FoodSearch] Aborting in-flight request on unmount');
-        abortControllerRef.current.abort();
-      }
     };
   }, []);
 
@@ -70,64 +64,80 @@ export default function FoodSearchScreen() {
       clearTimeout(debounceTimerRef.current);
     }
 
-    // Cancel previous in-flight request
-    if (abortControllerRef.current) {
-      console.log('[FoodSearch] Cancelling previous request due to new input');
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+    const trimmedQuery = searchQuery.trim();
 
     // If search query is empty or too short, clear results
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+    if (trimmedQuery.length === 0) {
       setResults([]);
       setErrorMessage(null);
       setHasSearched(false);
       setLoading(false);
+      setHttpStatus(null);
+      latestQueryRef.current = '';
+      return;
+    }
+
+    if (trimmedQuery.length < 2) {
+      setResults([]);
+      setErrorMessage(null);
+      setHasSearched(false);
+      setLoading(false);
+      setHttpStatus(null);
       return;
     }
 
     // Debounce search (500ms for optimal mobile performance)
-    console.log('[FoodSearch] Debouncing search for:', searchQuery);
+    console.log('[FoodSearch] Debouncing search for:', trimmedQuery);
     debounceTimerRef.current = setTimeout(() => {
-      performSearch(searchQuery.trim());
+      performSearch(trimmedQuery);
     }, 500);
   }, [searchQuery]);
 
   const performSearch = async (query: string) => {
-    // Generate unique search ID to handle race conditions
-    const searchId = ++latestSearchIdRef.current;
     console.log('[FoodSearch] ========== PERFORMING SEARCH ==========');
-    console.log('[FoodSearch] Search ID:', searchId);
     console.log('[FoodSearch] Query:', query);
+    
+    // Update latest query ref
+    latestQueryRef.current = query;
     
     setLoading(true);
     setErrorMessage(null);
     setHasSearched(true);
 
-    // Create new AbortController for this request
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     try {
-      // Call OpenFoodFacts search with cancellation support
+      // Call OpenFoodFacts search (no cancellation support)
       console.log('[FoodSearch] Calling searchOpenFoodFacts...');
-      const products = await searchOpenFoodFacts(query, controller.signal);
+      const result = await searchOpenFoodFacts(query);
       
       // Check if this is still the latest search (avoid race conditions)
-      if (searchId !== latestSearchIdRef.current) {
-        console.log('[FoodSearch] 🚫 Ignoring stale search results (ID:', searchId, 'vs latest:', latestSearchIdRef.current, ')');
-        return;
-      }
-
-      // Check if request was cancelled
-      if (controller.signal.aborted) {
-        console.log('[FoodSearch] 🚫 Request was cancelled, ignoring results');
+      if (query !== latestQueryRef.current) {
+        console.log('[FoodSearch] 🚫 Ignoring stale search results (query:', query, 'vs latest:', latestQueryRef.current, ')');
         return;
       }
       
-      console.log('[FoodSearch] Search completed, products returned:', products.length);
+      console.log('[FoodSearch] Search completed, status:', result.status, 'products:', result.products.length);
+      
+      // Update status for debug
+      setHttpStatus(result.status);
 
-      if (products.length === 0) {
+      // Check for errors
+      if (result.status !== 200 && result.status !== 0) {
+        console.log('[FoodSearch] Non-200 status returned:', result.status);
+        setResults([]);
+        setErrorMessage(`Connection issue (status: ${result.status}). Please try again.`);
+        setLoading(false);
+        return;
+      }
+
+      if (result.status === 0) {
+        console.log('[FoodSearch] Network error (status: 0)');
+        setResults([]);
+        setErrorMessage('Connection issue. Please check your internet and try again.');
+        setLoading(false);
+        return;
+      }
+
+      if (result.products.length === 0) {
         console.log('[FoodSearch] No products returned');
         setResults([]);
         setErrorMessage('No foods found. Try a different search term.');
@@ -135,9 +145,8 @@ export default function FoodSearchScreen() {
         return;
       }
 
-      // Transform products into display items
-      // OPTIMIZED: Only calculate essential macros for list view
-      const items: SearchResultItem[] = products.map((product) => {
+      // Transform products into display items (TEXT ONLY, NO IMAGES)
+      const items: SearchResultItem[] = result.products.map((product) => {
         const servingInfo = extractServingSize(product);
         const nutrition = extractNutrition(product);
         
@@ -169,27 +178,23 @@ export default function FoodSearchScreen() {
       setLoading(false);
     } catch (error) {
       // Check if this is still the latest search
-      if (searchId !== latestSearchIdRef.current) {
-        console.log('[FoodSearch] 🚫 Ignoring error from stale search (ID:', searchId, ')');
-        return;
-      }
-
-      // Check if it was a cancellation
-      if (error instanceof Error && error.message === 'Request cancelled') {
-        console.log('[FoodSearch] 🚫 Search was cancelled');
+      if (query !== latestQueryRef.current) {
+        console.log('[FoodSearch] 🚫 Ignoring error from stale search (query:', query, ')');
         return;
       }
 
       console.error('[FoodSearch] ❌ Error in performSearch:', error);
       setErrorMessage('Connection issue. Please check your internet and try again.');
+      setHttpStatus(0);
       setLoading(false);
     }
   };
 
   const handleRetry = () => {
     console.log('[FoodSearch] Retry button pressed');
-    if (searchQuery.trim() && searchQuery.trim().length >= 2) {
-      performSearch(searchQuery.trim());
+    const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery && trimmedQuery.length >= 2) {
+      performSearch(trimmedQuery);
     }
   };
 
@@ -398,6 +403,15 @@ export default function FoodSearchScreen() {
             </Text>
           </View>
         )}
+
+        {/* DEBUG STATUS (TEMPORARY, MOBILE ONLY) */}
+        {Platform.OS !== 'web' && httpStatus !== null && (
+          <View style={styles.debugContainer}>
+            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              status: {httpStatus} • results: {results.length}
+            </Text>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -467,6 +481,14 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.caption,
+  },
+  debugContainer: {
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+  },
+  debugText: {
+    ...typography.caption,
+    fontSize: 11,
   },
   listContent: {
     paddingHorizontal: spacing.md,

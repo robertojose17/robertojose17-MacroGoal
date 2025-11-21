@@ -4,11 +4,11 @@
  * Public API for food database lookup
  * This module handles BARCODE LOOKUP and TEXT SEARCH
  * 
- * OPTIMIZED FOR MOBILE:
- * - Minimal payload (no images)
- * - Request cancellation support
- * - Timeout handling
- * - Only essential nutrition fields
+ * SIMPLIFIED FOR MOBILE RELIABILITY:
+ * - No AbortController (removed to fix race conditions)
+ * - Simple endpoint with minimal payload
+ * - Basic debounce with query comparison
+ * - Clear error handling
  */
 
 export interface OpenFoodFactsProduct {
@@ -33,6 +33,13 @@ export interface OpenFoodFactsProduct {
     'sugars_100g'?: number;
     'sugars_serving'?: number;
   };
+}
+
+export interface OpenFoodFactsSearchResult {
+  products: OpenFoodFactsProduct[];
+  count: number;
+  page: number;
+  status: number;
 }
 
 export interface ServingSizeInfo {
@@ -392,7 +399,7 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
  * Ensures requests never hang indefinitely
  * CRITICAL: This function implements the hard timeout requirement
  * MOBILE COMPATIBILITY: Adds User-Agent header for mobile network compatibility
- * SUPPORTS CANCELLATION: Accepts optional AbortSignal for request cancellation
+ * NO CANCELLATION SUPPORT: Removed AbortController to fix race conditions
  */
 async function fetchWithTimeout(
   url: string, 
@@ -401,54 +408,30 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   console.log(`[OpenFoodFacts] fetchWithTimeout: ${url} (timeout: ${timeoutMs}ms)`);
   
-  // Create internal timeout controller
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log(`[OpenFoodFacts] ⏱️ Timeout reached (${timeoutMs}ms), aborting request`);
-    timeoutController.abort();
-  }, timeoutMs);
-
-  // Combine external signal (if provided) with internal timeout signal
-  const externalSignal = options.signal;
-  let combinedSignal: AbortSignal;
-
-  if (externalSignal) {
-    // If external signal is already aborted, abort immediately
-    if (externalSignal.aborted) {
-      clearTimeout(timeoutId);
-      throw new DOMException('Request was cancelled', 'AbortError');
-    }
-
-    // Create a combined signal that aborts if either signal aborts
-    const combinedController = new AbortController();
-    combinedSignal = combinedController.signal;
-
-    const abortBoth = () => combinedController.abort();
-    externalSignal.addEventListener('abort', abortBoth);
-    timeoutController.signal.addEventListener('abort', abortBoth);
-  } else {
-    combinedSignal = timeoutController.signal;
-  }
+  // Create timeout promise
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      console.log(`[OpenFoodFacts] ⏱️ Timeout reached (${timeoutMs}ms)`);
+      reject(new Error('Request timeout'));
+    }, timeoutMs);
+  });
 
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: combinedSignal,
-      headers: {
-        'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
-        'Accept': 'application/json',
-        ...options.headers,
-      },
-    });
-    clearTimeout(timeoutId);
+    const response = await Promise.race([
+      fetch(url, {
+        ...options,
+        headers: {
+          'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
+          'Accept': 'application/json',
+          ...options.headers,
+        },
+      }),
+      timeoutPromise,
+    ]);
+    
     console.log(`[OpenFoodFacts] ✅ Request completed successfully (status: ${response.status})`);
     return response;
   } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log(`[OpenFoodFacts] ❌ Request aborted`);
-      throw new Error('Request cancelled');
-    }
     console.log(`[OpenFoodFacts] ❌ Request failed:`, error);
     throw error;
   }
@@ -498,24 +481,17 @@ export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodF
 
 /**
  * Search OpenFoodFacts by text query
- * Returns array of products matching the search
- * NEVER throws errors - always returns empty array on failure
- * HARD TIMEOUT: 8 seconds (optimized for mobile)
+ * Returns search result with products and status
+ * NEVER throws errors - always returns result object
+ * HARD TIMEOUT: 10 seconds
  * 
- * MOBILE-FIRST OPTIMIZATIONS:
- * - MINIMAL PAYLOAD: Only requests essential fields (NO IMAGES)
- * - Uses correct OFF v2 search endpoint
- * - URL-encodes query
- * - Adds User-Agent header for iOS reliability
- * - No API key required
- * - Parses response shape correctly
- * - Handles missing products field gracefully
- * - SUPPORTS CANCELLATION: Accepts optional AbortSignal
+ * SIMPLIFIED FOR RELIABILITY:
+ * - Uses simple search endpoint (no custom filters)
+ * - No AbortController (removed to fix race conditions)
+ * - Returns status code for debugging
+ * - Safe response parsing
  */
-export async function searchOpenFoodFacts(
-  query: string,
-  signal?: AbortSignal
-): Promise<OpenFoodFactsProduct[]> {
+export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsSearchResult> {
   try {
     console.log(`[OpenFoodFacts] ========== TEXT SEARCH ==========`);
     console.log(`[OpenFoodFacts] Query: "${query}"`);
@@ -523,56 +499,69 @@ export async function searchOpenFoodFacts(
     // URL-encode the query
     const encodedQuery = encodeURIComponent(query);
     
-    // Build the search URL with MINIMAL fields (NO IMAGES)
-    // OPTIMIZED: Only request essential nutrition data
-    const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodedQuery}&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,serving_unit,nutriments&page_size=25&sort_by=popularity_key`;
+    // Use simple, known-good OFF search endpoint
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=20`;
     
     console.log(`[OpenFoodFacts] Search URL: ${url}`);
     
-    const response = await fetchWithTimeout(
-      url, 
-      { signal }, 
-      8000 // 8 second timeout (optimized for mobile)
-    );
+    const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
     
     console.log(`[OpenFoodFacts] Response status: ${response.status}`);
     
     if (!response.ok) {
       console.log(`[OpenFoodFacts] ❌ Search failed (status: ${response.status})`);
-      return [];
+      return {
+        products: [],
+        count: 0,
+        page: 1,
+        status: response.status,
+      };
     }
 
     const data = await response.json();
     
-    console.log(`[OpenFoodFacts] Response data keys:`, Object.keys(data));
+    console.log(`[OpenFoodFacts] Response data keys:`, Object.keys(data || {}));
     
-    // Check if we have products in the response
-    // OFF v2/search returns: { products: [...], count: number, page: number }
-    if (!data.products) {
+    // Safe response parsing
+    if (!data || !data.products) {
       console.log(`[OpenFoodFacts] ❌ No products field in response`);
-      return [];
+      return {
+        products: [],
+        count: 0,
+        page: 1,
+        status: response.status,
+      };
     }
     
     if (!Array.isArray(data.products)) {
       console.log(`[OpenFoodFacts] ❌ products field is not an array`);
-      return [];
+      return {
+        products: [],
+        count: 0,
+        page: 1,
+        status: response.status,
+      };
     }
     
     console.log(`[OpenFoodFacts] ✅ Search returned ${data.products.length} products`);
-    return data.products;
+    return {
+      products: data.products,
+      count: data.count || data.products.length,
+      page: data.page || 1,
+      status: response.status,
+    };
   } catch (error) {
-    // Check if it was a cancellation
-    if (error instanceof Error && error.message === 'Request cancelled') {
-      console.log('[OpenFoodFacts] 🚫 Search cancelled by user');
-      return [];
-    }
-    
     console.error('[OpenFoodFacts] ❌ Error searching:', error);
     if (error instanceof Error) {
       console.error('[OpenFoodFacts] Error message:', error.message);
     }
-    // NEVER throw - always return empty array on failure
-    return [];
+    // NEVER throw - always return result object on failure
+    return {
+      products: [],
+      count: 0,
+      page: 1,
+      status: 0, // 0 indicates network error
+    };
   }
 }
 
