@@ -10,19 +10,19 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { getProductNameByBarcode, searchProducts, OpenFoodFactsProduct, extractNutrition } from '@/utils/openFoodFacts';
 
 /**
- * BARCODE SCAN FLOW - REBUILT FROM ZERO
+ * BARCODE SCAN FLOW - 2-STEP FALLBACK SEARCH
  * 
- * This is a complete rebuild following the exact flow:
+ * FLOW:
  * 1) SCAN - Open camera, detect barcode, pause camera, show loading
- * 2) GET PRODUCT NAME - Extract name from barcode lookup (or use barcode as fallback)
- * 3) SEARCH FULL LIBRARY - Use the same search as Food Library
+ * 2) STEP 1: GET PRODUCT NAME - Extract name from barcode lookup (or use barcode as fallback)
+ * 3) STEP 2: SEARCH FULL LIBRARY - Use the same search as Food Library
  * 4) SHOW ALL RESULTS - Display full list, NO auto-selection
  * 5) USER MANUAL SELECTION - User taps a result to open Food Details
  * 6) ADD TO MEAL - Food Details handles the add operation
  * 7) NOT FOUND/ERROR/TIMEOUT - Show clear error UI with options
  */
 
-type FlowState = 'scanning' | 'loading' | 'results' | 'not-found' | 'error';
+type FlowState = 'scanning' | 'finding-name' | 'searching-library' | 'results' | 'not-found' | 'error';
 
 export default function BarcodeScanScreen() {
   const router = useRouter();
@@ -64,7 +64,7 @@ export default function BarcodeScanScreen() {
 
   /**
    * STEP 1: BARCODE DETECTED
-   * Immediately pause camera and start the lookup flow
+   * Immediately pause camera and start the 2-step lookup flow
    */
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     // Prevent duplicate scans
@@ -75,7 +75,7 @@ export default function BarcodeScanScreen() {
 
     hasScannedRef.current = true;
     setScannedBarcode(data);
-    setFlowState('loading');
+    setFlowState('finding-name');
 
     console.log('[BarcodeScan] ========== BARCODE DETECTED ==========');
     console.log('[BarcodeScan] Barcode:', data);
@@ -89,7 +89,7 @@ export default function BarcodeScanScreen() {
 
     try {
       // ========== STEP 2: GET PRODUCT NAME FROM BARCODE ==========
-      console.log('[BarcodeScan] STEP 2: Getting product name from barcode...');
+      console.log('[BarcodeScan] STEP 1: Finding product name...');
       
       const name = await getProductNameByBarcode(data);
       
@@ -103,7 +103,8 @@ export default function BarcodeScanScreen() {
       }
 
       // ========== STEP 3: SEARCH FULL LIBRARY BY NAME ==========
-      console.log('[BarcodeScan] STEP 3: Searching Full Library for:', searchQuery);
+      console.log('[BarcodeScan] STEP 2: Searching Food Library for:', searchQuery);
+      setFlowState('searching-library');
 
       const searchData = await searchProducts(searchQuery);
 
@@ -381,7 +382,7 @@ export default function BarcodeScanScreen() {
         <View style={styles.centerContainer}>
           <Text style={styles.errorIcon}>🔍</Text>
           <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            No Results Found
+            Food Not Found
           </Text>
           <Text style={[styles.errorSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             No food found for this barcode in the Food Library.
@@ -404,22 +405,7 @@ export default function BarcodeScanScreen() {
                 color={colors.primary}
               />
               <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Scan Again
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
-              onPress={handleSearchManually}
-            >
-              <IconSymbol
-                ios_icon_name="magnifyingglass"
-                android_material_icon_name="search"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Search Full Library
+                Rescan
               </Text>
             </TouchableOpacity>
 
@@ -434,7 +420,7 @@ export default function BarcodeScanScreen() {
                 color="#FFFFFF"
               />
               <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>
-                Quick Add
+                Quick Add Manually
               </Text>
             </TouchableOpacity>
           </View>
@@ -443,8 +429,8 @@ export default function BarcodeScanScreen() {
     );
   }
 
-  // LOADING STATE (simple spinner, no debug text)
-  if (flowState === 'loading') {
+  // LOADING STATE - STEP 1: FINDING PRODUCT NAME
+  if (flowState === 'finding-name') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -464,6 +450,48 @@ export default function BarcodeScanScreen() {
 
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
+            Finding product name…
+          </Text>
+          {scannedBarcode && (
+            <Text style={[styles.barcodeTextSmall, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Barcode: {scannedBarcode}
+            </Text>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // LOADING STATE - STEP 2: SEARCHING FOOD LIBRARY
+  if (flowState === 'searching-library') {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
+            Scan Barcode
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
+            Searching Food Library…
+          </Text>
+          {scannedBarcode && (
+            <Text style={[styles.barcodeTextSmall, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Barcode: {scannedBarcode}
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -705,6 +733,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
+  loadingText: {
+    ...typography.h3,
+    marginTop: spacing.lg,
+    textAlign: 'center',
+  },
   errorIcon: {
     fontSize: 80,
     marginBottom: spacing.lg,
@@ -730,6 +763,7 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    marginTop: spacing.md,
   },
   actionButtons: {
     width: '100%',
