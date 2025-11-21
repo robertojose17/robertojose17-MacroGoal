@@ -91,9 +91,11 @@ export default function FoodSearchScreen() {
       const duration = endTime - startTime;
       console.log(`[FoodSearch] Search completed in ${duration}ms`);
       
-      if (data === null) {
-        console.error('[FoodSearch] ❌ Search returned null (API error)');
-        console.error('[FoodSearch] This indicates a network or API failure');
+      // CRITICAL FIX: searchProducts now NEVER returns null
+      // It always returns a valid result object with products array (possibly empty)
+      if (!data) {
+        // This should never happen now, but keep as safety fallback
+        console.error('[FoodSearch] ❌ Search returned null (unexpected)');
         setErrorMessage('Unable to connect to OpenFoodFacts. Please check your internet connection and try again.');
         setResults([]);
         setDebugInfo(null);
@@ -104,28 +106,39 @@ export default function FoodSearchScreen() {
           statusCode: data.statusCode,
         });
         
-        if (data.statusCode && data.statusCode !== 200) {
+        console.log('[FoodSearch] Response received:', {
+          statusCode: data.statusCode,
+          productsCount: data.products.length,
+          url: data.url,
+        });
+        
+        // Check for network/API errors
+        if (data.statusCode === 0) {
+          // statusCode 0 means network exception or timeout
+          console.error('[FoodSearch] ❌ Network error (statusCode 0)');
+          setErrorMessage('Unable to connect to OpenFoodFacts. Please check your internet connection and try again.');
+          setResults([]);
+        } else if (data.statusCode && data.statusCode !== 200) {
+          // Non-200 status code from API
           console.error('[FoodSearch] ❌ Non-200 status code:', data.statusCode);
           setErrorMessage(`OpenFoodFacts returned status ${data.statusCode}. Please try again.`);
           setResults([]);
         } else if (data.products && data.products.length > 0) {
+          // Success with results
           console.log('[FoodSearch] ✅ SUCCESS! Found', data.products.length, 'products from OpenFoodFacts');
           console.log('[FoodSearch] First product:', data.products[0].product_name);
           
-          // Filter out products with no name
-          const validProducts = data.products.filter(p => p.product_name && p.product_name.trim().length > 0);
-          
-          console.log('[FoodSearch] Valid products after filtering:', validProducts.length);
-          setResults(validProducts);
+          setResults(data.products);
           setErrorMessage(null);
         } else {
+          // Success but no results (empty array)
           console.log('[FoodSearch] ⚠️ No results found for query:', query);
-          console.log('[FoodSearch] Response data:', JSON.stringify(data, null, 2));
           setResults([]);
           setErrorMessage(null);
         }
       }
     } catch (error) {
+      // This catch block should rarely be hit now since searchProducts handles errors internally
       console.error('[FoodSearch] ❌ EXCEPTION during search');
       console.error('[FoodSearch] Error type:', error instanceof Error ? error.constructor.name : typeof error);
       console.error('[FoodSearch] Error message:', error instanceof Error ? error.message : String(error));
@@ -239,16 +252,6 @@ export default function FoodSearchScreen() {
             <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Query: &quot;{searchQuery}&quot;
             </Text>
-            {debugInfo?.url && (
-              <View style={styles.debugContainer}>
-                <Text style={[styles.debugLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Debug Info:
-                </Text>
-                <Text style={[styles.debugUrl, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]} numberOfLines={3}>
-                  URL: {debugInfo.url}
-                </Text>
-              </View>
-            )}
           </View>
         )}
 
@@ -269,9 +272,9 @@ export default function FoodSearchScreen() {
                 <Text style={[styles.debugLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Debug Info:
                 </Text>
-                {debugInfo.statusCode && (
+                {debugInfo.statusCode !== undefined && (
                   <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Status Code: {debugInfo.statusCode}
+                    Status Code: {debugInfo.statusCode === 0 ? '0 (Network Error)' : debugInfo.statusCode}
                   </Text>
                 )}
                 {debugInfo.url && (
@@ -307,7 +310,7 @@ export default function FoodSearchScreen() {
                 <Text style={[styles.debugLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Debug Info:
                 </Text>
-                {debugInfo.statusCode && (
+                {debugInfo.statusCode !== undefined && (
                   <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     Status Code: {debugInfo.statusCode}
                   </Text>
@@ -364,10 +367,10 @@ export default function FoodSearchScreen() {
             <Text style={[styles.resultsCount, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Found {results.length} results from OpenFoodFacts
             </Text>
-            {debugInfo && (
+            {debugInfo && debugInfo.statusCode === 200 && (
               <View style={styles.debugContainerSuccess}>
                 <Text style={[styles.debugLabel, { color: colors.success }]}>
-                  ✓ Status: {debugInfo.statusCode || 200}
+                  ✓ Status: {debugInfo.statusCode}
                 </Text>
               </View>
             )}
