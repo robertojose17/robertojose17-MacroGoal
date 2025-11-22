@@ -121,8 +121,123 @@ export default function AddFoodScreen() {
   };
 
   const handleAddFood = (food: Food) => {
-    console.log('[AddFood] Adding food:', food.name);
+    console.log('[AddFood] Opening food details:', food.name);
     router.push(`/food-details?foodId=${food.id}&meal=${mealType}&date=${date}`);
+  };
+
+  /**
+   * Add a recent food directly to the diary using its default serving
+   * This is called when the "+" button is tapped on a Recent Food item
+   */
+  const handleAddRecentFood = async (food: Food) => {
+    console.log('[AddFood] Adding recent food directly to diary:', food.name);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to add food');
+        return;
+      }
+
+      // Use the food's serving_amount as the default (this is the grams from last time)
+      const gramsToAdd = food.serving_amount;
+      const multiplier = gramsToAdd / 100;
+
+      // Calculate nutrition based on the per-100g values stored in the food
+      // Note: For recent foods, the calories/protein/etc are already for the last serving
+      // But we need to recalculate based on per-100g to be accurate
+      
+      // Get the food from database to get per-100g values
+      const { data: foodData, error: foodError } = await supabase
+        .from('foods')
+        .select('*')
+        .eq('id', food.id)
+        .single();
+
+      if (foodError || !foodData) {
+        console.error('[AddFood] Error fetching food data:', foodError);
+        Alert.alert('Error', 'Failed to load food details');
+        return;
+      }
+
+      // Calculate nutrition for the default serving
+      const calories = foodData.calories * multiplier;
+      const protein = foodData.protein * multiplier;
+      const carbs = foodData.carbs * multiplier;
+      const fats = foodData.fats * multiplier;
+      const fiber = foodData.fiber * multiplier;
+
+      // Find or create meal for the date and meal type
+      const { data: existingMeal } = await supabase
+        .from('meals')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .eq('meal_type', mealType)
+        .maybeSingle();
+
+      let mealId = existingMeal?.id;
+
+      if (!mealId) {
+        console.log('[AddFood] Creating new meal for', mealType, 'on', date);
+        const { data: newMeal, error: mealError } = await supabase
+          .from('meals')
+          .insert({
+            user_id: user.id,
+            date: date,
+            meal_type: mealType,
+          })
+          .select()
+          .single();
+
+        if (mealError) {
+          console.error('[AddFood] Error creating meal:', mealError);
+          Alert.alert('Error', 'Failed to create meal');
+          return;
+        }
+
+        mealId = newMeal.id;
+        console.log('[AddFood] Created new meal:', mealId);
+      } else {
+        console.log('[AddFood] Using existing meal:', mealId);
+      }
+
+      // Use the last serving description if available, otherwise generate one
+      const servingDescription = food.last_serving_description || `${Math.round(gramsToAdd)} g`;
+
+      console.log('[AddFood] Inserting NEW meal item with serving:', servingDescription);
+
+      // ALWAYS INSERT a new meal item (never update existing ones)
+      const { error: mealItemError } = await supabase
+        .from('meal_items')
+        .insert({
+          meal_id: mealId,
+          food_id: food.id,
+          quantity: multiplier,
+          calories: calories,
+          protein: protein,
+          carbs: carbs,
+          fats: fats,
+          fiber: fiber,
+          serving_description: servingDescription,
+          grams: gramsToAdd,
+        });
+
+      if (mealItemError) {
+        console.error('[AddFood] Error creating meal item:', mealItemError);
+        Alert.alert('Error', 'Failed to add food to meal');
+        return;
+      }
+
+      console.log('[AddFood] Recent food added successfully!');
+      console.log('[AddFood] Navigating back to diary');
+      
+      // Navigate back to the home/diary screen
+      router.dismissTo('/(tabs)/(home)/');
+    } catch (error) {
+      console.error('[AddFood] Error adding recent food:', error);
+      Alert.alert('Error', 'An unexpected error occurred while adding food');
+    }
   };
 
   const handleAddFavorite = async (favorite: Favorite) => {
@@ -297,7 +412,8 @@ export default function AddFoodScreen() {
   };
 
   const renderFoodItem = (food: Food, index: number) => {
-    const servingText = `${food.serving_amount}${food.serving_unit}`;
+    // For recent foods, display the last used serving info
+    const servingText = food.last_serving_description || `${Math.round(food.serving_amount)}g`;
     const macrosText = `P: ${Math.round(food.protein)}g • C: ${Math.round(food.carbs)}g • F: ${Math.round(food.fats)}g`;
     
     return (
@@ -308,7 +424,11 @@ export default function AddFoodScreen() {
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
         ]}
       >
-        <View style={styles.foodInfo}>
+        <TouchableOpacity
+          style={styles.foodInfo}
+          onPress={() => handleAddFood(food)}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
             {food.name}
           </Text>
@@ -318,10 +438,10 @@ export default function AddFoodScreen() {
           <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {macrosText}
           </Text>
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => handleAddFood(food)}
+          onPress={() => handleAddRecentFood(food)}
           activeOpacity={0.7}
         >
           <IconSymbol

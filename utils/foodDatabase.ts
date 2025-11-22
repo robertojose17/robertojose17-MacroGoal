@@ -9,6 +9,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Food, Meal, MealItem, DailySummary, MealType } from '@/types';
 import { mockFoods } from '@/data/mockData';
+import { supabase } from '@/app/integrations/supabase/client';
 
 const FOODS_STORAGE_KEY = '@elite_macro_foods';
 const MEALS_STORAGE_KEY = '@elite_macro_meals';
@@ -163,15 +164,108 @@ export async function getFoodById(id: string): Promise<Food | null> {
 }
 
 /**
- * Get recent foods (last 10 used)
+ * Get recent foods from user's actual diary entries
+ * Returns last N unique foods the user logged, ordered by most recent
  * CRITICAL: Never throws, returns empty array on error
  */
-export async function getRecentFoods(): Promise<Food[]> {
+export async function getRecentFoods(limit: number = 20): Promise<Food[]> {
   try {
-    const foods = await getAllFoods();
-    // In a real app, this would track usage history
-    // For now, return first 10 foods
-    return foods.slice(0, 10);
+    console.log('[FoodDB] Fetching recent foods from user diary...');
+    
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.log('[FoodDB] No user logged in, returning empty array');
+      return [];
+    }
+
+    // Query user's meal items with food details, ordered by most recent
+    const { data: mealItems, error } = await supabase
+      .from('meal_items')
+      .select(`
+        id,
+        food_id,
+        serving_description,
+        grams,
+        calories,
+        protein,
+        carbs,
+        fats,
+        fiber,
+        created_at,
+        foods (
+          id,
+          name,
+          brand,
+          barcode,
+          serving_amount,
+          serving_unit,
+          calories,
+          protein,
+          carbs,
+          fats,
+          fiber,
+          user_created
+        ),
+        meals!inner (
+          user_id
+        )
+      `)
+      .eq('meals.user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100); // Get more than we need to allow for deduplication
+
+    if (error) {
+      console.error('[FoodDB] Error fetching recent foods:', error);
+      return [];
+    }
+
+    if (!mealItems || mealItems.length === 0) {
+      console.log('[FoodDB] No recent foods found');
+      return [];
+    }
+
+    console.log(`[FoodDB] Found ${mealItems.length} meal items`);
+
+    // Deduplicate by food_id, keeping the most recent entry for each food
+    const seenFoodIds = new Set<string>();
+    const uniqueFoods: Food[] = [];
+
+    for (const item of mealItems) {
+      if (!item.foods || !item.food_id) continue;
+      
+      // Skip if we've already seen this food
+      if (seenFoodIds.has(item.food_id)) continue;
+      
+      seenFoodIds.add(item.food_id);
+
+      // Create Food object with the serving info from the last time it was logged
+      const food: Food = {
+        id: item.foods.id,
+        name: item.foods.name,
+        brand: item.foods.brand || undefined,
+        barcode: item.foods.barcode || undefined,
+        serving_amount: item.grams || item.foods.serving_amount,
+        serving_unit: 'g',
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fats: item.fats,
+        fiber: item.fiber,
+        user_created: item.foods.user_created || false,
+        is_favorite: false,
+        // Store the last used serving description for display
+        last_serving_description: item.serving_description || undefined,
+      };
+
+      uniqueFoods.push(food);
+
+      // Stop once we have enough unique foods
+      if (uniqueFoods.length >= limit) break;
+    }
+
+    console.log(`[FoodDB] Returning ${uniqueFoods.length} unique recent foods`);
+    return uniqueFoods;
   } catch (error) {
     console.error('[FoodDB] Error getting recent foods:', error);
     return [];

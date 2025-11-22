@@ -49,6 +49,7 @@ export interface Food {
   is_favorite?: boolean;
   fdc_id?: number; // FoodData Central ID
   data_type?: string; // FDC data type: 'Branded', 'Foundation', 'Survey (FNDDS)', 'SR Legacy'
+  last_serving_description?: string; // Last used serving description for recent foods
 }
 
 export interface Meal {
