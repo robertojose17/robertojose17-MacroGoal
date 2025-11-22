@@ -205,35 +205,108 @@ export default function HomeScreen() {
     });
   };
 
-  const handleDeleteFood = (item: any) => {
+  const handleDeleteFood = async (item: any) => {
+    console.log('[Home] Delete requested for item:', item.id);
+    
     Alert.alert(
-      'Delete Food',
-      `Are you sure you want to delete ${item.foods?.name || 'this food'}?`,
+      'Delete this food entry?',
+      `Remove ${item.foods?.name || 'this food'} from your diary?`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
+          onPress: () => console.log('[Home] Delete cancelled'),
         },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            console.log('[Home] Delete confirmed, proceeding...');
+            
+            // Store original state for rollback
+            const originalMeals = [...meals];
+            const originalTotalCalories = totalCalories;
+            const originalTotalMacros = { ...totalMacros };
+            
             try {
-              const { error } = await supabase
+              // Optimistic UI update - remove item immediately
+              console.log('[Home] Applying optimistic update...');
+              const updatedMeals = meals.map(meal => ({
+                ...meal,
+                items: meal.items.filter(i => i.id !== item.id),
+                totalCalories: meal.items
+                  .filter(i => i.id !== item.id)
+                  .reduce((sum, i) => sum + (i.calories || 0), 0)
+              }));
+              
+              setMeals(updatedMeals);
+              
+              // Recalculate totals
+              const newTotalCals = updatedMeals.reduce((sum, meal) => sum + meal.totalCalories, 0);
+              const newTotalP = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.protein || 0), 0), 0);
+              const newTotalC = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.carbs || 0), 0), 0);
+              const newTotalF = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.fats || 0), 0), 0);
+              const newTotalFib = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.fiber || 0), 0), 0);
+              
+              setTotalCalories(newTotalCals);
+              setTotalMacros({ 
+                protein: newTotalP, 
+                carbs: newTotalC, 
+                fats: newTotalF, 
+                fiber: newTotalFib 
+              });
+              
+              console.log('[Home] Optimistic update applied, now deleting from database...');
+              
+              // Get current user for verification
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) {
+                throw new Error('No authenticated user found');
+              }
+              
+              console.log('[Home] Authenticated user:', user.id);
+              console.log('[Home] Deleting meal_item with id:', item.id);
+              
+              // Delete from database
+              const { error, data } = await supabase
                 .from('meal_items')
                 .delete()
-                .eq('id', item.id);
-
+                .eq('id', item.id)
+                .select();
+              
               if (error) {
-                console.error('[Home] Error deleting food:', error);
-                Alert.alert('Error', 'Failed to delete food');
-              } else {
-                console.log('[Home] Food deleted successfully');
-                loadData();
+                console.error('[Home] Supabase delete error:', error);
+                console.error('[Home] Error details:', JSON.stringify(error, null, 2));
+                throw error;
               }
-            } catch (error) {
-              console.error('[Home] Error in handleDeleteFood:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
+              
+              console.log('[Home] Delete response:', data);
+              console.log('[Home] ✅ Food deleted successfully from database');
+              
+              // Success - the optimistic update is already applied
+              // No need to reload, UI is already updated
+              
+            } catch (error: any) {
+              console.error('[Home] ❌ Error in handleDeleteFood:', error);
+              console.error('[Home] Error message:', error?.message);
+              console.error('[Home] Error details:', JSON.stringify(error, null, 2));
+              
+              // Rollback optimistic update
+              console.log('[Home] Rolling back optimistic update...');
+              setMeals(originalMeals);
+              setTotalCalories(originalTotalCalories);
+              setTotalMacros(originalTotalMacros);
+              
+              // Show detailed error to user
+              Alert.alert(
+                'Delete Failed', 
+                error?.message || 'Failed to delete food entry. Please try again.',
+                [{ text: 'OK' }]
+              );
             }
           },
         },
@@ -502,7 +575,10 @@ export default function HomeScreen() {
                           </View>
                           <TouchableOpacity
                             style={styles.deleteButton}
-                            onPress={() => handleDeleteFood(item)}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFood(item);
+                            }}
                           >
                             <IconSymbol
                               ios_icon_name="trash"
