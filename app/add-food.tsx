@@ -534,9 +534,52 @@ export default function AddFoodScreen() {
     }
   };
 
+  /**
+   * FIXED: Handle adding favorite to My Meal Builder
+   * If in builder mode, return food data instead of logging to diary
+   */
   const handleAddFavorite = async (favorite: Favorite) => {
-    console.log('[AddFood] Adding favorite to meal:', favorite.food_name);
+    console.log('[AddFood] Adding favorite:', favorite.food_name, 'mode:', mode);
 
+    // If in My Meal Builder mode, return food data
+    if (mode === 'my_meal_builder') {
+      console.log('[AddFood] My Meal Builder mode - returning favorite as food data');
+      
+      const foodData = {
+        food_source: 'favorite',
+        food_id: undefined,
+        barcode: favorite.food_source === 'barcode' ? favorite.food_code : undefined,
+        food_name: favorite.food_name,
+        brand: favorite.brand || undefined,
+        amount_grams: favorite.default_grams,
+        amount_display: favorite.serving_size || `${favorite.default_grams}g`,
+        per100_calories: favorite.per100_calories,
+        per100_protein: favorite.per100_protein,
+        per100_carbs: favorite.per100_carbs,
+        per100_fat: favorite.per100_fat,
+        per100_fiber: favorite.per100_fiber,
+      };
+      
+      console.log('[AddFood] Returning favorite food data:', foodData);
+      
+      // Navigate back to the return screen with the food data
+      if (returnTo) {
+        router.push({
+          pathname: returnTo,
+          params: {
+            returnedFood: JSON.stringify(foodData),
+            mealId: targetMealId,
+          },
+        });
+      } else {
+        console.error('[AddFood] No returnTo path specified');
+        router.back();
+      }
+      
+      return;
+    }
+
+    // Normal diary mode - log to diary
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -902,18 +945,21 @@ export default function AddFoodScreen() {
               color="#FFFFFF"
             />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.removeButton}
-            onPress={() => handleRemoveFavorite(favorite.id)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="trash"
-              android_material_icon_name="delete"
-              size={18}
-              color="#FF3B30"
-            />
-          </TouchableOpacity>
+          {/* Only show remove button in normal mode, not in builder mode */}
+          {!isMyMealBuilderMode && (
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={() => handleRemoveFavorite(favorite.id)}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="trash"
+                android_material_icon_name="delete"
+                size={18}
+                color="#FF3B30"
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
