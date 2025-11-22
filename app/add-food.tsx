@@ -20,6 +20,8 @@ export default function AddFoodScreen() {
 
   const mode = params.mode ?? "diary";
   const mealType = params.mealType ?? params.meal ?? "breakfast";
+  const returnTo = params.returnTo as string | undefined;
+  const myMealId = params.mealId as string | undefined;
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -50,6 +52,8 @@ export default function AddFoodScreen() {
   useEffect(() => {
     console.log("[AddFood] Params:", params);
     console.log("[AddFood] mode:", mode);
+    console.log("[AddFood] returnTo:", returnTo);
+    console.log("[AddFood] mealId:", myMealId);
     loadData();
   }, []);
 
@@ -258,8 +262,8 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: params.returnTo,
-        mealId: params.mealId,
+        returnTo: returnTo,
+        mealId: myMealId,
       },
     });
   };
@@ -272,8 +276,8 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: params.returnTo,
-        mealId: params.mealId,
+        returnTo: returnTo,
+        mealId: myMealId,
       },
     });
   };
@@ -296,6 +300,9 @@ export default function AddFoodScreen() {
       params: {
         meal: mealType,
         date: date,
+        mode: mode,
+        returnTo: returnTo,
+        mealId: myMealId,
       },
     });
   };
@@ -350,8 +357,8 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: params.returnTo,
-          mealId: params.mealId,
+          returnTo: returnTo,
+          mealId: myMealId,
         },
       });
     } catch (error) {
@@ -362,10 +369,12 @@ export default function AddFoodScreen() {
 
   /**
    * Add a recent food directly
+   * MODIFIED: Respect mode parameter
    */
   const handleAddRecentFood = async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
     console.log('[AddFood] Food:', food.name);
+    console.log('[AddFood] Mode:', mode);
 
     try {
       // Get the food from database to get per-100g values
@@ -400,6 +409,36 @@ export default function AddFoodScreen() {
       const fats = foodData.fats * multiplier;
       const fiber = foodData.fiber * multiplier;
 
+      // CHECK MODE: If mymeal, return to builder instead of logging to diary
+      if (mode === 'mymeal') {
+        console.log('[AddFood] Mode is mymeal, returning to builder with food item');
+
+        const newFoodItem = {
+          food_id: food.id,
+          food: foodData,
+          quantity: multiplier,
+          calories: calories,
+          protein: protein,
+          carbs: carbs,
+          fats: fats,
+          fiber: fiber,
+          serving_description: servingDescription,
+          grams: gramsToAdd,
+        };
+
+        // Navigate back to builder with the new item
+        router.push({
+          pathname: returnTo || '/my-meal-builder',
+          params: {
+            mealId: myMealId || '',
+            newFoodItem: JSON.stringify(newFoodItem),
+          },
+        });
+
+        return;
+      }
+
+      // NORMAL DIARY MODE: Log to diary
       // Find or create meal for the date and meal type
       const { data: existingMeal } = await supabase
         .from('meals')
@@ -499,8 +538,8 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: params.returnTo,
-          mealId: params.mealId,
+          returnTo: returnTo,
+          mealId: myMealId,
         },
       });
     } catch (error) {
@@ -511,10 +550,12 @@ export default function AddFoodScreen() {
 
   /**
    * Handle adding favorite
+   * MODIFIED: Respect mode parameter
    */
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
+    console.log('[AddFood] Mode:', mode);
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -575,6 +616,43 @@ export default function AddFoodScreen() {
         foodId = newFood.id;
       }
 
+      // Get full food data for builder
+      const { data: foodData } = await supabase
+        .from('foods')
+        .select('*')
+        .eq('id', foodId)
+        .single();
+
+      // CHECK MODE: If mymeal, return to builder instead of logging to diary
+      if (mode === 'mymeal') {
+        console.log('[AddFood] Mode is mymeal, returning to builder with food item');
+
+        const newFoodItem = {
+          food_id: foodId,
+          food: foodData,
+          quantity: multiplier,
+          calories: calories,
+          protein: protein,
+          carbs: carbs,
+          fats: fat,
+          fiber: fiber,
+          serving_description: favorite.serving_size || `${favorite.default_grams}g`,
+          grams: favorite.default_grams,
+        };
+
+        // Navigate back to builder with the new item
+        router.push({
+          pathname: returnTo || '/my-meal-builder',
+          params: {
+            mealId: myMealId || '',
+            newFoodItem: JSON.stringify(newFoodItem),
+          },
+        });
+
+        return;
+      }
+
+      // NORMAL DIARY MODE: Log to diary
       // Find or create meal
       const { data: existingMeal } = await supabase
         .from('meals')
@@ -949,7 +1027,7 @@ export default function AddFoodScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Add to {mealLabels[mealType]}
+          {mode === 'mymeal' ? 'Add to My Meal' : `Add to ${mealLabels[mealType]}`}
         </Text>
         <View style={{ width: 24 }} />
       </View>

@@ -14,8 +14,11 @@ export default function QuickAddScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
 
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
@@ -35,6 +38,7 @@ export default function QuickAddScreen() {
 
     try {
       console.log('[QuickAdd] Starting Quick Add save process...');
+      console.log('[QuickAdd] Mode:', mode);
       console.log('[QuickAdd] Meal:', mealType, 'Date:', date);
       
       const { data: { user } } = await supabase.auth.getUser();
@@ -78,6 +82,43 @@ export default function QuickAddScreen() {
 
       console.log('[QuickAdd] Food created successfully:', foodData);
 
+      const finalCalories = parseFloat(calories) || 0;
+      const finalProtein = parseFloat(protein) || 0;
+      const finalCarbs = parseFloat(carbs) || 0;
+      const finalFats = parseFloat(fats) || 0;
+      const finalFiber = parseFloat(fiber) || 0;
+
+      // CHECK MODE: If mymeal, return to builder instead of logging to diary
+      if (mode === 'mymeal') {
+        console.log('[QuickAdd] Mode is mymeal, returning to builder with food item');
+
+        const newFoodItem = {
+          food_id: foodData.id,
+          food: foodData,
+          quantity: 1,
+          calories: finalCalories,
+          protein: finalProtein,
+          carbs: finalCarbs,
+          fats: finalFats,
+          fiber: finalFiber,
+          serving_description: '1 serving',
+          grams: null,
+        };
+
+        // Navigate back to builder with the new item
+        router.push({
+          pathname: returnTo || '/my-meal-builder',
+          params: {
+            mealId: myMealId || '',
+            newFoodItem: JSON.stringify(newFoodItem),
+          },
+        });
+
+        setSaving(false);
+        return;
+      }
+
+      // NORMAL DIARY MODE: Log to diary
       // Create or get meal for the date
       console.log('[QuickAdd] Looking for existing meal...');
       const { data: existingMeal } = await supabase
@@ -120,11 +161,11 @@ export default function QuickAddScreen() {
         meal_id: mealId,
         food_id: foodData.id,
         quantity: 1,
-        calories: parseFloat(calories) || 0,
-        protein: parseFloat(protein) || 0,
-        carbs: parseFloat(carbs) || 0,
-        fats: parseFloat(fats) || 0,
-        fiber: parseFloat(fiber) || 0,
+        calories: finalCalories,
+        protein: finalProtein,
+        carbs: finalCarbs,
+        fats: finalFats,
+        fiber: finalFiber,
         serving_description: '1 serving',
         grams: null,
       };
@@ -299,7 +340,7 @@ export default function QuickAddScreen() {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.saveButtonText}>
-                Add to {mealType.charAt(0).toUpperCase() + mealType.slice(1)}
+                {mode === 'mymeal' ? 'Add to My Meal' : `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`}
               </Text>
             )}
           </TouchableOpacity>
