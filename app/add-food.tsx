@@ -480,6 +480,8 @@ export default function AddFoodScreen() {
   };
 
   const handleRemoveFavorite = async (favoriteId: string) => {
+    console.log('[AddFood] Remove favorite requested for ID:', favoriteId);
+    
     Alert.alert(
       'Remove Favorite',
       'Are you sure you want to remove this food from your favorites?',
@@ -489,12 +491,29 @@ export default function AddFoodScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            const success = await removeFavoriteById(favoriteId);
-            if (success) {
+            try {
+              console.log('[AddFood] Removing favorite with ID:', favoriteId);
+              
+              // Optimistically update UI
+              const previousFavorites = [...favorites];
               setFavorites(favorites.filter(f => f.id !== favoriteId));
-              console.log('[AddFood] Favorite removed');
-            } else {
-              Alert.alert('Error', 'Failed to remove favorite');
+              
+              // Attempt to delete from database
+              const success = await removeFavoriteById(favoriteId);
+              
+              if (success) {
+                console.log('[AddFood] Favorite removed successfully');
+              } else {
+                console.error('[AddFood] Failed to remove favorite - reverting UI');
+                // Revert optimistic update
+                setFavorites(previousFavorites);
+                Alert.alert('Error', 'Failed to remove favorite. Please try again.');
+              }
+            } catch (error) {
+              console.error('[AddFood] Error removing favorite:', error);
+              // Reload favorites to ensure UI is in sync
+              await loadFavorites();
+              Alert.alert('Error', 'Failed to remove favorite. Please try again.');
             }
           },
         },
