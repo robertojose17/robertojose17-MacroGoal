@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect, useRoute } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -26,8 +26,7 @@ function generateTempId(): string {
 
 export default function AddFoodScreen() {
   const router = useRouter();
-  const route = useRoute();
-  const params: any = route?.params ?? {};
+  const params = useLocalSearchParams<any>() || {};
 
   const mode = params.mode ?? "diary";  // default mode so it never crashes
   const mealType = params.mealType ?? params.meal ?? "breakfast";
