@@ -118,8 +118,14 @@ export default function AddFoodScreen() {
   };
 
   const handleCopyFromPrevious = () => {
-    console.log('[AddFood] Copy from previous - not yet implemented');
-    // TODO: Implement copy from previous functionality
+    console.log('[AddFood] Navigating to copy-from-previous');
+    router.push({
+      pathname: '/copy-from-previous',
+      params: {
+        meal: mealType,
+        date: date,
+      },
+    });
   };
 
   const handleQuickAdd = () => {
