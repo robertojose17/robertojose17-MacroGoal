@@ -10,9 +10,9 @@ import { getRecentFoods } from '@/utils/foodDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Food } from '@/types';
+import { Food, MyMeal } from '@/types';
 
-type TabType = 'all' | 'favorites' | 'quick-add';
+type TabType = 'all' | 'favorites' | 'my-meals' | 'quick-add';
 
 export default function AddFoodScreen() {
   const router = useRouter();
@@ -32,6 +32,7 @@ export default function AddFoodScreen() {
   
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [myMeals, setMyMeals] = useState<MyMeal[]>([]);
   const [loading, setLoading] = useState(false);
 
   // INLINE SEARCH STATE
@@ -63,8 +64,9 @@ export default function AddFoodScreen() {
       console.log('[AddFood] Screen focused, refreshing data');
       console.log('[AddFood] Refresh param:', params.refresh);
       
-      // Reload favorites
+      // Reload favorites and my meals
       loadFavorites();
+      loadMyMeals();
     }, [params.refresh])
   );
 
@@ -76,6 +78,9 @@ export default function AddFoodScreen() {
 
       // Load favorites
       await loadFavorites();
+
+      // Load my meals
+      await loadMyMeals();
 
       console.log('[AddFood] Loaded data:', { recent: recent.length });
     } catch (error) {
@@ -95,6 +100,33 @@ export default function AddFoodScreen() {
       }
     } catch (error) {
       console.error('[AddFood] Error loading favorites:', error);
+    }
+  };
+
+  const loadMyMeals = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('[AddFood] No user found for My Meals');
+        return;
+      }
+
+      console.log('[AddFood] Loading My Meals for user:', user.id);
+
+      const { data: mealsData, error } = await supabase
+        .from('my_meals')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[AddFood] Error loading My Meals:', error);
+      } else {
+        console.log('[AddFood] Loaded', mealsData?.length || 0, 'My Meals');
+        setMyMeals(mealsData || []);
+      }
+    } catch (error) {
+      console.error('[AddFood] Error in loadMyMeals:', error);
     }
   };
 
@@ -307,9 +339,19 @@ export default function AddFoodScreen() {
     });
   };
 
-  const handleMyMeals = () => {
-    console.log('[AddFood] Navigating to my-meals-list');
-    router.push('/my-meals-list');
+  const handleCreateMyMeal = () => {
+    console.log('[AddFood] Navigating to create My Meal');
+    router.push('/my-meal-builder');
+  };
+
+  const handleOpenMyMeal = (meal: MyMeal) => {
+    console.log('[AddFood] Opening My Meal details:', meal.id);
+    router.push({
+      pathname: '/my-meal-details',
+      params: {
+        mealId: meal.id,
+      },
+    });
   };
 
   /**
@@ -928,6 +970,45 @@ export default function AddFoodScreen() {
     );
   };
 
+  const renderMyMealCard = (meal: MyMeal, index: number) => {
+    return (
+      <TouchableOpacity
+        key={index}
+        style={[
+          styles.mealCard,
+          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+        ]}
+        onPress={() => handleOpenMyMeal(meal)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.mealInfo}>
+          <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
+            {meal.name}
+          </Text>
+          {meal.note && (
+            <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {meal.note}
+            </Text>
+          )}
+          <View style={styles.mealStats}>
+            <Text style={[styles.mealCalories, { color: colors.calories }]}>
+              {Math.round(meal.total_calories)} cal
+            </Text>
+            <Text style={[styles.mealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              P: {Math.round(meal.total_protein)}g • C: {Math.round(meal.total_carbs)}g • F: {Math.round(meal.total_fats)}g
+            </Text>
+          </View>
+        </View>
+        <IconSymbol
+          ios_icon_name="chevron.right"
+          android_material_icon_name="chevron_right"
+          size={20}
+          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   const renderListContent = () => {
     if (searchQuery.trim().length > 0) {
       if (searchQuery.trim().length < 2) {
@@ -1112,6 +1193,21 @@ export default function AddFoodScreen() {
 
           <TouchableOpacity
             style={styles.tab}
+            onPress={() => setActiveTab('my-meals')}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === 'my-meals' && styles.tabTextActive,
+              { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+            ]}>
+              My Meals
+            </Text>
+            {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tab}
             onPress={() => setActiveTab('quick-add')}
             activeOpacity={0.7}
           >
@@ -1179,43 +1275,6 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* My Meals - Only show when NOT in mymeal mode */}
-                {mode !== 'mymeal' && (
-                  <React.Fragment>
-                    <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Saved Meals
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.myMealsCard, { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }]}
-                      onPress={handleMyMeals}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.myMealsIconContainer}>
-                        <IconSymbol
-                          ios_icon_name="fork.knife"
-                          android_material_icon_name="restaurant"
-                          size={32}
-                          color="#F59E0B"
-                        />
-                      </View>
-                      <View style={styles.myMealsInfo}>
-                        <Text style={[styles.myMealsTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                          My Meals
-                        </Text>
-                        <Text style={[styles.myMealsSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                          Quick log saved meal templates
-                        </Text>
-                      </View>
-                      <IconSymbol
-                        ios_icon_name="chevron.right"
-                        android_material_icon_name="chevron_right"
-                        size={20}
-                        color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </React.Fragment>
-                )}
               </React.Fragment>
             )}
 
@@ -1243,6 +1302,54 @@ export default function AddFoodScreen() {
                       Tap the star icon on any food to add it to your favorites
                     </Text>
                   </View>
+                )}
+              </React.Fragment>
+            )}
+
+            {activeTab === 'my-meals' && (
+              <React.Fragment>
+                <TouchableOpacity
+                  style={[styles.createButton, { backgroundColor: colors.primary }]}
+                  onPress={handleCreateMyMeal}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus.circle.fill"
+                    android_material_icon_name="add_circle"
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.createButtonText}>Create My Meal</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Saved Meals
+                </Text>
+
+                {loading ? (
+                  <View style={styles.emptyState}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+                      Loading...
+                    </Text>
+                  </View>
+                ) : myMeals.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="fork.knife"
+                      android_material_icon_name="restaurant"
+                      size={64}
+                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                    />
+                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+                      No saved meals yet
+                    </Text>
+                    <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
+                      Create a meal template to quickly log your favorite meals
+                    </Text>
+                  </View>
+                ) : (
+                  myMeals.map((meal, index) => renderMyMealCard(meal, index))
                 )}
               </React.Fragment>
             )}
@@ -1493,34 +1600,55 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  myMealsCard: {
+  createButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  createButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  mealCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
     boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
     elevation: 1,
   },
-  myMealsIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: borderRadius.md,
-    backgroundColor: '#FEF3C7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  myMealsInfo: {
+  mealInfo: {
     flex: 1,
   },
-  myMealsTitle: {
+  mealName: {
     ...typography.bodyBold,
     fontSize: 16,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  myMealsSubtitle: {
+  mealNote: {
     ...typography.caption,
     fontSize: 13,
+    marginBottom: 6,
+  },
+  mealStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  mealCalories: {
+    ...typography.bodyBold,
+    fontSize: 14,
+  },
+  mealMacros: {
+    ...typography.caption,
+    fontSize: 12,
   },
 });
