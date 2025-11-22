@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
+import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
 export default function FoodDetailsScreen() {
   const router = useRouter();
@@ -28,6 +29,8 @@ export default function FoodDetailsScreen() {
   const [grams, setGrams] = useState('100');
   const [saving, setSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     console.log('[FoodDetails] Component mounted, mode:', mode);
@@ -73,6 +76,9 @@ export default function FoodDetailsScreen() {
         // Mark as ready immediately - never block the UI
         setIsReady(true);
         console.log('[FoodDetails] Screen ready to display');
+
+        // Check if this food is favorited
+        checkFavoriteStatus(productWithDefaults);
       } catch (error) {
         console.error('[FoodDetails] Error parsing OpenFoodFacts data:', error);
         
@@ -120,6 +126,68 @@ export default function FoodDetailsScreen() {
       ]);
     }
   }, [offDataString]);
+
+  const checkFavoriteStatus = async (prod: OpenFoodFactsProduct) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const foodSource = prod.code ? 'barcode' : 'library';
+      const foodCode = prod.code || undefined;
+
+      const favorited = await isFavorite(user.id, foodSource, foodCode);
+      setIsFavorited(favorited);
+    } catch (error) {
+      console.error('[FoodDetails] Error checking favorite status:', error);
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!product || !servingInfo || !nutrition) return;
+
+    setFavoriteLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to favorite foods');
+        setFavoriteLoading(false);
+        return;
+      }
+
+      const foodSource = product.code ? 'barcode' : 'library';
+      const foodCode = product.code || undefined;
+
+      const success = await toggleFavorite(
+        user.id,
+        foodSource,
+        foodCode,
+        {
+          food_name: product.product_name || 'Unknown Product',
+          brand: product.brands || undefined,
+          per100_calories: nutrition.calories,
+          per100_protein: nutrition.protein,
+          per100_carbs: nutrition.carbs,
+          per100_fat: nutrition.fat,
+          per100_fiber: nutrition.fiber,
+          serving_size: servingInfo.displayText,
+          serving_unit: servingInfo.description.includes('g') ? 'g' : 'serving',
+          default_grams: servingInfo.grams,
+        }
+      );
+
+      if (success) {
+        setIsFavorited(!isFavorited);
+        console.log('[FoodDetails] Favorite toggled successfully');
+      } else {
+        Alert.alert('Error', 'Failed to update favorite');
+      }
+    } catch (error) {
+      console.error('[FoodDetails] Error toggling favorite:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   // Show loading only briefly while parsing
   if (!isReady || !product || !servingInfo || !nutrition) {
@@ -403,7 +471,22 @@ export default function FoodDetailsScreen() {
           <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
             Food Details
           </Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity 
+            onPress={handleToggleFavorite}
+            disabled={favoriteLoading}
+            style={styles.favoriteButton}
+          >
+            {favoriteLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol
+                ios_icon_name={isFavorited ? "star.fill" : "star"}
+                android_material_icon_name={isFavorited ? "star" : "star_border"}
+                size={24}
+                color={isFavorited ? "#FFD700" : (isDark ? colors.textDark : colors.text)}
+              />
+            )}
+          </TouchableOpacity>
         </View>
 
         <ScrollView 
@@ -548,7 +631,7 @@ export default function FoodDetailsScreen() {
                 </Text>
               </View>
             ) : (
-              <>
+              <React.Fragment>
                 <View style={styles.nutritionGrid}>
                   <View style={styles.nutritionItem}>
                     <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -604,7 +687,7 @@ export default function FoodDetailsScreen() {
                     {Math.round(nutrition.calories)} kcal • P: {nutrition.protein.toFixed(1)}g • C: {nutrition.carbs.toFixed(1)}g • F: {nutrition.fat.toFixed(1)}g
                   </Text>
                 </View>
-              </>
+              </React.Fragment>
             )}
           </View>
 
@@ -658,6 +741,12 @@ const styles = StyleSheet.create({
     ...typography.h3,
     flex: 1,
     textAlign: 'center',
+  },
+  favoriteButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     paddingHorizontal: spacing.md,

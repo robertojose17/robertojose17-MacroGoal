@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getRecentFoods, getFavoriteFoods } from '@/utils/foodDatabase';
+import { getRecentFoods } from '@/utils/foodDatabase';
 import { getMyMeals, calculateMyMealSummary } from '@/utils/myMealsDatabase';
+import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
+import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
 import { MyMeal } from '@/types/myMeals';
 
@@ -30,8 +32,9 @@ export default function AddFoodScreen() {
   
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
-  const [favoriteFoods, setFavoriteFoods] = useState<Food[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [myMeals, setMyMeals] = useState<MyMeal[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
@@ -48,15 +51,25 @@ export default function AddFoodScreen() {
 
   const loadData = async () => {
     try {
+      setLoading(true);
       const recent = await getRecentFoods();
-      const favorites = await getFavoriteFoods();
       const meals = await getMyMeals();
       setRecentFoods(recent);
-      setFavoriteFoods(favorites);
       setMyMeals(meals);
-      console.log('[AddFood] Loaded data:', { recent: recent.length, favorites: favorites.length, myMeals: meals.length });
+
+      // Load favorites
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const favs = await getFavorites(user.id);
+        setFavorites(favs);
+        console.log('[AddFood] Loaded', favs.length, 'favorites');
+      }
+
+      console.log('[AddFood] Loaded data:', { recent: recent.length, myMeals: meals.length });
     } catch (error) {
       console.error('[AddFood] Error loading data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -110,6 +123,152 @@ export default function AddFoodScreen() {
   const handleAddFood = (food: Food) => {
     console.log('[AddFood] Adding food:', food.name);
     router.push(`/food-details?foodId=${food.id}&meal=${mealType}&date=${date}`);
+  };
+
+  const handleAddFavorite = async (favorite: Favorite) => {
+    console.log('[AddFood] Adding favorite to meal:', favorite.food_name);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to add food');
+        return;
+      }
+
+      // Calculate nutrition for default serving
+      const multiplier = favorite.default_grams / 100;
+      const calories = favorite.per100_calories * multiplier;
+      const protein = favorite.per100_protein * multiplier;
+      const carbs = favorite.per100_carbs * multiplier;
+      const fat = favorite.per100_fat * multiplier;
+      const fiber = favorite.per100_fiber * multiplier;
+
+      // Check if food exists in database
+      let foodId: string | null = null;
+
+      if (favorite.food_code) {
+        const { data: existingFood } = await supabase
+          .from('foods')
+          .select('id')
+          .eq('barcode', favorite.food_code)
+          .maybeSingle();
+
+        if (existingFood) {
+          foodId = existingFood.id;
+        }
+      }
+
+      // Create food if it doesn't exist
+      if (!foodId) {
+        const { data: newFood, error: foodError } = await supabase
+          .from('foods')
+          .insert({
+            name: favorite.food_name,
+            brand: favorite.brand || null,
+            serving_amount: 100,
+            serving_unit: 'g',
+            calories: favorite.per100_calories,
+            protein: favorite.per100_protein,
+            carbs: favorite.per100_carbs,
+            fats: favorite.per100_fat,
+            fiber: favorite.per100_fiber,
+            barcode: favorite.food_code || null,
+            user_created: false,
+          })
+          .select()
+          .single();
+
+        if (foodError) {
+          console.error('[AddFood] Error creating food:', foodError);
+          Alert.alert('Error', 'Failed to add food');
+          return;
+        }
+
+        foodId = newFood.id;
+      }
+
+      // Find or create meal
+      const { data: existingMeal } = await supabase
+        .from('meals')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .eq('meal_type', mealType)
+        .maybeSingle();
+
+      let mealId = existingMeal?.id;
+
+      if (!mealId) {
+        const { data: newMeal, error: mealError } = await supabase
+          .from('meals')
+          .insert({
+            user_id: user.id,
+            date: date,
+            meal_type: mealType,
+          })
+          .select()
+          .single();
+
+        if (mealError) {
+          console.error('[AddFood] Error creating meal:', mealError);
+          Alert.alert('Error', 'Failed to create meal');
+          return;
+        }
+
+        mealId = newMeal.id;
+      }
+
+      // Add meal item
+      const { error: mealItemError } = await supabase
+        .from('meal_items')
+        .insert({
+          meal_id: mealId,
+          food_id: foodId,
+          quantity: multiplier,
+          calories: calories,
+          protein: protein,
+          carbs: carbs,
+          fats: fat,
+          fiber: fiber,
+          serving_description: favorite.serving_size || `${favorite.default_grams}g`,
+          grams: favorite.default_grams,
+        });
+
+      if (mealItemError) {
+        console.error('[AddFood] Error adding meal item:', mealItemError);
+        Alert.alert('Error', 'Failed to add food to meal');
+        return;
+      }
+
+      console.log('[AddFood] Favorite added to meal successfully');
+      router.dismissTo('/(tabs)/(home)/');
+    } catch (error) {
+      console.error('[AddFood] Error adding favorite:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
+  const handleRemoveFavorite = async (favoriteId: string) => {
+    Alert.alert(
+      'Remove Favorite',
+      'Are you sure you want to remove this food from your favorites?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await removeFavoriteById(favoriteId);
+            if (success) {
+              setFavorites(favorites.filter(f => f.id !== favoriteId));
+              console.log('[AddFood] Favorite removed');
+            } else {
+              Alert.alert('Error', 'Failed to remove favorite');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleMyMealPress = (meal: MyMeal) => {
@@ -176,6 +335,65 @@ export default function AddFoodScreen() {
     );
   };
 
+  const renderFavoriteItem = (favorite: Favorite, index: number) => {
+    const multiplier = favorite.default_grams / 100;
+    const calories = Math.round(favorite.per100_calories * multiplier);
+    const protein = Math.round(favorite.per100_protein * multiplier);
+    const carbs = Math.round(favorite.per100_carbs * multiplier);
+    const fat = Math.round(favorite.per100_fat * multiplier);
+
+    const servingText = favorite.serving_size || `${favorite.default_grams}g`;
+    const macrosText = `P: ${protein}g • C: ${carbs}g • F: ${fat}g`;
+
+    return (
+      <View 
+        key={index}
+        style={[
+          styles.foodCard,
+          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+        ]}
+      >
+        <View style={styles.foodInfo}>
+          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+            {favorite.food_name}
+          </Text>
+          <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
+          </Text>
+          <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {macrosText}
+          </Text>
+        </View>
+        <View style={styles.favoriteActions}>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => handleAddFavorite(favorite)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="plus"
+              android_material_icon_name="add"
+              size={20}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={() => handleRemoveFavorite(favorite.id)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="trash"
+              android_material_icon_name="delete"
+              size={18}
+              color="#FF3B30"
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderMyMealCard = (meal: MyMeal, index: number) => {
     const items = meal.items || [];
     const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
@@ -214,22 +432,6 @@ export default function AddFoodScreen() {
       </TouchableOpacity>
     );
   };
-
-  const getDisplayFoods = () => {
-    switch (activeTab) {
-      case 'favorites':
-        return favoriteFoods;
-      case 'my-meals':
-        return [];
-      case 'quick-add':
-        return [];
-      case 'all':
-      default:
-        return recentFoods;
-    }
-  };
-
-  const displayFoods = getDisplayFoods();
 
   // MY MEALS BUILDER MODE - Simplified UI with only 4 options
   if (isMyMealBuilderMode) {
@@ -402,8 +604,8 @@ export default function AddFoodScreen() {
               <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.lg }]}>
                 Favorite Foods
               </Text>
-              {favoriteFoods.length > 0 ? (
-                favoriteFoods.map((food, index) => renderFoodItem(food, index))
+              {favorites.length > 0 ? (
+                favorites.map((favorite, index) => renderFavoriteItem(favorite, index))
               ) : (
                 <View style={styles.emptyState}>
                   <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -583,14 +785,14 @@ export default function AddFoodScreen() {
           </React.Fragment>
         )}
 
-        {/* Recent Foods / Favorites */}
+        {/* Recent Foods */}
         {activeTab === 'all' && (
           <React.Fragment>
             <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Recent Foods
             </Text>
-            {displayFoods.length > 0 ? (
-              displayFoods.map((food, index) => renderFoodItem(food, index))
+            {recentFoods.length > 0 ? (
+              recentFoods.map((food, index) => renderFoodItem(food, index))
             ) : (
               <View style={styles.emptyState}>
                 <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -601,17 +803,27 @@ export default function AddFoodScreen() {
           </React.Fragment>
         )}
 
+        {/* Favorites Tab */}
         {activeTab === 'favorites' && (
           <React.Fragment>
             <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Favorite Foods
             </Text>
-            {displayFoods.length > 0 ? (
-              displayFoods.map((food, index) => renderFoodItem(food, index))
+            {favorites.length > 0 ? (
+              favorites.map((favorite, index) => renderFavoriteItem(favorite, index))
             ) : (
               <View style={styles.emptyState}>
-                <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                <IconSymbol
+                  ios_icon_name="star"
+                  android_material_icon_name="star_border"
+                  size={48}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+                <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
                   No favorite foods yet
+                </Text>
+                <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
+                  Tap the star icon on any food to add it to your favorites
                 </Text>
               </View>
             )}
@@ -823,11 +1035,23 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 12,
   },
+  favoriteActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
   addButton: {
     width: 36,
     height: 36,
     borderRadius: borderRadius.sm,
     backgroundColor: '#0EA5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.sm,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -877,6 +1101,13 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     fontSize: 15,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    ...typography.caption,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
   },
   createMealButton: {
     borderRadius: borderRadius.md,
