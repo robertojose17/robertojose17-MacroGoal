@@ -18,6 +18,9 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
+  const mode = params.mode as string; // 'my_meal_builder' or undefined
+  const returnTo = params.returnTo as string;
+  const targetMealId = params.mealId as string;
 
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
@@ -27,7 +30,8 @@ export default function FoodDetailsScreen() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    console.log('[FoodDetails] Component mounted, parsing OpenFoodFacts data...');
+    console.log('[FoodDetails] Component mounted, mode:', mode);
+    console.log('[FoodDetails] Parsing OpenFoodFacts data...');
     
     if (offDataString) {
       try {
@@ -191,6 +195,47 @@ export default function FoodDetailsScreen() {
     setSaving(true);
 
     try {
+      // Check if we're in My Meal Builder mode
+      if (mode === 'my_meal_builder') {
+        console.log('[FoodDetails] My Meal Builder mode - returning food data');
+        
+        // Prepare food data to return
+        const foodData = {
+          food_source: 'library',
+          food_id: undefined, // Will be created if needed
+          barcode: product.code || undefined,
+          food_name: product.product_name || 'Unknown Product',
+          brand: product.brands || undefined,
+          amount_grams: parseFloat(grams),
+          amount_display: getServingDescription(),
+          per100_calories: nutrition.calories,
+          per100_protein: nutrition.protein,
+          per100_carbs: nutrition.carbs,
+          per100_fat: nutrition.fat,
+          per100_fiber: nutrition.fiber,
+        };
+        
+        console.log('[FoodDetails] Returning food data:', foodData);
+        
+        // Navigate back to the return screen with the food data
+        if (returnTo) {
+          router.push({
+            pathname: returnTo,
+            params: {
+              returnedFood: JSON.stringify(foodData),
+              mealId: targetMealId,
+            },
+          });
+        } else {
+          console.error('[FoodDetails] No returnTo path specified');
+          router.back();
+        }
+        
+        setSaving(false);
+        return;
+      }
+
+      // Normal diary mode - log to diary
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in to add food');
@@ -331,6 +376,14 @@ export default function FoodDetailsScreen() {
     product.product_name === 'Unknown Product' || 
     product.brands === 'Unknown Brand' ||
     (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
+
+  // Determine button text based on mode
+  const getButtonText = () => {
+    if (mode === 'my_meal_builder') {
+      return 'Add to Meal Template';
+    }
+    return `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`;
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -563,7 +616,7 @@ export default function FoodDetailsScreen() {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>Add to {mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
+              <Text style={styles.saveButtonText}>{getButtonText()}</Text>
             )}
           </TouchableOpacity>
 

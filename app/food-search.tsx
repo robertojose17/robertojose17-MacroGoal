@@ -27,6 +27,9 @@ export default function FoodSearchScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const mode = params.mode as string;
+  const returnTo = params.returnTo as string;
+  const targetMealId = params.mealId as string;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -202,14 +205,22 @@ export default function FoodSearchScreen() {
     console.log('[FoodSearch] Product selected:', item.product.product_name);
     
     // Navigate to Food Details screen
+    const detailsParams: any = {
+      meal: mealType,
+      date: date,
+      offData: JSON.stringify(item.product),
+      source: 'search',
+    };
+    
+    if (mode === 'my_meal_builder') {
+      detailsParams.mode = mode;
+      detailsParams.returnTo = returnTo;
+      detailsParams.mealId = targetMealId;
+    }
+    
     router.push({
       pathname: '/food-details',
-      params: {
-        meal: mealType,
-        date: date,
-        offData: JSON.stringify(item.product),
-        source: 'search',
-      },
+      params: detailsParams,
     });
   };
 

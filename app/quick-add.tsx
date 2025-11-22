@@ -16,6 +16,9 @@ export default function QuickAddScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const mode = params.mode as string;
+  const returnTo = params.returnTo as string;
+  const targetMealId = params.mealId as string;
 
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
@@ -34,6 +37,46 @@ export default function QuickAddScreen() {
     setSaving(true);
 
     try {
+      // Check if we're in My Meal Builder mode
+      if (mode === 'my_meal_builder') {
+        console.log('[QuickAdd] My Meal Builder mode - returning food data');
+        
+        // Prepare food data to return
+        const foodData = {
+          food_source: 'quickadd',
+          food_id: undefined,
+          food_name: foodName.trim(),
+          brand: undefined,
+          amount_grams: 100, // Quick add is per serving, we'll use 100g as base
+          amount_display: '1 serving',
+          per100_calories: parseFloat(calories) || 0,
+          per100_protein: parseFloat(protein) || 0,
+          per100_carbs: parseFloat(carbs) || 0,
+          per100_fat: parseFloat(fats) || 0,
+          per100_fiber: parseFloat(fiber) || 0,
+        };
+        
+        console.log('[QuickAdd] Returning food data:', foodData);
+        
+        // Navigate back to the return screen with the food data
+        if (returnTo) {
+          router.push({
+            pathname: returnTo,
+            params: {
+              returnedFood: JSON.stringify(foodData),
+              mealId: targetMealId,
+            },
+          });
+        } else {
+          console.error('[QuickAdd] No returnTo path specified');
+          router.back();
+        }
+        
+        setSaving(false);
+        return;
+      }
+
+      // Normal diary mode - log to diary
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in to add food');

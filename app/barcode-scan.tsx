@@ -18,6 +18,9 @@ export default function BarcodeScanScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const mode = params.mode as string;
+  const returnTo = params.returnTo as string;
+  const targetMealId = params.mealId as string;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>('scanning');
@@ -85,14 +88,22 @@ export default function BarcodeScanScreen() {
         console.log('[BarcodeScan] ✅ Product found:', product.product_name);
         
         // Navigate directly to Food Details screen
+        const detailsParams: any = {
+          meal: mealType,
+          date: date,
+          offData: JSON.stringify(product),
+          source: 'barcode',
+        };
+        
+        if (mode === 'my_meal_builder') {
+          detailsParams.mode = mode;
+          detailsParams.returnTo = returnTo;
+          detailsParams.mealId = targetMealId;
+        }
+        
         router.replace({
           pathname: '/food-details',
-          params: {
-            meal: mealType,
-            date: date,
-            offData: JSON.stringify(product),
-            source: 'barcode',
-          },
+          params: detailsParams,
         });
       } else {
         console.log('[BarcodeScan] ❌ Product not found in OpenFoodFacts');
@@ -124,12 +135,30 @@ export default function BarcodeScanScreen() {
 
   const handleSearchLibrary = () => {
     console.log('[BarcodeScan] Navigating to search library');
-    router.replace(`/food-search?meal=${mealType}&date=${date}`);
+    const searchParams: any = { meal: mealType, date: date };
+    if (mode === 'my_meal_builder') {
+      searchParams.mode = mode;
+      searchParams.returnTo = returnTo;
+      searchParams.mealId = targetMealId;
+    }
+    router.replace({
+      pathname: '/food-search',
+      params: searchParams,
+    });
   };
 
   const handleQuickAdd = () => {
     console.log('[BarcodeScan] Navigating to quick add');
-    router.replace(`/quick-add?meal=${mealType}&date=${date}`);
+    const quickAddParams: any = { meal: mealType, date: date };
+    if (mode === 'my_meal_builder') {
+      quickAddParams.mode = mode;
+      quickAddParams.returnTo = returnTo;
+      quickAddParams.mealId = targetMealId;
+    }
+    router.replace({
+      pathname: '/quick-add',
+      params: quickAddParams,
+    });
   };
 
   // Permission not determined yet

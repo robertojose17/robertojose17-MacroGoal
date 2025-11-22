@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, TextInput, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -11,6 +11,7 @@ import { createMyMeal, calculateMyMealSummary } from '@/utils/myMealsDatabase';
 
 export default function CreateMyMealScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -19,13 +20,48 @@ export default function CreateMyMealScreen() {
   const [items, setItems] = useState<Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Handle returned food item from Add Food flows
+  useEffect(() => {
+    if (params.returnedFood) {
+      try {
+        const foodData = JSON.parse(params.returnedFood as string);
+        console.log('[CreateMyMeal] Received returned food:', foodData);
+        
+        // Add the food to items list
+        const newItem: Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
+          food_source: foodData.food_source || 'library',
+          food_id: foodData.food_id || undefined,
+          barcode: foodData.barcode || undefined,
+          ai_snapshot_id: foodData.ai_snapshot_id || undefined,
+          food_name: foodData.food_name,
+          brand: foodData.brand || undefined,
+          amount_grams: foodData.amount_grams,
+          amount_display: foodData.amount_display,
+          per100_calories: foodData.per100_calories,
+          per100_protein: foodData.per100_protein,
+          per100_carbs: foodData.per100_carbs,
+          per100_fat: foodData.per100_fat,
+          per100_fiber: foodData.per100_fiber || 0,
+        };
+        
+        setItems(prevItems => [...prevItems, newItem]);
+        
+        // Clear the param to avoid re-adding on re-render
+        router.setParams({ returnedFood: undefined });
+      } catch (error) {
+        console.error('[CreateMyMeal] Error parsing returned food:', error);
+      }
+    }
+  }, [params.returnedFood]);
+
   const handleAddFood = () => {
-    console.log('[CreateMyMeal] Adding food to template');
-    // Navigate to a special add food flow that returns to this screen
+    console.log('[CreateMyMeal] Opening Add Food menu in My Meal Builder mode');
+    // Navigate to the main Add Food screen with mode parameter
     router.push({
-      pathname: '/my-meals-add-food',
+      pathname: '/add-food',
       params: {
-        returnTo: 'create',
+        mode: 'my_meal_builder',
+        returnTo: '/my-meals-create',
       },
     });
   };

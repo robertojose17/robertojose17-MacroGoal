@@ -7,7 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { MyMeal, MyMealItem } from '@/types/myMeals';
-import { getMyMealById, updateMyMeal, deleteMyMealItem, calculateMyMealSummary } from '@/utils/myMealsDatabase';
+import { getMyMealById, updateMyMeal, deleteMyMealItem, calculateMyMealSummary, addItemToMyMeal } from '@/utils/myMealsDatabase';
 
 export default function EditMyMealScreen() {
   const router = useRouter();
@@ -27,6 +27,52 @@ export default function EditMyMealScreen() {
   useEffect(() => {
     loadMyMeal();
   }, [mealId]);
+
+  // Handle returned food item from Add Food flows
+  useEffect(() => {
+    if (params.returnedFood) {
+      handleReturnedFood();
+    }
+  }, [params.returnedFood]);
+
+  const handleReturnedFood = async () => {
+    try {
+      const foodData = JSON.parse(params.returnedFood as string);
+      console.log('[EditMyMeal] Received returned food:', foodData);
+      
+      // Create the item object
+      const newItem: Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
+        food_source: foodData.food_source || 'library',
+        food_id: foodData.food_id || undefined,
+        barcode: foodData.barcode || undefined,
+        ai_snapshot_id: foodData.ai_snapshot_id || undefined,
+        food_name: foodData.food_name,
+        brand: foodData.brand || undefined,
+        amount_grams: foodData.amount_grams,
+        amount_display: foodData.amount_display,
+        per100_calories: foodData.per100_calories,
+        per100_protein: foodData.per100_protein,
+        per100_carbs: foodData.per100_carbs,
+        per100_fat: foodData.per100_fat,
+        per100_fiber: foodData.per100_fiber || 0,
+      };
+      
+      // Add to database
+      const addedItem = await addItemToMyMeal(mealId, newItem);
+      
+      if (addedItem) {
+        // Reload the meal to get updated items
+        await loadMyMeal();
+      } else {
+        Alert.alert('Error', 'Failed to add food to meal');
+      }
+      
+      // Clear the param to avoid re-adding on re-render
+      router.setParams({ returnedFood: undefined });
+    } catch (error) {
+      console.error('[EditMyMeal] Error parsing returned food:', error);
+    }
+  };
 
   const loadMyMeal = async () => {
     try {
@@ -52,9 +98,16 @@ export default function EditMyMealScreen() {
   };
 
   const handleAddFood = () => {
-    console.log('[EditMyMeal] Adding food to meal');
-    // TODO: Implement add food to existing meal
-    Alert.alert('Coming Soon', 'Adding foods to existing meals will be available soon');
+    console.log('[EditMyMeal] Opening Add Food menu in My Meal Builder mode');
+    // Navigate to the main Add Food screen with mode parameter
+    router.push({
+      pathname: '/add-food',
+      params: {
+        mode: 'my_meal_builder',
+        returnTo: '/my-meals-edit',
+        mealId: mealId,
+      },
+    });
   };
 
   const handleRemoveItem = async (item: MyMealItem, index: number) => {
@@ -259,6 +312,18 @@ export default function EditMyMealScreen() {
               <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
                 Foods ({items.length})
               </Text>
+              <TouchableOpacity
+                style={[styles.addButton, { backgroundColor: colors.primary }]}
+                onPress={handleAddFood}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.addButtonText}>Add Food</Text>
+              </TouchableOpacity>
             </View>
 
             {items.length === 0 ? (
@@ -402,6 +467,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.md,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+    gap: spacing.xs,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyItems: {
     paddingVertical: spacing.xl,

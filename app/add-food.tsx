@@ -21,6 +21,9 @@ export default function AddFoodScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const mode = params.mode as string; // 'my_meal_builder' or undefined
+  const returnTo = params.returnTo as string;
+  const targetMealId = params.mealId as string;
   
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
@@ -55,13 +58,31 @@ export default function AddFoodScreen() {
   };
 
   const handleSearchPress = () => {
-    console.log('[AddFood] Opening Food Library search');
-    router.push(`/food-search?meal=${mealType}&date=${date}`);
+    console.log('[AddFood] Opening Food Library search, mode:', mode);
+    const searchParams: any = { meal: mealType, date: date };
+    if (mode === 'my_meal_builder') {
+      searchParams.mode = mode;
+      searchParams.returnTo = returnTo;
+      searchParams.mealId = targetMealId;
+    }
+    router.push({
+      pathname: '/food-search',
+      params: searchParams,
+    });
   };
 
   const handleBarcodeScan = () => {
-    console.log('[AddFood] Navigating to barcode-scan');
-    router.push(`/barcode-scan?meal=${mealType}&date=${date}`);
+    console.log('[AddFood] Navigating to barcode-scan, mode:', mode);
+    const scanParams: any = { meal: mealType, date: date };
+    if (mode === 'my_meal_builder') {
+      scanParams.mode = mode;
+      scanParams.returnTo = returnTo;
+      scanParams.mealId = targetMealId;
+    }
+    router.push({
+      pathname: '/barcode-scan',
+      params: scanParams,
+    });
   };
 
   const handleCopyFromPrevious = () => {
@@ -70,8 +91,17 @@ export default function AddFoodScreen() {
   };
 
   const handleQuickAdd = () => {
-    console.log('[AddFood] Navigating to quick-add');
-    router.push(`/quick-add?meal=${mealType}&date=${date}`);
+    console.log('[AddFood] Navigating to quick-add, mode:', mode);
+    const quickAddParams: any = { meal: mealType, date: date };
+    if (mode === 'my_meal_builder') {
+      quickAddParams.mode = mode;
+      quickAddParams.returnTo = returnTo;
+      quickAddParams.mealId = targetMealId;
+    }
+    router.push({
+      pathname: '/quick-add',
+      params: quickAddParams,
+    });
   };
 
   const handleAddFood = (food: Food) => {
