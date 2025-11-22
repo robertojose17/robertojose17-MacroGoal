@@ -7,7 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getRecentFoods } from '@/utils/foodDatabase';
-import { getMyMealTemplates, calculateMyMealSummary } from '@/utils/myMealTemplateDatabase';
+import { getMyMealTemplates, calculateMyMealSummary, deleteMyMealTemplate } from '@/utils/myMealTemplateDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -806,6 +806,74 @@ export default function AddFoodScreen() {
     router.push('/my-meal-builder');
   };
 
+  /**
+   * ISSUE 1 FIX: Delete My Meal Template from list
+   * Shows confirmation modal and deletes template from database
+   */
+  const handleDeleteMyMealTemplate = (template: MyMealTemplate) => {
+    console.log('[AddFood] ========== DELETE MY MEAL TEMPLATE ==========');
+    console.log('[AddFood] Template ID:', template.id);
+    console.log('[AddFood] Template name:', template.name);
+
+    Alert.alert(
+      'Delete this meal?',
+      "This won't remove past diary logs.",
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => console.log('[AddFood] Delete canceled by user'),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('[AddFood] User confirmed deletion');
+
+            // Store previous state for rollback
+            const previousTemplates = [...myMealTemplates];
+
+            // Optimistically update UI - remove from list immediately
+            console.log('[AddFood] Optimistically removing from UI');
+            setMyMealTemplates(myMealTemplates.filter(t => t.id !== template.id));
+
+            try {
+              // Attempt to delete from database
+              console.log('[AddFood] Calling deleteMyMealTemplate...');
+              const success = await deleteMyMealTemplate(template.id);
+
+              if (success) {
+                console.log('[AddFood] ✓ Template deleted successfully from database');
+                // UI is already updated, no need to do anything else
+              } else {
+                console.error('[AddFood] ✗ deleteMyMealTemplate returned false');
+                // Revert optimistic update
+                setMyMealTemplates(previousTemplates);
+                Alert.alert('Error', 'Failed to delete meal. Please try again.');
+              }
+            } catch (error: any) {
+              console.error('[AddFood] ✗ Error deleting template:', error);
+              console.error('[AddFood] Error details:', {
+                message: error.message,
+                stack: error.stack,
+              });
+
+              // Revert optimistic update
+              console.log('[AddFood] Reverting optimistic update');
+              setMyMealTemplates(previousTemplates);
+
+              // Show error to user
+              Alert.alert(
+                'Error',
+                error.message || 'Failed to delete meal. Please try again.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderFoodItem = (food: Food, index: number) => {
     // For recent foods, display the last used serving info
     const servingText = food.last_serving_description || `${Math.round(food.serving_amount)}g`;
@@ -983,37 +1051,56 @@ export default function AddFoodScreen() {
     const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
 
     return (
-      <TouchableOpacity
+      <View
         key={index}
         style={[
           styles.myMealCard,
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
         ]}
-        onPress={() => handleMyMealTemplatePress(template)}
-        activeOpacity={0.7}
       >
-        <View style={styles.myMealInfo}>
-          <Text style={[styles.myMealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {template.name}
-          </Text>
-          {summary && (
-            <React.Fragment>
-              <Text style={[styles.myMealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {Math.round(summary.totalCalories)} kcal • {summary.itemCount} {summary.itemCount === 1 ? 'item' : 'items'}
-              </Text>
-              <Text style={[styles.myMealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                P: {Math.round(summary.totalProtein)}g • C: {Math.round(summary.totalCarbs)}g • F: {Math.round(summary.totalFat)}g
-              </Text>
-            </React.Fragment>
-          )}
-        </View>
-        <IconSymbol
-          ios_icon_name="chevron.right"
-          android_material_icon_name="chevron_right"
-          size={20}
-          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-        />
-      </TouchableOpacity>
+        {/* Pressable area - opens template details */}
+        <Pressable
+          style={styles.myMealPressable}
+          onPress={() => handleMyMealTemplatePress(template)}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+        >
+          <View style={styles.myMealInfo}>
+            <Text style={[styles.myMealName, { color: isDark ? colors.textDark : colors.text }]}>
+              {template.name}
+            </Text>
+            {summary && (
+              <React.Fragment>
+                <Text style={[styles.myMealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {Math.round(summary.totalCalories)} kcal • {summary.itemCount} {summary.itemCount === 1 ? 'item' : 'items'}
+                </Text>
+                <Text style={[styles.myMealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  P: {Math.round(summary.totalProtein)}g • C: {Math.round(summary.totalCarbs)}g • F: {Math.round(summary.totalFat)}g
+                </Text>
+              </React.Fragment>
+            )}
+          </View>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="chevron_right"
+            size={20}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+        </Pressable>
+
+        {/* Delete button - separate touch target */}
+        <TouchableOpacity
+          style={styles.myMealDeleteButton}
+          onPress={() => handleDeleteMyMealTemplate(template)}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="trash"
+            android_material_icon_name="delete"
+            size={20}
+            color="#FF3B30"
+          />
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -1597,12 +1684,18 @@ const styles = StyleSheet.create({
   myMealCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
     boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
     elevation: 1,
+    overflow: 'hidden',
+  },
+  myMealPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
   },
   myMealInfo: {
     flex: 1,
@@ -1621,6 +1714,10 @@ const styles = StyleSheet.create({
   myMealMacros: {
     ...typography.caption,
     fontSize: 12,
+  },
+  myMealDeleteButton: {
+    padding: spacing.md,
+    marginRight: spacing.xs,
   },
   emptyState: {
     alignItems: 'center',

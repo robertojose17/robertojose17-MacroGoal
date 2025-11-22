@@ -26,16 +26,24 @@ export default function MyMealBuilderScreen() {
   const [saving, setSaving] = useState(false);
   const [draftId] = useState(() => `draft_${Date.now()}`);
 
-  // Handle returned food item from Add Food flows
+  // ISSUE 2 FIX: Handle returned food item from Add Food flows
+  // This effect properly appends items without overwriting
   useEffect(() => {
     if (params.returnedFood) {
       try {
         const foodData = JSON.parse(params.returnedFood as string);
-        console.log('[MyMealBuilder] Received returned food:', foodData);
+        console.log('[MyMealBuilder] ========== RECEIVED RETURNED FOOD ==========');
+        console.log('[MyMealBuilder] Food name:', foodData.food_name);
+        console.log('[MyMealBuilder] Current items count BEFORE append:', items.length);
         
-        // FIXED: Add the food to items list with unique temp_id for React keys
+        // CRITICAL: Generate unique temp_id using timestamp + random
+        // This ensures React doesn't reuse keys and overwrite items
+        const uniqueTempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('[MyMealBuilder] Generated unique temp_id:', uniqueTempId);
+        
+        // Create new item with unique temp_id
         const newItem: DraftItem = {
-          temp_id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          temp_id: uniqueTempId,
           food_source: foodData.food_source || 'library',
           food_id: foodData.food_id || undefined,
           barcode: foodData.barcode || undefined,
@@ -51,28 +59,36 @@ export default function MyMealBuilderScreen() {
           per100_fiber: foodData.per100_fiber || 0,
         };
         
-        console.log('[MyMealBuilder] APPENDING item to draft (not replacing):', newItem.food_name);
-        console.log('[MyMealBuilder] Current items count:', items.length);
+        console.log('[MyMealBuilder] Created new item:', {
+          temp_id: newItem.temp_id,
+          food_name: newItem.food_name,
+          amount_grams: newItem.amount_grams,
+        });
         
-        // CRITICAL: Use functional update to ensure we're appending to the latest state
+        // CRITICAL FIX: Use functional state update to ensure we're working with latest state
+        // This prevents race conditions and ensures proper appending
         setItems(prevItems => {
           const newItems = [...prevItems, newItem];
-          console.log('[MyMealBuilder] New items count after append:', newItems.length);
+          console.log('[MyMealBuilder] ✓ APPENDED item to list');
+          console.log('[MyMealBuilder] Previous count:', prevItems.length);
+          console.log('[MyMealBuilder] New count:', newItems.length);
+          console.log('[MyMealBuilder] All temp_ids:', newItems.map(i => i.temp_id));
           return newItems;
         });
         
         // Clear the param to avoid re-adding on re-render
         router.setParams({ returnedFood: undefined });
       } catch (error) {
-        console.error('[MyMealBuilder] Error parsing returned food:', error);
+        console.error('[MyMealBuilder] ✗ Error parsing returned food:', error);
       }
     }
-  }, [params.returnedFood]);
+  }, [params.returnedFood]); // Only depend on returnedFood param
 
   const handleAddFood = () => {
-    console.log('[MyMealBuilder] Opening Add Food menu');
+    console.log('[MyMealBuilder] ========== OPENING ADD FOOD MENU ==========');
     console.log('[MyMealBuilder] Draft ID:', draftId);
     console.log('[MyMealBuilder] Current items count:', items.length);
+    console.log('[MyMealBuilder] Current items:', items.map(i => ({ temp_id: i.temp_id, name: i.food_name })));
     
     // Navigate to Add Food with builder mode
     router.push({
@@ -86,8 +102,16 @@ export default function MyMealBuilderScreen() {
   };
 
   const handleRemoveItem = (tempId: string) => {
+    console.log('[MyMealBuilder] ========== REMOVING ITEM ==========');
     console.log('[MyMealBuilder] Removing item with temp_id:', tempId);
-    setItems(prevItems => prevItems.filter(item => item.temp_id !== tempId));
+    console.log('[MyMealBuilder] Current items count:', items.length);
+    
+    setItems(prevItems => {
+      const newItems = prevItems.filter(item => item.temp_id !== tempId);
+      console.log('[MyMealBuilder] ✓ Item removed');
+      console.log('[MyMealBuilder] New items count:', newItems.length);
+      return newItems;
+    });
   };
 
   const handleSave = async () => {
@@ -108,6 +132,7 @@ export default function MyMealBuilderScreen() {
     try {
       console.log('[MyMealBuilder] Saving My Meal:', name);
       console.log('[MyMealBuilder] Items count:', items.length);
+      console.log('[MyMealBuilder] Items:', items.map(i => ({ name: i.food_name, grams: i.amount_grams })));
       
       // Remove temp_id before saving to database
       const itemsToSave = items.map(({ temp_id, ...item }) => item);
@@ -294,6 +319,7 @@ export default function MyMealBuilderScreen() {
               </View>
             ) : (
               <View style={styles.itemsList}>
+                {/* CRITICAL: Use temp_id as key to prevent React from reusing components */}
                 {items.map((item) => (
                   <View
                     key={item.temp_id}
