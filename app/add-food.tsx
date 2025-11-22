@@ -657,41 +657,67 @@ export default function AddFoodScreen() {
     }
   };
 
+  /**
+   * Remove a favorite from the list
+   * Uses optimistic UI updates with error handling
+   */
   const handleRemoveFavorite = async (favoriteId: string) => {
-    console.log('[AddFood] Remove favorite requested for ID:', favoriteId);
+    console.log('[AddFood] ========== REMOVE FAVORITE ==========');
+    console.log('[AddFood] Favorite ID to remove:', favoriteId);
     
     Alert.alert(
       'Remove Favorite',
       'Are you sure you want to remove this food from your favorites?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => console.log('[AddFood] Remove canceled by user')
+        },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
+            console.log('[AddFood] User confirmed removal');
+            
+            // Store previous state for rollback
+            const previousFavorites = [...favorites];
+            
+            // Optimistically update UI - remove from list immediately
+            console.log('[AddFood] Optimistically removing from UI');
+            setFavorites(favorites.filter(f => f.id !== favoriteId));
+            
             try {
-              console.log('[AddFood] Removing favorite with ID:', favoriteId);
-              
-              // Optimistically update UI
-              const previousFavorites = [...favorites];
-              setFavorites(favorites.filter(f => f.id !== favoriteId));
-              
               // Attempt to delete from database
+              console.log('[AddFood] Calling removeFavoriteById...');
               const success = await removeFavoriteById(favoriteId);
               
               if (success) {
-                console.log('[AddFood] Favorite removed successfully');
+                console.log('[AddFood] ✓ Favorite removed successfully from database');
+                // UI is already updated, no need to do anything else
               } else {
-                console.error('[AddFood] Failed to remove favorite - reverting UI');
+                // This shouldn't happen with the new implementation, but handle it anyway
+                console.error('[AddFood] ✗ removeFavoriteById returned false');
                 // Revert optimistic update
                 setFavorites(previousFavorites);
                 Alert.alert('Error', 'Failed to remove favorite. Please try again.');
               }
-            } catch (error) {
-              console.error('[AddFood] Error removing favorite:', error);
-              // Reload favorites to ensure UI is in sync
-              await loadFavorites();
-              Alert.alert('Error', 'Failed to remove favorite. Please try again.');
+            } catch (error: any) {
+              console.error('[AddFood] ✗ Error removing favorite:', error);
+              console.error('[AddFood] Error details:', {
+                message: error.message,
+                stack: error.stack,
+              });
+              
+              // Revert optimistic update
+              console.log('[AddFood] Reverting optimistic update');
+              setFavorites(previousFavorites);
+              
+              // Show error to user
+              Alert.alert(
+                'Error', 
+                error.message || 'Failed to remove favorite. Please try again.'
+              );
             }
           },
         },

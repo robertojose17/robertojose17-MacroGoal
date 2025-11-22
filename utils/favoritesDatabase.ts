@@ -143,7 +143,7 @@ export async function addFavorite(favorite: Omit<Favorite, 'id' | 'created_at' |
 }
 
 /**
- * Remove a food from favorites
+ * Remove a food from favorites using composite key
  */
 export async function removeFavorite(
   userId: string,
@@ -155,21 +155,33 @@ export async function removeFavorite(
   try {
     const actualFoodCode = getFoodCodeForFavorite(foodSource, foodCode, foodName || '', brand);
 
-    console.log('[Favorites] Removing favorite:', { foodSource, actualFoodCode });
+    console.log('[Favorites] Removing favorite by composite key:', { 
+      userId, 
+      foodSource, 
+      actualFoodCode 
+    });
 
-    const { error } = await supabase
+    const { data, error, count } = await supabase
       .from('favorites')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('user_id', userId)
       .eq('food_source', foodSource)
-      .eq('food_code', actualFoodCode);
+      .eq('food_code', actualFoodCode)
+      .select();
 
     if (error) {
       console.error('[Favorites] Error removing favorite:', error);
       throw error;
     }
 
-    console.log('[Favorites] Favorite removed successfully');
+    // According to requirements: treat "0 rows affected" as success
+    // The item is already gone, which is the desired state
+    if (!count || count === 0) {
+      console.log('[Favorites] No rows deleted (item already removed or not found) - treating as success');
+      return true;
+    }
+
+    console.log('[Favorites] Favorite removed successfully, rows affected:', count);
     return true;
   } catch (error) {
     console.error('[Favorites] Error in removeFavorite:', error);
@@ -179,22 +191,31 @@ export async function removeFavorite(
 
 /**
  * Remove a favorite by ID
+ * This is the preferred method when you have the favorite ID
  */
 export async function removeFavoriteById(favoriteId: string): Promise<boolean> {
   try {
     console.log('[Favorites] Removing favorite by ID:', favoriteId);
 
-    const { error } = await supabase
+    const { data, error, count } = await supabase
       .from('favorites')
-      .delete()
-      .eq('id', favoriteId);
+      .delete({ count: 'exact' })
+      .eq('id', favoriteId)
+      .select();
 
     if (error) {
       console.error('[Favorites] Error removing favorite by ID:', error);
       throw error;
     }
 
-    console.log('[Favorites] Favorite removed successfully');
+    // According to requirements: treat "0 rows affected" as success
+    // The item is already gone, which is the desired state
+    if (!count || count === 0) {
+      console.log('[Favorites] No rows deleted (item already removed or not found) - treating as success');
+      return true;
+    }
+
+    console.log('[Favorites] Favorite removed successfully by ID, rows affected:', count);
     return true;
   } catch (error) {
     console.error('[Favorites] Error in removeFavoriteById:', error);
@@ -254,10 +275,12 @@ export async function toggleFavorite(
 
     if (isAlreadyFavorite) {
       // Remove from favorites
+      console.log('[Favorites] Removing from favorites (toggle OFF)');
       await removeFavorite(userId, foodSource, foodCode, foodData.food_name, foodData.brand);
       return false; // Return false to indicate it's no longer favorited
     } else {
       // Add to favorites
+      console.log('[Favorites] Adding to favorites (toggle ON)');
       await addFavorite({
         user_id: userId,
         food_source: foodSource as 'library' | 'barcode' | 'quickadd' | 'custom',
