@@ -257,6 +257,9 @@ export default function AddFoodScreen() {
         offData: JSON.stringify(product),
         meal: mealType,
         date: date,
+        mode: mode,
+        returnTo: params.returnTo,
+        mealId: params.mealId,
       },
     });
   };
@@ -268,6 +271,9 @@ export default function AddFoodScreen() {
       params: {
         meal: mealType,
         date: date,
+        mode: mode,
+        returnTo: params.returnTo,
+        mealId: params.mealId,
       },
     });
   };
@@ -292,6 +298,11 @@ export default function AddFoodScreen() {
         date: date,
       },
     });
+  };
+
+  const handleMyMeals = () => {
+    console.log('[AddFood] Navigating to my-meals-list');
+    router.push('/my-meals-list');
   };
 
   /**
@@ -338,6 +349,9 @@ export default function AddFoodScreen() {
           offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
+          mode: mode,
+          returnTo: params.returnTo,
+          mealId: params.mealId,
         },
       });
     } catch (error) {
@@ -484,6 +498,9 @@ export default function AddFoodScreen() {
           offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
+          mode: mode,
+          returnTo: params.returnTo,
+          mealId: params.mealId,
         },
       });
     } catch (error) {
@@ -1084,6 +1101,43 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* My Meals - Only show when NOT in mymeal mode */}
+                {mode !== 'mymeal' && (
+                  <React.Fragment>
+                    <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Saved Meals
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.myMealsCard, { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }]}
+                      onPress={handleMyMeals}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.myMealsIconContainer}>
+                        <IconSymbol
+                          ios_icon_name="fork.knife"
+                          android_material_icon_name="restaurant"
+                          size={32}
+                          color="#F59E0B"
+                        />
+                      </View>
+                      <View style={styles.myMealsInfo}>
+                        <Text style={[styles.myMealsTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                          My Meals
+                        </Text>
+                        <Text style={[styles.myMealsSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          Quick log saved meal templates
+                        </Text>
+                      </View>
+                      <IconSymbol
+                        ios_icon_name="chevron.right"
+                        android_material_icon_name="chevron_right"
+                        size={20}
+                        color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </React.Fragment>
+                )}
               </React.Fragment>
             )}
 
@@ -1360,5 +1414,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  myMealsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+    elevation: 1,
+  },
+  myMealsIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  myMealsInfo: {
+    flex: 1,
+  },
+  myMealsTitle: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  myMealsSubtitle: {
+    ...typography.caption,
+    fontSize: 13,
   },
 });

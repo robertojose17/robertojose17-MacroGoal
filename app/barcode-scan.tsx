@@ -16,8 +16,11 @@ export default function BarcodeScanScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>('scanning');
@@ -92,6 +95,9 @@ export default function BarcodeScanScreen() {
             date: date,
             offData: JSON.stringify(product),
             source: 'barcode',
+            mode: mode,
+            returnTo: returnTo,
+            mealId: myMealId,
           },
         });
       } else {

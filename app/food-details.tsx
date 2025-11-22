@@ -16,9 +16,12 @@ export default function FoodDetailsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
 
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
@@ -283,6 +286,7 @@ export default function FoodDetailsScreen() {
         return;
       }
 
+      console.log('[FoodDetails] Mode:', mode);
       console.log('[FoodDetails] Starting save process for meal:', mealType, 'date:', date);
 
       // Check if this food already exists in our database (by barcode)
@@ -332,6 +336,51 @@ export default function FoodDetailsScreen() {
         console.log('[FoodDetails] Created new food:', foodId);
       }
 
+      // Generate the serving description for storage
+      const finalServingDescription = getServingDescription();
+      const finalGrams = parseFloat(grams);
+
+      console.log('[FoodDetails] Saving with serving description:', finalServingDescription);
+      console.log('[FoodDetails] Grams:', finalGrams);
+
+      // If mode is "mymeal", return to builder instead of logging to diary
+      if (mode === 'mymeal') {
+        console.log('[FoodDetails] Mode is mymeal, returning to builder with food item');
+
+        // Get the full food data for the builder
+        const { data: foodData } = await supabase
+          .from('foods')
+          .select('*')
+          .eq('id', foodId)
+          .single();
+
+        const newFoodItem = {
+          food_id: foodId,
+          food: foodData,
+          quantity: multiplier,
+          calories: calculatedCalories,
+          protein: calculatedProtein,
+          carbs: calculatedCarbs,
+          fats: calculatedFats,
+          fiber: calculatedFiber,
+          serving_description: finalServingDescription,
+          grams: finalGrams,
+        };
+
+        // Navigate back to builder with the new item
+        router.push({
+          pathname: returnTo || '/my-meal-builder',
+          params: {
+            mealId: myMealId || '',
+            newFoodItem: JSON.stringify(newFoodItem),
+          },
+        });
+
+        setSaving(false);
+        return;
+      }
+
+      // Normal diary mode - log to diary
       // Find or create meal for the date and meal type
       const { data: existingMeal } = await supabase
         .from('meals')
@@ -367,13 +416,6 @@ export default function FoodDetailsScreen() {
       } else {
         console.log('[FoodDetails] Using existing meal:', mealId);
       }
-
-      // Generate the serving description for storage
-      const finalServingDescription = getServingDescription();
-      const finalGrams = parseFloat(grams);
-
-      console.log('[FoodDetails] Saving with serving description:', finalServingDescription);
-      console.log('[FoodDetails] Grams:', finalGrams);
 
       // ALWAYS INSERT a new meal item (never update existing ones)
       console.log('[FoodDetails] Inserting NEW meal item (not replacing)');
