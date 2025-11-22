@@ -20,7 +20,7 @@ export default function BarcodeScanScreen() {
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const mode = params.mode as string;
   const returnTo = params.returnTo as string;
-  const targetMealId = params.mealId as string;
+  const builderSessionId = params.builderSessionId as string;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>('scanning');
@@ -33,6 +33,8 @@ export default function BarcodeScanScreen() {
 
   useEffect(() => {
     console.log('[BarcodeScan] Screen mounted, meal:', mealType, 'date:', date);
+    console.log('[BarcodeScan] Mode:', mode);
+    console.log('[BarcodeScan] Builder Session ID:', builderSessionId);
     
     // Cleanup timeout on unmount
     return () => {
@@ -98,7 +100,7 @@ export default function BarcodeScanScreen() {
         if (mode === 'my_meal_builder') {
           detailsParams.mode = mode;
           detailsParams.returnTo = returnTo;
-          detailsParams.mealId = targetMealId;
+          detailsParams.builderSessionId = builderSessionId;
         }
         
         router.replace({
@@ -139,7 +141,7 @@ export default function BarcodeScanScreen() {
     if (mode === 'my_meal_builder') {
       searchParams.mode = mode;
       searchParams.returnTo = returnTo;
-      searchParams.mealId = targetMealId;
+      searchParams.builderSessionId = builderSessionId;
     }
     router.replace({
       pathname: '/food-search',
@@ -153,7 +155,7 @@ export default function BarcodeScanScreen() {
     if (mode === 'my_meal_builder') {
       quickAddParams.mode = mode;
       quickAddParams.returnTo = returnTo;
-      quickAddParams.mealId = targetMealId;
+      quickAddParams.builderSessionId = builderSessionId;
     }
     router.replace({
       pathname: '/quick-add',

@@ -8,6 +8,14 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
+/**
+ * Generate a guaranteed-unique temp_id for food items
+ * Uses timestamp + random string to ensure uniqueness
+ */
+function generateTempId(): string {
+  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export default function QuickAddScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -18,7 +26,7 @@ export default function QuickAddScreen() {
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const mode = params.mode as string;
   const returnTo = params.returnTo as string;
-  const targetMealId = params.mealId as string;
+  const builderSessionId = params.builderSessionId as string;
 
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
@@ -39,10 +47,17 @@ export default function QuickAddScreen() {
     try {
       // Check if we're in My Meal Builder mode
       if (mode === 'my_meal_builder') {
-        console.log('[QuickAdd] My Meal Builder mode - returning food data');
+        console.log('[QuickAdd] ========== MY MEAL BUILDER MODE ==========');
+        console.log('[QuickAdd] Builder Session ID:', builderSessionId);
+        console.log('[QuickAdd] Returning food data to builder');
+        
+        // FIX: Generate unique temp_id for the food item
+        const uniqueTempId = generateTempId();
+        console.log('[QuickAdd] Generated temp_id:', uniqueTempId);
         
         // Prepare food data to return
         const foodData = {
+          temp_id: uniqueTempId, // FIX: Add unique temp_id
           food_source: 'quickadd',
           food_id: undefined,
           food_name: foodName.trim(),
@@ -56,21 +71,15 @@ export default function QuickAddScreen() {
           per100_fiber: parseFloat(fiber) || 0,
         };
         
-        console.log('[QuickAdd] Returning food data:', foodData);
+        console.log('[QuickAdd] Food data to return:', foodData);
+        console.log('[QuickAdd] ✓ Using goBack() - NO NEW BUILDER WILL BE CREATED');
         
-        // Navigate back to the return screen with the food data
-        if (returnTo) {
-          router.push({
-            pathname: returnTo,
-            params: {
-              returnedFood: JSON.stringify(foodData),
-              mealId: targetMealId,
-            },
-          });
-        } else {
-          console.error('[QuickAdd] No returnTo path specified');
-          router.back();
-        }
+        // Navigate back with the food data
+        router.setParams({
+          returnedFood: JSON.stringify(foodData),
+        });
+        
+        router.back();
         
         setSaving(false);
         return;

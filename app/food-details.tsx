@@ -10,6 +10,14 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
+/**
+ * Generate a guaranteed-unique temp_id for food items
+ * Uses timestamp + random string to ensure uniqueness
+ */
+function generateTempId(): string {
+  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export default function FoodDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -21,7 +29,7 @@ export default function FoodDetailsScreen() {
   const offDataString = params.offData as string;
   const mode = params.mode as string; // 'my_meal_builder' or undefined
   const returnTo = params.returnTo as string;
-  const targetMealId = params.mealId as string;
+  const builderSessionId = params.builderSessionId as string;
 
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
@@ -34,6 +42,7 @@ export default function FoodDetailsScreen() {
 
   useEffect(() => {
     console.log('[FoodDetails] Component mounted, mode:', mode);
+    console.log('[FoodDetails] Builder Session ID:', builderSessionId);
     console.log('[FoodDetails] Parsing OpenFoodFacts data...');
     
     if (offDataString) {
@@ -281,10 +290,17 @@ export default function FoodDetailsScreen() {
     try {
       // Check if we're in My Meal Builder mode
       if (mode === 'my_meal_builder') {
-        console.log('[FoodDetails] My Meal Builder mode - returning food data');
+        console.log('[FoodDetails] ========== MY MEAL BUILDER MODE ==========');
+        console.log('[FoodDetails] Builder Session ID:', builderSessionId);
+        console.log('[FoodDetails] Returning food data to builder');
+        
+        // FIX: Generate unique temp_id for the food item
+        const uniqueTempId = generateTempId();
+        console.log('[FoodDetails] Generated temp_id:', uniqueTempId);
         
         // Prepare food data to return
         const foodData = {
+          temp_id: uniqueTempId, // FIX: Add unique temp_id
           food_source: 'library',
           food_id: undefined, // Will be created if needed
           barcode: product.code || undefined,
@@ -299,21 +315,15 @@ export default function FoodDetailsScreen() {
           per100_fiber: nutrition.fiber,
         };
         
-        console.log('[FoodDetails] Returning food data:', foodData);
+        console.log('[FoodDetails] Food data to return:', foodData);
+        console.log('[FoodDetails] ✓ Using goBack() - NO NEW BUILDER WILL BE CREATED');
         
-        // Navigate back to the return screen with the food data
-        if (returnTo) {
-          router.push({
-            pathname: returnTo,
-            params: {
-              returnedFood: JSON.stringify(foodData),
-              mealId: targetMealId,
-            },
-          });
-        } else {
-          console.error('[FoodDetails] No returnTo path specified');
-          router.back();
-        }
+        // Navigate back with the food data
+        router.setParams({
+          returnedFood: JSON.stringify(foodData),
+        });
+        
+        router.back();
         
         setSaving(false);
         return;
