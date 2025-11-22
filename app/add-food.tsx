@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -120,9 +120,65 @@ export default function AddFoodScreen() {
     });
   };
 
-  const handleAddFood = (food: Food) => {
-    console.log('[AddFood] Opening food details:', food.name);
-    router.push(`/food-details?foodId=${food.id}&meal=${mealType}&date=${date}`);
+  /**
+   * Open food details for a recent food
+   * This converts the recent food data to OpenFoodFacts format for the details screen
+   */
+  const handleOpenRecentFoodDetails = async (food: Food) => {
+    console.log('[AddFood] Opening recent food details:', food.name);
+
+    try {
+      // Fetch the full food data from database to get per-100g values
+      const { data: foodData, error: foodError } = await supabase
+        .from('foods')
+        .select('*')
+        .eq('id', food.id)
+        .single();
+
+      if (foodError || !foodData) {
+        console.error('[AddFood] Error fetching food data:', foodError);
+        Alert.alert('Error', 'Failed to load food details');
+        return;
+      }
+
+      // Convert to OpenFoodFacts format for the food-details screen
+      const offProduct = {
+        code: foodData.barcode || '',
+        product_name: foodData.name,
+        brands: foodData.brand || '',
+        serving_size: food.last_serving_description || `${Math.round(food.serving_amount)} g`,
+        nutriments: {
+          'energy-kcal_100g': foodData.calories,
+          'proteins_100g': foodData.protein,
+          'carbohydrates_100g': foodData.carbs,
+          'fat_100g': foodData.fats,
+          'fiber_100g': foodData.fiber,
+          'sugars_100g': 0,
+        },
+      };
+
+      console.log('[AddFood] Navigating to food-details with OFF data');
+
+      const detailsParams: any = {
+        offData: JSON.stringify(offProduct),
+        meal: mealType,
+        date: date,
+      };
+
+      if (mode === 'my_meal_builder') {
+        detailsParams.mode = mode;
+        detailsParams.returnTo = returnTo;
+        detailsParams.mealId = targetMealId;
+      }
+
+      router.push({
+        pathname: '/food-details',
+        params: detailsParams,
+      });
+    } catch (error) {
+      console.error('[AddFood] Error opening recent food details:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   /**
@@ -424,21 +480,26 @@ export default function AddFoodScreen() {
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
         ]}
       >
-        <TouchableOpacity
-          style={styles.foodInfo}
-          onPress={() => handleAddFood(food)}
-          activeOpacity={0.7}
+        {/* Pressable row area - excludes the + button */}
+        <Pressable
+          style={styles.foodInfoPressable}
+          onPress={() => handleOpenRecentFoodDetails(food)}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
         >
-          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-            {food.name}
-          </Text>
-          <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {food.brand ? `${food.brand} • ` : ''}{servingText} • {Math.round(food.calories)} cal
-          </Text>
-          <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {macrosText}
-          </Text>
-        </TouchableOpacity>
+          <View style={styles.foodInfo}>
+            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+              {food.name}
+            </Text>
+            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {food.brand ? `${food.brand} • ` : ''}{servingText} • {Math.round(food.calories)} cal
+            </Text>
+            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {macrosText}
+            </Text>
+          </View>
+        </Pressable>
+        
+        {/* + button with its own touch target */}
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => handleAddRecentFood(food)}
@@ -1130,16 +1191,18 @@ const styles = StyleSheet.create({
   foodCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
     boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
     elevation: 1,
+    overflow: 'hidden',
+  },
+  foodInfoPressable: {
+    flex: 1,
+    padding: spacing.md,
   },
   foodInfo: {
     flex: 1,
-    marginRight: spacing.md,
   },
   foodName: {
     ...typography.bodyBold,
@@ -1158,6 +1221,7 @@ const styles = StyleSheet.create({
   favoriteActions: {
     flexDirection: 'row',
     gap: spacing.xs,
+    paddingRight: spacing.md,
   },
   addButton: {
     width: 36,
@@ -1166,6 +1230,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: spacing.md,
+    marginVertical: spacing.md,
   },
   removeButton: {
     width: 36,
