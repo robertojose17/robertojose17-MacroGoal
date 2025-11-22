@@ -571,15 +571,16 @@ export default function HomeScreen() {
                     {Math.round(meal.totalCalories)} kcal
                   </Text>
                 </View>
+                {/* Blue "+" icon - Opens Add Food for this meal */}
                 <TouchableOpacity
                   style={styles.addMealButton}
                   onPress={() => handleAddFood(meal.type)}
                 >
                   <IconSymbol
-                    ios_icon_name="add.circle"
+                    ios_icon_name="plus.circle.fill"
                     android_material_icon_name="add_circle"
                     size={28}
-                    color={colors.primary}
+                    color={colors.info}
                   />
                 </TouchableOpacity>
               </View>
