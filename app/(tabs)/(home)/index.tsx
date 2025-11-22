@@ -34,13 +34,36 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [earliestLogDate, setEarliestLogDate] = useState<Date | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       console.log('[Home] Screen focused, loading data');
       loadData();
+      loadEarliestLogDate();
     }, [selectedDate])
   );
+
+  const loadEarliestLogDate = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('meals')
+        .select('date')
+        .eq('user_id', user.id)
+        .order('date', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        setEarliestLogDate(new Date(data.date));
+      }
+    } catch (error) {
+      console.error('[Home] Error loading earliest log date:', error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -335,6 +358,23 @@ export default function HomeScreen() {
     return selectedDate.toDateString() === today.toDateString();
   };
 
+  const isFutureDate = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+    return selected >= today;
+  };
+
+  const isEarliestDate = () => {
+    if (!earliestLogDate) return false;
+    const earliest = new Date(earliestLogDate);
+    earliest.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+    return selected <= earliest;
+  };
+
   // Helper function to get serving description for display
   // ALWAYS use the logged serving_description if available
   const getServingDisplayText = (item: any): string => {
@@ -378,6 +418,9 @@ export default function HomeScreen() {
   const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
   const caloriesProgress = Math.min((totalCalories / (goal?.daily_calories || 2000)) * 100, 100);
 
+  const leftArrowDisabled = isEarliestDate();
+  const rightArrowDisabled = isFutureDate();
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <ScrollView 
@@ -389,12 +432,18 @@ export default function HomeScreen() {
       >
         {/* Date Navigation */}
         <View style={[styles.dateNavigation, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <TouchableOpacity onPress={goToPreviousDay} style={styles.dateButton}>
+          <TouchableOpacity 
+            onPress={goToPreviousDay} 
+            style={styles.dateButton}
+            disabled={leftArrowDisabled}
+            activeOpacity={leftArrowDisabled ? 1 : 0.7}
+          >
             <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="chevron_left"
+              ios_icon_name="arrow.left"
+              android_material_icon_name="arrow_back"
               size={24}
               color={isDark ? colors.textDark : colors.text}
+              style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
             />
           </TouchableOpacity>
           
@@ -407,12 +456,18 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity onPress={goToNextDay} style={styles.dateButton}>
+          <TouchableOpacity 
+            onPress={goToNextDay} 
+            style={styles.dateButton}
+            disabled={rightArrowDisabled}
+            activeOpacity={rightArrowDisabled ? 1 : 0.7}
+          >
             <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
+              ios_icon_name="arrow.right"
+              android_material_icon_name="arrow_forward"
               size={24}
               color={isDark ? colors.textDark : colors.text}
+              style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
             />
           </TouchableOpacity>
         </View>
@@ -632,6 +687,10 @@ const styles = StyleSheet.create({
   },
   dateButton: {
     padding: spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dateCenter: {
     alignItems: 'center',
