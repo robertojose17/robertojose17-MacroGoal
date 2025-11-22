@@ -9,7 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { getRecentFoods } from '@/utils/foodDatabase';
 import { getMyMeals, calculateMyMealSummary } from '@/utils/myMealsDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
-import { searchOpenFoodFacts, OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
+import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
 import { MyMeal } from '@/types/myMeals';
@@ -43,7 +43,7 @@ export default function AddFoodScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSearchQueryRef = useRef<string>('');
+  const latestQueryRef = useRef<string>('');
 
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
@@ -99,80 +99,120 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * INLINE SEARCH LOGIC
-   * Debounced search with 500ms delay
-   * Minimum 2 characters before searching
+   * INLINE SEARCH LOGIC - FIXED
+   * Performs actual OpenFoodFacts API call
+   * Uses simple, reliable endpoint with proper error handling
    */
   const performSearch = async (query: string) => {
-    console.log('[AddFood] performSearch called with query:', query);
+    console.log('[AddFood] ========== PERFORM SEARCH ==========');
+    console.log('[AddFood] Query:', query);
+    console.log('[AddFood] Latest query ref:', latestQueryRef.current);
     
-    // Prevent duplicate searches
-    if (query === lastSearchQueryRef.current) {
-      console.log('[AddFood] Skipping duplicate search');
-      return;
-    }
+    // Update latest query ref
+    latestQueryRef.current = query;
     
-    lastSearchQueryRef.current = query;
-    
-    // Clear previous results
+    // Clear previous results and errors
     setSearchResults([]);
     setSearchError(null);
     
     // Empty query - do nothing (Recent Foods will show)
     if (query.trim().length === 0) {
       console.log('[AddFood] Empty query, showing Recent Foods');
+      setIsSearching(false);
       return;
     }
     
     // Less than 2 characters - do nothing
     if (query.trim().length < 2) {
       console.log('[AddFood] Query too short, waiting for more characters');
+      setIsSearching(false);
       return;
     }
     
     // Start searching
     setIsSearching(true);
-    console.log('[AddFood] Starting OpenFoodFacts search for:', query);
+    console.log('[AddFood] Starting OpenFoodFacts search...');
     
     try {
-      const result = await searchOpenFoodFacts(query.trim());
+      // URL-encode the query
+      const encodedQuery = encodeURIComponent(query.trim());
       
-      console.log('[AddFood] Search completed:', {
-        status: result.status,
-        count: result.count,
-        products: result.products.length,
+      // Use the exact endpoint specified in requirements
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=20`;
+      
+      console.log('[AddFood] Fetching:', url);
+      
+      // Fetch with User-Agent header
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
+        },
       });
       
-      // Check if this search is still relevant (user might have typed more)
-      if (query !== searchQuery) {
+      console.log('[AddFood] Response status:', response.status);
+      
+      // Check if this search is still relevant
+      if (query !== latestQueryRef.current) {
         console.log('[AddFood] Search result outdated, ignoring');
         return;
       }
       
-      if (result.status === 0) {
-        // Network error
+      if (!response.ok) {
+        console.error('[AddFood] HTTP error:', response.status);
         setSearchError('Network error. Please check your connection and try again.');
         setSearchResults([]);
-      } else if (result.products.length === 0) {
-        // No results
+        setIsSearching(false);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      console.log('[AddFood] Response data:', {
+        hasProducts: !!data.products,
+        isArray: Array.isArray(data.products),
+        count: data.products?.length || 0,
+      });
+      
+      // Check if this search is still relevant (again, after async operation)
+      if (query !== latestQueryRef.current) {
+        console.log('[AddFood] Search result outdated after parsing, ignoring');
+        return;
+      }
+      
+      // Safe parsing - handle missing or invalid products array
+      const products = Array.isArray(data.products) ? data.products : [];
+      
+      if (products.length === 0) {
+        console.log('[AddFood] No products found');
         setSearchError('No foods found. Try a different search term.');
         setSearchResults([]);
       } else {
-        // Success
-        setSearchResults(result.products);
+        console.log('[AddFood] Found', products.length, 'products');
+        setSearchResults(products);
         setSearchError(null);
       }
     } catch (error) {
       console.error('[AddFood] Search error:', error);
+      
+      // Check if this search is still relevant
+      if (query !== latestQueryRef.current) {
+        console.log('[AddFood] Search error for outdated query, ignoring');
+        return;
+      }
+      
       setSearchError('An error occurred. Please try again.');
       setSearchResults([]);
     } finally {
-      setIsSearching(false);
+      // Only update loading state if this is still the latest query
+      if (query === latestQueryRef.current) {
+        setIsSearching(false);
+      }
     }
   };
 
   /**
    * Handle search input change with debouncing
+   * Debounces at 500ms as specified in requirements
    */
   const handleSearchChange = (text: string) => {
     console.log('[AddFood] Search input changed:', text);
@@ -188,8 +228,13 @@ export default function AddFoodScreen() {
       setSearchResults([]);
       setSearchError(null);
       setIsSearching(false);
-      lastSearchQueryRef.current = '';
+      latestQueryRef.current = '';
       return;
+    }
+    
+    // Show searching state immediately for queries >= 2 chars
+    if (text.trim().length >= 2) {
+      setIsSearching(true);
     }
     
     // Debounce search with 500ms delay
