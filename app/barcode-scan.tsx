@@ -96,7 +96,7 @@ export default function BarcodeScanScreen() {
             offData: JSON.stringify(product),
             source: 'barcode',
             mode: mode,
-            returnTo: returnTo,
+            returnTo: returnTo || '/add-food',
             mealId: myMealId,
           },
         });

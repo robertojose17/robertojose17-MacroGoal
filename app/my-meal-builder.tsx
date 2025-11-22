@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,9 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMealItem } from '@/types';
+
+// Generate a unique session ID for this builder instance
+const generateSessionId = () => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 export default function MyMealBuilderScreen() {
   const router = useRouter();
@@ -18,20 +21,37 @@ export default function MyMealBuilderScreen() {
   const mealId = params.mealId as string | undefined;
   const isEditing = !!mealId;
 
+  // PERSISTENT BUILDER SESSION ID - generated once and never changes
+  const builderSessionIdRef = useRef<string>(generateSessionId());
+  const hasLoadedRef = useRef(false);
+
   const [mealName, setMealName] = useState('');
   const [mealNote, setMealNote] = useState('');
   const [items, setItems] = useState<MyMealItem[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Load existing meal data on mount (only once)
+  useEffect(() => {
+    if (isEditing && !hasLoadedRef.current) {
+      console.log('[MyMealBuilder] Initial load for editing meal:', mealId);
+      hasLoadedRef.current = true;
+      loadMyMeal();
+    }
+  }, [isEditing, mealId]);
+
   useFocusEffect(
     useCallback(() => {
       console.log('[MyMealBuilder] Screen focused');
+      console.log('[MyMealBuilder] Builder Session ID:', builderSessionIdRef.current);
+      console.log('[MyMealBuilder] Current items count:', items.length);
       
       // If we have a new food item from the Add Food flow, add it
       if (params.newFoodItem) {
         try {
           const newItem = JSON.parse(params.newFoodItem as string);
-          console.log('[MyMealBuilder] Adding new food item:', newItem);
+          console.log('[MyMealBuilder] ========== ADDING NEW FOOD ITEM ==========');
+          console.log('[MyMealBuilder] Food:', newItem.food?.name || 'Unknown');
+          console.log('[MyMealBuilder] Calories:', newItem.calories);
           
           // Generate a temporary ID for the item
           const itemWithTempId = {
@@ -39,18 +59,20 @@ export default function MyMealBuilderScreen() {
             id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           };
           
-          setItems(prev => [...prev, itemWithTempId]);
+          // APPEND to existing items (never overwrite)
+          setItems(prev => {
+            console.log('[MyMealBuilder] Previous items count:', prev.length);
+            const updated = [...prev, itemWithTempId];
+            console.log('[MyMealBuilder] Updated items count:', updated.length);
+            console.log('[MyMealBuilder] ========================================');
+            return updated;
+          });
           
-          // Clear the param to prevent re-adding on next focus
+          // Clear the param IMMEDIATELY to prevent re-adding on next focus
           router.setParams({ newFoodItem: undefined });
         } catch (error) {
           console.error('[MyMealBuilder] Error parsing new food item:', error);
         }
-      }
-
-      // Load existing meal if editing
-      if (isEditing && items.length === 0) {
-        loadMyMeal();
       }
     }, [params.newFoodItem])
   );
@@ -117,10 +139,14 @@ export default function MyMealBuilderScreen() {
 
   const handleAddFood = () => {
     console.log('[MyMealBuilder] Opening Add Food in mymeal mode');
+    console.log('[MyMealBuilder] Passing builder session ID:', builderSessionIdRef.current);
+    
     router.push({
       pathname: '/add-food',
       params: {
         mode: 'mymeal',
+        context: 'my_meal_builder',
+        builderSessionId: builderSessionIdRef.current,
         returnTo: '/my-meal-builder',
         mealId: mealId || '',
       },

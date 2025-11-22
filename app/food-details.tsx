@@ -367,9 +367,11 @@ export default function FoodDetailsScreen() {
           grams: finalGrams,
         };
 
-        // Navigate back to builder with the new item
-        router.push({
-          pathname: returnTo || '/my-meal-builder',
+        console.log('[FoodDetails] Dismissing to builder with food item');
+        
+        // Use dismissTo to go directly back to the builder, skipping add-food
+        router.dismissTo({
+          pathname: '/my-meal-builder',
           params: {
             mealId: myMealId || '',
             newFoodItem: JSON.stringify(newFoodItem),

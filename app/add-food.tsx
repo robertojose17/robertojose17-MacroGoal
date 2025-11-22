@@ -262,7 +262,7 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: returnTo,
+        returnTo: '/add-food',
         mealId: myMealId,
       },
     });
@@ -357,7 +357,7 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: returnTo,
+          returnTo: '/add-food',
           mealId: myMealId,
         },
       });
@@ -426,8 +426,8 @@ export default function AddFoodScreen() {
           grams: gramsToAdd,
         };
 
-        // Navigate back to builder with the new item
-        router.push({
+        // Use dismissTo to go directly back to the builder with params
+        router.dismissTo({
           pathname: returnTo || '/my-meal-builder',
           params: {
             mealId: myMealId || '',
@@ -538,7 +538,7 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: returnTo,
+          returnTo: '/add-food',
           mealId: myMealId,
         },
       });
@@ -640,8 +640,8 @@ export default function AddFoodScreen() {
           grams: favorite.default_grams,
         };
 
-        // Navigate back to builder with the new item
-        router.push({
+        // Use dismissTo to go directly back to the builder with params
+        router.dismissTo({
           pathname: returnTo || '/my-meal-builder',
           params: {
             mealId: myMealId || '',

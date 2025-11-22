@@ -105,8 +105,10 @@ export default function QuickAddScreen() {
           grams: null,
         };
 
-        // Navigate back to builder with the new item
-        router.push({
+        console.log('[QuickAdd] Dismissing to builder with food item');
+        
+        // Use dismissTo to go directly back to the builder, skipping add-food
+        router.dismissTo({
           pathname: returnTo || '/my-meal-builder',
           params: {
             mealId: myMealId || '',
