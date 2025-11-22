@@ -32,6 +32,12 @@ export default function AddFoodScreen() {
   // Check if we're in My Meals builder mode
   const isMyMealBuilderMode = mode === 'my_meal_builder';
   
+  console.log('[AddFood] ========== SCREEN INITIALIZED ==========');
+  console.log('[AddFood] Mode:', mode);
+  console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
+  console.log('[AddFood] Return To:', returnTo);
+  console.log('[AddFood] Target Meal ID:', targetMealId);
+  
   // FIXED: Initialize activeTab based on showMyMeals param
   // This ensures the My Meals tab is shown when returning from builder
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -412,27 +418,17 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * Add a recent food directly to the diary using its default serving
-   * This is called when the "+" button is tapped on a Recent Food item
+   * FIXED: Add a recent food directly
+   * NOW RESPECTS MY MEAL BUILDER CONTEXT
+   * If in builder mode, returns food data instead of logging to diary
    */
   const handleAddRecentFood = async (food: Food) => {
-    console.log('[AddFood] Adding recent food directly to diary:', food.name);
+    console.log('[AddFood] ========== ADD RECENT FOOD ==========');
+    console.log('[AddFood] Food:', food.name);
+    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Error', 'You must be logged in to add food');
-        return;
-      }
-
-      // Use the food's serving_amount as the default (this is the grams from last time)
-      const gramsToAdd = food.serving_amount;
-      const multiplier = gramsToAdd / 100;
-
-      // Calculate nutrition based on the per-100g values stored in the food
-      // Note: For recent foods, the calories/protein/etc are already for the last serving
-      // But we need to recalculate based on per-100g to be accurate
-      
       // Get the food from database to get per-100g values
       const { data: foodData, error: foodError } = await supabase
         .from('foods')
@@ -445,6 +441,60 @@ export default function AddFoodScreen() {
         Alert.alert('Error', 'Failed to load food details');
         return;
       }
+
+      // Use the food's serving_amount as the default (this is the grams from last time)
+      const gramsToAdd = food.serving_amount;
+      const servingDescription = food.last_serving_description || `${Math.round(gramsToAdd)} g`;
+
+      // CRITICAL FIX: Check if we're in My Meal Builder mode
+      if (isMyMealBuilderMode) {
+        console.log('[AddFood] ✓ My Meal Builder mode detected - returning food data');
+        
+        // Prepare food data to return to builder
+        const foodDataToReturn = {
+          food_source: 'recent',
+          food_id: food.id,
+          barcode: foodData.barcode || undefined,
+          food_name: foodData.name,
+          brand: foodData.brand || undefined,
+          amount_grams: gramsToAdd,
+          amount_display: servingDescription,
+          per100_calories: foodData.calories,
+          per100_protein: foodData.protein,
+          per100_carbs: foodData.carbs,
+          per100_fat: foodData.fats,
+          per100_fiber: foodData.fiber,
+        };
+        
+        console.log('[AddFood] Returning food data to builder:', foodDataToReturn);
+        
+        // Navigate back to the return screen with the food data
+        if (returnTo) {
+          router.push({
+            pathname: returnTo,
+            params: {
+              returnedFood: JSON.stringify(foodDataToReturn),
+              mealId: targetMealId,
+            },
+          });
+        } else {
+          console.error('[AddFood] No returnTo path specified');
+          router.back();
+        }
+        
+        return;
+      }
+
+      // Normal diary mode - log to diary
+      console.log('[AddFood] Normal diary mode - logging to diary');
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to add food');
+        return;
+      }
+
+      const multiplier = gramsToAdd / 100;
 
       // Calculate nutrition for the default serving
       const calories = foodData.calories * multiplier;
@@ -487,9 +537,6 @@ export default function AddFoodScreen() {
       } else {
         console.log('[AddFood] Using existing meal:', mealId);
       }
-
-      // Use the last serving description if available, otherwise generate one
-      const servingDescription = food.last_serving_description || `${Math.round(gramsToAdd)} g`;
 
       console.log('[AddFood] Inserting NEW meal item with serving:', servingDescription);
 
@@ -571,15 +618,19 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * FIXED: Handle adding favorite to My Meal Builder
-   * If in builder mode, return food data instead of logging to diary
+   * FIXED: Handle adding favorite
+   * NOW RESPECTS MY MEAL BUILDER CONTEXT
+   * If in builder mode, returns food data instead of logging to diary
    */
   const handleAddFavorite = async (favorite: Favorite) => {
-    console.log('[AddFood] Adding favorite:', favorite.food_name, 'mode:', mode);
+    console.log('[AddFood] ========== ADD FAVORITE ==========');
+    console.log('[AddFood] Favorite:', favorite.food_name);
+    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
 
-    // If in My Meal Builder mode, return food data
-    if (mode === 'my_meal_builder') {
-      console.log('[AddFood] My Meal Builder mode - returning favorite as food data');
+    // CRITICAL FIX: Check if we're in My Meal Builder mode
+    if (isMyMealBuilderMode) {
+      console.log('[AddFood] ✓ My Meal Builder mode detected - returning favorite as food data');
       
       const foodData = {
         food_source: 'favorite',
@@ -596,7 +647,7 @@ export default function AddFoodScreen() {
         per100_fiber: favorite.per100_fiber,
       };
       
-      console.log('[AddFood] Returning favorite food data:', foodData);
+      console.log('[AddFood] Returning favorite food data to builder:', foodData);
       
       // Navigate back to the return screen with the food data
       if (returnTo) {
@@ -616,6 +667,8 @@ export default function AddFoodScreen() {
     }
 
     // Normal diary mode - log to diary
+    console.log('[AddFood] Normal diary mode - logging to diary');
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
