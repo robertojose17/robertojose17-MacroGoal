@@ -9,6 +9,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { MyMealTemplateItem } from '@/types/myMealTemplate';
 import { createMyMealTemplate, calculateMyMealSummary } from '@/utils/myMealTemplateDatabase';
 
+// Type for draft items with temp_id
+type DraftItem = Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> & {
+  temp_id: string;
+};
+
 export default function MyMealBuilderScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -17,7 +22,7 @@ export default function MyMealBuilderScreen() {
 
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
-  const [items, setItems] = useState<Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[]>([]);
+  const [items, setItems] = useState<DraftItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [draftId] = useState(() => `draft_${Date.now()}`);
 
@@ -28,8 +33,9 @@ export default function MyMealBuilderScreen() {
         const foodData = JSON.parse(params.returnedFood as string);
         console.log('[MyMealBuilder] Received returned food:', foodData);
         
-        // Add the food to items list
-        const newItem: Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
+        // FIXED: Add the food to items list with unique temp_id for React keys
+        const newItem: DraftItem = {
+          temp_id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           food_source: foodData.food_source || 'library',
           food_id: foodData.food_id || undefined,
           barcode: foodData.barcode || undefined,
@@ -45,8 +51,15 @@ export default function MyMealBuilderScreen() {
           per100_fiber: foodData.per100_fiber || 0,
         };
         
-        console.log('[MyMealBuilder] Adding item to draft:', newItem.food_name);
-        setItems(prevItems => [...prevItems, newItem]);
+        console.log('[MyMealBuilder] APPENDING item to draft (not replacing):', newItem.food_name);
+        console.log('[MyMealBuilder] Current items count:', items.length);
+        
+        // CRITICAL: Use functional update to ensure we're appending to the latest state
+        setItems(prevItems => {
+          const newItems = [...prevItems, newItem];
+          console.log('[MyMealBuilder] New items count after append:', newItems.length);
+          return newItems;
+        });
         
         // Clear the param to avoid re-adding on re-render
         router.setParams({ returnedFood: undefined });
@@ -59,6 +72,7 @@ export default function MyMealBuilderScreen() {
   const handleAddFood = () => {
     console.log('[MyMealBuilder] Opening Add Food menu');
     console.log('[MyMealBuilder] Draft ID:', draftId);
+    console.log('[MyMealBuilder] Current items count:', items.length);
     
     // Navigate to Add Food with builder mode
     router.push({
@@ -71,14 +85,14 @@ export default function MyMealBuilderScreen() {
     });
   };
 
-  const handleRemoveItem = (index: number) => {
-    console.log('[MyMealBuilder] Removing item at index:', index);
-    const newItems = [...items];
-    newItems.splice(index, 1);
-    setItems(newItems);
+  const handleRemoveItem = (tempId: string) => {
+    console.log('[MyMealBuilder] Removing item with temp_id:', tempId);
+    setItems(prevItems => prevItems.filter(item => item.temp_id !== tempId));
   };
 
   const handleSave = async () => {
+    console.log('[MyMealBuilder] ========== SAVE MY MEAL ==========');
+    
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter a meal name');
       return;
@@ -95,21 +109,38 @@ export default function MyMealBuilderScreen() {
       console.log('[MyMealBuilder] Saving My Meal:', name);
       console.log('[MyMealBuilder] Items count:', items.length);
       
-      const result = await createMyMealTemplate(name.trim(), items, note.trim() || undefined);
+      // Remove temp_id before saving to database
+      const itemsToSave = items.map(({ temp_id, ...item }) => item);
+      
+      const result = await createMyMealTemplate(name.trim(), itemsToSave, note.trim() || undefined);
 
       if (result) {
-        console.log('[MyMealBuilder] My Meal created successfully');
-        Alert.alert('Success', 'Meal saved successfully', [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
+        console.log('[MyMealBuilder] ✓ My Meal created successfully');
+        console.log('[MyMealBuilder] Template ID:', result.id);
+        
+        // FIXED: Navigate back to Add Food with My Meals tab active
+        // This ensures the user sees their newly created meal immediately
+        console.log('[MyMealBuilder] Navigating to Add Food → My Meals tab');
+        
+        // Use replace to clear the builder from the stack
+        router.replace({
+          pathname: '/add-food',
+          params: {
+            // No mode param = normal diary mode
+            meal: 'breakfast', // Default meal type
+            date: new Date().toISOString().split('T')[0],
+            // Add a flag to indicate we should show My Meals tab
+            showMyMeals: 'true',
+            // Add timestamp to force refresh
+            refresh: Date.now().toString(),
           },
-        ]);
+        });
       } else {
+        console.error('[MyMealBuilder] ✗ Failed to save meal');
         Alert.alert('Error', 'Failed to save meal. Please try again.');
       }
     } catch (error) {
-      console.error('[MyMealBuilder] Error saving meal:', error);
+      console.error('[MyMealBuilder] ✗ Error saving meal:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setSaving(false);
@@ -263,9 +294,9 @@ export default function MyMealBuilderScreen() {
               </View>
             ) : (
               <View style={styles.itemsList}>
-                {items.map((item, index) => (
+                {items.map((item) => (
                   <View
-                    key={index}
+                    key={item.temp_id}
                     style={[
                       styles.itemCard,
                       {
@@ -292,7 +323,7 @@ export default function MyMealBuilderScreen() {
                     </View>
                     <TouchableOpacity
                       style={styles.removeButton}
-                      onPress={() => handleRemoveItem(index)}
+                      onPress={() => handleRemoveItem(item.temp_id)}
                     >
                       <IconSymbol
                         ios_icon_name="trash"

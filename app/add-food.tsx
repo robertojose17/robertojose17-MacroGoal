@@ -27,11 +27,19 @@ export default function AddFoodScreen() {
   const mode = params.mode as string; // 'my_meal_builder' or undefined
   const returnTo = params.returnTo as string;
   const targetMealId = params.mealId as string;
+  const showMyMeals = params.showMyMeals as string; // 'true' if we should show My Meals tab
   
   // Check if we're in My Meals builder mode
   const isMyMealBuilderMode = mode === 'my_meal_builder';
   
-  const [activeTab, setActiveTab] = useState<TabType>('all');
+  // FIXED: Initialize activeTab based on showMyMeals param
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (showMyMeals === 'true') {
+      return 'my-meals';
+    }
+    return 'all';
+  });
+  
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [myMealTemplates, setMyMealTemplates] = useState<MyMealTemplate[]>([]);
@@ -54,30 +62,32 @@ export default function AddFoodScreen() {
 
   useEffect(() => {
     console.log('[AddFood] Screen mounted on platform:', Platform.OS);
-    console.log('[AddFood] Params:', { mealType, date, mode });
+    console.log('[AddFood] Params:', { mealType, date, mode, showMyMeals });
     loadData();
   }, []);
 
-  // Refresh favorites when screen comes into focus
+  // FIXED: Refresh My Meals list when screen comes into focus or when refresh param changes
   useFocusEffect(
     useCallback(() => {
-      console.log('[AddFood] Screen focused, refreshing favorites');
+      console.log('[AddFood] Screen focused, refreshing data');
       loadFavorites();
-    }, [])
+      loadMyMealTemplates();
+    }, [params.refresh])
   );
 
   const loadData = async () => {
     try {
       setLoading(true);
       const recent = await getRecentFoods();
-      const templates = await getMyMealTemplates();
       setRecentFoods(recent);
-      setMyMealTemplates(templates);
 
       // Load favorites
       await loadFavorites();
+      
+      // Load My Meals templates
+      await loadMyMealTemplates();
 
-      console.log('[AddFood] Loaded data:', { recent: recent.length, myMealTemplates: templates.length });
+      console.log('[AddFood] Loaded data:', { recent: recent.length });
     } catch (error) {
       console.error('[AddFood] Error loading data:', error);
     } finally {
@@ -95,6 +105,17 @@ export default function AddFoodScreen() {
       }
     } catch (error) {
       console.error('[AddFood] Error loading favorites:', error);
+    }
+  };
+
+  const loadMyMealTemplates = async () => {
+    try {
+      console.log('[AddFood] Loading My Meal templates...');
+      const templates = await getMyMealTemplates();
+      setMyMealTemplates(templates);
+      console.log('[AddFood] Loaded', templates.length, 'My Meal templates');
+    } catch (error) {
+      console.error('[AddFood] Error loading My Meal templates:', error);
     }
   };
 
