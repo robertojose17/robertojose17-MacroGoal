@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, TextInput, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,29 +29,61 @@ export default function MyMealBuilderScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  // FIX 1: SINGLE BUILDER SESSION ID
+  // Generate once and never regenerate - this identifies THIS builder session
+  const [builderSessionId] = useState(() => `builder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [items, setItems] = useState<DraftItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const [draftId] = useState(() => `draft_${Date.now()}`);
 
-  // FIX C: Track if we're currently navigating to prevent multiple opens
-  const [isNavigating, setIsNavigating] = useState(false);
+  // Track if we're currently navigating to prevent multiple opens
+  const isNavigatingRef = useRef(false);
+  
+  // Track if we've already processed a returnedFood param to prevent duplicates
+  const processedFoodRef = useRef<Set<string>>(new Set());
 
-  // ISSUE A FIX: Handle returned food item from Add Food flows
+  useEffect(() => {
+    console.log('[MyMealBuilder] ========== BUILDER SESSION STARTED ==========');
+    console.log('[MyMealBuilder] Builder Session ID:', builderSessionId);
+    console.log('[MyMealBuilder] This ID will remain constant for this builder instance');
+    
+    return () => {
+      console.log('[MyMealBuilder] ========== BUILDER SESSION ENDED ==========');
+      console.log('[MyMealBuilder] Session ID:', builderSessionId);
+    };
+  }, []);
+
+  // FIX 3: ENFORCE RETURN TARGET
+  // Handle returned food item from Add Food flows
   // This effect properly appends items without overwriting
   useEffect(() => {
     if (params.returnedFood) {
       try {
         const foodData = JSON.parse(params.returnedFood as string);
+        
+        // Create a unique identifier for this food return to prevent duplicate processing
+        const returnId = `${foodData.food_name}_${foodData.amount_grams}_${Date.now()}`;
+        
+        // Check if we've already processed this exact return
+        if (processedFoodRef.current.has(returnId)) {
+          console.log('[MyMealBuilder] ⚠️ Already processed this food return, skipping');
+          return;
+        }
+        
         console.log('[MyMealBuilder] ========== RECEIVED RETURNED FOOD ==========');
+        console.log('[MyMealBuilder] Builder Session ID:', builderSessionId);
         console.log('[MyMealBuilder] Food name:', foodData.food_name);
         console.log('[MyMealBuilder] Current items count BEFORE append:', items.length);
         
-        // CRITICAL FIX A: Generate unique temp_id using timestamp + random
+        // Mark this return as processed
+        processedFoodRef.current.add(returnId);
+        
+        // Generate unique temp_id using timestamp + random
         // This ensures React doesn't reuse keys and overwrite items
-        const uniqueTempId = generateTempId();
-        console.log('[MyMealBuilder] Generated unique temp_id:', uniqueTempId);
+        const uniqueTempId = foodData.temp_id || generateTempId();
+        console.log('[MyMealBuilder] Using temp_id:', uniqueTempId);
         
         // Create new item with unique temp_id
         const newItem: DraftItem = {
@@ -77,7 +109,7 @@ export default function MyMealBuilderScreen() {
           amount_grams: newItem.amount_grams,
         });
         
-        // CRITICAL FIX: Use functional state update to ensure we're working with latest state
+        // FIX 3: Use functional state update to ensure we're working with latest state
         // This prevents race conditions and ensures proper appending
         setItems(prevItems => {
           const newItems = [...prevItems, newItem];
@@ -88,23 +120,30 @@ export default function MyMealBuilderScreen() {
           return newItems;
         });
         
-        // Clear the param to avoid re-adding on re-render
-        router.setParams({ returnedFood: undefined });
+        // FIX 3: Clear the param immediately to prevent re-processing
+        // Use setTimeout to ensure this happens after state update
+        setTimeout(() => {
+          router.setParams({ returnedFood: undefined });
+        }, 100);
+        
+        console.log('[MyMealBuilder] ✓ Food successfully added to CURRENT builder session');
+        console.log('[MyMealBuilder] ✓ NO NEW BUILDER CREATED');
       } catch (error) {
         console.error('[MyMealBuilder] ✗ Error parsing returned food:', error);
       }
     }
-  }, [params.returnedFood]);
+  }, [params.returnedFood, builderSessionId]);
 
-  // FIX C: Guard against opening AddFood multiple times
+  // FIX 2: DO NOT NAVIGATE TO CreateMyMeal FROM ANY AddFood FLOW
+  // Guard against opening AddFood multiple times
   const handleAddFood = () => {
     console.log('[MyMealBuilder] ========== ADD FOOD BUTTON PRESSED ==========');
-    console.log('[MyMealBuilder] Draft ID:', draftId);
+    console.log('[MyMealBuilder] Builder Session ID:', builderSessionId);
     console.log('[MyMealBuilder] Current items count:', items.length);
-    console.log('[MyMealBuilder] Is navigating:', isNavigating);
+    console.log('[MyMealBuilder] Is navigating:', isNavigatingRef.current);
     
-    // FIX C: Prevent multiple navigations
-    if (isNavigating) {
+    // FIX 2: Prevent multiple navigations
+    if (isNavigatingRef.current) {
       console.log('[MyMealBuilder] ✗ Already navigating, blocking duplicate navigation');
       return;
     }
@@ -119,22 +158,24 @@ export default function MyMealBuilderScreen() {
     }
     
     // Set navigating flag
-    setIsNavigating(true);
+    isNavigatingRef.current = true;
     console.log('[MyMealBuilder] ✓ Navigating to add-food screen');
+    console.log('[MyMealBuilder] ✓ Passing builder session ID:', builderSessionId);
     
-    // Navigate to Add Food with builder mode
+    // FIX 2: Navigate to Add Food with builder mode
+    // Pass the builder session ID to ensure we return to THIS builder
     router.push({
       pathname: '/add-food',
       params: {
         mode: 'my_meal_builder',
         returnTo: '/my-meal-builder',
-        mealId: draftId,
+        builderSessionId: builderSessionId, // Pass session ID
       },
     });
     
     // Reset navigating flag after a short delay
     setTimeout(() => {
-      setIsNavigating(false);
+      isNavigatingRef.current = false;
       console.log('[MyMealBuilder] Navigation flag reset');
     }, 1000);
   };
@@ -152,25 +193,74 @@ export default function MyMealBuilderScreen() {
     });
   };
 
-  // FIX B: Improved save with validation and error handling
+  // FIX 5: BACK/X BEHAVIOR
+  const handleCancel = () => {
+    console.log('[MyMealBuilder] ========== CANCEL PRESSED ==========');
+    console.log('[MyMealBuilder] Builder Session ID:', builderSessionId);
+    
+    // If there are unsaved changes, confirm
+    if (items.length > 0 || name.trim().length > 0) {
+      Alert.alert(
+        'Discard Changes?',
+        'You have unsaved changes. Are you sure you want to discard them?',
+        [
+          {
+            text: 'Keep Editing',
+            style: 'cancel',
+          },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => {
+              console.log('[MyMealBuilder] User confirmed discard');
+              console.log('[MyMealBuilder] ✓ Exiting builder session:', builderSessionId);
+              
+              // FIX 4: Clear draft state
+              setName('');
+              setNote('');
+              setItems([]);
+              
+              // Navigate back to Add Food → My Meals tab
+              router.dismissTo({
+                pathname: '/add-food',
+                params: {
+                  meal: 'breakfast',
+                  date: new Date().toISOString().split('T')[0],
+                  showMyMeals: 'true',
+                },
+              });
+            },
+          },
+        ]
+      );
+    } else {
+      // No changes, just go back
+      console.log('[MyMealBuilder] No changes to discard');
+      console.log('[MyMealBuilder] ✓ Exiting builder session:', builderSessionId);
+      router.back();
+    }
+  };
+
+  // Save handler with validation and error handling
   const handleSave = async () => {
     console.log('[MyMealBuilder] ========== SAVE MY MEAL ==========');
+    console.log('[MyMealBuilder] Builder Session ID:', builderSessionId);
     
-    // FIX B: Validate meal name
+    // Validate meal name
     if (!name.trim()) {
       console.log('[MyMealBuilder] ✗ Validation failed: empty meal name');
       Alert.alert('Error', 'Please enter a meal name');
       return;
     }
 
-    // FIX B: Validate items count
+    // Validate items count
     if (items.length === 0) {
       console.log('[MyMealBuilder] ✗ Validation failed: no items');
       Alert.alert('Error', 'Please add at least one food item');
       return;
     }
 
-    // FIX B: Validate all items have temp_id
+    // Validate all items have temp_id
     const itemsWithoutTempId = items.filter(item => !item.temp_id);
     if (itemsWithoutTempId.length > 0) {
       console.error('[MyMealBuilder] ✗ Validation failed: items without temp_id:', itemsWithoutTempId);
@@ -186,7 +276,7 @@ export default function MyMealBuilderScreen() {
     setSaving(true);
 
     try {
-      // FIX B: Remove temp_id before saving to database
+      // Remove temp_id before saving to database
       const itemsToSave = items.map(({ temp_id, ...item }) => item);
       
       console.log('[MyMealBuilder] Calling createMyMealTemplate...');
@@ -195,27 +285,27 @@ export default function MyMealBuilderScreen() {
       if (result) {
         console.log('[MyMealBuilder] ✓ My Meal created successfully');
         console.log('[MyMealBuilder] Template ID:', result.id);
+        console.log('[MyMealBuilder] ✓ Builder session completed:', builderSessionId);
         
-        // FIX B: Clear the draft state
+        // FIX 4: Clear the draft state
         setName('');
         setNote('');
         setItems([]);
         
-        // FIX B: Navigate back to Add Food with My Meals tab active
+        // Navigate back to Add Food with My Meals tab active
         console.log('[MyMealBuilder] Navigating to Add Food → My Meals tab');
         
         // Use dismissTo to clear the builder from the stack
         router.dismissTo({
           pathname: '/add-food',
           params: {
-            meal: 'breakfast', // Default meal type
+            meal: 'breakfast',
             date: new Date().toISOString().split('T')[0],
-            showMyMeals: 'true', // Flag to show My Meals tab
-            refresh: Date.now().toString(), // Timestamp to force refresh
+            showMyMeals: 'true',
+            refresh: Date.now().toString(),
           },
         });
       } else {
-        // FIX B: Show real error instead of silent failure
         console.error('[MyMealBuilder] ✗ createMyMealTemplate returned null');
         Alert.alert(
           'Failed to Save Meal',
@@ -223,7 +313,6 @@ export default function MyMealBuilderScreen() {
         );
       }
     } catch (error: any) {
-      // FIX B: Show real error with details
       console.error('[MyMealBuilder] ✗ Error saving meal:', error);
       console.error('[MyMealBuilder] Error details:', {
         message: error.message,
@@ -248,7 +337,7 @@ export default function MyMealBuilderScreen() {
         style={styles.keyboardView}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={handleCancel}>
             <IconSymbol
               ios_icon_name="xmark"
               android_material_icon_name="close"
@@ -365,9 +454,9 @@ export default function MyMealBuilderScreen() {
                 Foods ({items.length})
               </Text>
               <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: colors.primary, opacity: isNavigating ? 0.5 : 1 }]}
+                style={[styles.addButton, { backgroundColor: colors.primary, opacity: isNavigatingRef.current ? 0.5 : 1 }]}
                 onPress={handleAddFood}
-                disabled={isNavigating}
+                disabled={isNavigatingRef.current}
               >
                 <IconSymbol
                   ios_icon_name="plus"
@@ -382,12 +471,12 @@ export default function MyMealBuilderScreen() {
             {items.length === 0 ? (
               <View style={styles.emptyItems}>
                 <Text style={[styles.emptyItemsText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  No foods added yet. Tap "Add Food" to get started.
+                  No foods added yet. Tap &quot;Add Food&quot; to get started.
                 </Text>
               </View>
             ) : (
               <View style={styles.itemsList}>
-                {/* FIX A: Use temp_id as key to prevent React from reusing components */}
+                {/* Use temp_id as key to prevent React from reusing components */}
                 {items.map((item) => (
                   <View
                     key={item.temp_id}
