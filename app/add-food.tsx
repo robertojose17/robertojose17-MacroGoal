@@ -25,6 +25,9 @@ export default function AddFoodScreen() {
   const returnTo = params.returnTo as string;
   const targetMealId = params.mealId as string;
   
+  // Check if we're in My Meals builder mode
+  const isMyMealBuilderMode = mode === 'my_meal_builder';
+  
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favoriteFoods, setFavoriteFoods] = useState<Food[]>([]);
@@ -39,7 +42,7 @@ export default function AddFoodScreen() {
 
   useEffect(() => {
     console.log('[AddFood] Screen mounted on platform:', Platform.OS);
-    console.log('[AddFood] Params:', { mealType, date });
+    console.log('[AddFood] Params:', { mealType, date, mode });
     loadData();
   }, []);
 
@@ -228,6 +231,197 @@ export default function AddFoodScreen() {
 
   const displayFoods = getDisplayFoods();
 
+  // MY MEALS BUILDER MODE - Simplified UI with only 4 options
+  if (isMyMealBuilderMode) {
+    return (
+      <SafeAreaView 
+        style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]} 
+        edges={['top']}
+      >
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Add Food to Meal
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        {/* Scrollable Content */}
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Choose an option
+          </Text>
+
+          {/* Search Food Library */}
+          <TouchableOpacity
+            style={[
+              styles.builderOptionCard,
+              { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            ]}
+            onPress={handleSearchPress}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.builderOptionIconContainer, { backgroundColor: '#E0F2FE' }]}>
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={28}
+                color="#0EA5E9"
+              />
+            </View>
+            <View style={styles.builderOptionTextContainer}>
+              <Text style={[styles.builderOptionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Search Food Library
+              </Text>
+              <Text style={[styles.builderOptionDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Search from millions of foods
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {/* Scan Barcode */}
+          <TouchableOpacity
+            style={[
+              styles.builderOptionCard,
+              { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            ]}
+            onPress={handleBarcodeScan}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.builderOptionIconContainer, { backgroundColor: '#F3E8FF' }]}>
+              <IconSymbol
+                ios_icon_name="barcode.viewfinder"
+                android_material_icon_name="qr_code_scanner"
+                size={28}
+                color="#8B5CF6"
+              />
+            </View>
+            <View style={styles.builderOptionTextContainer}>
+              <Text style={[styles.builderOptionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Scan Barcode
+              </Text>
+              <Text style={[styles.builderOptionDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Scan product barcode
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {/* Quick Add */}
+          <TouchableOpacity
+            style={[
+              styles.builderOptionCard,
+              { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            ]}
+            onPress={handleQuickAdd}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.builderOptionIconContainer, { backgroundColor: '#FEF3C7' }]}>
+              <IconSymbol
+                ios_icon_name="pencil"
+                android_material_icon_name="edit"
+                size={28}
+                color="#F59E0B"
+              />
+            </View>
+            <View style={styles.builderOptionTextContainer}>
+              <Text style={[styles.builderOptionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Quick Add
+              </Text>
+              <Text style={[styles.builderOptionDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Manually enter calories & macros
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {/* Favorites */}
+          <TouchableOpacity
+            style={[
+              styles.builderOptionCard,
+              { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            ]}
+            onPress={() => setActiveTab('favorites')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.builderOptionIconContainer, { backgroundColor: '#FFEDD5' }]}>
+              <IconSymbol
+                ios_icon_name="star.fill"
+                android_material_icon_name="star"
+                size={28}
+                color="#F97316"
+              />
+            </View>
+            <View style={styles.builderOptionTextContainer}>
+              <Text style={[styles.builderOptionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Favorites
+              </Text>
+              <Text style={[styles.builderOptionDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Choose from your favorite foods
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {/* Show favorites list if that option was selected */}
+          {activeTab === 'favorites' && (
+            <React.Fragment>
+              <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.lg }]}>
+                Favorite Foods
+              </Text>
+              {favoriteFoods.length > 0 ? (
+                favoriteFoods.map((food, index) => renderFoodItem(food, index))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    No favorite foods yet
+                  </Text>
+                </View>
+              )}
+            </React.Fragment>
+          )}
+
+          {/* Bottom padding to avoid tab bar */}
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // NORMAL MODE - Full Add Food menu with all options
   return (
     <SafeAreaView 
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]} 
@@ -710,5 +904,35 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 16,
     color: '#FFFFFF',
+  },
+  // MY MEALS BUILDER MODE STYLES
+  builderOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.sm,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  builderOptionIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  builderOptionTextContainer: {
+    flex: 1,
+  },
+  builderOptionTitle: {
+    ...typography.bodyBold,
+    fontSize: 17,
+    marginBottom: 2,
+  },
+  builderOptionDescription: {
+    ...typography.caption,
+    fontSize: 13,
   },
 });
