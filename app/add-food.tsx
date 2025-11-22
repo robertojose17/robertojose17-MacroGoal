@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -9,6 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { getRecentFoods } from '@/utils/foodDatabase';
 import { getMyMeals, calculateMyMealSummary } from '@/utils/myMealsDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
+import { searchOpenFoodFacts, OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
 import { MyMeal } from '@/types/myMeals';
@@ -35,6 +36,14 @@ export default function AddFoodScreen() {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [myMeals, setMyMeals] = useState<MyMeal[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // INLINE SEARCH STATE
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<OpenFoodFactsProduct[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSearchQueryRef = useRef<string>('');
 
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
@@ -89,17 +98,135 @@ export default function AddFoodScreen() {
     }
   };
 
-  const handleSearchPress = () => {
-    console.log('[AddFood] Opening Food Library search, mode:', mode);
-    const searchParams: any = { meal: mealType, date: date };
-    if (mode === 'my_meal_builder') {
-      searchParams.mode = mode;
-      searchParams.returnTo = returnTo;
-      searchParams.mealId = targetMealId;
+  /**
+   * INLINE SEARCH LOGIC
+   * Debounced search with 500ms delay
+   * Minimum 2 characters before searching
+   */
+  const performSearch = async (query: string) => {
+    console.log('[AddFood] performSearch called with query:', query);
+    
+    // Prevent duplicate searches
+    if (query === lastSearchQueryRef.current) {
+      console.log('[AddFood] Skipping duplicate search');
+      return;
     }
+    
+    lastSearchQueryRef.current = query;
+    
+    // Clear previous results
+    setSearchResults([]);
+    setSearchError(null);
+    
+    // Empty query - do nothing (Recent Foods will show)
+    if (query.trim().length === 0) {
+      console.log('[AddFood] Empty query, showing Recent Foods');
+      return;
+    }
+    
+    // Less than 2 characters - do nothing
+    if (query.trim().length < 2) {
+      console.log('[AddFood] Query too short, waiting for more characters');
+      return;
+    }
+    
+    // Start searching
+    setIsSearching(true);
+    console.log('[AddFood] Starting OpenFoodFacts search for:', query);
+    
+    try {
+      const result = await searchOpenFoodFacts(query.trim());
+      
+      console.log('[AddFood] Search completed:', {
+        status: result.status,
+        count: result.count,
+        products: result.products.length,
+      });
+      
+      // Check if this search is still relevant (user might have typed more)
+      if (query !== searchQuery) {
+        console.log('[AddFood] Search result outdated, ignoring');
+        return;
+      }
+      
+      if (result.status === 0) {
+        // Network error
+        setSearchError('Network error. Please check your connection and try again.');
+        setSearchResults([]);
+      } else if (result.products.length === 0) {
+        // No results
+        setSearchError('No foods found. Try a different search term.');
+        setSearchResults([]);
+      } else {
+        // Success
+        setSearchResults(result.products);
+        setSearchError(null);
+      }
+    } catch (error) {
+      console.error('[AddFood] Search error:', error);
+      setSearchError('An error occurred. Please try again.');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  /**
+   * Handle search input change with debouncing
+   */
+  const handleSearchChange = (text: string) => {
+    console.log('[AddFood] Search input changed:', text);
+    setSearchQuery(text);
+    
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // If query is empty, clear results immediately
+    if (text.trim().length === 0) {
+      setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
+      lastSearchQueryRef.current = '';
+      return;
+    }
+    
+    // Debounce search with 500ms delay
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch(text);
+    }, 500);
+  };
+
+  /**
+   * Retry search after error
+   */
+  const handleRetrySearch = () => {
+    console.log('[AddFood] Retrying search');
+    performSearch(searchQuery);
+  };
+
+  /**
+   * Open food details for a search result
+   */
+  const handleOpenSearchResultDetails = (product: OpenFoodFactsProduct) => {
+    console.log('[AddFood] Opening search result details:', product.product_name);
+
+    const detailsParams: any = {
+      offData: JSON.stringify(product),
+      meal: mealType,
+      date: date,
+    };
+
+    if (mode === 'my_meal_builder') {
+      detailsParams.mode = mode;
+      detailsParams.returnTo = returnTo;
+      detailsParams.mealId = targetMealId;
+    }
+
     router.push({
-      pathname: '/food-search',
-      params: searchParams,
+      pathname: '/food-details',
+      params: detailsParams,
     });
   };
 
@@ -601,6 +728,59 @@ export default function AddFoodScreen() {
     );
   };
 
+  const renderSearchResultItem = (product: OpenFoodFactsProduct, index: number) => {
+    const nutrition = extractNutrition(product);
+    const serving = extractServingSize(product);
+    
+    const displayName = product.product_name || 'Unknown Product';
+    const displayBrand = product.brands || '';
+    const servingText = serving.displayText;
+    const calories = Math.round(nutrition.calories * (serving.grams / 100));
+    const protein = Math.round(nutrition.protein * (serving.grams / 100));
+    const carbs = Math.round(nutrition.carbs * (serving.grams / 100));
+    const fat = Math.round(nutrition.fat * (serving.grams / 100));
+    const macrosText = `P: ${protein}g • C: ${carbs}g • F: ${fat}g`;
+    
+    return (
+      <View 
+        key={index}
+        style={[
+          styles.foodCard,
+          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+        ]}
+      >
+        {/* Pressable row area - opens details */}
+        <Pressable
+          style={styles.foodInfoPressable}
+          onPress={() => handleOpenSearchResultDetails(product)}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+        >
+          <View style={styles.foodInfo}>
+            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+              {displayName}
+            </Text>
+            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {displayBrand ? `${displayBrand} • ` : ''}{servingText} • {calories} cal
+            </Text>
+            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {macrosText}
+            </Text>
+          </View>
+        </Pressable>
+        
+        {/* Chevron to indicate tap opens details */}
+        <View style={styles.chevronContainer}>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="chevron_right"
+            size={20}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+        </View>
+      </View>
+    );
+  };
+
   const renderFavoriteItem = (favorite: Favorite, index: number) => {
     const multiplier = favorite.default_grams / 100;
     const calories = Math.round(favorite.per100_calories * multiplier);
@@ -707,6 +887,101 @@ export default function AddFoodScreen() {
     );
   };
 
+  /**
+   * Render the list area content
+   * Shows either Recent Foods or Search Results based on search query
+   */
+  const renderListContent = () => {
+    // If there's a search query, show search results
+    if (searchQuery.trim().length > 0) {
+      // Show "Type more characters" message if query is too short
+      if (searchQuery.trim().length < 2) {
+        return (
+          <View style={styles.emptyState}>
+            <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Type at least 2 characters to search
+            </Text>
+          </View>
+        );
+      }
+      
+      // Show loading spinner while searching
+      if (isSearching) {
+        return (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+              Searching...
+            </Text>
+          </View>
+        );
+      }
+      
+      // Show error state with retry button
+      if (searchError) {
+        return (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="error_outline"
+              size={48}
+              color="#FF3B30"
+            />
+            <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+              {searchError}
+            </Text>
+            <TouchableOpacity
+              style={[styles.retryButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
+              onPress={handleRetrySearch}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      
+      // Show search results
+      if (searchResults.length > 0) {
+        return (
+          <React.Fragment>
+            <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Search Results ({searchResults.length})
+            </Text>
+            {searchResults.map((product, index) => renderSearchResultItem(product, index))}
+          </React.Fragment>
+        );
+      }
+      
+      // No results (should be covered by searchError, but just in case)
+      return (
+        <View style={styles.emptyState}>
+          <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            No foods found
+          </Text>
+        </View>
+      );
+    }
+    
+    // No search query - show Recent Foods
+    return (
+      <React.Fragment>
+        <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+          Recent Foods
+        </Text>
+        {recentFoods.length > 0 ? (
+          recentFoods.map((food, index) => renderFoodItem(food, index))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              No recent foods yet
+            </Text>
+          </View>
+        )}
+      </React.Fragment>
+    );
+  };
+
   // MY MEALS BUILDER MODE - Simplified UI with only 4 options
   if (isMyMealBuilderMode) {
     return (
@@ -746,7 +1021,18 @@ export default function AddFoodScreen() {
               styles.builderOptionCard,
               { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
             ]}
-            onPress={handleSearchPress}
+            onPress={() => {
+              router.push({
+                pathname: '/food-search',
+                params: {
+                  meal: mealType,
+                  date: date,
+                  mode: mode,
+                  returnTo: returnTo,
+                  mealId: targetMealId,
+                },
+              });
+            }}
             activeOpacity={0.7}
           >
             <View style={[styles.builderOptionIconContainer, { backgroundColor: '#E0F2FE' }]}>
@@ -897,7 +1183,7 @@ export default function AddFoodScreen() {
     );
   }
 
-  // NORMAL MODE - Full Add Food menu with all options
+  // NORMAL MODE - Full Add Food menu with inline search
   return (
     <SafeAreaView 
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]} 
@@ -919,9 +1205,9 @@ export default function AddFoodScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Sticky Search Bar */}
+      {/* Sticky Search Bar - NOW EDITABLE */}
       <View style={[styles.searchContainer, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]}>
-        <TouchableOpacity 
+        <View 
           style={[
             styles.searchBar,
             { 
@@ -929,8 +1215,6 @@ export default function AddFoodScreen() {
               borderColor: isDark ? colors.borderDark : colors.border,
             }
           ]}
-          onPress={handleSearchPress}
-          activeOpacity={0.7}
         >
           <IconSymbol
             ios_icon_name="magnifyingglass"
@@ -938,230 +1222,249 @@ export default function AddFoodScreen() {
             size={20}
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
-          <Text style={[styles.searchPlaceholder, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Search food...
-          </Text>
-        </TouchableOpacity>
+          <TextInput
+            style={[
+              styles.searchInput,
+              { color: isDark ? colors.textDark : colors.text }
+            ]}
+            placeholder="Search food..."
+            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => handleSearchChange('')}
+              style={styles.clearButton}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="cancel"
+                size={20}
+                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
-      {/* Tab Row */}
-      <View style={[styles.tabContainer, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]}>
-        <TouchableOpacity
-          style={styles.tab}
-          onPress={() => setActiveTab('all')}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.tabText,
-            activeTab === 'all' && styles.tabTextActive,
-            { color: activeTab === 'all' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-          ]}>
-            All
-          </Text>
-          {activeTab === 'all' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
+      {/* Tab Row - Only show when NOT searching */}
+      {searchQuery.trim().length === 0 && (
+        <View style={[styles.tabContainer, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]}>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('all')}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === 'all' && styles.tabTextActive,
+              { color: activeTab === 'all' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+            ]}>
+              All
+            </Text>
+            {activeTab === 'all' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.tab}
-          onPress={() => setActiveTab('my-meals')}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.tabText,
-            activeTab === 'my-meals' && styles.tabTextActive,
-            { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-          ]}>
-            My Meals
-          </Text>
-          {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('my-meals')}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === 'my-meals' && styles.tabTextActive,
+              { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+            ]}>
+              My Meals
+            </Text>
+            {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.tab}
-          onPress={() => setActiveTab('favorites')}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.tabText,
-            activeTab === 'favorites' && styles.tabTextActive,
-            { color: activeTab === 'favorites' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-          ]}>
-            Favorites
-          </Text>
-          {activeTab === 'favorites' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('favorites')}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === 'favorites' && styles.tabTextActive,
+              { color: activeTab === 'favorites' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+            ]}>
+              Favorites
+            </Text>
+            {activeTab === 'favorites' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.tab}
-          onPress={() => setActiveTab('quick-add')}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.tabText,
-            activeTab === 'quick-add' && styles.tabTextActive,
-            { color: activeTab === 'quick-add' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-          ]}>
-            Quick Add
-          </Text>
-          {activeTab === 'quick-add' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('quick-add')}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === 'quick-add' && styles.tabTextActive,
+              { color: activeTab === 'quick-add' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+            ]}>
+              Quick Add
+            </Text>
+            {activeTab === 'quick-add' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Scrollable Content */}
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Quick Actions - Only show on "All" tab */}
-        {activeTab === 'all' && (
+        {/* If searching, show search results. Otherwise show tab content */}
+        {searchQuery.trim().length > 0 ? (
+          renderListContent()
+        ) : (
           <React.Fragment>
-            <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Quick Actions
-            </Text>
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={[styles.quickActionCard, styles.quickActionCardLeft]}
-                onPress={handleBarcodeScan}
-                activeOpacity={0.7}
-              >
-                <View style={styles.quickActionIconContainer}>
-                  <IconSymbol
-                    ios_icon_name="barcode.viewfinder"
-                    android_material_icon_name="qr_code_scanner"
-                    size={32}
-                    color="#8B5CF6"
-                  />
+            {/* Quick Actions - Only show on "All" tab */}
+            {activeTab === 'all' && (
+              <React.Fragment>
+                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Quick Actions
+                </Text>
+                <View style={styles.quickActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.quickActionCard, styles.quickActionCardLeft]}
+                    onPress={handleBarcodeScan}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.quickActionIconContainer}>
+                      <IconSymbol
+                        ios_icon_name="barcode.viewfinder"
+                        android_material_icon_name="qr_code_scanner"
+                        size={32}
+                        color="#8B5CF6"
+                      />
+                    </View>
+                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                      Barcode Scan
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.quickActionCard, styles.quickActionCardRight]}
+                    onPress={handleCopyFromPrevious}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.quickActionIconContainer}>
+                      <IconSymbol
+                        ios_icon_name="calendar"
+                        android_material_icon_name="event"
+                        size={32}
+                        color="#10B981"
+                      />
+                    </View>
+                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                      Copy from Previous
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                  Barcode Scan
-                </Text>
-              </TouchableOpacity>
+              </React.Fragment>
+            )}
 
-              <TouchableOpacity
-                style={[styles.quickActionCard, styles.quickActionCardRight]}
-                onPress={handleCopyFromPrevious}
-                activeOpacity={0.7}
-              >
-                <View style={styles.quickActionIconContainer}>
-                  <IconSymbol
-                    ios_icon_name="calendar"
-                    android_material_icon_name="event"
-                    size={32}
-                    color="#10B981"
-                  />
+            {/* Recent Foods */}
+            {activeTab === 'all' && renderListContent()}
+
+            {/* Favorites Tab */}
+            {activeTab === 'favorites' && (
+              <React.Fragment>
+                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Favorite Foods
+                </Text>
+                {favorites.length > 0 ? (
+                  favorites.map((favorite, index) => renderFavoriteItem(favorite, index))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="star"
+                      android_material_icon_name="star_border"
+                      size={48}
+                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                    />
+                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+                      No favorite foods yet
+                    </Text>
+                    <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
+                      Tap the star icon on any food to add it to your favorites
+                    </Text>
+                  </View>
+                )}
+              </React.Fragment>
+            )}
+
+            {/* My Meals Tab */}
+            {activeTab === 'my-meals' && (
+              <React.Fragment>
+                <View style={styles.myMealsHeader}>
+                  <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Saved Meals
+                  </Text>
+                  <TouchableOpacity onPress={handleViewAllMyMeals}>
+                    <Text style={[styles.viewAllText, { color: colors.primary }]}>
+                      View All
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                  Copy from Previous
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </React.Fragment>
-        )}
-
-        {/* Recent Foods */}
-        {activeTab === 'all' && (
-          <React.Fragment>
-            <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Recent Foods
-            </Text>
-            {recentFoods.length > 0 ? (
-              recentFoods.map((food, index) => renderFoodItem(food, index))
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  No recent foods yet
-                </Text>
-              </View>
+                {myMeals.length > 0 ? (
+                  myMeals.slice(0, 5).map((meal, index) => renderMyMealCard(meal, index))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="fork.knife"
+                      android_material_icon_name="restaurant"
+                      size={48}
+                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                    />
+                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+                      No saved meals yet
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.createMealButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
+                      onPress={handleViewAllMyMeals}
+                    >
+                      <Text style={styles.createMealButtonText}>Create Your First Meal</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </React.Fragment>
             )}
-          </React.Fragment>
-        )}
 
-        {/* Favorites Tab */}
-        {activeTab === 'favorites' && (
-          <React.Fragment>
-            <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Favorite Foods
-            </Text>
-            {favorites.length > 0 ? (
-              favorites.map((favorite, index) => renderFavoriteItem(favorite, index))
-            ) : (
-              <View style={styles.emptyState}>
-                <IconSymbol
-                  ios_icon_name="star"
-                  android_material_icon_name="star_border"
-                  size={48}
-                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                />
-                <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
-                  No favorite foods yet
-                </Text>
-                <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
-                  Tap the star icon on any food to add it to your favorites
-                </Text>
-              </View>
-            )}
-          </React.Fragment>
-        )}
-
-        {/* My Meals Tab */}
-        {activeTab === 'my-meals' && (
-          <React.Fragment>
-            <View style={styles.myMealsHeader}>
-              <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Saved Meals
-              </Text>
-              <TouchableOpacity onPress={handleViewAllMyMeals}>
-                <Text style={[styles.viewAllText, { color: colors.primary }]}>
-                  View All
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {myMeals.length > 0 ? (
-              myMeals.slice(0, 5).map((meal, index) => renderMyMealCard(meal, index))
-            ) : (
-              <View style={styles.emptyState}>
-                <IconSymbol
-                  ios_icon_name="fork.knife"
-                  android_material_icon_name="restaurant"
-                  size={48}
-                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                />
-                <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
-                  No saved meals yet
+            {activeTab === 'quick-add' && (
+              <View style={styles.quickAddContainer}>
+                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Quick Add Calories
                 </Text>
                 <TouchableOpacity
-                  style={[styles.createMealButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
-                  onPress={handleViewAllMyMeals}
+                  style={[styles.quickAddButton, { backgroundColor: colors.primary }]}
+                  onPress={handleQuickAdd}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.createMealButtonText}>Create Your First Meal</Text>
+                  <IconSymbol
+                    ios_icon_name="pencil"
+                    android_material_icon_name="edit"
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.quickAddButtonText}>
+                    Manually Enter Calories & Macros
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
           </React.Fragment>
-        )}
-
-        {activeTab === 'quick-add' && (
-          <View style={styles.quickAddContainer}>
-            <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Quick Add Calories
-            </Text>
-            <TouchableOpacity
-              style={[styles.quickAddButton, { backgroundColor: colors.primary }]}
-              onPress={handleQuickAdd}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={24}
-                color="#FFFFFF"
-              />
-              <Text style={styles.quickAddButtonText}>
-                Manually Enter Calories & Macros
-              </Text>
-            </TouchableOpacity>
-          </View>
         )}
 
         {/* Bottom padding to avoid tab bar */}
@@ -1200,14 +1503,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     gap: spacing.sm,
   },
-  searchPlaceholder: {
+  searchInput: {
+    flex: 1,
     ...typography.body,
     fontSize: 16,
+    paddingVertical: 0,
+  },
+  clearButton: {
+    padding: spacing.xs,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -1326,6 +1634,10 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
     marginVertical: spacing.md,
   },
+  chevronContainer: {
+    paddingRight: spacing.md,
+    paddingVertical: spacing.md,
+  },
   removeButton: {
     width: 36,
     height: 36,
@@ -1414,6 +1726,16 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 16,
     color: '#FFFFFF',
+  },
+  retryButton: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   // MY MEALS BUILDER MODE STYLES
   builderOptionCard: {
