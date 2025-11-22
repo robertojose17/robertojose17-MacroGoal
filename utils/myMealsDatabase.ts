@@ -46,7 +46,7 @@ export async function getMyMeals(): Promise<MyMeal[]> {
       .from('my_meals')
       .select(`
         *,
-        my_meal_items (*)
+        items:my_meal_items (*)
       `)
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
@@ -75,7 +75,7 @@ export async function getMyMealById(id: string): Promise<MyMeal | null> {
       .from('my_meals')
       .select(`
         *,
-        my_meal_items (*)
+        items:my_meal_items (*)
       `)
       .eq('id', id)
       .single();
@@ -324,6 +324,7 @@ export async function deleteMyMeal(id: string): Promise<boolean> {
   try {
     console.log('[MyMeals] Deleting My Meal:', id);
 
+    // Items will be deleted automatically due to CASCADE foreign key
     const { error } = await supabase
       .from('my_meals')
       .delete()
@@ -345,6 +346,7 @@ export async function deleteMyMeal(id: string): Promise<boolean> {
 /**
  * Add a My Meal to the diary
  * This creates individual meal_items for each item in the My Meal
+ * FIXED: Properly handles food creation and meal item insertion
  */
 export async function addMyMealToDiary(
   myMealId: string,
@@ -352,7 +354,10 @@ export async function addMyMealToDiary(
   date: string
 ): Promise<boolean> {
   try {
-    console.log('[MyMeals] Adding My Meal to diary:', myMealId, mealType, date);
+    console.log('[MyMeals] ========== ADD MY MEAL TO DIARY ==========');
+    console.log('[MyMeals] My Meal ID:', myMealId);
+    console.log('[MyMeals] Target meal type:', mealType);
+    console.log('[MyMeals] Target date:', date);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -366,6 +371,9 @@ export async function addMyMealToDiary(
       console.error('[MyMeals] My Meal not found or has no items');
       return false;
     }
+
+    console.log('[MyMeals] Found My Meal:', myMeal.name);
+    console.log('[MyMeals] Items to add:', myMeal.items.length);
 
     // Find or create the meal for this date and meal type
     let { data: existingMeal } = await supabase
@@ -396,77 +404,152 @@ export async function addMyMealToDiary(
       }
 
       mealId = newMeal.id;
+      console.log('[MyMeals] Created meal:', mealId);
+    } else {
+      console.log('[MyMeals] Using existing meal:', mealId);
     }
 
-    // For each item in the My Meal, create a meal_item
-    const mealItemsToInsert = [];
+    // Process each item in the My Meal
+    let successCount = 0;
+    let failCount = 0;
 
     for (const item of myMeal.items) {
-      // Calculate nutrition for this item
-      const multiplier = item.amount_grams / 100;
-      const calories = item.per100_calories * multiplier;
-      const protein = item.per100_protein * multiplier;
-      const carbs = item.per100_carbs * multiplier;
-      const fats = item.per100_fat * multiplier;
-      const fiber = item.per100_fiber * multiplier;
+      try {
+        console.log('[MyMeals] Processing item:', item.food_name);
 
-      // Get or create the food entry
-      let foodId = item.food_id;
+        // Calculate nutrition for this item
+        const multiplier = item.amount_grams / 100;
+        const calories = item.per100_calories * multiplier;
+        const protein = item.per100_protein * multiplier;
+        const carbs = item.per100_carbs * multiplier;
+        const fats = item.per100_fat * multiplier;
+        const fiber = item.per100_fiber * multiplier;
 
-      if (!foodId) {
-        // Create a food entry for this item
-        const { data: newFood, error: foodError } = await supabase
-          .from('foods')
-          .insert({
-            name: item.food_name,
-            brand: item.brand || null,
-            serving_amount: 100,
-            serving_unit: 'g',
-            calories: item.per100_calories,
-            protein: item.per100_protein,
-            carbs: item.per100_carbs,
-            fats: item.per100_fat,
-            fiber: item.per100_fiber,
-            barcode: item.barcode || null,
-            user_created: false,
-          })
-          .select()
-          .single();
+        console.log('[MyMeals] Calculated nutrition:', {
+          calories: Math.round(calories),
+          protein: Math.round(protein),
+          carbs: Math.round(carbs),
+          fats: Math.round(fats),
+        });
 
-        if (foodError) {
-          console.error('[MyMeals] Error creating food:', foodError);
-          continue; // Skip this item but continue with others
+        // Get or create the food entry
+        let foodId = item.food_id;
+
+        // If we don't have a food_id, try to find or create the food
+        if (!foodId) {
+          console.log('[MyMeals] No food_id, checking if food exists...');
+
+          // Try to find existing food by barcode or name+brand
+          let existingFood = null;
+
+          if (item.barcode) {
+            const { data } = await supabase
+              .from('foods')
+              .select('id')
+              .eq('barcode', item.barcode)
+              .maybeSingle();
+            existingFood = data;
+          }
+
+          if (!existingFood && item.brand) {
+            const { data } = await supabase
+              .from('foods')
+              .select('id')
+              .eq('name', item.food_name)
+              .eq('brand', item.brand)
+              .maybeSingle();
+            existingFood = data;
+          }
+
+          if (!existingFood) {
+            const { data } = await supabase
+              .from('foods')
+              .select('id')
+              .eq('name', item.food_name)
+              .is('brand', null)
+              .maybeSingle();
+            existingFood = data;
+          }
+
+          if (existingFood) {
+            foodId = existingFood.id;
+            console.log('[MyMeals] Found existing food:', foodId);
+          } else {
+            // Create a new food entry
+            console.log('[MyMeals] Creating new food entry');
+            const { data: newFood, error: foodError } = await supabase
+              .from('foods')
+              .insert({
+                name: item.food_name,
+                brand: item.brand || null,
+                serving_amount: 100,
+                serving_unit: 'g',
+                calories: item.per100_calories,
+                protein: item.per100_protein,
+                carbs: item.per100_carbs,
+                fats: item.per100_fat,
+                fiber: item.per100_fiber,
+                barcode: item.barcode || null,
+                user_created: false,
+              })
+              .select()
+              .single();
+
+            if (foodError) {
+              console.error('[MyMeals] Error creating food:', foodError);
+              failCount++;
+              continue; // Skip this item but continue with others
+            }
+
+            foodId = newFood.id;
+            console.log('[MyMeals] Created new food:', foodId);
+          }
         }
 
-        foodId = newFood.id;
-      }
+        // Create the meal item
+        console.log('[MyMeals] Creating meal item...');
+        const { error: itemError } = await supabase
+          .from('meal_items')
+          .insert({
+            meal_id: mealId,
+            food_id: foodId,
+            quantity: multiplier,
+            calories: calories,
+            protein: protein,
+            carbs: carbs,
+            fats: fats,
+            fiber: fiber,
+            serving_description: item.amount_display,
+            grams: item.amount_grams,
+          });
 
-      mealItemsToInsert.push({
-        meal_id: mealId,
-        food_id: foodId,
-        quantity: multiplier,
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-        fats: fats,
-        fiber: fiber,
-        serving_description: item.amount_display,
-        grams: item.amount_grams,
-      });
+        if (itemError) {
+          console.error('[MyMeals] Error creating meal item:', itemError);
+          failCount++;
+          continue;
+        }
+
+        console.log('[MyMeals] ✓ Item added successfully');
+        successCount++;
+      } catch (itemError) {
+        console.error('[MyMeals] Error processing item:', itemError);
+        failCount++;
+      }
     }
 
-    // Insert all meal items
-    const { error: itemsError } = await supabase
-      .from('meal_items')
-      .insert(mealItemsToInsert);
+    console.log('[MyMeals] ========== SUMMARY ==========');
+    console.log('[MyMeals] Success:', successCount);
+    console.log('[MyMeals] Failed:', failCount);
+    console.log('[MyMeals] Total:', myMeal.items.length);
 
-    if (itemsError) {
-      console.error('[MyMeals] Error creating meal items:', itemsError);
+    // Consider it a success if at least one item was added
+    if (successCount > 0) {
+      console.log('[MyMeals] My Meal added to diary successfully');
+      return true;
+    } else {
+      console.error('[MyMeals] Failed to add any items to diary');
       return false;
     }
-
-    console.log('[MyMeals] My Meal added to diary successfully');
-    return true;
   } catch (error) {
     console.error('[MyMeals] Error in addMyMealToDiary:', error);
     return false;

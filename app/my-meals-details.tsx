@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -16,13 +16,14 @@ export default function MyMealDetailsScreen() {
   const isDark = colorScheme === 'dark';
 
   const mealId = params.mealId as string;
-  const mealType = (params.meal as string) || 'breakfast';
+  const defaultMealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const fromAddFood = params.fromAddFood === 'true';
 
   const [myMeal, setMyMeal] = useState<MyMeal | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [showMealTypeModal, setShowMealTypeModal] = useState(false);
 
   useEffect(() => {
     loadMyMeal();
@@ -43,44 +44,52 @@ export default function MyMealDetailsScreen() {
     }
   };
 
-  const handleAddToDiary = async () => {
+  const handleAddToDiary = () => {
+    if (!myMeal) return;
+    console.log('[MyMealDetails] Opening meal type selector');
+    setShowMealTypeModal(true);
+  };
+
+  const handleMealTypeSelected = async (selectedMealType: string) => {
     if (!myMeal) return;
 
-    Alert.alert(
-      'Add to Diary',
-      `Add "${myMeal.name}" to ${mealType}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Add',
-          onPress: async () => {
-            setAdding(true);
-            try {
-              const success = await addMyMealToDiary(mealId, mealType, date);
-              if (success) {
-                console.log('[MyMealDetails] My Meal added to diary');
-                Alert.alert('Success', 'Meal added to diary', [
-                  {
-                    text: 'OK',
-                    onPress: () => router.dismissTo('/(tabs)/(home)/'),
-                  },
-                ]);
-              } else {
-                Alert.alert('Error', 'Failed to add meal to diary');
-              }
-            } catch (error) {
-              console.error('[MyMealDetails] Error adding to diary:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
-            } finally {
-              setAdding(false);
-            }
-          },
-        },
-      ]
-    );
+    setShowMealTypeModal(false);
+    setAdding(true);
+
+    console.log('[MyMealDetails] Adding My Meal to diary:', {
+      mealId,
+      mealType: selectedMealType,
+      date,
+      itemCount: myMeal.items?.length || 0,
+    });
+
+    try {
+      const success = await addMyMealToDiary(mealId, selectedMealType, date);
+      
+      if (success) {
+        console.log('[MyMealDetails] My Meal added to diary successfully');
+        Alert.alert(
+          'Success',
+          `"${myMeal.name}" has been added to ${selectedMealType.charAt(0).toUpperCase() + selectedMealType.slice(1)}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate back to diary
+                router.dismissTo('/(tabs)/(home)/');
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to add meal to diary. Please try again.');
+      }
+    } catch (error) {
+      console.error('[MyMealDetails] Error adding to diary:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleEdit = () => {
@@ -138,6 +147,13 @@ export default function MyMealDetailsScreen() {
 
   const items = myMeal.items || [];
   const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
+
+  const mealTypeOptions = [
+    { key: 'breakfast', label: 'Breakfast', icon: 'sunrise', color: '#F59E0B' },
+    { key: 'lunch', label: 'Lunch', icon: 'sun.max', color: '#10B981' },
+    { key: 'dinner', label: 'Dinner', icon: 'moon', color: '#8B5CF6' },
+    { key: 'snack', label: 'Snacks', icon: 'star', color: '#EC4899' },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -266,21 +282,25 @@ export default function MyMealDetailsScreen() {
           ))}
         </View>
 
-        {fromAddFood && (
-          <TouchableOpacity
-            style={[styles.addToDiaryButton, { backgroundColor: colors.primary, opacity: adding ? 0.7 : 1 }]}
-            onPress={handleAddToDiary}
-            disabled={adding}
-          >
-            {adding ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.addToDiaryButtonText}>
-                Add to {mealType.charAt(0).toUpperCase() + mealType.slice(1)}
-              </Text>
-            )}
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[styles.addToDiaryButton, { backgroundColor: colors.primary, opacity: adding ? 0.7 : 1 }]}
+          onPress={handleAddToDiary}
+          disabled={adding}
+        >
+          {adding ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <React.Fragment>
+              <IconSymbol
+                ios_icon_name="plus.circle.fill"
+                android_material_icon_name="add_circle"
+                size={24}
+                color="#FFFFFF"
+              />
+              <Text style={styles.addToDiaryButtonText}>Add to Diary</Text>
+            </React.Fragment>
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.deleteButton, { borderColor: colors.error }]}
@@ -299,6 +319,70 @@ export default function MyMealDetailsScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Meal Type Selection Modal */}
+      <Modal
+        visible={showMealTypeModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMealTypeModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMealTypeModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Add to which meal?
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              All {items.length} {items.length === 1 ? 'food' : 'foods'} will be added
+            </Text>
+
+            <View style={styles.mealTypeOptions}>
+              {mealTypeOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.mealTypeOption,
+                    { backgroundColor: isDark ? colors.backgroundDark : colors.background }
+                  ]}
+                  onPress={() => handleMealTypeSelected(option.key)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.mealTypeIconContainer, { backgroundColor: option.color + '20' }]}>
+                    <IconSymbol
+                      ios_icon_name={option.icon}
+                      android_material_icon_name={option.icon === 'sunrise' ? 'wb_twilight' : option.icon === 'sun.max' ? 'wb_sunny' : option.icon === 'moon' ? 'nightlight' : 'star'}
+                      size={28}
+                      color={option.color}
+                    />
+                  </View>
+                  <Text style={[styles.mealTypeLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                    {option.label}
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron_right"
+                    size={20}
+                    color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowMealTypeModal(false)}
+            >
+              <Text style={[styles.modalCancelText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -406,10 +490,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   addToDiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: borderRadius.md,
     paddingVertical: spacing.md,
-    alignItems: 'center',
     marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   addToDiaryButtonText: {
     color: '#FFFFFF',
@@ -431,5 +518,61 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
+    elevation: 8,
+  },
+  modalTitle: {
+    ...typography.h2,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  modalSubtitle: {
+    ...typography.body,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  mealTypeOptions: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  mealTypeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.md,
+  },
+  mealTypeIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealTypeLabel: {
+    ...typography.bodyBold,
+    fontSize: 17,
+    flex: 1,
+  },
+  modalCancelButton: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    ...typography.bodyBold,
+    fontSize: 16,
   },
 });
