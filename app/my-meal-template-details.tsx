@@ -6,37 +6,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { MyMeal } from '@/types/myMeals';
-import { getMyMealById, calculateMyMealSummary, deleteMyMeal, addMyMealToDiary } from '@/utils/myMealsDatabase';
+import { MyMealTemplate } from '@/types/myMealTemplate';
+import { getMyMealTemplateById, calculateMyMealSummary, deleteMyMealTemplate, addMyMealTemplateToDiary } from '@/utils/myMealTemplateDatabase';
 
-export default function MyMealDetailsScreen() {
+export default function MyMealTemplateDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const mealId = params.mealId as string;
+  const templateId = params.templateId as string;
   const defaultMealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const fromAddFood = params.fromAddFood === 'true';
 
-  const [myMeal, setMyMeal] = useState<MyMeal | null>(null);
+  const [template, setTemplate] = useState<MyMealTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [showMealTypeModal, setShowMealTypeModal] = useState(false);
 
   useEffect(() => {
-    loadMyMeal();
-  }, [mealId]);
+    loadTemplate();
+  }, [templateId]);
 
-  const loadMyMeal = async () => {
+  const loadTemplate = async () => {
     try {
       setLoading(true);
-      const meal = await getMyMealById(mealId);
-      setMyMeal(meal);
-      console.log('[MyMealDetails] Loaded My Meal:', meal?.name);
+      const data = await getMyMealTemplateById(templateId);
+      setTemplate(data);
+      console.log('[TemplateDetails] Loaded template:', data?.name);
     } catch (error) {
-      console.error('[MyMealDetails] Error loading My Meal:', error);
+      console.error('[TemplateDetails] Error loading template:', error);
       Alert.alert('Error', 'Failed to load meal');
       router.back();
     } finally {
@@ -45,32 +44,32 @@ export default function MyMealDetailsScreen() {
   };
 
   const handleAddToDiary = () => {
-    if (!myMeal) return;
-    console.log('[MyMealDetails] Opening meal type selector');
+    if (!template) return;
+    console.log('[TemplateDetails] Opening meal type selector');
     setShowMealTypeModal(true);
   };
 
   const handleMealTypeSelected = async (selectedMealType: string) => {
-    if (!myMeal) return;
+    if (!template) return;
 
     setShowMealTypeModal(false);
     setAdding(true);
 
-    console.log('[MyMealDetails] Adding My Meal to diary:', {
-      mealId,
+    console.log('[TemplateDetails] Adding template to diary:', {
+      templateId,
       mealType: selectedMealType,
       date,
-      itemCount: myMeal.items?.length || 0,
+      itemCount: template.items?.length || 0,
     });
 
     try {
-      const success = await addMyMealToDiary(mealId, selectedMealType, date);
+      const success = await addMyMealTemplateToDiary(templateId, selectedMealType, date);
       
       if (success) {
-        console.log('[MyMealDetails] My Meal added to diary successfully');
+        console.log('[TemplateDetails] Template added to diary successfully');
         Alert.alert(
           'Success',
-          `"${myMeal.name}" has been added to ${selectedMealType.charAt(0).toUpperCase() + selectedMealType.slice(1)}`,
+          `"${template.name}" has been added to ${selectedMealType.charAt(0).toUpperCase() + selectedMealType.slice(1)}`,
           [
             {
               text: 'OK',
@@ -85,7 +84,7 @@ export default function MyMealDetailsScreen() {
         Alert.alert('Error', 'Failed to add meal to diary. Please try again.');
       }
     } catch (error) {
-      console.error('[MyMealDetails] Error adding to diary:', error);
+      console.error('[TemplateDetails] Error adding to diary:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setAdding(false);
@@ -93,21 +92,21 @@ export default function MyMealDetailsScreen() {
   };
 
   const handleEdit = () => {
-    console.log('[MyMealDetails] Editing My Meal:', mealId);
+    console.log('[TemplateDetails] Editing template:', templateId);
     router.push({
-      pathname: '/my-meals-edit',
+      pathname: '/my-meal-template-edit',
       params: {
-        mealId: mealId,
+        templateId: templateId,
       },
     });
   };
 
   const handleDelete = () => {
-    if (!myMeal) return;
+    if (!template) return;
 
     Alert.alert(
       'Delete Meal',
-      `Are you sure you want to delete "${myMeal.name}"? This will not affect past diary entries.`,
+      `Are you sure you want to delete "${template.name}"? This will not affect past diary entries.`,
       [
         {
           text: 'Cancel',
@@ -117,9 +116,9 @@ export default function MyMealDetailsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const success = await deleteMyMeal(mealId);
+            const success = await deleteMyMealTemplate(templateId);
             if (success) {
-              console.log('[MyMealDetails] My Meal deleted');
+              console.log('[TemplateDetails] Template deleted');
               Alert.alert('Success', 'Meal deleted', [
                 {
                   text: 'OK',
@@ -135,7 +134,7 @@ export default function MyMealDetailsScreen() {
     );
   };
 
-  if (loading || !myMeal) {
+  if (loading || !template) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
@@ -145,7 +144,7 @@ export default function MyMealDetailsScreen() {
     );
   }
 
-  const items = myMeal.items || [];
+  const items = template.items || [];
   const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
 
   const mealTypeOptions = [
@@ -185,11 +184,11 @@ export default function MyMealDetailsScreen() {
       >
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {myMeal.name}
+            {template.name}
           </Text>
-          {myMeal.note && (
+          {template.note && (
             <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {myMeal.note}
+              {template.note}
             </Text>
           )}
         </View>

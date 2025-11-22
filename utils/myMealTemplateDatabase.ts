@@ -1,16 +1,16 @@
 
 /**
- * My Meals Database Management
+ * My Meal Template Database Management
  * Handles CRUD operations for saved meal templates
  */
 
 import { supabase } from '@/app/integrations/supabase/client';
-import { MyMeal, MyMealItem, MyMealSummary, CreateMyMealParams, UpdateMyMealParams } from '@/types/myMeals';
+import { MyMealTemplate, MyMealTemplateItem, MyMealTemplateSummary } from '@/types/myMealTemplate';
 
 /**
- * Calculate nutrition summary for a My Meal
+ * Calculate nutrition summary for a My Meal Template
  */
-export function calculateMyMealSummary(items: MyMealItem[]): MyMealSummary {
+export function calculateMyMealSummary(items: MyMealTemplateItem[]): MyMealTemplateSummary {
   const summary = items.reduce(
     (acc, item) => {
       const multiplier = item.amount_grams / 100;
@@ -30,15 +30,15 @@ export function calculateMyMealSummary(items: MyMealItem[]): MyMealSummary {
 }
 
 /**
- * Get all My Meals for the current user
+ * Get all My Meal Templates for the current user
  */
-export async function getMyMeals(): Promise<MyMeal[]> {
+export async function getMyMealTemplates(): Promise<MyMealTemplate[]> {
   try {
-    console.log('[MyMeals] Fetching all My Meals');
+    console.log('[MyMealTemplate] Fetching all templates');
     
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.log('[MyMeals] No user found');
+      console.log('[MyMealTemplate] No user found');
       return [];
     }
 
@@ -52,24 +52,24 @@ export async function getMyMeals(): Promise<MyMeal[]> {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('[MyMeals] Error fetching My Meals:', error);
+      console.error('[MyMealTemplate] Error fetching templates:', error);
       return [];
     }
 
-    console.log('[MyMeals] Fetched', data?.length || 0, 'My Meals');
-    return (data || []) as MyMeal[];
+    console.log('[MyMealTemplate] Fetched', data?.length || 0, 'templates');
+    return (data || []) as MyMealTemplate[];
   } catch (error) {
-    console.error('[MyMeals] Error in getMyMeals:', error);
+    console.error('[MyMealTemplate] Error in getMyMealTemplates:', error);
     return [];
   }
 }
 
 /**
- * Get a single My Meal by ID with all items
+ * Get a single My Meal Template by ID with all items
  */
-export async function getMyMealById(id: string): Promise<MyMeal | null> {
+export async function getMyMealTemplateById(id: string): Promise<MyMealTemplate | null> {
   try {
-    console.log('[MyMeals] Fetching My Meal:', id);
+    console.log('[MyMealTemplate] Fetching template:', id);
 
     const { data, error } = await supabase
       .from('my_meals')
@@ -81,58 +81,62 @@ export async function getMyMealById(id: string): Promise<MyMeal | null> {
       .single();
 
     if (error) {
-      console.error('[MyMeals] Error fetching My Meal:', error);
+      console.error('[MyMealTemplate] Error fetching template:', error);
       return null;
     }
 
-    console.log('[MyMeals] Fetched My Meal:', data.name);
-    return data as MyMeal;
+    console.log('[MyMealTemplate] Fetched template:', data.name);
+    return data as MyMealTemplate;
   } catch (error) {
-    console.error('[MyMeals] Error in getMyMealById:', error);
+    console.error('[MyMealTemplate] Error in getMyMealTemplateById:', error);
     return null;
   }
 }
 
 /**
- * Create a new My Meal
+ * Create a new My Meal Template
  */
-export async function createMyMeal(params: CreateMyMealParams): Promise<MyMeal | null> {
+export async function createMyMealTemplate(
+  name: string,
+  items: Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[],
+  note?: string
+): Promise<MyMealTemplate | null> {
   try {
-    console.log('[MyMeals] Creating My Meal:', params.name);
+    console.log('[MyMealTemplate] Creating template:', name);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('[MyMeals] No user found');
+      console.error('[MyMealTemplate] No user found');
       return null;
     }
 
     // Validate items
-    if (!params.items || params.items.length === 0) {
-      console.error('[MyMeals] Cannot create My Meal without items');
+    if (!items || items.length === 0) {
+      console.error('[MyMealTemplate] Cannot create template without items');
       return null;
     }
 
-    // Create the My Meal
-    const { data: meal, error: mealError } = await supabase
+    // Create the template
+    const { data: template, error: templateError } = await supabase
       .from('my_meals')
       .insert({
         user_id: user.id,
-        name: params.name,
-        note: params.note || null,
+        name: name,
+        note: note || null,
       })
       .select()
       .single();
 
-    if (mealError) {
-      console.error('[MyMeals] Error creating My Meal:', mealError);
+    if (templateError) {
+      console.error('[MyMealTemplate] Error creating template:', templateError);
       return null;
     }
 
-    console.log('[MyMeals] Created My Meal:', meal.id);
+    console.log('[MyMealTemplate] Created template:', template.id);
 
     // Create the items
-    const itemsToInsert = params.items.map(item => ({
-      my_meal_id: meal.id,
+    const itemsToInsert = items.map(item => ({
+      my_meal_id: template.id,
       food_source: item.food_source,
       food_id: item.food_id || null,
       barcode: item.barcode || null,
@@ -148,73 +152,77 @@ export async function createMyMeal(params: CreateMyMealParams): Promise<MyMeal |
       per100_fiber: item.per100_fiber || 0,
     }));
 
-    const { data: items, error: itemsError } = await supabase
+    const { data: insertedItems, error: itemsError } = await supabase
       .from('my_meal_items')
       .insert(itemsToInsert)
       .select();
 
     if (itemsError) {
-      console.error('[MyMeals] Error creating My Meal items:', itemsError);
-      // Clean up the meal if items failed
-      await supabase.from('my_meals').delete().eq('id', meal.id);
+      console.error('[MyMealTemplate] Error creating items:', itemsError);
+      // Clean up the template if items failed
+      await supabase.from('my_meals').delete().eq('id', template.id);
       return null;
     }
 
-    console.log('[MyMeals] Created', items.length, 'items');
+    console.log('[MyMealTemplate] Created', insertedItems.length, 'items');
 
     return {
-      ...meal,
-      items: items as MyMealItem[],
-    } as MyMeal;
+      ...template,
+      items: insertedItems as MyMealTemplateItem[],
+    } as MyMealTemplate;
   } catch (error) {
-    console.error('[MyMeals] Error in createMyMeal:', error);
+    console.error('[MyMealTemplate] Error in createMyMealTemplate:', error);
     return null;
   }
 }
 
 /**
- * Update a My Meal (name and/or note only)
+ * Update a My Meal Template (name and/or note only)
  */
-export async function updateMyMeal(params: UpdateMyMealParams): Promise<boolean> {
+export async function updateMyMealTemplate(
+  id: string,
+  name?: string,
+  note?: string
+): Promise<boolean> {
   try {
-    console.log('[MyMeals] Updating My Meal:', params.id);
+    console.log('[MyMealTemplate] Updating template:', id);
 
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };
 
-    if (params.name !== undefined) {
-      updateData.name = params.name;
+    if (name !== undefined) {
+      updateData.name = name;
     }
 
-    if (params.note !== undefined) {
-      updateData.note = params.note;
+    if (note !== undefined) {
+      updateData.note = note;
     }
 
     const { error } = await supabase
       .from('my_meals')
       .update(updateData)
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) {
-      console.error('[MyMeals] Error updating My Meal:', error);
+      console.error('[MyMealTemplate] Error updating template:', error);
       return false;
     }
 
-    console.log('[MyMeals] My Meal updated successfully');
+    console.log('[MyMealTemplate] Template updated successfully');
     return true;
   } catch (error) {
-    console.error('[MyMeals] Error in updateMyMeal:', error);
+    console.error('[MyMealTemplate] Error in updateMyMealTemplate:', error);
     return false;
   }
 }
 
 /**
- * Delete a My Meal item
+ * Delete a My Meal Template item
  */
-export async function deleteMyMealItem(itemId: string): Promise<boolean> {
+export async function deleteMyMealTemplateItem(itemId: string): Promise<boolean> {
   try {
-    console.log('[MyMeals] Deleting My Meal item:', itemId);
+    console.log('[MyMealTemplate] Deleting item:', itemId);
 
     const { error } = await supabase
       .from('my_meal_items')
@@ -222,32 +230,32 @@ export async function deleteMyMealItem(itemId: string): Promise<boolean> {
       .eq('id', itemId);
 
     if (error) {
-      console.error('[MyMeals] Error deleting My Meal item:', error);
+      console.error('[MyMealTemplate] Error deleting item:', error);
       return false;
     }
 
-    console.log('[MyMeals] My Meal item deleted successfully');
+    console.log('[MyMealTemplate] Item deleted successfully');
     return true;
   } catch (error) {
-    console.error('[MyMeals] Error in deleteMyMealItem:', error);
+    console.error('[MyMealTemplate] Error in deleteMyMealTemplateItem:', error);
     return false;
   }
 }
 
 /**
- * Add an item to an existing My Meal
+ * Add an item to an existing My Meal Template
  */
-export async function addItemToMyMeal(
-  myMealId: string,
-  item: Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>
-): Promise<MyMealItem | null> {
+export async function addItemToMyMealTemplate(
+  templateId: string,
+  item: Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>
+): Promise<MyMealTemplateItem | null> {
   try {
-    console.log('[MyMeals] Adding item to My Meal:', myMealId);
+    console.log('[MyMealTemplate] Adding item to template:', templateId);
 
     const { data, error } = await supabase
       .from('my_meal_items')
       .insert({
-        my_meal_id: myMealId,
+        my_meal_id: templateId,
         food_source: item.food_source,
         food_id: item.food_id || null,
         barcode: item.barcode || null,
@@ -266,63 +274,30 @@ export async function addItemToMyMeal(
       .single();
 
     if (error) {
-      console.error('[MyMeals] Error adding item to My Meal:', error);
+      console.error('[MyMealTemplate] Error adding item:', error);
       return null;
     }
 
-    // Update the My Meal's updated_at timestamp
+    // Update the template's updated_at timestamp
     await supabase
       .from('my_meals')
       .update({ updated_at: new Date().toISOString() })
-      .eq('id', myMealId);
+      .eq('id', templateId);
 
-    console.log('[MyMeals] Item added successfully');
-    return data as MyMealItem;
+    console.log('[MyMealTemplate] Item added successfully');
+    return data as MyMealTemplateItem;
   } catch (error) {
-    console.error('[MyMeals] Error in addItemToMyMeal:', error);
+    console.error('[MyMealTemplate] Error in addItemToMyMealTemplate:', error);
     return null;
   }
 }
 
 /**
- * Update a My Meal item (amount only)
+ * Delete a My Meal Template
  */
-export async function updateMyMealItem(
-  itemId: string,
-  amountGrams: number,
-  amountDisplay: string
-): Promise<boolean> {
+export async function deleteMyMealTemplate(id: string): Promise<boolean> {
   try {
-    console.log('[MyMeals] Updating My Meal item:', itemId);
-
-    const { error } = await supabase
-      .from('my_meal_items')
-      .update({
-        amount_grams: amountGrams,
-        amount_display: amountDisplay,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', itemId);
-
-    if (error) {
-      console.error('[MyMeals] Error updating My Meal item:', error);
-      return false;
-    }
-
-    console.log('[MyMeals] My Meal item updated successfully');
-    return true;
-  } catch (error) {
-    console.error('[MyMeals] Error in updateMyMealItem:', error);
-    return false;
-  }
-}
-
-/**
- * Delete a My Meal
- */
-export async function deleteMyMeal(id: string): Promise<boolean> {
-  try {
-    console.log('[MyMeals] Deleting My Meal:', id);
+    console.log('[MyMealTemplate] Deleting template:', id);
 
     // Items will be deleted automatically due to CASCADE foreign key
     const { error } = await supabase
@@ -331,49 +306,48 @@ export async function deleteMyMeal(id: string): Promise<boolean> {
       .eq('id', id);
 
     if (error) {
-      console.error('[MyMeals] Error deleting My Meal:', error);
+      console.error('[MyMealTemplate] Error deleting template:', error);
       return false;
     }
 
-    console.log('[MyMeals] My Meal deleted successfully');
+    console.log('[MyMealTemplate] Template deleted successfully');
     return true;
   } catch (error) {
-    console.error('[MyMeals] Error in deleteMyMeal:', error);
+    console.error('[MyMealTemplate] Error in deleteMyMealTemplate:', error);
     return false;
   }
 }
 
 /**
- * Add a My Meal to the diary
- * This creates individual meal_items for each item in the My Meal
- * FIXED: Properly handles food creation and meal item insertion
+ * Add a My Meal Template to the diary
+ * This creates individual meal_items for each item in the template
  */
-export async function addMyMealToDiary(
-  myMealId: string,
+export async function addMyMealTemplateToDiary(
+  templateId: string,
   mealType: string,
   date: string
 ): Promise<boolean> {
   try {
-    console.log('[MyMeals] ========== ADD MY MEAL TO DIARY ==========');
-    console.log('[MyMeals] My Meal ID:', myMealId);
-    console.log('[MyMeals] Target meal type:', mealType);
-    console.log('[MyMeals] Target date:', date);
+    console.log('[MyMealTemplate] ========== ADD TEMPLATE TO DIARY ==========');
+    console.log('[MyMealTemplate] Template ID:', templateId);
+    console.log('[MyMealTemplate] Target meal type:', mealType);
+    console.log('[MyMealTemplate] Target date:', date);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('[MyMeals] No user found');
+      console.error('[MyMealTemplate] No user found');
       return false;
     }
 
-    // Get the My Meal with all items
-    const myMeal = await getMyMealById(myMealId);
-    if (!myMeal || !myMeal.items || myMeal.items.length === 0) {
-      console.error('[MyMeals] My Meal not found or has no items');
+    // Get the template with all items
+    const template = await getMyMealTemplateById(templateId);
+    if (!template || !template.items || template.items.length === 0) {
+      console.error('[MyMealTemplate] Template not found or has no items');
       return false;
     }
 
-    console.log('[MyMeals] Found My Meal:', myMeal.name);
-    console.log('[MyMeals] Items to add:', myMeal.items.length);
+    console.log('[MyMealTemplate] Found template:', template.name);
+    console.log('[MyMealTemplate] Items to add:', template.items.length);
 
     // Find or create the meal for this date and meal type
     let { data: existingMeal } = await supabase
@@ -387,7 +361,7 @@ export async function addMyMealToDiary(
     let mealId = existingMeal?.id;
 
     if (!mealId) {
-      console.log('[MyMeals] Creating new meal for', mealType, 'on', date);
+      console.log('[MyMealTemplate] Creating new meal for', mealType, 'on', date);
       const { data: newMeal, error: mealError } = await supabase
         .from('meals')
         .insert({
@@ -399,23 +373,23 @@ export async function addMyMealToDiary(
         .single();
 
       if (mealError) {
-        console.error('[MyMeals] Error creating meal:', mealError);
+        console.error('[MyMealTemplate] Error creating meal:', mealError);
         return false;
       }
 
       mealId = newMeal.id;
-      console.log('[MyMeals] Created meal:', mealId);
+      console.log('[MyMealTemplate] Created meal:', mealId);
     } else {
-      console.log('[MyMeals] Using existing meal:', mealId);
+      console.log('[MyMealTemplate] Using existing meal:', mealId);
     }
 
-    // Process each item in the My Meal
+    // Process each item in the template
     let successCount = 0;
     let failCount = 0;
 
-    for (const item of myMeal.items) {
+    for (const item of template.items) {
       try {
-        console.log('[MyMeals] Processing item:', item.food_name);
+        console.log('[MyMealTemplate] Processing item:', item.food_name);
 
         // Calculate nutrition for this item
         const multiplier = item.amount_grams / 100;
@@ -425,7 +399,7 @@ export async function addMyMealToDiary(
         const fats = item.per100_fat * multiplier;
         const fiber = item.per100_fiber * multiplier;
 
-        console.log('[MyMeals] Calculated nutrition:', {
+        console.log('[MyMealTemplate] Calculated nutrition:', {
           calories: Math.round(calories),
           protein: Math.round(protein),
           carbs: Math.round(carbs),
@@ -437,7 +411,7 @@ export async function addMyMealToDiary(
 
         // If we don't have a food_id, try to find or create the food
         if (!foodId) {
-          console.log('[MyMeals] No food_id, checking if food exists...');
+          console.log('[MyMealTemplate] No food_id, checking if food exists...');
 
           // Try to find existing food by barcode or name+brand
           let existingFood = null;
@@ -473,10 +447,10 @@ export async function addMyMealToDiary(
 
           if (existingFood) {
             foodId = existingFood.id;
-            console.log('[MyMeals] Found existing food:', foodId);
+            console.log('[MyMealTemplate] Found existing food:', foodId);
           } else {
             // Create a new food entry
-            console.log('[MyMeals] Creating new food entry');
+            console.log('[MyMealTemplate] Creating new food entry');
             const { data: newFood, error: foodError } = await supabase
               .from('foods')
               .insert({
@@ -496,18 +470,18 @@ export async function addMyMealToDiary(
               .single();
 
             if (foodError) {
-              console.error('[MyMeals] Error creating food:', foodError);
+              console.error('[MyMealTemplate] Error creating food:', foodError);
               failCount++;
               continue; // Skip this item but continue with others
             }
 
             foodId = newFood.id;
-            console.log('[MyMeals] Created new food:', foodId);
+            console.log('[MyMealTemplate] Created new food:', foodId);
           }
         }
 
         // Create the meal item
-        console.log('[MyMeals] Creating meal item...');
+        console.log('[MyMealTemplate] Creating meal item...');
         const { error: itemError } = await supabase
           .from('meal_items')
           .insert({
@@ -524,34 +498,34 @@ export async function addMyMealToDiary(
           });
 
         if (itemError) {
-          console.error('[MyMeals] Error creating meal item:', itemError);
+          console.error('[MyMealTemplate] Error creating meal item:', itemError);
           failCount++;
           continue;
         }
 
-        console.log('[MyMeals] ✓ Item added successfully');
+        console.log('[MyMealTemplate] ✓ Item added successfully');
         successCount++;
       } catch (itemError) {
-        console.error('[MyMeals] Error processing item:', itemError);
+        console.error('[MyMealTemplate] Error processing item:', itemError);
         failCount++;
       }
     }
 
-    console.log('[MyMeals] ========== SUMMARY ==========');
-    console.log('[MyMeals] Success:', successCount);
-    console.log('[MyMeals] Failed:', failCount);
-    console.log('[MyMeals] Total:', myMeal.items.length);
+    console.log('[MyMealTemplate] ========== SUMMARY ==========');
+    console.log('[MyMealTemplate] Success:', successCount);
+    console.log('[MyMealTemplate] Failed:', failCount);
+    console.log('[MyMealTemplate] Total:', template.items.length);
 
     // Consider it a success if at least one item was added
     if (successCount > 0) {
-      console.log('[MyMeals] My Meal added to diary successfully');
+      console.log('[MyMealTemplate] Template added to diary successfully');
       return true;
     } else {
-      console.error('[MyMeals] Failed to add any items to diary');
+      console.error('[MyMealTemplate] Failed to add any items to diary');
       return false;
     }
   } catch (error) {
-    console.error('[MyMeals] Error in addMyMealToDiary:', error);
+    console.error('[MyMealTemplate] Error in addMyMealTemplateToDiary:', error);
     return false;
   }
 }

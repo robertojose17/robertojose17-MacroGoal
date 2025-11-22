@@ -6,27 +6,27 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { MyMeal, MyMealItem } from '@/types/myMeals';
-import { getMyMealById, updateMyMeal, deleteMyMealItem, calculateMyMealSummary, addItemToMyMeal } from '@/utils/myMealsDatabase';
+import { MyMealTemplate, MyMealTemplateItem } from '@/types/myMealTemplate';
+import { getMyMealTemplateById, updateMyMealTemplate, deleteMyMealTemplateItem, calculateMyMealSummary, addItemToMyMealTemplate } from '@/utils/myMealTemplateDatabase';
 
-export default function EditMyMealScreen() {
+export default function MyMealTemplateEditScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const mealId = params.mealId as string;
+  const templateId = params.templateId as string;
 
-  const [myMeal, setMyMeal] = useState<MyMeal | null>(null);
+  const [template, setTemplate] = useState<MyMealTemplate | null>(null);
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
-  const [items, setItems] = useState<MyMealItem[]>([]);
+  const [items, setItems] = useState<MyMealTemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadMyMeal();
-  }, [mealId]);
+    loadTemplate();
+  }, [templateId]);
 
   // Handle returned food item from Add Food flows
   useEffect(() => {
@@ -38,10 +38,10 @@ export default function EditMyMealScreen() {
   const handleReturnedFood = async () => {
     try {
       const foodData = JSON.parse(params.returnedFood as string);
-      console.log('[EditMyMeal] Received returned food:', foodData);
+      console.log('[TemplateEdit] Received returned food:', foodData);
       
       // Create the item object
-      const newItem: Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
+      const newItem: Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
         food_source: foodData.food_source || 'library',
         food_id: foodData.food_id || undefined,
         barcode: foodData.barcode || undefined,
@@ -58,11 +58,11 @@ export default function EditMyMealScreen() {
       };
       
       // Add to database
-      const addedItem = await addItemToMyMeal(mealId, newItem);
+      const addedItem = await addItemToMyMealTemplate(templateId, newItem);
       
       if (addedItem) {
-        // Reload the meal to get updated items
-        await loadMyMeal();
+        // Reload the template to get updated items
+        await loadTemplate();
       } else {
         Alert.alert('Error', 'Failed to add food to meal');
       }
@@ -70,26 +70,26 @@ export default function EditMyMealScreen() {
       // Clear the param to avoid re-adding on re-render
       router.setParams({ returnedFood: undefined });
     } catch (error) {
-      console.error('[EditMyMeal] Error parsing returned food:', error);
+      console.error('[TemplateEdit] Error parsing returned food:', error);
     }
   };
 
-  const loadMyMeal = async () => {
+  const loadTemplate = async () => {
     try {
       setLoading(true);
-      const meal = await getMyMealById(mealId);
-      if (meal) {
-        setMyMeal(meal);
-        setName(meal.name);
-        setNote(meal.note || '');
-        setItems(meal.items || []);
-        console.log('[EditMyMeal] Loaded My Meal:', meal.name);
+      const data = await getMyMealTemplateById(templateId);
+      if (data) {
+        setTemplate(data);
+        setName(data.name);
+        setNote(data.note || '');
+        setItems(data.items || []);
+        console.log('[TemplateEdit] Loaded template:', data.name);
       } else {
         Alert.alert('Error', 'Meal not found');
         router.back();
       }
     } catch (error) {
-      console.error('[EditMyMeal] Error loading My Meal:', error);
+      console.error('[TemplateEdit] Error loading template:', error);
       Alert.alert('Error', 'Failed to load meal');
       router.back();
     } finally {
@@ -98,19 +98,19 @@ export default function EditMyMealScreen() {
   };
 
   const handleAddFood = () => {
-    console.log('[EditMyMeal] Opening Add Food menu in My Meal Builder mode');
+    console.log('[TemplateEdit] Opening Add Food menu');
     // Navigate to the main Add Food screen with mode parameter
     router.push({
       pathname: '/add-food',
       params: {
         mode: 'my_meal_builder',
-        returnTo: '/my-meals-edit',
-        mealId: mealId,
+        returnTo: '/my-meal-template-edit',
+        mealId: templateId,
       },
     });
   };
 
-  const handleRemoveItem = async (item: MyMealItem, index: number) => {
+  const handleRemoveItem = async (item: MyMealTemplateItem, index: number) => {
     Alert.alert(
       'Remove Item',
       `Remove ${item.food_name} from this meal?`,
@@ -123,12 +123,12 @@ export default function EditMyMealScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            const success = await deleteMyMealItem(item.id);
+            const success = await deleteMyMealTemplateItem(item.id);
             if (success) {
               const newItems = [...items];
               newItems.splice(index, 1);
               setItems(newItems);
-              console.log('[EditMyMeal] Item removed');
+              console.log('[TemplateEdit] Item removed');
             } else {
               Alert.alert('Error', 'Failed to remove item');
             }
@@ -152,14 +152,10 @@ export default function EditMyMealScreen() {
     setSaving(true);
 
     try {
-      const success = await updateMyMeal({
-        id: mealId,
-        name: name.trim(),
-        note: note.trim() || undefined,
-      });
+      const success = await updateMyMealTemplate(templateId, name.trim(), note.trim() || undefined);
 
       if (success) {
-        console.log('[EditMyMeal] My Meal updated successfully');
+        console.log('[TemplateEdit] Template updated successfully');
         Alert.alert('Success', 'Meal updated successfully', [
           {
             text: 'OK',
@@ -170,14 +166,14 @@ export default function EditMyMealScreen() {
         Alert.alert('Error', 'Failed to update meal. Please try again.');
       }
     } catch (error) {
-      console.error('[EditMyMeal] Error updating meal:', error);
+      console.error('[TemplateEdit] Error updating meal:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading || !myMeal) {
+  if (loading || !template) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>

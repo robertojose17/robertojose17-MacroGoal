@@ -7,12 +7,12 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getRecentFoods } from '@/utils/foodDatabase';
-import { getMyMeals, calculateMyMealSummary } from '@/utils/myMealsDatabase';
+import { getMyMealTemplates, calculateMyMealSummary } from '@/utils/myMealTemplateDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
-import { MyMeal } from '@/types/myMeals';
+import { MyMealTemplate } from '@/types/myMealTemplate';
 
 type TabType = 'all' | 'my-meals' | 'favorites' | 'quick-add';
 
@@ -34,7 +34,7 @@ export default function AddFoodScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [myMeals, setMyMeals] = useState<MyMeal[]>([]);
+  const [myMealTemplates, setMyMealTemplates] = useState<MyMealTemplate[]>([]);
   const [loading, setLoading] = useState(false);
 
   // INLINE SEARCH STATE
@@ -70,14 +70,14 @@ export default function AddFoodScreen() {
     try {
       setLoading(true);
       const recent = await getRecentFoods();
-      const meals = await getMyMeals();
+      const templates = await getMyMealTemplates();
       setRecentFoods(recent);
-      setMyMeals(meals);
+      setMyMealTemplates(templates);
 
       // Load favorites
       await loadFavorites();
 
-      console.log('[AddFood] Loaded data:', { recent: recent.length, myMeals: meals.length });
+      console.log('[AddFood] Loaded data:', { recent: recent.length, myMealTemplates: templates.length });
     } catch (error) {
       console.error('[AddFood] Error loading data:', error);
     } finally {
@@ -768,29 +768,21 @@ export default function AddFoodScreen() {
     );
   };
 
-  const handleMyMealPress = (meal: MyMeal) => {
-    console.log('[AddFood] Opening My Meal:', meal.name);
+  const handleMyMealTemplatePress = (template: MyMealTemplate) => {
+    console.log('[AddFood] Opening My Meal Template:', template.name);
     router.push({
-      pathname: '/my-meals-details',
+      pathname: '/my-meal-template-details',
       params: {
-        mealId: meal.id,
+        templateId: template.id,
         meal: mealType,
         date: date,
-        fromAddFood: 'true',
       },
     });
   };
 
-  const handleViewAllMyMeals = () => {
-    console.log('[AddFood] Viewing all My Meals');
-    router.push({
-      pathname: '/my-meals-list',
-      params: {
-        meal: mealType,
-        date: date,
-        fromAddFood: 'true',
-      },
-    });
+  const handleCreateMyMeal = () => {
+    console.log('[AddFood] Creating new My Meal');
+    router.push('/my-meal-builder');
   };
 
   const renderFoodItem = (food: Food, index: number) => {
@@ -965,8 +957,8 @@ export default function AddFoodScreen() {
     );
   };
 
-  const renderMyMealCard = (meal: MyMeal, index: number) => {
-    const items = meal.items || [];
+  const renderMyMealTemplateCard = (template: MyMealTemplate, index: number) => {
+    const items = template.items || [];
     const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
 
     return (
@@ -976,12 +968,12 @@ export default function AddFoodScreen() {
           styles.myMealCard,
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
         ]}
-        onPress={() => handleMyMealPress(meal)}
+        onPress={() => handleMyMealTemplatePress(template)}
         activeOpacity={0.7}
       >
         <View style={styles.myMealInfo}>
           <Text style={[styles.myMealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {meal.name}
+            {template.name}
           </Text>
           {summary && (
             <React.Fragment>
@@ -1529,14 +1521,17 @@ export default function AddFoodScreen() {
                   <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     Saved Meals
                   </Text>
-                  <TouchableOpacity onPress={handleViewAllMyMeals}>
-                    <Text style={[styles.viewAllText, { color: colors.primary }]}>
-                      View All
-                    </Text>
+                  <TouchableOpacity onPress={handleCreateMyMeal}>
+                    <IconSymbol
+                      ios_icon_name="plus"
+                      android_material_icon_name="add"
+                      size={24}
+                      color={colors.primary}
+                    />
                   </TouchableOpacity>
                 </View>
-                {myMeals.length > 0 ? (
-                  myMeals.slice(0, 5).map((meal, index) => renderMyMealCard(meal, index))
+                {myMealTemplates.length > 0 ? (
+                  myMealTemplates.map((template, index) => renderMyMealTemplateCard(template, index))
                 ) : (
                   <View style={styles.emptyState}>
                     <IconSymbol
@@ -1550,7 +1545,7 @@ export default function AddFoodScreen() {
                     </Text>
                     <TouchableOpacity
                       style={[styles.createMealButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
-                      onPress={handleViewAllMyMeals}
+                      onPress={handleCreateMyMeal}
                     >
                       <Text style={styles.createMealButtonText}>Create Your First Meal</Text>
                     </TouchableOpacity>

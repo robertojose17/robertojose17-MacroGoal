@@ -6,10 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { MyMealItem } from '@/types/myMeals';
-import { createMyMeal, calculateMyMealSummary } from '@/utils/myMealsDatabase';
+import { MyMealTemplateItem } from '@/types/myMealTemplate';
+import { createMyMealTemplate, calculateMyMealSummary } from '@/utils/myMealTemplateDatabase';
 
-export default function CreateMyMealScreen() {
+export default function MyMealBuilderScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
@@ -17,19 +17,19 @@ export default function CreateMyMealScreen() {
 
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
-  const [items, setItems] = useState<Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[]>([]);
+  const [items, setItems] = useState<Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[]>([]);
   const [saving, setSaving] = useState(false);
-  const [draftId] = useState(() => `draft_${Date.now()}`); // Generate a unique draft ID
+  const [draftId] = useState(() => `draft_${Date.now()}`);
 
   // Handle returned food item from Add Food flows
   useEffect(() => {
     if (params.returnedFood) {
       try {
         const foodData = JSON.parse(params.returnedFood as string);
-        console.log('[CreateMyMeal] Received returned food:', foodData);
+        console.log('[MyMealBuilder] Received returned food:', foodData);
         
         // Add the food to items list
-        const newItem: Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
+        const newItem: Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'> = {
           food_source: foodData.food_source || 'library',
           food_id: foodData.food_id || undefined,
           barcode: foodData.barcode || undefined,
@@ -45,34 +45,34 @@ export default function CreateMyMealScreen() {
           per100_fiber: foodData.per100_fiber || 0,
         };
         
-        console.log('[CreateMyMeal] Adding item to draft:', newItem.food_name);
+        console.log('[MyMealBuilder] Adding item to draft:', newItem.food_name);
         setItems(prevItems => [...prevItems, newItem]);
         
         // Clear the param to avoid re-adding on re-render
         router.setParams({ returnedFood: undefined });
       } catch (error) {
-        console.error('[CreateMyMeal] Error parsing returned food:', error);
+        console.error('[MyMealBuilder] Error parsing returned food:', error);
       }
     }
   }, [params.returnedFood]);
 
   const handleAddFood = () => {
-    console.log('[CreateMyMeal] Opening Add Food menu in My Meal Builder mode');
-    console.log('[CreateMyMeal] Draft ID:', draftId);
+    console.log('[MyMealBuilder] Opening Add Food menu');
+    console.log('[MyMealBuilder] Draft ID:', draftId);
     
-    // Navigate to the main Add Food screen with mode parameter
+    // Navigate to Add Food with builder mode
     router.push({
       pathname: '/add-food',
       params: {
         mode: 'my_meal_builder',
-        returnTo: '/my-meals-create',
-        mealId: draftId, // Pass the draft ID
+        returnTo: '/my-meal-builder',
+        mealId: draftId,
       },
     });
   };
 
   const handleRemoveItem = (index: number) => {
-    console.log('[CreateMyMeal] Removing item at index:', index);
+    console.log('[MyMealBuilder] Removing item at index:', index);
     const newItems = [...items];
     newItems.splice(index, 1);
     setItems(newItems);
@@ -92,17 +92,13 @@ export default function CreateMyMealScreen() {
     setSaving(true);
 
     try {
-      console.log('[CreateMyMeal] Saving My Meal:', name);
-      console.log('[CreateMyMeal] Items count:', items.length);
+      console.log('[MyMealBuilder] Saving My Meal:', name);
+      console.log('[MyMealBuilder] Items count:', items.length);
       
-      const result = await createMyMeal({
-        name: name.trim(),
-        note: note.trim() || undefined,
-        items: items,
-      });
+      const result = await createMyMealTemplate(name.trim(), items, note.trim() || undefined);
 
       if (result) {
-        console.log('[CreateMyMeal] My Meal created successfully');
+        console.log('[MyMealBuilder] My Meal created successfully');
         Alert.alert('Success', 'Meal saved successfully', [
           {
             text: 'OK',
@@ -113,14 +109,14 @@ export default function CreateMyMealScreen() {
         Alert.alert('Error', 'Failed to save meal. Please try again.');
       }
     } catch (error) {
-      console.error('[CreateMyMeal] Error saving meal:', error);
+      console.error('[MyMealBuilder] Error saving meal:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setSaving(false);
     }
   };
 
-  const summary = items.length > 0 ? calculateMyMealSummary(items as MyMealItem[]) : null;
+  const summary = items.length > 0 ? calculateMyMealSummary(items as MyMealTemplateItem[]) : null;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -138,7 +134,7 @@ export default function CreateMyMealScreen() {
             />
           </TouchableOpacity>
           <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Create Meal
+            Create My Meal
           </Text>
           <TouchableOpacity onPress={handleSave} disabled={saving}>
             {saving ? (

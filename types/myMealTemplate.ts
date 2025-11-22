@@ -1,7 +1,12 @@
 
+/**
+ * My Meal Template Types
+ * Simple data structures for saved meal templates
+ */
+
 export type FoodSource = 'library' | 'barcode' | 'quickadd' | 'ai' | 'custom';
 
-export interface MyMealItem {
+export interface MyMealTemplateItem {
   id: string;
   my_meal_id: string;
   food_source: FoodSource;
@@ -21,33 +26,21 @@ export interface MyMealItem {
   updated_at: string;
 }
 
-export interface MyMeal {
+export interface MyMealTemplate {
   id: string;
   user_id: string;
   name: string;
   note?: string;
-  items?: MyMealItem[];
+  items?: MyMealTemplateItem[];
   created_at: string;
   updated_at: string;
 }
 
-export interface MyMealSummary {
+export interface MyMealTemplateSummary {
   totalCalories: number;
   totalProtein: number;
   totalCarbs: number;
   totalFat: number;
   totalFiber: number;
   itemCount: number;
-}
-
-export interface CreateMyMealParams {
-  name: string;
-  note?: string;
-  items: Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[];
-}
-
-export interface UpdateMyMealParams {
-  id: string;
-  name?: string;
-  note?: string;
 }
