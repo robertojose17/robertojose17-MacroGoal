@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, TextInput, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -14,8 +14,17 @@ type DraftItem = Omit<MyMealTemplateItem, 'id' | 'my_meal_id' | 'created_at' | '
   temp_id: string;
 };
 
+/**
+ * Generate a guaranteed-unique temp_id for draft items
+ * Uses timestamp + random string to ensure uniqueness
+ */
+function generateTempId(): string {
+  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export default function MyMealBuilderScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -26,7 +35,10 @@ export default function MyMealBuilderScreen() {
   const [saving, setSaving] = useState(false);
   const [draftId] = useState(() => `draft_${Date.now()}`);
 
-  // ISSUE 2 FIX: Handle returned food item from Add Food flows
+  // FIX C: Track if we're currently navigating to prevent multiple opens
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // ISSUE A FIX: Handle returned food item from Add Food flows
   // This effect properly appends items without overwriting
   useEffect(() => {
     if (params.returnedFood) {
@@ -36,9 +48,9 @@ export default function MyMealBuilderScreen() {
         console.log('[MyMealBuilder] Food name:', foodData.food_name);
         console.log('[MyMealBuilder] Current items count BEFORE append:', items.length);
         
-        // CRITICAL: Generate unique temp_id using timestamp + random
+        // CRITICAL FIX A: Generate unique temp_id using timestamp + random
         // This ensures React doesn't reuse keys and overwrite items
-        const uniqueTempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const uniqueTempId = generateTempId();
         console.log('[MyMealBuilder] Generated unique temp_id:', uniqueTempId);
         
         // Create new item with unique temp_id
@@ -82,13 +94,33 @@ export default function MyMealBuilderScreen() {
         console.error('[MyMealBuilder] ✗ Error parsing returned food:', error);
       }
     }
-  }, [params.returnedFood]); // Only depend on returnedFood param
+  }, [params.returnedFood]);
 
+  // FIX C: Guard against opening AddFood multiple times
   const handleAddFood = () => {
-    console.log('[MyMealBuilder] ========== OPENING ADD FOOD MENU ==========');
+    console.log('[MyMealBuilder] ========== ADD FOOD BUTTON PRESSED ==========');
     console.log('[MyMealBuilder] Draft ID:', draftId);
     console.log('[MyMealBuilder] Current items count:', items.length);
-    console.log('[MyMealBuilder] Current items:', items.map(i => ({ temp_id: i.temp_id, name: i.food_name })));
+    console.log('[MyMealBuilder] Is navigating:', isNavigating);
+    
+    // FIX C: Prevent multiple navigations
+    if (isNavigating) {
+      console.log('[MyMealBuilder] ✗ Already navigating, blocking duplicate navigation');
+      return;
+    }
+    
+    // Check if we're already on AddFood screen
+    const currentRoute = navigation.getState()?.routes[navigation.getState()?.index || 0];
+    console.log('[MyMealBuilder] Current route:', currentRoute?.name);
+    
+    if (currentRoute?.name === 'add-food') {
+      console.log('[MyMealBuilder] ✗ Already on add-food screen, blocking duplicate navigation');
+      return;
+    }
+    
+    // Set navigating flag
+    setIsNavigating(true);
+    console.log('[MyMealBuilder] ✓ Navigating to add-food screen');
     
     // Navigate to Add Food with builder mode
     router.push({
@@ -99,6 +131,12 @@ export default function MyMealBuilderScreen() {
         mealId: draftId,
       },
     });
+    
+    // Reset navigating flag after a short delay
+    setTimeout(() => {
+      setIsNavigating(false);
+      console.log('[MyMealBuilder] Navigation flag reset');
+    }, 1000);
   };
 
   const handleRemoveItem = (tempId: string) => {
@@ -114,45 +152,58 @@ export default function MyMealBuilderScreen() {
     });
   };
 
+  // FIX B: Improved save with validation and error handling
   const handleSave = async () => {
     console.log('[MyMealBuilder] ========== SAVE MY MEAL ==========');
     
+    // FIX B: Validate meal name
     if (!name.trim()) {
+      console.log('[MyMealBuilder] ✗ Validation failed: empty meal name');
       Alert.alert('Error', 'Please enter a meal name');
       return;
     }
 
+    // FIX B: Validate items count
     if (items.length === 0) {
+      console.log('[MyMealBuilder] ✗ Validation failed: no items');
       Alert.alert('Error', 'Please add at least one food item');
       return;
     }
 
+    // FIX B: Validate all items have temp_id
+    const itemsWithoutTempId = items.filter(item => !item.temp_id);
+    if (itemsWithoutTempId.length > 0) {
+      console.error('[MyMealBuilder] ✗ Validation failed: items without temp_id:', itemsWithoutTempId);
+      Alert.alert('Error', 'Some items are invalid. Please try removing and re-adding them.');
+      return;
+    }
+
+    console.log('[MyMealBuilder] ✓ Validation passed');
+    console.log('[MyMealBuilder] Meal name:', name);
+    console.log('[MyMealBuilder] Items count:', items.length);
+    console.log('[MyMealBuilder] Items:', items.map(i => ({ name: i.food_name, grams: i.amount_grams, temp_id: i.temp_id })));
+
     setSaving(true);
 
     try {
-      console.log('[MyMealBuilder] Saving My Meal:', name);
-      console.log('[MyMealBuilder] Items count:', items.length);
-      console.log('[MyMealBuilder] Items:', items.map(i => ({ name: i.food_name, grams: i.amount_grams })));
-      
-      // Remove temp_id before saving to database
+      // FIX B: Remove temp_id before saving to database
       const itemsToSave = items.map(({ temp_id, ...item }) => item);
       
+      console.log('[MyMealBuilder] Calling createMyMealTemplate...');
       const result = await createMyMealTemplate(name.trim(), itemsToSave, note.trim() || undefined);
 
       if (result) {
         console.log('[MyMealBuilder] ✓ My Meal created successfully');
         console.log('[MyMealBuilder] Template ID:', result.id);
         
-        // FIXED: Navigate back to Add Food with My Meals tab active
-        // Use dismissTo to properly close the builder and return to Add Food
-        console.log('[MyMealBuilder] Navigating to Add Food → My Meals tab');
-        
-        // Clear the draft state
+        // FIX B: Clear the draft state
         setName('');
         setNote('');
         setItems([]);
         
-        // Navigate back to Add Food with My Meals tab selected
+        // FIX B: Navigate back to Add Food with My Meals tab active
+        console.log('[MyMealBuilder] Navigating to Add Food → My Meals tab');
+        
         // Use dismissTo to clear the builder from the stack
         router.dismissTo({
           pathname: '/add-food',
@@ -164,12 +215,25 @@ export default function MyMealBuilderScreen() {
           },
         });
       } else {
-        console.error('[MyMealBuilder] ✗ Failed to save meal');
-        Alert.alert('Error', 'Failed to save meal. Please try again.');
+        // FIX B: Show real error instead of silent failure
+        console.error('[MyMealBuilder] ✗ createMyMealTemplate returned null');
+        Alert.alert(
+          'Failed to Save Meal',
+          'The meal could not be saved. Please check your internet connection and try again.'
+        );
       }
-    } catch (error) {
+    } catch (error: any) {
+      // FIX B: Show real error with details
       console.error('[MyMealBuilder] ✗ Error saving meal:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('[MyMealBuilder] Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
+      
+      Alert.alert(
+        'Failed to Save Meal',
+        error.message || 'An unexpected error occurred. Please try again.'
+      );
     } finally {
       setSaving(false);
     }
@@ -301,8 +365,9 @@ export default function MyMealBuilderScreen() {
                 Foods ({items.length})
               </Text>
               <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: colors.primary }]}
+                style={[styles.addButton, { backgroundColor: colors.primary, opacity: isNavigating ? 0.5 : 1 }]}
                 onPress={handleAddFood}
+                disabled={isNavigating}
               >
                 <IconSymbol
                   ios_icon_name="plus"
@@ -322,7 +387,7 @@ export default function MyMealBuilderScreen() {
               </View>
             ) : (
               <View style={styles.itemsList}>
-                {/* CRITICAL: Use temp_id as key to prevent React from reusing components */}
+                {/* FIX A: Use temp_id as key to prevent React from reusing components */}
                 {items.map((item) => (
                   <View
                     key={item.temp_id}

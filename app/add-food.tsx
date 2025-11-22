@@ -16,6 +16,14 @@ import { MyMealTemplate } from '@/types/myMealTemplate';
 
 type TabType = 'all' | 'my-meals' | 'favorites' | 'quick-add';
 
+/**
+ * Generate a guaranteed-unique temp_id for food items
+ * Uses timestamp + random string to ensure uniqueness
+ */
+function generateTempId(): string {
+  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export default function AddFoodScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -421,6 +429,7 @@ export default function AddFoodScreen() {
    * FIXED: Add a recent food directly
    * NOW RESPECTS MY MEAL BUILDER CONTEXT
    * If in builder mode, returns food data instead of logging to diary
+   * FIX A: Adds temp_id to returned food data
    */
   const handleAddRecentFood = async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
@@ -450,8 +459,13 @@ export default function AddFoodScreen() {
       if (isMyMealBuilderMode) {
         console.log('[AddFood] ✓ My Meal Builder mode detected - returning food data');
         
+        // FIX A: Generate unique temp_id for the food item
+        const uniqueTempId = generateTempId();
+        console.log('[AddFood] Generated temp_id:', uniqueTempId);
+        
         // Prepare food data to return to builder
         const foodDataToReturn = {
+          temp_id: uniqueTempId,
           food_source: 'recent',
           food_id: food.id,
           barcode: foodData.barcode || undefined,
@@ -621,6 +635,7 @@ export default function AddFoodScreen() {
    * FIXED: Handle adding favorite
    * NOW RESPECTS MY MEAL BUILDER CONTEXT
    * If in builder mode, returns food data instead of logging to diary
+   * FIX A: Adds temp_id to returned food data
    */
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
@@ -632,7 +647,12 @@ export default function AddFoodScreen() {
     if (isMyMealBuilderMode) {
       console.log('[AddFood] ✓ My Meal Builder mode detected - returning favorite as food data');
       
+      // FIX A: Generate unique temp_id for the food item
+      const uniqueTempId = generateTempId();
+      console.log('[AddFood] Generated temp_id:', uniqueTempId);
+      
       const foodData = {
+        temp_id: uniqueTempId,
         food_source: 'favorite',
         food_id: undefined,
         barcode: favorite.food_source === 'barcode' ? favorite.food_code : undefined,
