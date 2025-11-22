@@ -39,7 +39,7 @@ export default function AddFoodScreen() {
   const returnTo = params.returnTo as string;
   const showMyMeals = params.showMyMeals as string; // 'true' if we should show My Meals tab
   
-  // ROLLBACK: Check if we're in My Meals builder mode using context flag
+  // Check if we're in My Meals builder mode using context flag
   const isMyMealBuilderMode = context === 'my_meal_builder';
   
   console.log('[AddFood] ========== SCREEN INITIALIZED ==========');
@@ -418,7 +418,6 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * ROLLBACK: Shared add-success handler with context override
    * Add a recent food directly
    * If in builder mode, returns food data via goBack() instead of logging to diary
    */
@@ -446,18 +445,18 @@ export default function AddFoodScreen() {
       const gramsToAdd = food.serving_amount;
       const servingDescription = food.last_serving_description || `${Math.round(gramsToAdd)} g`;
 
-      // ROLLBACK: Check if we're in My Meal Builder mode using context
+      // Check if we're in My Meal Builder mode using context
       if (context === 'my_meal_builder') {
         console.log('[AddFood] ✓ My Meal Builder context detected - returning food data');
         
-        // A) Generate unique temp_id and append to draft
+        // Generate unique temp_id and append to draft
         const uniqueTempId = generateTempId();
         console.log('[AddFood] Generated temp_id:', uniqueTempId);
         
         // Prepare food data to return to builder
         const foodDataToReturn = {
           temp_id: uniqueTempId,
-          food_source: 'recent',
+          food_source: 'library',
           food_id: food.id,
           barcode: foodData.barcode || undefined,
           food_name: foodData.name,
@@ -473,7 +472,7 @@ export default function AddFoodScreen() {
         
         console.log('[AddFood] Returning food data to builder:', foodDataToReturn);
         
-        // B) Return to builder using goBack()
+        // Return to builder using goBack()
         router.setParams({
           returnedFood: JSON.stringify(foodDataToReturn),
         });
@@ -616,7 +615,6 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * ROLLBACK: Shared add-success handler with context override
    * Handle adding favorite
    * If in builder mode, returns food data via goBack() instead of logging to diary
    */
@@ -626,17 +624,17 @@ export default function AddFoodScreen() {
     console.log('[AddFood] Context:', context);
     console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
 
-    // ROLLBACK: Check if we're in My Meal Builder mode using context
+    // Check if we're in My Meal Builder mode using context
     if (context === 'my_meal_builder') {
       console.log('[AddFood] ✓ My Meal Builder context detected - returning favorite as food data');
       
-      // A) Generate unique temp_id and append to draft
+      // Generate unique temp_id and append to draft
       const uniqueTempId = generateTempId();
       console.log('[AddFood] Generated temp_id:', uniqueTempId);
       
       const foodData = {
         temp_id: uniqueTempId,
-        food_source: 'favorite',
+        food_source: 'library',
         food_id: undefined,
         barcode: favorite.food_source === 'barcode' ? favorite.food_code : undefined,
         food_name: favorite.food_name,
@@ -652,7 +650,7 @@ export default function AddFoodScreen() {
       
       console.log('[AddFood] Returning favorite food data to builder:', foodData);
       
-      // B) Return to builder using goBack()
+      // Return to builder using goBack()
       router.setParams({
         returnedFood: JSON.stringify(foodData),
       });
@@ -849,7 +847,6 @@ export default function AddFoodScreen() {
     });
   };
 
-  // FIX 2: DO NOT NAVIGATE TO CreateMyMeal FROM ANY AddFood FLOW
   const handleCreateMyMeal = () => {
     console.log('[AddFood] ========== CREATE MY MEAL ==========');
     console.log('[AddFood] ✓ Opening NEW builder session');
