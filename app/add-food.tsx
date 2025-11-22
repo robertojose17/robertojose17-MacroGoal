@@ -33,8 +33,10 @@ export default function AddFoodScreen() {
   const isMyMealBuilderMode = mode === 'my_meal_builder';
   
   // FIXED: Initialize activeTab based on showMyMeals param
+  // This ensures the My Meals tab is shown when returning from builder
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     if (showMyMeals === 'true') {
+      console.log('[AddFood] Initializing with My Meals tab active');
       return 'my-meals';
     }
     return 'all';
@@ -66,13 +68,26 @@ export default function AddFoodScreen() {
     loadData();
   }, []);
 
-  // FIXED: Refresh My Meals list when screen comes into focus or when refresh param changes
+  // FIXED: Refresh data when screen comes into focus
+  // This ensures the My Meals list is updated after saving a new template
   useFocusEffect(
     useCallback(() => {
       console.log('[AddFood] Screen focused, refreshing data');
+      console.log('[AddFood] Refresh param:', params.refresh);
+      
+      // Reload favorites and My Meals templates
       loadFavorites();
       loadMyMealTemplates();
-    }, [params.refresh])
+      
+      // If showMyMeals param is set, ensure My Meals tab is active
+      if (showMyMeals === 'true') {
+        console.log('[AddFood] Setting active tab to My Meals');
+        setActiveTab('my-meals');
+        
+        // Clear the param after handling it
+        router.setParams({ showMyMeals: undefined });
+      }
+    }, [params.refresh, showMyMeals])
   );
 
   const loadData = async () => {

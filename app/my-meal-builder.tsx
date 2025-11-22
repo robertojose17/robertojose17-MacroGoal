@@ -144,20 +144,23 @@ export default function MyMealBuilderScreen() {
         console.log('[MyMealBuilder] Template ID:', result.id);
         
         // FIXED: Navigate back to Add Food with My Meals tab active
-        // This ensures the user sees their newly created meal immediately
+        // Use dismissTo to properly close the builder and return to Add Food
         console.log('[MyMealBuilder] Navigating to Add Food → My Meals tab');
         
-        // Use replace to clear the builder from the stack
-        router.replace({
+        // Clear the draft state
+        setName('');
+        setNote('');
+        setItems([]);
+        
+        // Navigate back to Add Food with My Meals tab selected
+        // Use dismissTo to clear the builder from the stack
+        router.dismissTo({
           pathname: '/add-food',
           params: {
-            // No mode param = normal diary mode
             meal: 'breakfast', // Default meal type
             date: new Date().toISOString().split('T')[0],
-            // Add a flag to indicate we should show My Meals tab
-            showMyMeals: 'true',
-            // Add timestamp to force refresh
-            refresh: Date.now().toString(),
+            showMyMeals: 'true', // Flag to show My Meals tab
+            refresh: Date.now().toString(), // Timestamp to force refresh
           },
         });
       } else {
