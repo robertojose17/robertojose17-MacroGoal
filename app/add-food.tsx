@@ -7,58 +7,29 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getRecentFoods } from '@/utils/foodDatabase';
-import { getMyMealTemplates, calculateMyMealSummary, deleteMyMealTemplate } from '@/utils/myMealTemplateDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
-import { MyMealTemplate } from '@/types/myMealTemplate';
 
-type TabType = 'all' | 'my-meals' | 'favorites' | 'quick-add';
-
-/**
- * Generate a guaranteed-unique temp_id for food items
- * Uses timestamp + random string to ensure uniqueness
- */
-function generateTempId(): string {
-  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
+type TabType = 'all' | 'favorites' | 'quick-add';
 
 export default function AddFoodScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<any>() || {};
 
-  const mode = params.mode ?? "diary";  // default mode so it never crashes
+  const mode = params.mode ?? "diary";
   const mealType = params.mealType ?? params.meal ?? "breakfast";
-  const context = params.context ?? null;
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const returnTo = params.returnTo as string;
-  const showMyMeals = params.showMyMeals as string; // 'true' if we should show My Meals tab
   
-  // Check if we're in My Meals builder mode using context flag
-  const isMyMealBuilderMode = context === 'my_meal_builder';
-  
-  console.log('[AddFood] ========== SCREEN INITIALIZED ==========');
-  console.log('[AddFood] Context:', context);
-  console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
-  console.log('[AddFood] Return To:', returnTo);
-  
-  // Initialize activeTab based on showMyMeals param
-  const [activeTab, setActiveTab] = useState<TabType>(() => {
-    if (showMyMeals === 'true') {
-      console.log('[AddFood] Initializing with My Meals tab active');
-      return 'my-meals';
-    }
-    return 'all';
-  });
+  const [activeTab, setActiveTab] = useState<TabType>('all');
   
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [myMealTemplates, setMyMealTemplates] = useState<MyMealTemplate[]>([]);
   const [loading, setLoading] = useState(false);
 
   // INLINE SEARCH STATE
@@ -88,19 +59,9 @@ export default function AddFoodScreen() {
       console.log('[AddFood] Screen focused, refreshing data');
       console.log('[AddFood] Refresh param:', params.refresh);
       
-      // Reload favorites and My Meals templates
+      // Reload favorites
       loadFavorites();
-      loadMyMealTemplates();
-      
-      // If showMyMeals param is set, ensure My Meals tab is active
-      if (showMyMeals === 'true') {
-        console.log('[AddFood] Setting active tab to My Meals');
-        setActiveTab('my-meals');
-        
-        // Clear the param after handling it
-        router.setParams({ showMyMeals: undefined });
-      }
-    }, [params.refresh, showMyMeals])
+    }, [params.refresh])
   );
 
   const loadData = async () => {
@@ -111,9 +72,6 @@ export default function AddFoodScreen() {
 
       // Load favorites
       await loadFavorites();
-      
-      // Load My Meals templates
-      await loadMyMealTemplates();
 
       console.log('[AddFood] Loaded data:', { recent: recent.length });
     } catch (error) {
@@ -133,17 +91,6 @@ export default function AddFoodScreen() {
       }
     } catch (error) {
       console.error('[AddFood] Error loading favorites:', error);
-    }
-  };
-
-  const loadMyMealTemplates = async () => {
-    try {
-      console.log('[AddFood] Loading My Meal templates...');
-      const templates = await getMyMealTemplates();
-      setMyMealTemplates(templates);
-      console.log('[AddFood] Loaded', templates.length, 'My Meal templates');
-    } catch (error) {
-      console.error('[AddFood] Error loading My Meal templates:', error);
     }
   };
 
@@ -304,33 +251,24 @@ export default function AddFoodScreen() {
   const handleOpenSearchResultDetails = (product: OpenFoodFactsProduct) => {
     console.log('[AddFood] Opening search result details:', product.product_name);
 
-    const detailsParams: any = {
-      offData: JSON.stringify(product),
-      meal: mealType,
-      date: date,
-    };
-
-    if (context === 'my_meal_builder') {
-      detailsParams.context = context;
-      detailsParams.returnTo = returnTo;
-    }
-
     router.push({
       pathname: '/food-details',
-      params: detailsParams,
+      params: {
+        offData: JSON.stringify(product),
+        meal: mealType,
+        date: date,
+      },
     });
   };
 
   const handleBarcodeScan = () => {
-    console.log('[AddFood] Navigating to barcode-scan, context:', context);
-    const scanParams: any = { meal: mealType, date: date };
-    if (context === 'my_meal_builder') {
-      scanParams.context = context;
-      scanParams.returnTo = returnTo;
-    }
+    console.log('[AddFood] Navigating to barcode-scan');
     router.push({
       pathname: '/barcode-scan',
-      params: scanParams,
+      params: {
+        meal: mealType,
+        date: date,
+      },
     });
   };
 
@@ -346,15 +284,13 @@ export default function AddFoodScreen() {
   };
 
   const handleQuickAdd = () => {
-    console.log('[AddFood] Navigating to quick-add, context:', context);
-    const quickAddParams: any = { meal: mealType, date: date };
-    if (context === 'my_meal_builder') {
-      quickAddParams.context = context;
-      quickAddParams.returnTo = returnTo;
-    }
+    console.log('[AddFood] Navigating to quick-add');
     router.push({
       pathname: '/quick-add',
-      params: quickAddParams,
+      params: {
+        meal: mealType,
+        date: date,
+      },
     });
   };
 
@@ -396,20 +332,13 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with OFF data');
 
-      const detailsParams: any = {
-        offData: JSON.stringify(offProduct),
-        meal: mealType,
-        date: date,
-      };
-
-      if (context === 'my_meal_builder') {
-        detailsParams.context = context;
-        detailsParams.returnTo = returnTo;
-      }
-
       router.push({
         pathname: '/food-details',
-        params: detailsParams,
+        params: {
+          offData: JSON.stringify(offProduct),
+          meal: mealType,
+          date: date,
+        },
       });
     } catch (error) {
       console.error('[AddFood] Error opening recent food details:', error);
@@ -419,13 +348,10 @@ export default function AddFoodScreen() {
 
   /**
    * Add a recent food directly
-   * If in builder mode, returns food data via goBack() instead of logging to diary
    */
   const handleAddRecentFood = async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
     console.log('[AddFood] Food:', food.name);
-    console.log('[AddFood] Context:', context);
-    console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
 
     try {
       // Get the food from database to get per-100g values
@@ -445,47 +371,6 @@ export default function AddFoodScreen() {
       const gramsToAdd = food.serving_amount;
       const servingDescription = food.last_serving_description || `${Math.round(gramsToAdd)} g`;
 
-      // Check if we're in My Meal Builder mode using context
-      if (context === 'my_meal_builder') {
-        console.log('[AddFood] ✓ My Meal Builder context detected - returning food data');
-        
-        // Generate unique temp_id and append to draft
-        const uniqueTempId = generateTempId();
-        console.log('[AddFood] Generated temp_id:', uniqueTempId);
-        
-        // Prepare food data to return to builder
-        const foodDataToReturn = {
-          temp_id: uniqueTempId,
-          food_source: 'library',
-          food_id: food.id,
-          barcode: foodData.barcode || undefined,
-          food_name: foodData.name,
-          brand: foodData.brand || undefined,
-          amount_grams: gramsToAdd,
-          amount_display: servingDescription,
-          per100_calories: foodData.calories,
-          per100_protein: foodData.protein,
-          per100_carbs: foodData.carbs,
-          per100_fat: foodData.fats,
-          per100_fiber: foodData.fiber,
-        };
-        
-        console.log('[AddFood] Returning food data to builder:', foodDataToReturn);
-        
-        // Return to builder using goBack()
-        router.setParams({
-          returnedFood: JSON.stringify(foodDataToReturn),
-        });
-        
-        router.back();
-        
-        // STOP here - do not proceed to diary logic
-        return;
-      }
-
-      // Normal diary mode - log to diary
-      console.log('[AddFood] Normal diary mode - logging to diary');
-      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in to add food');
@@ -593,20 +478,13 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with favorite data');
 
-      const detailsParams: any = {
-        offData: JSON.stringify(offProduct),
-        meal: mealType,
-        date: date,
-      };
-
-      if (context === 'my_meal_builder') {
-        detailsParams.context = context;
-        detailsParams.returnTo = returnTo;
-      }
-
       router.push({
         pathname: '/food-details',
-        params: detailsParams,
+        params: {
+          offData: JSON.stringify(offProduct),
+          meal: mealType,
+          date: date,
+        },
       });
     } catch (error) {
       console.error('[AddFood] Error opening favorite details:', error);
@@ -616,53 +494,10 @@ export default function AddFoodScreen() {
 
   /**
    * Handle adding favorite
-   * If in builder mode, returns food data via goBack() instead of logging to diary
    */
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
-    console.log('[AddFood] Context:', context);
-    console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
-
-    // Check if we're in My Meal Builder mode using context
-    if (context === 'my_meal_builder') {
-      console.log('[AddFood] ✓ My Meal Builder context detected - returning favorite as food data');
-      
-      // Generate unique temp_id and append to draft
-      const uniqueTempId = generateTempId();
-      console.log('[AddFood] Generated temp_id:', uniqueTempId);
-      
-      const foodData = {
-        temp_id: uniqueTempId,
-        food_source: 'library',
-        food_id: undefined,
-        barcode: favorite.food_source === 'barcode' ? favorite.food_code : undefined,
-        food_name: favorite.food_name,
-        brand: favorite.brand || undefined,
-        amount_grams: favorite.default_grams,
-        amount_display: favorite.serving_size || `${favorite.default_grams}g`,
-        per100_calories: favorite.per100_calories,
-        per100_protein: favorite.per100_protein,
-        per100_carbs: favorite.per100_carbs,
-        per100_fat: favorite.per100_fat,
-        per100_fiber: favorite.per100_fiber,
-      };
-      
-      console.log('[AddFood] Returning favorite food data to builder:', foodData);
-      
-      // Return to builder using goBack()
-      router.setParams({
-        returnedFood: JSON.stringify(foodData),
-      });
-      
-      router.back();
-      
-      // STOP here - do not proceed to diary logic
-      return;
-    }
-
-    // Normal diary mode - log to diary
-    console.log('[AddFood] Normal diary mode - logging to diary');
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -835,76 +670,6 @@ export default function AddFoodScreen() {
     );
   };
 
-  const handleMyMealTemplatePress = (template: MyMealTemplate) => {
-    console.log('[AddFood] Opening My Meal Template:', template.name);
-    router.push({
-      pathname: '/my-meal-template-details',
-      params: {
-        templateId: template.id,
-        meal: mealType,
-        date: date,
-      },
-    });
-  };
-
-  const handleCreateMyMeal = () => {
-    console.log('[AddFood] ========== CREATE MY MEAL ==========');
-    console.log('[AddFood] ✓ Opening NEW builder session');
-    router.push('/my-meal-builder');
-  };
-
-  /**
-   * Delete My Meal Template from list
-   */
-  const handleDeleteMyMealTemplate = (template: MyMealTemplate) => {
-    console.log('[AddFood] ========== DELETE MY MEAL TEMPLATE ==========');
-    console.log('[AddFood] Template ID:', template.id);
-    console.log('[AddFood] Template name:', template.name);
-
-    Alert.alert(
-      'Delete this meal?',
-      "This won't remove past diary logs.",
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => console.log('[AddFood] Delete canceled by user'),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('[AddFood] User confirmed deletion');
-
-            // Store previous state for rollback
-            const previousTemplates = [...myMealTemplates];
-
-            // Optimistically update UI
-            console.log('[AddFood] Optimistically removing from UI');
-            setMyMealTemplates(myMealTemplates.filter(t => t.id !== template.id));
-
-            try {
-              console.log('[AddFood] Calling deleteMyMealTemplate...');
-              const success = await deleteMyMealTemplate(template.id);
-
-              if (success) {
-                console.log('[AddFood] ✓ Template deleted successfully from database');
-              } else {
-                console.error('[AddFood] ✗ deleteMyMealTemplate returned false');
-                setMyMealTemplates(previousTemplates);
-                Alert.alert('Error', 'Failed to delete meal. Please try again.');
-              }
-            } catch (error: any) {
-              console.error('[AddFood] ✗ Error deleting template:', error);
-              setMyMealTemplates(previousTemplates);
-              Alert.alert('Error', error.message || 'Failed to delete meal. Please try again.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const renderFoodItem = (food: Food, index: number) => {
     const servingText = food.last_serving_description || `${Math.round(food.serving_amount)}g`;
     const macrosText = `P: ${Math.round(food.protein)}g • C: ${Math.round(food.carbs)}g • F: ${Math.round(food.fats)}g`;
@@ -1051,77 +816,19 @@ export default function AddFoodScreen() {
               color="#FFFFFF"
             />
           </TouchableOpacity>
-          {!isMyMealBuilderMode && (
-            <TouchableOpacity
-              style={styles.removeButton}
-              onPress={() => handleRemoveFavorite(favorite.id)}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="trash"
-                android_material_icon_name="delete"
-                size={18}
-                color="#FF3B30"
-              />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={() => handleRemoveFavorite(favorite.id)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="trash"
+              android_material_icon_name="delete"
+              size={18}
+              color="#FF3B30"
+            />
+          </TouchableOpacity>
         </View>
-      </View>
-    );
-  };
-
-  const renderMyMealTemplateCard = (template: MyMealTemplate, index: number) => {
-    const items = template.items || [];
-    const summary = items.length > 0 ? calculateMyMealSummary(items) : null;
-
-    return (
-      <View
-        key={index}
-        style={[
-          styles.myMealCard,
-          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
-        ]}
-      >
-        <Pressable
-          style={styles.myMealPressable}
-          onPress={() => handleMyMealTemplatePress(template)}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-        >
-          <View style={styles.myMealInfo}>
-            <Text style={[styles.myMealName, { color: isDark ? colors.textDark : colors.text }]}>
-              {template.name}
-            </Text>
-            {summary && (
-              <React.Fragment>
-                <Text style={[styles.myMealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {Math.round(summary.totalCalories)} kcal • {summary.itemCount} {summary.itemCount === 1 ? 'item' : 'items'}
-                </Text>
-                <Text style={[styles.myMealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  P: {Math.round(summary.totalProtein)}g • C: {Math.round(summary.totalCarbs)}g • F: {Math.round(summary.totalFat)}g
-                </Text>
-              </React.Fragment>
-            )}
-          </View>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron_right"
-            size={20}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
-        </Pressable>
-
-        <TouchableOpacity
-          style={styles.myMealDeleteButton}
-          onPress={() => handleDeleteMyMealTemplate(template)}
-          activeOpacity={0.7}
-        >
-          <IconSymbol
-            ios_icon_name="trash"
-            android_material_icon_name="delete"
-            size={20}
-            color="#FF3B30"
-          />
-        </TouchableOpacity>
       </View>
     );
   };
@@ -1225,7 +932,7 @@ export default function AddFoodScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          {isMyMealBuilderMode ? 'Add Food to Meal' : `Add to ${mealLabels[mealType]}`}
+          Add to {mealLabels[mealType]}
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -1293,23 +1000,6 @@ export default function AddFoodScreen() {
             {activeTab === 'all' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
 
-          {!isMyMealBuilderMode && (
-            <TouchableOpacity
-              style={styles.tab}
-              onPress={() => setActiveTab('my-meals')}
-              activeOpacity={0.7}
-            >
-              <Text style={[
-                styles.tabText,
-                activeTab === 'my-meals' && styles.tabTextActive,
-                { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-              ]}>
-                My Meals
-              </Text>
-              {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
             style={styles.tab}
             onPress={() => setActiveTab('favorites')}
@@ -1376,25 +1066,23 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  {!isMyMealBuilderMode && (
-                    <TouchableOpacity
-                      style={[styles.quickActionCard, styles.quickActionCardRight]}
-                      onPress={handleCopyFromPrevious}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.quickActionIconContainer}>
-                        <IconSymbol
-                          ios_icon_name="calendar"
-                          android_material_icon_name="event"
-                          size={32}
-                          color="#10B981"
-                        />
-                      </View>
-                      <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                        Copy from Previous
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.quickActionCard, styles.quickActionCardRight]}
+                    onPress={handleCopyFromPrevious}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.quickActionIconContainer}>
+                      <IconSymbol
+                        ios_icon_name="calendar"
+                        android_material_icon_name="event"
+                        size={32}
+                        color="#10B981"
+                      />
+                    </View>
+                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                      Copy from Previous
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </React.Fragment>
             )}
@@ -1422,45 +1110,6 @@ export default function AddFoodScreen() {
                     <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
                       Tap the star icon on any food to add it to your favorites
                     </Text>
-                  </View>
-                )}
-              </React.Fragment>
-            )}
-
-            {activeTab === 'my-meals' && !isMyMealBuilderMode && (
-              <React.Fragment>
-                <View style={styles.myMealsHeader}>
-                  <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Saved Meals
-                  </Text>
-                  <TouchableOpacity onPress={handleCreateMyMeal}>
-                    <IconSymbol
-                      ios_icon_name="plus"
-                      android_material_icon_name="add"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  </TouchableOpacity>
-                </View>
-                {myMealTemplates.length > 0 ? (
-                  myMealTemplates.map((template, index) => renderMyMealTemplateCard(template, index))
-                ) : (
-                  <View style={styles.emptyState}>
-                    <IconSymbol
-                      ios_icon_name="fork.knife"
-                      android_material_icon_name="restaurant"
-                      size={48}
-                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                    />
-                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
-                      No saved meals yet
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.createMealButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
-                      onPress={handleCreateMyMeal}
-                    >
-                      <Text style={styles.createMealButtonText}>Create Your First Meal</Text>
-                    </TouchableOpacity>
                   </View>
                 )}
               </React.Fragment>
@@ -1669,54 +1318,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  myMealsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  viewAllText: {
-    ...typography.bodyBold,
-    fontSize: 14,
-  },
-  myMealCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
-    elevation: 1,
-    overflow: 'hidden',
-  },
-  myMealPressable: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-  },
-  myMealInfo: {
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  myMealName: {
-    ...typography.bodyBold,
-    fontSize: 16,
-    marginBottom: 2,
-  },
-  myMealCalories: {
-    ...typography.caption,
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  myMealMacros: {
-    ...typography.caption,
-    fontSize: 12,
-  },
-  myMealDeleteButton: {
-    padding: spacing.md,
-    marginRight: spacing.xs,
-  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1732,16 +1333,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
-  },
-  createMealButton: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  createMealButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
   quickAddContainer: {
     paddingTop: spacing.md,

@@ -8,14 +8,6 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
-/**
- * Generate a guaranteed-unique temp_id for food items
- * Uses timestamp + random string to ensure uniqueness
- */
-function generateTempId(): string {
-  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
 export default function QuickAddScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -24,8 +16,6 @@ export default function QuickAddScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const context = params.context as string;
-  const returnTo = params.returnTo as string;
 
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
@@ -44,46 +34,6 @@ export default function QuickAddScreen() {
     setSaving(true);
 
     try {
-      // ROLLBACK: Check if we're in My Meal Builder mode using context
-      if (context === 'my_meal_builder') {
-        console.log('[QuickAdd] ========== MY MEAL BUILDER CONTEXT ==========');
-        console.log('[QuickAdd] Returning food data to builder');
-        
-        // A) Generate unique temp_id and append to draft
-        const uniqueTempId = generateTempId();
-        console.log('[QuickAdd] Generated temp_id:', uniqueTempId);
-        
-        // Prepare food data to return
-        const foodData = {
-          temp_id: uniqueTempId,
-          food_source: 'quickadd',
-          food_id: undefined,
-          food_name: foodName.trim(),
-          brand: undefined,
-          amount_grams: 100, // Quick add is per serving, we'll use 100g as base
-          amount_display: '1 serving',
-          per100_calories: parseFloat(calories) || 0,
-          per100_protein: parseFloat(protein) || 0,
-          per100_carbs: parseFloat(carbs) || 0,
-          per100_fat: parseFloat(fats) || 0,
-          per100_fiber: parseFloat(fiber) || 0,
-        };
-        
-        console.log('[QuickAdd] Food data to return:', foodData);
-        
-        // B) Return to builder using goBack()
-        router.setParams({
-          returnedFood: JSON.stringify(foodData),
-        });
-        
-        router.back();
-        
-        setSaving(false);
-        // STOP here - do not proceed to diary logic
-        return;
-      }
-
-      // Normal diary mode - log to diary
       console.log('[QuickAdd] Starting Quick Add save process...');
       console.log('[QuickAdd] Meal:', mealType, 'Date:', date);
       
@@ -198,8 +148,6 @@ export default function QuickAddScreen() {
       console.log('[QuickAdd] Quick Add complete! Navigating back to diary...');
       
       // Success! Navigate back
-      // We need to go back twice: once to close quick-add, once to close add-food
-      // This will return to the diary which will refresh via useFocusEffect
       setSaving(false);
       
       // Use replace to go directly back to home, which will trigger a refresh
@@ -351,7 +299,7 @@ export default function QuickAddScreen() {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.saveButtonText}>
-                {context === 'my_meal_builder' ? 'Add to My Meal' : `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`}
+                Add to {mealType.charAt(0).toUpperCase() + mealType.slice(1)}
               </Text>
             )}
           </TouchableOpacity>

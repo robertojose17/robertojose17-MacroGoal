@@ -10,14 +10,6 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
-/**
- * Generate a guaranteed-unique temp_id for food items
- * Uses timestamp + random string to ensure uniqueness
- */
-function generateTempId(): string {
-  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
 export default function FoodDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -27,8 +19,6 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
-  const context = params.context as string; // 'my_meal_builder' or undefined
-  const returnTo = params.returnTo as string;
 
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
@@ -40,7 +30,7 @@ export default function FoodDetailsScreen() {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
-    console.log('[FoodDetails] Component mounted, context:', context);
+    console.log('[FoodDetails] Component mounted');
     console.log('[FoodDetails] Parsing OpenFoodFacts data...');
     
     if (offDataString) {
@@ -286,47 +276,6 @@ export default function FoodDetailsScreen() {
     setSaving(true);
 
     try {
-      // ROLLBACK: Check if we're in My Meal Builder mode using context
-      if (context === 'my_meal_builder') {
-        console.log('[FoodDetails] ========== MY MEAL BUILDER CONTEXT ==========');
-        console.log('[FoodDetails] Returning food data to builder');
-        
-        // A) Generate unique temp_id and append to draft
-        const uniqueTempId = generateTempId();
-        console.log('[FoodDetails] Generated temp_id:', uniqueTempId);
-        
-        // Prepare food data to return
-        const foodData = {
-          temp_id: uniqueTempId,
-          food_source: 'library',
-          food_id: undefined, // Will be created if needed
-          barcode: product.code || undefined,
-          food_name: product.product_name || 'Unknown Product',
-          brand: product.brands || undefined,
-          amount_grams: parseFloat(grams),
-          amount_display: getServingDescription(),
-          per100_calories: nutrition.calories,
-          per100_protein: nutrition.protein,
-          per100_carbs: nutrition.carbs,
-          per100_fat: nutrition.fat,
-          per100_fiber: nutrition.fiber,
-        };
-        
-        console.log('[FoodDetails] Food data to return:', foodData);
-        
-        // B) Return to builder using goBack()
-        router.setParams({
-          returnedFood: JSON.stringify(foodData),
-        });
-        
-        router.back();
-        
-        setSaving(false);
-        // STOP here - do not proceed to diary logic
-        return;
-      }
-
-      // Normal diary mode - log to diary
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in to add food');
@@ -467,14 +416,6 @@ export default function FoodDetailsScreen() {
     product.product_name === 'Unknown Product' || 
     product.brands === 'Unknown Brand' ||
     (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
-
-  // Determine button text based on context
-  const getButtonText = () => {
-    if (context === 'my_meal_builder') {
-      return 'Add to My Meal';
-    }
-    return `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`;
-  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -722,7 +663,7 @@ export default function FoodDetailsScreen() {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>{getButtonText()}</Text>
+              <Text style={styles.saveButtonText}>Add to {mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
             )}
           </TouchableOpacity>
 
