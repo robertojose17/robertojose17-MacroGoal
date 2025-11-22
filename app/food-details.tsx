@@ -27,9 +27,8 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
-  const mode = params.mode as string; // 'my_meal_builder' or undefined
+  const context = params.context as string; // 'my_meal_builder' or undefined
   const returnTo = params.returnTo as string;
-  const builderSessionId = params.builderSessionId as string;
 
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
@@ -41,8 +40,7 @@ export default function FoodDetailsScreen() {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
-    console.log('[FoodDetails] Component mounted, mode:', mode);
-    console.log('[FoodDetails] Builder Session ID:', builderSessionId);
+    console.log('[FoodDetails] Component mounted, context:', context);
     console.log('[FoodDetails] Parsing OpenFoodFacts data...');
     
     if (offDataString) {
@@ -288,19 +286,18 @@ export default function FoodDetailsScreen() {
     setSaving(true);
 
     try {
-      // Check if we're in My Meal Builder mode
-      if (mode === 'my_meal_builder') {
-        console.log('[FoodDetails] ========== MY MEAL BUILDER MODE ==========');
-        console.log('[FoodDetails] Builder Session ID:', builderSessionId);
+      // ROLLBACK: Check if we're in My Meal Builder mode using context
+      if (context === 'my_meal_builder') {
+        console.log('[FoodDetails] ========== MY MEAL BUILDER CONTEXT ==========');
         console.log('[FoodDetails] Returning food data to builder');
         
-        // FIX: Generate unique temp_id for the food item
+        // A) Generate unique temp_id and append to draft
         const uniqueTempId = generateTempId();
         console.log('[FoodDetails] Generated temp_id:', uniqueTempId);
         
         // Prepare food data to return
         const foodData = {
-          temp_id: uniqueTempId, // FIX: Add unique temp_id
+          temp_id: uniqueTempId,
           food_source: 'library',
           food_id: undefined, // Will be created if needed
           barcode: product.code || undefined,
@@ -316,9 +313,8 @@ export default function FoodDetailsScreen() {
         };
         
         console.log('[FoodDetails] Food data to return:', foodData);
-        console.log('[FoodDetails] ✓ Using goBack() - NO NEW BUILDER WILL BE CREATED');
         
-        // Navigate back with the food data
+        // B) Return to builder using goBack()
         router.setParams({
           returnedFood: JSON.stringify(foodData),
         });
@@ -326,6 +322,7 @@ export default function FoodDetailsScreen() {
         router.back();
         
         setSaving(false);
+        // STOP here - do not proceed to diary logic
         return;
       }
 
@@ -471,10 +468,10 @@ export default function FoodDetailsScreen() {
     product.brands === 'Unknown Brand' ||
     (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
 
-  // Determine button text based on mode
+  // Determine button text based on context
   const getButtonText = () => {
-    if (mode === 'my_meal_builder') {
-      return 'Add to Meal Template';
+    if (context === 'my_meal_builder') {
+      return 'Add to My Meal';
     }
     return `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`;
   };

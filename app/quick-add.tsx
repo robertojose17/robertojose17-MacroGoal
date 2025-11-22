@@ -24,9 +24,8 @@ export default function QuickAddScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const mode = params.mode as string;
+  const context = params.context as string;
   const returnTo = params.returnTo as string;
-  const builderSessionId = params.builderSessionId as string;
 
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
@@ -45,19 +44,18 @@ export default function QuickAddScreen() {
     setSaving(true);
 
     try {
-      // Check if we're in My Meal Builder mode
-      if (mode === 'my_meal_builder') {
-        console.log('[QuickAdd] ========== MY MEAL BUILDER MODE ==========');
-        console.log('[QuickAdd] Builder Session ID:', builderSessionId);
+      // ROLLBACK: Check if we're in My Meal Builder mode using context
+      if (context === 'my_meal_builder') {
+        console.log('[QuickAdd] ========== MY MEAL BUILDER CONTEXT ==========');
         console.log('[QuickAdd] Returning food data to builder');
         
-        // FIX: Generate unique temp_id for the food item
+        // A) Generate unique temp_id and append to draft
         const uniqueTempId = generateTempId();
         console.log('[QuickAdd] Generated temp_id:', uniqueTempId);
         
         // Prepare food data to return
         const foodData = {
-          temp_id: uniqueTempId, // FIX: Add unique temp_id
+          temp_id: uniqueTempId,
           food_source: 'quickadd',
           food_id: undefined,
           food_name: foodName.trim(),
@@ -72,9 +70,8 @@ export default function QuickAddScreen() {
         };
         
         console.log('[QuickAdd] Food data to return:', foodData);
-        console.log('[QuickAdd] ✓ Using goBack() - NO NEW BUILDER WILL BE CREATED');
         
-        // Navigate back with the food data
+        // B) Return to builder using goBack()
         router.setParams({
           returnedFood: JSON.stringify(foodData),
         });
@@ -82,6 +79,7 @@ export default function QuickAddScreen() {
         router.back();
         
         setSaving(false);
+        // STOP here - do not proceed to diary logic
         return;
       }
 
@@ -353,7 +351,7 @@ export default function QuickAddScreen() {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.saveButtonText}>
-                {mode === 'my_meal_builder' ? 'Add to My Meal' : `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`}
+                {context === 'my_meal_builder' ? 'Add to My Meal' : `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`}
               </Text>
             )}
           </TouchableOpacity>

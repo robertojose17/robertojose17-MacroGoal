@@ -18,9 +18,8 @@ export default function BarcodeScanScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const mode = params.mode as string;
+  const context = params.context as string;
   const returnTo = params.returnTo as string;
-  const builderSessionId = params.builderSessionId as string;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>('scanning');
@@ -33,8 +32,7 @@ export default function BarcodeScanScreen() {
 
   useEffect(() => {
     console.log('[BarcodeScan] Screen mounted, meal:', mealType, 'date:', date);
-    console.log('[BarcodeScan] Mode:', mode);
-    console.log('[BarcodeScan] Builder Session ID:', builderSessionId);
+    console.log('[BarcodeScan] Context:', context);
     
     // Cleanup timeout on unmount
     return () => {
@@ -97,10 +95,9 @@ export default function BarcodeScanScreen() {
           source: 'barcode',
         };
         
-        if (mode === 'my_meal_builder') {
-          detailsParams.mode = mode;
+        if (context === 'my_meal_builder') {
+          detailsParams.context = context;
           detailsParams.returnTo = returnTo;
-          detailsParams.builderSessionId = builderSessionId;
         }
         
         router.replace({
@@ -138,10 +135,9 @@ export default function BarcodeScanScreen() {
   const handleSearchLibrary = () => {
     console.log('[BarcodeScan] Navigating to search library');
     const searchParams: any = { meal: mealType, date: date };
-    if (mode === 'my_meal_builder') {
-      searchParams.mode = mode;
+    if (context === 'my_meal_builder') {
+      searchParams.context = context;
       searchParams.returnTo = returnTo;
-      searchParams.builderSessionId = builderSessionId;
     }
     router.replace({
       pathname: '/food-search',
@@ -152,10 +148,9 @@ export default function BarcodeScanScreen() {
   const handleQuickAdd = () => {
     console.log('[BarcodeScan] Navigating to quick add');
     const quickAddParams: any = { meal: mealType, date: date };
-    if (mode === 'my_meal_builder') {
-      quickAddParams.mode = mode;
+    if (context === 'my_meal_builder') {
+      quickAddParams.context = context;
       quickAddParams.returnTo = returnTo;
-      quickAddParams.builderSessionId = builderSessionId;
     }
     router.replace({
       pathname: '/quick-add',

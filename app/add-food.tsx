@@ -32,19 +32,17 @@ export default function AddFoodScreen() {
 
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const mode = params.mode as string; // 'my_meal_builder' or undefined
+  const context = params.context as string; // 'my_meal_builder' or undefined
   const returnTo = params.returnTo as string;
-  const builderSessionId = params.builderSessionId as string; // Builder session ID
   const showMyMeals = params.showMyMeals as string; // 'true' if we should show My Meals tab
   
-  // Check if we're in My Meals builder mode
-  const isMyMealBuilderMode = mode === 'my_meal_builder';
+  // ROLLBACK: Check if we're in My Meals builder mode using context flag
+  const isMyMealBuilderMode = context === 'my_meal_builder';
   
   console.log('[AddFood] ========== SCREEN INITIALIZED ==========');
-  console.log('[AddFood] Mode:', mode);
+  console.log('[AddFood] Context:', context);
   console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
   console.log('[AddFood] Return To:', returnTo);
-  console.log('[AddFood] Builder Session ID:', builderSessionId);
   
   // Initialize activeTab based on showMyMeals param
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -309,10 +307,9 @@ export default function AddFoodScreen() {
       date: date,
     };
 
-    if (mode === 'my_meal_builder') {
-      detailsParams.mode = mode;
+    if (context === 'my_meal_builder') {
+      detailsParams.context = context;
       detailsParams.returnTo = returnTo;
-      detailsParams.builderSessionId = builderSessionId;
     }
 
     router.push({
@@ -322,12 +319,11 @@ export default function AddFoodScreen() {
   };
 
   const handleBarcodeScan = () => {
-    console.log('[AddFood] Navigating to barcode-scan, mode:', mode);
+    console.log('[AddFood] Navigating to barcode-scan, context:', context);
     const scanParams: any = { meal: mealType, date: date };
-    if (mode === 'my_meal_builder') {
-      scanParams.mode = mode;
+    if (context === 'my_meal_builder') {
+      scanParams.context = context;
       scanParams.returnTo = returnTo;
-      scanParams.builderSessionId = builderSessionId;
     }
     router.push({
       pathname: '/barcode-scan',
@@ -347,12 +343,11 @@ export default function AddFoodScreen() {
   };
 
   const handleQuickAdd = () => {
-    console.log('[AddFood] Navigating to quick-add, mode:', mode);
+    console.log('[AddFood] Navigating to quick-add, context:', context);
     const quickAddParams: any = { meal: mealType, date: date };
-    if (mode === 'my_meal_builder') {
-      quickAddParams.mode = mode;
+    if (context === 'my_meal_builder') {
+      quickAddParams.context = context;
       quickAddParams.returnTo = returnTo;
-      quickAddParams.builderSessionId = builderSessionId;
     }
     router.push({
       pathname: '/quick-add',
@@ -404,10 +399,9 @@ export default function AddFoodScreen() {
         date: date,
       };
 
-      if (mode === 'my_meal_builder') {
-        detailsParams.mode = mode;
+      if (context === 'my_meal_builder') {
+        detailsParams.context = context;
         detailsParams.returnTo = returnTo;
-        detailsParams.builderSessionId = builderSessionId;
       }
 
       router.push({
@@ -421,16 +415,15 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * FIX 3: Add a recent food directly
-   * RESPECTS MY MEAL BUILDER CONTEXT
+   * ROLLBACK: Shared add-success handler with context override
+   * Add a recent food directly
    * If in builder mode, returns food data via goBack() instead of logging to diary
    */
   const handleAddRecentFood = async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
     console.log('[AddFood] Food:', food.name);
-    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Context:', context);
     console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
-    console.log('[AddFood] Builder Session ID:', builderSessionId);
 
     try {
       // Get the food from database to get per-100g values
@@ -450,12 +443,11 @@ export default function AddFoodScreen() {
       const gramsToAdd = food.serving_amount;
       const servingDescription = food.last_serving_description || `${Math.round(gramsToAdd)} g`;
 
-      // FIX 3: Check if we're in My Meal Builder mode
-      if (isMyMealBuilderMode) {
-        console.log('[AddFood] ✓ My Meal Builder mode detected - returning food data');
-        console.log('[AddFood] ✓ Will return to builder session:', builderSessionId);
+      // ROLLBACK: Check if we're in My Meal Builder mode using context
+      if (context === 'my_meal_builder') {
+        console.log('[AddFood] ✓ My Meal Builder context detected - returning food data');
         
-        // Generate unique temp_id for the food item
+        // A) Generate unique temp_id and append to draft
         const uniqueTempId = generateTempId();
         console.log('[AddFood] Generated temp_id:', uniqueTempId);
         
@@ -477,17 +469,15 @@ export default function AddFoodScreen() {
         };
         
         console.log('[AddFood] Returning food data to builder:', foodDataToReturn);
-        console.log('[AddFood] ✓ Using goBack() - NO NEW BUILDER WILL BE CREATED');
         
-        // FIX 2: Use goBack() to return to the SAME builder
-        // Pass the food data via params
+        // B) Return to builder using goBack()
         router.setParams({
           returnedFood: JSON.stringify(foodDataToReturn),
         });
         
-        // Navigate back immediately
         router.back();
         
+        // STOP here - do not proceed to diary logic
         return;
       }
 
@@ -607,10 +597,9 @@ export default function AddFoodScreen() {
         date: date,
       };
 
-      if (mode === 'my_meal_builder') {
-        detailsParams.mode = mode;
+      if (context === 'my_meal_builder') {
+        detailsParams.context = context;
         detailsParams.returnTo = returnTo;
-        detailsParams.builderSessionId = builderSessionId;
       }
 
       router.push({
@@ -624,23 +613,21 @@ export default function AddFoodScreen() {
   };
 
   /**
-   * FIX 3: Handle adding favorite
-   * RESPECTS MY MEAL BUILDER CONTEXT
+   * ROLLBACK: Shared add-success handler with context override
+   * Handle adding favorite
    * If in builder mode, returns food data via goBack() instead of logging to diary
    */
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
-    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Context:', context);
     console.log('[AddFood] Is My Meal Builder Mode:', isMyMealBuilderMode);
-    console.log('[AddFood] Builder Session ID:', builderSessionId);
 
-    // FIX 3: Check if we're in My Meal Builder mode
-    if (isMyMealBuilderMode) {
-      console.log('[AddFood] ✓ My Meal Builder mode detected - returning favorite as food data');
-      console.log('[AddFood] ✓ Will return to builder session:', builderSessionId);
+    // ROLLBACK: Check if we're in My Meal Builder mode using context
+    if (context === 'my_meal_builder') {
+      console.log('[AddFood] ✓ My Meal Builder context detected - returning favorite as food data');
       
-      // Generate unique temp_id for the food item
+      // A) Generate unique temp_id and append to draft
       const uniqueTempId = generateTempId();
       console.log('[AddFood] Generated temp_id:', uniqueTempId);
       
@@ -661,16 +648,15 @@ export default function AddFoodScreen() {
       };
       
       console.log('[AddFood] Returning favorite food data to builder:', foodData);
-      console.log('[AddFood] ✓ Using goBack() - NO NEW BUILDER WILL BE CREATED');
       
-      // FIX 2: Use goBack() to return to the SAME builder
+      // B) Return to builder using goBack()
       router.setParams({
         returnedFood: JSON.stringify(foodData),
       });
       
-      // Navigate back immediately
       router.back();
       
+      // STOP here - do not proceed to diary logic
       return;
     }
 

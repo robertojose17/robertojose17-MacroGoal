@@ -134,42 +134,33 @@ export default function MyMealBuilderScreen() {
     }
   }, [params.returnedFood, builderSessionId]);
 
-  // FIX 2: DO NOT NAVIGATE TO CreateMyMeal FROM ANY AddFood FLOW
-  // Guard against opening AddFood multiple times
+  // ROLLBACK FIX: Open AddFoodOptions exactly like Breakfast
   const handleAddFood = () => {
     console.log('[MyMealBuilder] ========== ADD FOOD BUTTON PRESSED ==========');
     console.log('[MyMealBuilder] Builder Session ID:', builderSessionId);
     console.log('[MyMealBuilder] Current items count:', items.length);
     console.log('[MyMealBuilder] Is navigating:', isNavigatingRef.current);
     
-    // FIX 2: Prevent multiple navigations
+    // Prevent multiple navigations
     if (isNavigatingRef.current) {
       console.log('[MyMealBuilder] ✗ Already navigating, blocking duplicate navigation');
       return;
     }
     
-    // Check if we're already on AddFood screen
-    const currentRoute = navigation.getState()?.routes[navigation.getState()?.index || 0];
-    console.log('[MyMealBuilder] Current route:', currentRoute?.name);
-    
-    if (currentRoute?.name === 'add-food') {
-      console.log('[MyMealBuilder] ✗ Already on add-food screen, blocking duplicate navigation');
-      return;
-    }
-    
     // Set navigating flag
     isNavigatingRef.current = true;
-    console.log('[MyMealBuilder] ✓ Navigating to add-food screen');
-    console.log('[MyMealBuilder] ✓ Passing builder session ID:', builderSessionId);
+    console.log('[MyMealBuilder] ✓ Navigating to AddFoodOptions (add-food)');
+    console.log('[MyMealBuilder] ✓ Context: my_meal_builder');
+    console.log('[MyMealBuilder] ✓ Return To: MyMealBuilder');
     
-    // FIX 2: Navigate to Add Food with builder mode
-    // Pass the builder session ID to ensure we return to THIS builder
+    // ROLLBACK: Navigate to AddFoodOptions EXACTLY like Breakfast, but with context flag
     router.push({
       pathname: '/add-food',
       params: {
-        mode: 'my_meal_builder',
-        returnTo: '/my-meal-builder',
-        builderSessionId: builderSessionId, // Pass session ID
+        context: 'my_meal_builder',
+        returnTo: 'MyMealBuilder',
+        meal: 'breakfast', // Dummy meal type (not used in builder context)
+        date: new Date().toISOString().split('T')[0], // Dummy date (not used in builder context)
       },
     });
     
