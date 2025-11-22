@@ -26,22 +26,48 @@ export interface Favorite {
 }
 
 /**
+ * Generate a unique food code for foods without a barcode
+ * This ensures the unique constraint works properly
+ */
+function generateFoodCode(foodName: string, brand?: string): string {
+  const normalized = `${foodName}_${brand || 'no-brand'}`.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return `library_${normalized}`;
+}
+
+/**
+ * Get the food code to use for favorites
+ * For barcode foods: use the barcode
+ * For library foods: generate a unique code from name + brand
+ */
+function getFoodCodeForFavorite(foodSource: string, foodCode: string | undefined, foodName: string, brand?: string): string {
+  if (foodCode) {
+    return foodCode;
+  }
+  // For library foods without a barcode, generate a unique code
+  return generateFoodCode(foodName, brand);
+}
+
+/**
  * Check if a food is favorited
  */
 export async function isFavorite(
   userId: string,
   foodSource: string,
-  foodCode?: string
+  foodCode: string | undefined,
+  foodName?: string,
+  brand?: string
 ): Promise<boolean> {
   try {
-    if (!foodCode) return false;
+    const actualFoodCode = getFoodCodeForFavorite(foodSource, foodCode, foodName || '', brand);
+
+    console.log('[Favorites] Checking if favorite:', { foodSource, actualFoodCode });
 
     const { data, error } = await supabase
       .from('favorites')
       .select('id')
       .eq('user_id', userId)
       .eq('food_source', foodSource)
-      .eq('food_code', foodCode)
+      .eq('food_code', actualFoodCode)
       .maybeSingle();
 
     if (error) {
@@ -49,7 +75,9 @@ export async function isFavorite(
       return false;
     }
 
-    return !!data;
+    const result = !!data;
+    console.log('[Favorites] Is favorite:', result);
+    return result;
   } catch (error) {
     console.error('[Favorites] Error in isFavorite:', error);
     return false;
@@ -63,6 +91,16 @@ export async function addFavorite(favorite: Omit<Favorite, 'id' | 'created_at' |
   try {
     console.log('[Favorites] Adding favorite:', favorite.food_name);
 
+    // Get the actual food code to use (generate one if needed)
+    const actualFoodCode = getFoodCodeForFavorite(
+      favorite.food_source,
+      favorite.food_code,
+      favorite.food_name,
+      favorite.brand
+    );
+
+    console.log('[Favorites] Using food_code:', actualFoodCode);
+
     // Use upsert to handle duplicates gracefully
     const { data, error } = await supabase
       .from('favorites')
@@ -70,7 +108,7 @@ export async function addFavorite(favorite: Omit<Favorite, 'id' | 'created_at' |
         {
           user_id: favorite.user_id,
           food_source: favorite.food_source,
-          food_code: favorite.food_code || null,
+          food_code: actualFoodCode,
           food_name: favorite.food_name,
           brand: favorite.brand || null,
           per100_calories: favorite.per100_calories,
@@ -93,14 +131,14 @@ export async function addFavorite(favorite: Omit<Favorite, 'id' | 'created_at' |
 
     if (error) {
       console.error('[Favorites] Error adding favorite:', error);
-      return null;
+      throw error;
     }
 
     console.log('[Favorites] Favorite added successfully:', data.id);
     return data as Favorite;
   } catch (error) {
     console.error('[Favorites] Error in addFavorite:', error);
-    return null;
+    throw error;
   }
 }
 
@@ -110,33 +148,32 @@ export async function addFavorite(favorite: Omit<Favorite, 'id' | 'created_at' |
 export async function removeFavorite(
   userId: string,
   foodSource: string,
-  foodCode?: string
+  foodCode: string | undefined,
+  foodName?: string,
+  brand?: string
 ): Promise<boolean> {
   try {
-    console.log('[Favorites] Removing favorite:', foodSource, foodCode);
+    const actualFoodCode = getFoodCodeForFavorite(foodSource, foodCode, foodName || '', brand);
 
-    if (!foodCode) {
-      console.error('[Favorites] Cannot remove favorite without food_code');
-      return false;
-    }
+    console.log('[Favorites] Removing favorite:', { foodSource, actualFoodCode });
 
     const { error } = await supabase
       .from('favorites')
       .delete()
       .eq('user_id', userId)
       .eq('food_source', foodSource)
-      .eq('food_code', foodCode);
+      .eq('food_code', actualFoodCode);
 
     if (error) {
       console.error('[Favorites] Error removing favorite:', error);
-      return false;
+      throw error;
     }
 
     console.log('[Favorites] Favorite removed successfully');
     return true;
   } catch (error) {
     console.error('[Favorites] Error in removeFavorite:', error);
-    return false;
+    throw error;
   }
 }
 
@@ -154,14 +191,14 @@ export async function removeFavoriteById(favoriteId: string): Promise<boolean> {
 
     if (error) {
       console.error('[Favorites] Error removing favorite by ID:', error);
-      return false;
+      throw error;
     }
 
     console.log('[Favorites] Favorite removed successfully');
     return true;
   } catch (error) {
     console.error('[Favorites] Error in removeFavoriteById:', error);
-    return false;
+    throw error;
   }
 }
 
@@ -180,7 +217,7 @@ export async function getFavorites(userId: string): Promise<Favorite[]> {
 
     if (error) {
       console.error('[Favorites] Error getting favorites:', error);
-      return [];
+      throw error;
     }
 
     console.log('[Favorites] Found', data.length, 'favorites');
@@ -213,23 +250,24 @@ export async function toggleFavorite(
 ): Promise<boolean> {
   try {
     // Check if already favorited
-    const isAlreadyFavorite = await isFavorite(userId, foodSource, foodCode);
+    const isAlreadyFavorite = await isFavorite(userId, foodSource, foodCode, foodData.food_name, foodData.brand);
 
     if (isAlreadyFavorite) {
       // Remove from favorites
-      return await removeFavorite(userId, foodSource, foodCode);
+      await removeFavorite(userId, foodSource, foodCode, foodData.food_name, foodData.brand);
+      return false; // Return false to indicate it's no longer favorited
     } else {
       // Add to favorites
-      const result = await addFavorite({
+      await addFavorite({
         user_id: userId,
         food_source: foodSource as 'library' | 'barcode' | 'quickadd' | 'custom',
         food_code: foodCode,
         ...foodData,
       });
-      return !!result;
+      return true; // Return true to indicate it's now favorited
     }
   } catch (error) {
     console.error('[Favorites] Error in toggleFavorite:', error);
-    return false;
+    throw error;
   }
 }

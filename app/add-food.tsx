@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -49,6 +49,14 @@ export default function AddFoodScreen() {
     loadData();
   }, []);
 
+  // Refresh favorites when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[AddFood] Screen focused, refreshing favorites');
+      loadFavorites();
+    }, [])
+  );
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -58,18 +66,26 @@ export default function AddFoodScreen() {
       setMyMeals(meals);
 
       // Load favorites
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const favs = await getFavorites(user.id);
-        setFavorites(favs);
-        console.log('[AddFood] Loaded', favs.length, 'favorites');
-      }
+      await loadFavorites();
 
       console.log('[AddFood] Loaded data:', { recent: recent.length, myMeals: meals.length });
     } catch (error) {
       console.error('[AddFood] Error loading data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFavorites = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const favs = await getFavorites(user.id);
+        setFavorites(favs);
+        console.log('[AddFood] Loaded', favs.length, 'favorites');
+      }
+    } catch (error) {
+      console.error('[AddFood] Error loading favorites:', error);
     }
   };
 
@@ -296,6 +312,50 @@ export default function AddFoodScreen() {
     }
   };
 
+  const handleOpenFavoriteDetails = async (favorite: Favorite) => {
+    console.log('[AddFood] Opening favorite food details:', favorite.food_name);
+
+    try {
+      // Convert favorite to OpenFoodFacts format for the food-details screen
+      const offProduct = {
+        code: favorite.food_code || '',
+        product_name: favorite.food_name,
+        brands: favorite.brand || '',
+        serving_size: favorite.serving_size || `${favorite.default_grams}g`,
+        nutriments: {
+          'energy-kcal_100g': favorite.per100_calories,
+          'proteins_100g': favorite.per100_protein,
+          'carbohydrates_100g': favorite.per100_carbs,
+          'fat_100g': favorite.per100_fat,
+          'fiber_100g': favorite.per100_fiber,
+          'sugars_100g': 0,
+        },
+      };
+
+      console.log('[AddFood] Navigating to food-details with favorite data');
+
+      const detailsParams: any = {
+        offData: JSON.stringify(offProduct),
+        meal: mealType,
+        date: date,
+      };
+
+      if (mode === 'my_meal_builder') {
+        detailsParams.mode = mode;
+        detailsParams.returnTo = returnTo;
+        detailsParams.mealId = targetMealId;
+      }
+
+      router.push({
+        pathname: '/food-details',
+        params: detailsParams,
+      });
+    } catch (error) {
+      console.error('[AddFood] Error opening favorite details:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] Adding favorite to meal:', favorite.food_name);
 
@@ -317,7 +377,7 @@ export default function AddFoodScreen() {
       // Check if food exists in database
       let foodId: string | null = null;
 
-      if (favorite.food_code) {
+      if (favorite.food_code && favorite.food_source === 'barcode') {
         const { data: existingFood } = await supabase
           .from('foods')
           .select('id')
@@ -343,7 +403,7 @@ export default function AddFoodScreen() {
             carbs: favorite.per100_carbs,
             fats: favorite.per100_fat,
             fiber: favorite.per100_fiber,
-            barcode: favorite.food_code || null,
+            barcode: favorite.food_source === 'barcode' ? favorite.food_code : null,
             user_created: false,
           })
           .select()
@@ -534,17 +594,25 @@ export default function AddFoodScreen() {
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
         ]}
       >
-        <View style={styles.foodInfo}>
-          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-            {favorite.food_name}
-          </Text>
-          <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
-          </Text>
-          <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {macrosText}
-          </Text>
-        </View>
+        {/* Pressable row area - opens details */}
+        <Pressable
+          style={styles.foodInfoPressable}
+          onPress={() => handleOpenFavoriteDetails(favorite)}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+        >
+          <View style={styles.foodInfo}>
+            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+              {favorite.food_name}
+            </Text>
+            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
+            </Text>
+            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {macrosText}
+            </Text>
+          </View>
+        </Pressable>
+        
         <View style={styles.favoriteActions}>
           <TouchableOpacity
             style={styles.addButton}

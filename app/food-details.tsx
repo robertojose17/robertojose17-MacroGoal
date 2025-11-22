@@ -135,8 +135,15 @@ export default function FoodDetailsScreen() {
       const foodSource = prod.code ? 'barcode' : 'library';
       const foodCode = prod.code || undefined;
 
-      const favorited = await isFavorite(user.id, foodSource, foodCode);
+      const favorited = await isFavorite(
+        user.id,
+        foodSource,
+        foodCode,
+        prod.product_name || 'Unknown Product',
+        prod.brands || undefined
+      );
       setIsFavorited(favorited);
+      console.log('[FoodDetails] Initial favorite status:', favorited);
     } catch (error) {
       console.error('[FoodDetails] Error checking favorite status:', error);
     }
@@ -157,7 +164,14 @@ export default function FoodDetailsScreen() {
       const foodSource = product.code ? 'barcode' : 'library';
       const foodCode = product.code || undefined;
 
-      const success = await toggleFavorite(
+      console.log('[FoodDetails] Toggling favorite for:', {
+        foodSource,
+        foodCode,
+        foodName: product.product_name,
+        brand: product.brands,
+      });
+
+      const newFavoriteStatus = await toggleFavorite(
         user.id,
         foodSource,
         foodCode,
@@ -175,15 +189,17 @@ export default function FoodDetailsScreen() {
         }
       );
 
-      if (success) {
-        setIsFavorited(!isFavorited);
-        console.log('[FoodDetails] Favorite toggled successfully');
-      } else {
-        Alert.alert('Error', 'Failed to update favorite');
-      }
-    } catch (error) {
+      setIsFavorited(newFavoriteStatus);
+      console.log('[FoodDetails] Favorite toggled successfully, new status:', newFavoriteStatus);
+      
+      // Show success message
+      Alert.alert(
+        'Success',
+        newFavoriteStatus ? 'Added to favorites' : 'Removed from favorites'
+      );
+    } catch (error: any) {
       console.error('[FoodDetails] Error toggling favorite:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      Alert.alert('Error', error.message || 'Failed to update favorite');
     } finally {
       setFavoriteLoading(false);
     }
