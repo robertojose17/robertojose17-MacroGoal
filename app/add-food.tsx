@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect, useRoute } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -26,13 +26,17 @@ function generateTempId(): string {
 
 export default function AddFoodScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const route = useRoute();
+  const params: any = route?.params ?? {};
+
+  const mode = params.mode ?? "diary";  // default mode so it never crashes
+  const mealType = params.mealType ?? params.meal ?? "breakfast";
+  const context = params.context ?? null;
+  
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const context = params.context as string; // 'my_meal_builder' or undefined
   const returnTo = params.returnTo as string;
   const showMyMeals = params.showMyMeals as string; // 'true' if we should show My Meals tab
   
@@ -74,8 +78,8 @@ export default function AddFoodScreen() {
   };
 
   useEffect(() => {
-    console.log('[AddFood] Screen mounted on platform:', Platform.OS);
-    console.log('[AddFood] Params:', { mealType, date, mode, showMyMeals, builderSessionId });
+    console.log("[AddFood] Params:", params);
+    console.log("[AddFood] mode:", mode);
     loadData();
   }, []);
 
