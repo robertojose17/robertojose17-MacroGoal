@@ -19,6 +19,7 @@ export default function CreateMyMealScreen() {
   const [note, setNote] = useState('');
   const [items, setItems] = useState<Omit<MyMealItem, 'id' | 'my_meal_id' | 'created_at' | 'updated_at'>[]>([]);
   const [saving, setSaving] = useState(false);
+  const [draftId] = useState(() => `draft_${Date.now()}`); // Generate a unique draft ID
 
   // Handle returned food item from Add Food flows
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function CreateMyMealScreen() {
           per100_fiber: foodData.per100_fiber || 0,
         };
         
+        console.log('[CreateMyMeal] Adding item to draft:', newItem.food_name);
         setItems(prevItems => [...prevItems, newItem]);
         
         // Clear the param to avoid re-adding on re-render
@@ -56,17 +58,21 @@ export default function CreateMyMealScreen() {
 
   const handleAddFood = () => {
     console.log('[CreateMyMeal] Opening Add Food menu in My Meal Builder mode');
+    console.log('[CreateMyMeal] Draft ID:', draftId);
+    
     // Navigate to the main Add Food screen with mode parameter
     router.push({
       pathname: '/add-food',
       params: {
         mode: 'my_meal_builder',
         returnTo: '/my-meals-create',
+        mealId: draftId, // Pass the draft ID
       },
     });
   };
 
   const handleRemoveItem = (index: number) => {
+    console.log('[CreateMyMeal] Removing item at index:', index);
     const newItems = [...items];
     newItems.splice(index, 1);
     setItems(newItems);
@@ -86,6 +92,9 @@ export default function CreateMyMealScreen() {
     setSaving(true);
 
     try {
+      console.log('[CreateMyMeal] Saving My Meal:', name);
+      console.log('[CreateMyMeal] Items count:', items.length);
+      
       const result = await createMyMeal({
         name: name.trim(),
         note: note.trim() || undefined,
