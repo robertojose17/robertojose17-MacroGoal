@@ -91,16 +91,20 @@ export async function estimateMealWithGemini(
 
     // Log the exact Edge Function URL being called
     const functionName = 'gemini-meal-estimate';
-    const projectUrl = 'https://esgptfiofoaeguslgvcq.supabase.co';
+    const projectRef = 'esgptfiofoaeguslgvcq';
+    const projectUrl = `https://${projectRef}.supabase.co`;
     const fullUrl = `${projectUrl}/functions/v1/${functionName}`;
     
     console.log('[AI Estimator] ========================================');
     console.log('[AI Estimator] Edge Function Details:');
     console.log('[AI Estimator] Function Name:', functionName);
+    console.log('[AI Estimator] Project Ref:', projectRef);
     console.log('[AI Estimator] Project URL:', projectUrl);
     console.log('[AI Estimator] Full URL:', fullUrl);
     console.log('[AI Estimator] Method: POST');
     console.log('[AI Estimator] Request Body Keys:', Object.keys(requestBody));
+    console.log('[AI Estimator] Text length:', requestBody.text.length);
+    console.log('[AI Estimator] Has image:', !!requestBody.imageBase64);
     console.log('[AI Estimator] ========================================');
 
     console.log('[AI Estimator] Calling Supabase Edge Function...');
@@ -110,9 +114,18 @@ export async function estimateMealWithGemini(
       body: requestBody,
     });
 
+    console.log('[AI Estimator] ========================================');
     console.log('[AI Estimator] Response received from Edge Function');
     console.log('[AI Estimator] Has error:', !!error);
     console.log('[AI Estimator] Has data:', !!data);
+    
+    if (error) {
+      console.log('[AI Estimator] Error object:', JSON.stringify(error, null, 2));
+    }
+    if (data) {
+      console.log('[AI Estimator] Data keys:', Object.keys(data));
+    }
+    console.log('[AI Estimator] ========================================');
 
     // Check for errors
     if (error) {
@@ -120,34 +133,27 @@ export async function estimateMealWithGemini(
       console.error('[AI Estimator] Edge Function error detected');
       console.error('[AI Estimator] Error object:', JSON.stringify(error, null, 2));
       console.error('[AI Estimator] Error message:', error.message);
-      console.error('[AI Estimator] Error context:', error.context);
       console.error('[AI Estimator] ========================================');
       
       // Extract error message
       let errorMessage = 'AI estimation failed. Please try again.';
       
-      // Try to parse error from context
-      if (error.context) {
-        try {
-          const contextData = typeof error.context === 'string' 
-            ? JSON.parse(error.context) 
-            : error.context;
-          
-          if (contextData.error) {
-            errorMessage = contextData.error;
-          }
-        } catch (e) {
-          console.error('[AI Estimator] Failed to parse error context:', e);
-        }
-      }
-      
-      // Use error message if available
+      // The error message from the Edge Function
       if (error.message) {
         errorMessage = error.message;
       }
       
       console.error('[AI Estimator] Final error message:', errorMessage);
       throw new Error(errorMessage);
+    }
+
+    // Check if data contains an error field (for non-2xx responses)
+    if (data && data.error) {
+      console.error('[AI Estimator] ========================================');
+      console.error('[AI Estimator] Error in response data');
+      console.error('[AI Estimator] Error message:', data.error);
+      console.error('[AI Estimator] ========================================');
+      throw new Error(data.error);
     }
 
     if (!data) {
