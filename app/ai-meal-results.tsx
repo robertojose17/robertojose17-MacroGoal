@@ -8,10 +8,10 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
-interface Ingredient {
+interface Item {
   name: string;
-  quantity: string;
-  grams: number;
+  serving: string;
+  grams: number | null;
   calories: number;
   protein_g: number;
   carbs_g: number;
@@ -20,17 +20,17 @@ interface Ingredient {
 }
 
 interface EstimationResult {
-  meal_name: string;
-  assumptions: string[];
-  questions: string[];
-  ingredients: Ingredient[];
-  totals: {
+  items: Item[];
+  total: {
     calories: number;
     protein_g: number;
     carbs_g: number;
     fat_g: number;
     fiber_g: number;
   };
+  assumptions: string[];
+  confidence: number;
+  follow_up_questions: string[];
 }
 
 export default function AIMealResultsScreen() {
@@ -47,7 +47,7 @@ export default function AIMealResultsScreen() {
   const resultString = params.result as string;
 
   const [result, setResult] = useState<EstimationResult | null>(null);
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
   const [logging, setLogging] = useState(false);
   const [showQuestions, setShowQuestions] = useState(true);
@@ -57,9 +57,10 @@ export default function AIMealResultsScreen() {
       try {
         const parsed = JSON.parse(resultString) as EstimationResult;
         setResult(parsed);
-        setIngredients(parsed.ingredients);
-        setTotals(parsed.totals);
+        setItems(parsed.items);
+        setTotals(parsed.total);
         console.log('[AIMealResults] Parsed result:', parsed);
+        console.log('[AIMealResults] Confidence:', parsed.confidence);
       } catch (error) {
         console.error('[AIMealResults] Error parsing result:', error);
         Alert.alert('Error', 'Failed to load estimation results', [
@@ -71,21 +72,27 @@ export default function AIMealResultsScreen() {
 
   const handleGramsChange = (index: number, newGrams: string) => {
     const gramsNum = parseFloat(newGrams) || 0;
-    const ingredient = ingredients[index];
+    const item = items[index];
     
+    // Skip if grams is null (not applicable)
+    if (item.grams === null || item.grams === 0) {
+      Alert.alert('Cannot Edit', 'This item does not have a gram measurement');
+      return;
+    }
+
     // Calculate per-gram values from original
     const perGram = {
-      calories: ingredient.calories / ingredient.grams,
-      protein: ingredient.protein_g / ingredient.grams,
-      carbs: ingredient.carbs_g / ingredient.grams,
-      fat: ingredient.fat_g / ingredient.grams,
-      fiber: ingredient.fiber_g / ingredient.grams,
+      calories: item.calories / item.grams,
+      protein: item.protein_g / item.grams,
+      carbs: item.carbs_g / item.grams,
+      fat: item.fat_g / item.grams,
+      fiber: item.fiber_g / item.grams,
     };
 
-    // Update ingredient with new values
-    const updatedIngredients = [...ingredients];
-    updatedIngredients[index] = {
-      ...ingredient,
+    // Update item with new values
+    const updatedItems = [...items];
+    updatedItems[index] = {
+      ...item,
       grams: gramsNum,
       calories: perGram.calories * gramsNum,
       protein_g: perGram.protein * gramsNum,
@@ -94,10 +101,10 @@ export default function AIMealResultsScreen() {
       fiber_g: perGram.fiber * gramsNum,
     };
 
-    setIngredients(updatedIngredients);
+    setItems(updatedItems);
 
     // Recalculate totals
-    const newTotals = updatedIngredients.reduce(
+    const newTotals = updatedItems.reduce(
       (acc, ing) => ({
         calories: acc.calories + ing.calories,
         protein_g: acc.protein_g + ing.protein_g,
@@ -112,13 +119,13 @@ export default function AIMealResultsScreen() {
   };
 
   const handleLogToDiary = async () => {
-    if (ingredients.length === 0) {
-      Alert.alert('Error', 'No ingredients to log');
+    if (items.length === 0) {
+      Alert.alert('Error', 'No items to log');
       return;
     }
 
     // If there are unanswered questions, show confirmation
-    if (result?.questions && result.questions.length > 0 && showQuestions) {
+    if (result?.follow_up_questions && result.follow_up_questions.length > 0 && showQuestions) {
       Alert.alert(
         'Continue Anyway?',
         'There are clarifying questions that could improve accuracy. Do you want to continue logging?',
@@ -144,7 +151,7 @@ export default function AIMealResultsScreen() {
         return;
       }
 
-      console.log('[AIMealResults] Starting to log ingredients...');
+      console.log('[AIMealResults] Starting to log items...');
 
       // Find or create meal for the date and meal type
       const { data: existingMeal } = await supabase
@@ -179,22 +186,25 @@ export default function AIMealResultsScreen() {
         mealId = newMeal.id;
       }
 
-      // Log each ingredient as a separate food entry
-      for (const ingredient of ingredients) {
-        console.log('[AIMealResults] Logging ingredient:', ingredient.name);
+      // Log each item as a separate food entry
+      for (const item of items) {
+        console.log('[AIMealResults] Logging item:', item.name);
 
-        // Create food entry for this ingredient
+        // Use grams or default to 100 if null
+        const baseGrams = item.grams || 100;
+
+        // Create food entry for this item
         const { data: foodData, error: foodError } = await supabase
           .from('foods')
           .insert({
-            name: ingredient.name,
+            name: item.name,
             serving_amount: 100,
             serving_unit: 'g',
-            calories: (ingredient.calories / ingredient.grams) * 100,
-            protein: (ingredient.protein_g / ingredient.grams) * 100,
-            carbs: (ingredient.carbs_g / ingredient.grams) * 100,
-            fats: (ingredient.fat_g / ingredient.grams) * 100,
-            fiber: (ingredient.fiber_g / ingredient.grams) * 100,
+            calories: (item.calories / baseGrams) * 100,
+            protein: (item.protein_g / baseGrams) * 100,
+            carbs: (item.carbs_g / baseGrams) * 100,
+            fats: (item.fat_g / baseGrams) * 100,
+            fiber: (item.fiber_g / baseGrams) * 100,
             user_created: true,
             created_by: user.id,
           })
@@ -203,7 +213,7 @@ export default function AIMealResultsScreen() {
 
         if (foodError) {
           console.error('[AIMealResults] Error creating food:', foodError);
-          Alert.alert('Error', `Failed to create food entry for ${ingredient.name}`);
+          Alert.alert('Error', `Failed to create food entry for ${item.name}`);
           setLogging(false);
           return;
         }
@@ -214,25 +224,25 @@ export default function AIMealResultsScreen() {
           .insert({
             meal_id: mealId,
             food_id: foodData.id,
-            quantity: ingredient.grams / 100,
-            calories: ingredient.calories,
-            protein: ingredient.protein_g,
-            carbs: ingredient.carbs_g,
-            fats: ingredient.fat_g,
-            fiber: ingredient.fiber_g,
-            serving_description: ingredient.quantity,
-            grams: ingredient.grams,
+            quantity: baseGrams / 100,
+            calories: item.calories,
+            protein: item.protein_g,
+            carbs: item.carbs_g,
+            fats: item.fat_g,
+            fiber: item.fiber_g,
+            serving_description: item.serving,
+            grams: baseGrams,
           });
 
         if (mealItemError) {
           console.error('[AIMealResults] Error creating meal item:', mealItemError);
-          Alert.alert('Error', `Failed to add ${ingredient.name} to meal`);
+          Alert.alert('Error', `Failed to add ${item.name} to meal`);
           setLogging(false);
           return;
         }
       }
 
-      console.log('[AIMealResults] All ingredients logged successfully!');
+      console.log('[AIMealResults] All items logged successfully!');
       
       // Navigate back to diary
       router.dismissTo('/(tabs)/(home)/');
@@ -278,12 +288,19 @@ export default function AIMealResultsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Meal Name */}
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {result.meal_name}
-          </Text>
-        </View>
+        {/* Confidence Badge */}
+        {result.confidence !== undefined && (
+          <View style={[styles.confidenceBadge, { 
+            backgroundColor: result.confidence >= 0.7 ? 'rgba(52, 199, 89, 0.1)' : 'rgba(255, 149, 0, 0.1)',
+            borderColor: result.confidence >= 0.7 ? colors.success : colors.warning || '#FF9500'
+          }]}>
+            <Text style={[styles.confidenceText, { 
+              color: result.confidence >= 0.7 ? colors.success : colors.warning || '#FF9500'
+            }]}>
+              Confidence: {Math.round(result.confidence * 100)}%
+            </Text>
+          </View>
+        )}
 
         {/* Assumptions */}
         {result.assumptions && result.assumptions.length > 0 && (
@@ -305,7 +322,7 @@ export default function AIMealResultsScreen() {
         )}
 
         {/* Questions */}
-        {result.questions && result.questions.length > 0 && showQuestions && (
+        {result.follow_up_questions && result.follow_up_questions.length > 0 && showQuestions && (
           <View style={[styles.card, { backgroundColor: 'rgba(255, 149, 0, 0.1)', borderColor: colors.warning || '#FF9500', borderWidth: 1 }]}>
             <View style={styles.questionsHeader}>
               <IconSymbol
@@ -323,7 +340,7 @@ export default function AIMealResultsScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-            {result.questions.map((question, index) => (
+            {result.follow_up_questions.map((question, index) => (
               <View key={index} style={styles.bulletItem}>
                 <Text style={[styles.bullet, { color: colors.warning || '#FF9500' }]}>
                   •
@@ -339,60 +356,68 @@ export default function AIMealResultsScreen() {
           </View>
         )}
 
-        {/* Ingredients */}
+        {/* Items */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Ingredients
+            Estimated Items
           </Text>
           <Text style={[styles.sectionSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             Adjust quantities as needed
           </Text>
 
-          {ingredients.map((ingredient, index) => (
-            <View key={index} style={styles.ingredientCard}>
-              <View style={styles.ingredientHeader}>
-                <Text style={[styles.ingredientName, { color: isDark ? colors.textDark : colors.text }]}>
-                  {ingredient.name}
+          {items.map((item, index) => (
+            <View key={index} style={styles.itemCard}>
+              <View style={styles.itemHeader}>
+                <Text style={[styles.itemName, { color: isDark ? colors.textDark : colors.text }]}>
+                  {item.name}
                 </Text>
-                <Text style={[styles.ingredientCalories, { color: colors.calories }]}>
-                  {Math.round(ingredient.calories)} kcal
-                </Text>
-              </View>
-
-              <View style={styles.ingredientGrams}>
-                <Text style={[styles.gramsLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Grams:
-                </Text>
-                <TextInput
-                  style={[
-                    styles.gramsInput,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                      color: isDark ? colors.textDark : colors.text
-                    }
-                  ]}
-                  value={ingredient.grams.toString()}
-                  onChangeText={(text) => handleGramsChange(index, text)}
-                  keyboardType="decimal-pad"
-                />
-                <Text style={[styles.gramsUnit, { color: isDark ? colors.textDark : colors.text }]}>
-                  g
+                <Text style={[styles.itemCalories, { color: colors.calories }]}>
+                  {Math.round(item.calories)} kcal
                 </Text>
               </View>
 
-              <View style={styles.ingredientMacros}>
+              <View style={styles.itemServing}>
+                <Text style={[styles.servingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {item.serving}
+                </Text>
+              </View>
+
+              {item.grams !== null && item.grams > 0 && (
+                <View style={styles.itemGrams}>
+                  <Text style={[styles.gramsLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Grams:
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.gramsInput,
+                      {
+                        backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                        borderColor: isDark ? colors.borderDark : colors.border,
+                        color: isDark ? colors.textDark : colors.text
+                      }
+                    ]}
+                    value={item.grams.toString()}
+                    onChangeText={(text) => handleGramsChange(index, text)}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={[styles.gramsUnit, { color: isDark ? colors.textDark : colors.text }]}>
+                    g
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.itemMacros}>
                 <Text style={[styles.macroText, { color: colors.protein }]}>
-                  P: {ingredient.protein_g.toFixed(1)}g
+                  P: {item.protein_g.toFixed(1)}g
                 </Text>
                 <Text style={[styles.macroText, { color: colors.carbs }]}>
-                  C: {ingredient.carbs_g.toFixed(1)}g
+                  C: {item.carbs_g.toFixed(1)}g
                 </Text>
                 <Text style={[styles.macroText, { color: colors.fats }]}>
-                  F: {ingredient.fat_g.toFixed(1)}g
+                  F: {item.fat_g.toFixed(1)}g
                 </Text>
                 <Text style={[styles.macroText, { color: colors.fiber }]}>
-                  Fiber: {ingredient.fiber_g.toFixed(1)}g
+                  Fiber: {item.fiber_g.toFixed(1)}g
                 </Text>
               </View>
             </View>
@@ -484,16 +509,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xxl,
   },
+  confidenceBadge: {
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  confidenceText: {
+    ...typography.bodyBold,
+    fontSize: 14,
+  },
   card: {
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
-  },
-  mealName: {
-    ...typography.h2,
-    textAlign: 'center',
   },
   sectionTitle: {
     ...typography.h3,
@@ -530,28 +563,35 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     fontStyle: 'italic',
   },
-  ingredientCard: {
+  itemCard: {
     backgroundColor: 'rgba(0, 0, 0, 0.03)',
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  ingredientHeader: {
+  itemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  ingredientName: {
+  itemName: {
     ...typography.bodyBold,
     fontSize: 16,
     flex: 1,
   },
-  ingredientCalories: {
+  itemCalories: {
     ...typography.bodyBold,
     fontSize: 16,
   },
-  ingredientGrams: {
+  itemServing: {
+    marginBottom: spacing.sm,
+  },
+  servingText: {
+    ...typography.caption,
+    fontStyle: 'italic',
+  },
+  itemGrams: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -573,7 +613,7 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: '600',
   },
-  ingredientMacros: {
+  itemMacros: {
     flexDirection: 'row',
     gap: spacing.md,
   },

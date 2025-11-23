@@ -100,8 +100,8 @@ export default function AIMealEstimatorScreen() {
 
       console.log('[AIMealEstimator] ========================================');
       console.log('[AIMealEstimator] ✅ Estimation successful!');
-      console.log('[AIMealEstimator] Result meal name:', result.meal_name);
-      console.log('[AIMealEstimator] Result ingredients:', result.ingredients.length);
+      console.log('[AIMealEstimator] Result items:', result.items.length);
+      console.log('[AIMealEstimator] Total calories:', result.total.calories);
       console.log('[AIMealEstimator] ========================================');
 
       // Navigate to results screen
@@ -129,6 +129,7 @@ export default function AIMealEstimatorScreen() {
       // Show alert with the specific error message
       Alert.alert('Estimation Failed', errorMsg);
     } finally {
+      // Always stop loading
       setEstimating(false);
     }
   };

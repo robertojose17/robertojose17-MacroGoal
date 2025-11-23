@@ -5,7 +5,7 @@
  * This utility calls a Supabase Edge Function to estimate nutritional information
  * from a meal description and optional photo using Google's Gemini AI.
  * 
- * AI Model: Google Gemini 2.0 Flash
+ * AI Model: Google Gemini 1.5 Flash
  * The Gemini API key is stored in Supabase Edge Function environment variables.
  */
 
@@ -13,8 +13,8 @@ import { supabase } from '@/app/integrations/supabase/client';
 
 interface Ingredient {
   name: string;
-  quantity: string;
-  grams: number;
+  serving: string;
+  grams: number | null;
   calories: number;
   protein_g: number;
   carbs_g: number;
@@ -23,17 +23,17 @@ interface Ingredient {
 }
 
 interface EstimationResult {
-  meal_name: string;
-  assumptions: string[];
-  questions: string[];
-  ingredients: Ingredient[];
-  totals: {
+  items: Ingredient[];
+  total: {
     calories: number;
     protein_g: number;
     carbs_g: number;
     fat_g: number;
     fiber_g: number;
   };
+  assumptions: string[];
+  confidence: number;
+  follow_up_questions: string[];
 }
 
 /**
@@ -62,7 +62,7 @@ async function imageUriToBase64(uri: string): Promise<string> {
 /**
  * Estimate meal nutrition using Supabase Edge Function with Google Gemini AI
  * 
- * AI Model: Google Gemini 2.0 Flash
+ * AI Model: Google Gemini 1.5 Flash
  */
 export async function estimateMealWithGemini(
   description: string,
@@ -72,12 +72,12 @@ export async function estimateMealWithGemini(
   console.log('[AI Estimator] Starting estimation...');
   console.log('[AI Estimator] Description:', description);
   console.log('[AI Estimator] Has image:', !!imageUri);
-  console.log('[AI Estimator] AI Model: Google Gemini 2.0 Flash');
+  console.log('[AI Estimator] AI Model: Google Gemini 1.5 Flash');
 
   try {
     // Prepare request body
     const requestBody: any = {
-      text: description,
+      textPrompt: description,
       imageBase64: null,
     };
 
@@ -89,22 +89,21 @@ export async function estimateMealWithGemini(
       console.log('[AI Estimator] Image converted, size:', base64Image.length, 'chars');
     }
 
-    // Log the exact Edge Function URL being called
-    const functionName = 'gemini-meal-estimate';
+    // Get project URL
     const projectRef = 'esgptfiofoaeguslgvcq';
     const projectUrl = `https://${projectRef}.supabase.co`;
+    const functionName = 'gemini-meal-estimate';
     const fullUrl = `${projectUrl}/functions/v1/${functionName}`;
     
     console.log('[AI Estimator] ========================================');
     console.log('[AI Estimator] Edge Function Details:');
     console.log('[AI Estimator] Function Name:', functionName);
-    console.log('[AI Estimator] Project Ref:', projectRef);
-    console.log('[AI Estimator] Project URL:', projectUrl);
     console.log('[AI Estimator] Full URL:', fullUrl);
     console.log('[AI Estimator] Method: POST');
-    console.log('[AI Estimator] Request Body Keys:', Object.keys(requestBody));
-    console.log('[AI Estimator] Text length:', requestBody.text.length);
-    console.log('[AI Estimator] Has image:', !!requestBody.imageBase64);
+    console.log('[AI Estimator] Request Body:', JSON.stringify({
+      textPrompt: requestBody.textPrompt.substring(0, 50) + '...',
+      hasImage: !!requestBody.imageBase64
+    }));
     console.log('[AI Estimator] ========================================');
 
     console.log('[AI Estimator] Calling Supabase Edge Function...');
@@ -123,7 +122,7 @@ export async function estimateMealWithGemini(
       console.log('[AI Estimator] Error object:', JSON.stringify(error, null, 2));
     }
     if (data) {
-      console.log('[AI Estimator] Data keys:', Object.keys(data));
+      console.log('[AI Estimator] Data:', JSON.stringify(data, null, 2));
     }
     console.log('[AI Estimator] ========================================');
 
@@ -167,42 +166,41 @@ export async function estimateMealWithGemini(
     console.log('[AI Estimator] ========================================');
 
     // Validate the response structure
-    if (!data.meal_name || !data.ingredients || !Array.isArray(data.ingredients) || !data.totals) {
+    if (!data.items || !Array.isArray(data.items) || !data.total) {
       console.error('[AI Estimator] Invalid response structure:', data);
       throw new Error('Invalid response from AI service. Please try again.');
     }
 
-    // Validate each ingredient
-    for (const ingredient of data.ingredients) {
+    // Validate each item
+    for (const item of data.items) {
       if (
-        !ingredient.name ||
-        !ingredient.quantity ||
-        typeof ingredient.grams !== 'number' ||
-        typeof ingredient.calories !== 'number' ||
-        typeof ingredient.protein_g !== 'number' ||
-        typeof ingredient.carbs_g !== 'number' ||
-        typeof ingredient.fat_g !== 'number' ||
-        typeof ingredient.fiber_g !== 'number'
+        !item.name ||
+        !item.serving ||
+        typeof item.calories !== 'number' ||
+        typeof item.protein_g !== 'number' ||
+        typeof item.carbs_g !== 'number' ||
+        typeof item.fat_g !== 'number' ||
+        typeof item.fiber_g !== 'number'
       ) {
-        console.error('[AI Estimator] Invalid ingredient structure:', ingredient);
-        throw new Error('Invalid ingredient data from AI service. Please try again.');
+        console.error('[AI Estimator] Invalid item structure:', item);
+        throw new Error('Invalid item data from AI service. Please try again.');
       }
     }
 
-    // Ensure assumptions and questions are arrays
+    // Ensure assumptions and follow_up_questions are arrays
     if (!Array.isArray(data.assumptions)) {
       data.assumptions = [];
     }
-    if (!Array.isArray(data.questions)) {
-      data.questions = [];
+    if (!Array.isArray(data.follow_up_questions)) {
+      data.follow_up_questions = [];
     }
 
     console.log('[AI Estimator] ========================================');
     console.log('[AI Estimator] Estimation successful!');
-    console.log('[AI Estimator] Meal name:', data.meal_name);
-    console.log('[AI Estimator] Ingredients count:', data.ingredients.length);
-    console.log('[AI Estimator] Total calories:', data.totals.calories);
-    console.log('[AI Estimator] AI Model: Google Gemini 2.0 Flash');
+    console.log('[AI Estimator] Items count:', data.items.length);
+    console.log('[AI Estimator] Total calories:', data.total.calories);
+    console.log('[AI Estimator] Confidence:', data.confidence);
+    console.log('[AI Estimator] AI Model: Google Gemini 1.5 Flash');
     console.log('[AI Estimator] ========================================');
     
     return data as EstimationResult;
