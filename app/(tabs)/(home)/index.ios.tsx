@@ -498,26 +498,33 @@ export default function HomeScreen() {
               label="kcal"
             />
             
-            <View style={styles.caloriesStats}>
-              <StatItem
-                label="Consumed"
-                value={Math.round(totalCalories)}
-                unit="kcal"
-                color={colors.calories}
+            <View style={styles.macroSummaryCompact}>
+              <MacroSummaryRow
+                label="Protein"
+                eaten={Math.round(totalMacros.protein)}
+                goal={goal?.protein_g || 150}
+                color={colors.protein}
                 isDark={isDark}
               />
-              <StatItem
-                label="Remaining"
-                value={Math.round(caloriesRemaining)}
-                unit="kcal"
-                color={caloriesRemaining >= 0 ? colors.success : colors.error}
+              <MacroSummaryRow
+                label="Carbs"
+                eaten={Math.round(totalMacros.carbs)}
+                goal={goal?.carbs_g || 200}
+                color={colors.carbs}
                 isDark={isDark}
               />
-              <StatItem
-                label="Target"
-                value={goal?.daily_calories || 2000}
-                unit="kcal"
-                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              <MacroSummaryRow
+                label="Fats"
+                eaten={Math.round(totalMacros.fats)}
+                goal={goal?.fats_g || 65}
+                color={colors.fats}
+                isDark={isDark}
+              />
+              <MacroSummaryRow
+                label="Fiber"
+                eaten={Math.round(totalMacros.fiber)}
+                goal={goal?.fiber_g || 30}
+                color={colors.fiber}
                 isDark={isDark}
               />
             </View>
@@ -655,15 +662,22 @@ export default function HomeScreen() {
   );
 }
 
-function StatItem({ label, value, unit, color, isDark }: any) {
+function MacroSummaryRow({ label, eaten, goal, color, isDark }: any) {
+  const remaining = goal - eaten;
+  
   return (
-    <View style={styles.statItem}>
-      <Text style={[styles.statValue, { color }]}>
-        {value}
-      </Text>
-      <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+    <View style={styles.macroSummaryRow}>
+      <Text style={[styles.macroSummaryLabel, { color: isDark ? colors.textDark : colors.text }]}>
         {label}
       </Text>
+      <View style={styles.macroSummaryValues}>
+        <Text style={[styles.macroSummaryProgress, { color }]}>
+          {eaten} / {goal}g
+        </Text>
+        <Text style={[styles.macroSummaryRemaining, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+          {remaining}g remaining
+        </Text>
+      </View>
     </View>
   );
 }
@@ -740,21 +754,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.lg,
   },
-  caloriesStats: {
+  macroSummaryCompact: {
     flex: 1,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  statItem: {
+  macroSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  statValue: {
+  macroSummaryLabel: {
+    ...typography.body,
+    fontWeight: '600',
+    flex: 0,
+    minWidth: 60,
+  },
+  macroSummaryValues: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  macroSummaryProgress: {
     ...typography.bodyBold,
-    fontSize: 18,
+    fontSize: 15,
   },
-  statLabel: {
+  macroSummaryRemaining: {
     ...typography.caption,
+    fontSize: 11,
+    marginTop: 1,
   },
   macrosCard: {
     borderRadius: borderRadius.lg,
