@@ -3,36 +3,37 @@
  * AI Meal Estimator Utility
  * 
  * This utility calls a Supabase Edge Function to estimate nutritional information
- * from a meal description and optional photo using Hugging Face's Llama 3.2 model.
+ * from a meal description and optional photo using Google's Gemini AI.
  * 
- * AI Model: Hugging Face - meta-llama/Llama-3.2-3B-Instruct
- * The Hugging Face API key is embedded in the Edge Function for your convenience.
- * The Edge Function 'ai-meal-estimate' has been deployed and is ready to use.
+ * AI Model: Google Gemini 2.5 Flash
+ * The Gemini API key is stored in Supabase Edge Function environment variables.
  */
 
 import { supabase } from '@/app/integrations/supabase/client';
 
-interface EstimatedItem {
+interface Ingredient {
   name: string;
-  serving_description: string;
+  quantity: string;
+  grams: number;
   calories: number;
   protein_g: number;
   carbs_g: number;
-  fats_g: number;
+  fat_g: number;
   fiber_g: number;
 }
 
 interface EstimationResult {
-  assumptions: string;
-  items: EstimatedItem[];
+  meal_name: string;
+  assumptions: string[];
+  questions: string[];
+  ingredients: Ingredient[];
   totals: {
     calories: number;
     protein_g: number;
     carbs_g: number;
-    fats_g: number;
+    fat_g: number;
     fiber_g: number;
   };
-  aiModel?: string;
 }
 
 /**
@@ -59,35 +60,35 @@ async function imageUriToBase64(uri: string): Promise<string> {
 }
 
 /**
- * Estimate meal nutrition using Supabase Edge Function with Hugging Face AI
+ * Estimate meal nutrition using Supabase Edge Function with Google Gemini AI
  * 
- * AI Model: Hugging Face - meta-llama/Llama-3.2-3B-Instruct
+ * AI Model: Google Gemini 2.5 Flash
  */
-export async function estimateMealWithAI(
+export async function estimateMealWithGemini(
   description: string,
   imageUri: string | null = null
 ): Promise<EstimationResult> {
   console.log('[AI Estimator] Starting estimation...');
   console.log('[AI Estimator] Description:', description);
   console.log('[AI Estimator] Has image:', !!imageUri);
-  console.log('[AI Estimator] AI Model: Hugging Face - meta-llama/Llama-3.2-3B-Instruct');
+  console.log('[AI Estimator] AI Model: Google Gemini 2.5 Flash');
 
   try {
     // Prepare request body
     const requestBody: any = {
-      userDescription: description,
+      description: description,
     };
 
     // Add image if provided
     if (imageUri) {
       console.log('[AI Estimator] Converting image to base64...');
       const base64Image = await imageUriToBase64(imageUri);
-      requestBody.optionalPhotoInfo = base64Image;
+      requestBody.image = base64Image;
     }
 
     // Call Supabase Edge Function
     console.log('[AI Estimator] Calling Supabase Edge Function...');
-    const { data, error } = await supabase.functions.invoke('ai-meal-estimate', {
+    const { data, error } = await supabase.functions.invoke('gemini-meal-estimate', {
       body: requestBody,
     });
 
@@ -101,7 +102,6 @@ export async function estimateMealWithAI(
       
       // Parse error message from response
       let errorMessage = error.message || 'Unknown error';
-      let errorDetail = '';
       
       // Try to extract error from context if available
       if (error.context) {
@@ -115,30 +115,18 @@ export async function estimateMealWithAI(
           if (contextData.error) {
             errorMessage = contextData.error;
           }
-          if (contextData.detail) {
-            errorDetail = contextData.detail;
-          }
         } catch (e) {
           console.error('[AI Estimator] Failed to parse error context:', e);
         }
       }
       
       console.error('[AI Estimator] Parsed error message:', errorMessage);
-      console.error('[AI Estimator] Parsed error detail:', errorDetail);
       
       // Handle specific error cases
       if (errorMessage.includes('not configured') || errorMessage.includes('API key')) {
         throw new Error(
           '⚠️ AI service not configured!\n\n' +
-          'The Hugging Face API key may be missing or invalid. Please contact support.'
-        );
-      }
-      
-      if (errorMessage.includes('Model is loading') || errorMessage.includes('503')) {
-        throw new Error(
-          '🔄 AI model is warming up...\n\n' +
-          'The Hugging Face model needs 10-20 seconds to start. Please wait a moment and try again.\n\n' +
-          'This only happens on the first request after a period of inactivity.'
+          'The Gemini API key may be missing or invalid. Please contact support.'
         );
       }
       
@@ -149,7 +137,7 @@ export async function estimateMealWithAI(
       if (errorMessage.includes('timeout') || errorMessage.includes('504')) {
         throw new Error(
           '⏱️ Request timeout.\n\n' +
-          'The AI model is taking too long to respond. This can happen when the model is cold-starting.\n\n' +
+          'The AI model is taking too long to respond.\n\n' +
           'Please try again in a few seconds.'
         );
       }
@@ -158,12 +146,11 @@ export async function estimateMealWithAI(
         throw new Error(
           '🔧 Service temporarily unavailable.\n\n' +
           'The AI service encountered an error. This usually resolves itself.\n\n' +
-          'Please try again in a moment.\n\n' +
-          (errorDetail ? `Details: ${errorDetail}` : '')
+          'Please try again in a moment.'
         );
       }
       
-      throw new Error(errorMessage + (errorDetail ? `\n\nDetails: ${errorDetail}` : '') || 'AI estimation failed. Please try again or log manually.');
+      throw new Error(errorMessage || 'AI estimation failed. Please try again or log manually.');
     }
 
     if (!data) {
@@ -173,30 +160,39 @@ export async function estimateMealWithAI(
     console.log('[AI Estimator] API response received');
 
     // Validate the response structure
-    if (!data.assumptions || !data.items || !Array.isArray(data.items) || !data.totals) {
+    if (!data.meal_name || !data.ingredients || !Array.isArray(data.ingredients) || !data.totals) {
       console.error('[AI Estimator] Invalid response structure:', data);
       throw new Error('Invalid response from AI service. Please try again.');
     }
 
-    // Validate each item
-    for (const item of data.items) {
+    // Validate each ingredient
+    for (const ingredient of data.ingredients) {
       if (
-        !item.name ||
-        !item.serving_description ||
-        typeof item.calories !== 'number' ||
-        typeof item.protein_g !== 'number' ||
-        typeof item.carbs_g !== 'number' ||
-        typeof item.fats_g !== 'number' ||
-        typeof item.fiber_g !== 'number'
+        !ingredient.name ||
+        !ingredient.quantity ||
+        typeof ingredient.grams !== 'number' ||
+        typeof ingredient.calories !== 'number' ||
+        typeof ingredient.protein_g !== 'number' ||
+        typeof ingredient.carbs_g !== 'number' ||
+        typeof ingredient.fat_g !== 'number' ||
+        typeof ingredient.fiber_g !== 'number'
       ) {
-        console.error('[AI Estimator] Invalid item structure:', item);
-        throw new Error('Invalid item data from AI service. Please try again.');
+        console.error('[AI Estimator] Invalid ingredient structure:', ingredient);
+        throw new Error('Invalid ingredient data from AI service. Please try again.');
       }
     }
 
+    // Ensure assumptions and questions are arrays
+    if (!Array.isArray(data.assumptions)) {
+      data.assumptions = [];
+    }
+    if (!Array.isArray(data.questions)) {
+      data.questions = [];
+    }
+
     console.log('[AI Estimator] Estimation successful');
-    console.log('[AI Estimator] Items:', data.items.length);
-    console.log('[AI Estimator] AI Model:', data.aiModel || 'Hugging Face - meta-llama/Llama-3.2-3B-Instruct');
+    console.log('[AI Estimator] Ingredients:', data.ingredients.length);
+    console.log('[AI Estimator] AI Model: Google Gemini 2.5 Flash');
     
     return data as EstimationResult;
   } catch (error: any) {
