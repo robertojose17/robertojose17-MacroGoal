@@ -90,14 +90,19 @@ export default function AIMealEstimatorScreen() {
     setEstimating(true);
 
     try {
-      console.log('[AIMealEstimator] Starting estimation...');
+      console.log('[AIMealEstimator] ========================================');
+      console.log('[AIMealEstimator] User pressed "Estimate Macros"');
       console.log('[AIMealEstimator] Description:', mealDescription);
       console.log('[AIMealEstimator] Has image:', !!imageUri);
+      console.log('[AIMealEstimator] ========================================');
 
       const result = await estimateMealWithGemini(mealDescription, imageUri);
 
-      console.log('[AIMealEstimator] Estimation successful');
-      console.log('[AIMealEstimator] Result:', result);
+      console.log('[AIMealEstimator] ========================================');
+      console.log('[AIMealEstimator] ✅ Estimation successful!');
+      console.log('[AIMealEstimator] Result meal name:', result.meal_name);
+      console.log('[AIMealEstimator] Result ingredients:', result.ingredients.length);
+      console.log('[AIMealEstimator] ========================================');
 
       // Navigate to results screen
       router.push({
@@ -112,9 +117,16 @@ export default function AIMealEstimatorScreen() {
         },
       });
     } catch (error: any) {
-      console.error('[AIMealEstimator] Estimation error:', error);
+      console.error('[AIMealEstimator] ========================================');
+      console.error('[AIMealEstimator] ❌ Estimation failed');
+      console.error('[AIMealEstimator] Error:', error);
+      console.error('[AIMealEstimator] Error message:', error.message);
+      console.error('[AIMealEstimator] ========================================');
+      
       const errorMsg = error.message || 'Failed to estimate meal. Please try again.';
       setErrorMessage(errorMsg);
+      
+      // Show alert with the specific error message
       Alert.alert('Estimation Failed', errorMsg);
     } finally {
       setEstimating(false);

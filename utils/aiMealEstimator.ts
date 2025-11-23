@@ -68,6 +68,7 @@ export async function estimateMealWithGemini(
   description: string,
   imageUri: string | null = null
 ): Promise<EstimationResult> {
+  console.log('[AI Estimator] ========================================');
   console.log('[AI Estimator] Starting estimation...');
   console.log('[AI Estimator] Description:', description);
   console.log('[AI Estimator] Has image:', !!imageUri);
@@ -85,21 +86,42 @@ export async function estimateMealWithGemini(
       console.log('[AI Estimator] Converting image to base64...');
       const base64Image = await imageUriToBase64(imageUri);
       requestBody.imageBase64 = base64Image;
+      console.log('[AI Estimator] Image converted, size:', base64Image.length, 'chars');
     }
+
+    // Log the exact Edge Function URL being called
+    const functionName = 'gemini-meal-estimate';
+    const projectUrl = 'https://esgptfiofoaeguslgvcq.supabase.co';
+    const fullUrl = `${projectUrl}/functions/v1/${functionName}`;
+    
+    console.log('[AI Estimator] ========================================');
+    console.log('[AI Estimator] Edge Function Details:');
+    console.log('[AI Estimator] Function Name:', functionName);
+    console.log('[AI Estimator] Project URL:', projectUrl);
+    console.log('[AI Estimator] Full URL:', fullUrl);
+    console.log('[AI Estimator] Method: POST');
+    console.log('[AI Estimator] Request Body Keys:', Object.keys(requestBody));
+    console.log('[AI Estimator] ========================================');
 
     console.log('[AI Estimator] Calling Supabase Edge Function...');
 
     // Call Supabase Edge Function
-    const { data, error } = await supabase.functions.invoke('gemini-meal-estimate', {
+    const { data, error } = await supabase.functions.invoke(functionName, {
       body: requestBody,
     });
 
-    console.log('[AI Estimator] Response received');
+    console.log('[AI Estimator] Response received from Edge Function');
+    console.log('[AI Estimator] Has error:', !!error);
+    console.log('[AI Estimator] Has data:', !!data);
 
     // Check for errors
     if (error) {
-      console.error('[AI Estimator] Edge Function error:', error);
-      console.error('[AI Estimator] Error details:', JSON.stringify(error, null, 2));
+      console.error('[AI Estimator] ========================================');
+      console.error('[AI Estimator] Edge Function error detected');
+      console.error('[AI Estimator] Error object:', JSON.stringify(error, null, 2));
+      console.error('[AI Estimator] Error message:', error.message);
+      console.error('[AI Estimator] Error context:', error.context);
+      console.error('[AI Estimator] ========================================');
       
       // Extract error message
       let errorMessage = 'AI estimation failed. Please try again.';
@@ -133,7 +155,10 @@ export async function estimateMealWithGemini(
       throw new Error('No response from AI service. Please try again.');
     }
 
-    console.log('[AI Estimator] API response received');
+    console.log('[AI Estimator] ========================================');
+    console.log('[AI Estimator] API response received successfully');
+    console.log('[AI Estimator] Response keys:', Object.keys(data));
+    console.log('[AI Estimator] ========================================');
 
     // Validate the response structure
     if (!data.meal_name || !data.ingredients || !Array.isArray(data.ingredients) || !data.totals) {
@@ -166,13 +191,22 @@ export async function estimateMealWithGemini(
       data.questions = [];
     }
 
-    console.log('[AI Estimator] Estimation successful');
-    console.log('[AI Estimator] Ingredients:', data.ingredients.length);
+    console.log('[AI Estimator] ========================================');
+    console.log('[AI Estimator] Estimation successful!');
+    console.log('[AI Estimator] Meal name:', data.meal_name);
+    console.log('[AI Estimator] Ingredients count:', data.ingredients.length);
+    console.log('[AI Estimator] Total calories:', data.totals.calories);
     console.log('[AI Estimator] AI Model: Google Gemini 2.0 Flash');
+    console.log('[AI Estimator] ========================================');
     
     return data as EstimationResult;
   } catch (error: any) {
-    console.error('[AI Estimator] Error:', error);
+    console.error('[AI Estimator] ========================================');
+    console.error('[AI Estimator] Caught error in estimateMealWithGemini');
+    console.error('[AI Estimator] Error type:', error.constructor.name);
+    console.error('[AI Estimator] Error message:', error.message);
+    console.error('[AI Estimator] Error stack:', error.stack);
+    console.error('[AI Estimator] ========================================');
     
     // Re-throw with the error message
     if (error.message) {
