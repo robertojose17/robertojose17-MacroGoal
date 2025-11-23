@@ -499,28 +499,28 @@ export default function HomeScreen() {
             />
             
             <View style={styles.macroSummaryCompact}>
-              <MacroSummaryRow
+              <MacroSummaryRowCompact
                 label="Protein"
                 eaten={Math.round(totalMacros.protein)}
                 goal={goal?.protein_g || 150}
                 color={colors.protein}
                 isDark={isDark}
               />
-              <MacroSummaryRow
+              <MacroSummaryRowCompact
                 label="Carbs"
                 eaten={Math.round(totalMacros.carbs)}
                 goal={goal?.carbs_g || 200}
                 color={colors.carbs}
                 isDark={isDark}
               />
-              <MacroSummaryRow
+              <MacroSummaryRowCompact
                 label="Fats"
                 eaten={Math.round(totalMacros.fats)}
                 goal={goal?.fats_g || 65}
                 color={colors.fats}
                 isDark={isDark}
               />
-              <MacroSummaryRow
+              <MacroSummaryRowCompact
                 label="Fiber"
                 eaten={Math.round(totalMacros.fiber)}
                 goal={goal?.fiber_g || 30}
@@ -662,20 +662,28 @@ export default function HomeScreen() {
   );
 }
 
-function MacroSummaryRow({ label, eaten, goal, color, isDark }: any) {
-  const remaining = goal - eaten;
+function MacroSummaryRowCompact({ label, eaten, goal, color, isDark }: any) {
+  const percentage = Math.min((eaten / goal) * 100, 100);
   
   return (
-    <View style={styles.macroSummaryRow}>
-      <Text style={[styles.macroSummaryLabel, { color: isDark ? colors.textDark : colors.text }]}>
+    <View style={styles.macroSummaryRowCompact}>
+      <Text style={[styles.macroSummaryLabelCompact, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
         {label}
       </Text>
-      <View style={styles.macroSummaryValues}>
-        <Text style={[styles.macroSummaryProgress, { color }]}>
+      <View style={styles.macroSummaryBarContainer}>
+        <View style={[styles.macroSummaryBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+          <View
+            style={[
+              styles.macroSummaryBarFill,
+              {
+                width: `${percentage}%`,
+                backgroundColor: color,
+              },
+            ]}
+          />
+        </View>
+        <Text style={[styles.macroSummaryProgressCompact, { color: isDark ? colors.textDark : colors.text }]}>
           {eaten} / {goal}g
-        </Text>
-        <Text style={[styles.macroSummaryRemaining, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-          {remaining}g remaining
         </Text>
       </View>
     </View>
@@ -758,29 +766,33 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.sm,
   },
-  macroSummaryRow: {
+  macroSummaryRowCompact: {
+    gap: 4,
+  },
+  macroSummaryLabelCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  macroSummaryBarContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  macroSummaryLabel: {
-    ...typography.body,
-    fontWeight: '600',
-    flex: 0,
-    minWidth: 60,
-  },
-  macroSummaryValues: {
+  macroSummaryBarBackground: {
     flex: 1,
-    alignItems: 'flex-end',
+    height: 6,
+    borderRadius: borderRadius.full,
+    overflow: 'hidden',
   },
-  macroSummaryProgress: {
-    ...typography.bodyBold,
-    fontSize: 15,
+  macroSummaryBarFill: {
+    height: '100%',
+    borderRadius: borderRadius.full,
   },
-  macroSummaryRemaining: {
-    ...typography.caption,
+  macroSummaryProgressCompact: {
     fontSize: 11,
-    marginTop: 1,
+    fontWeight: '500',
+    minWidth: 70,
+    textAlign: 'right',
   },
   macrosCard: {
     borderRadius: borderRadius.lg,
