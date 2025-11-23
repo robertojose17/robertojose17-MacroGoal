@@ -5,7 +5,7 @@
  * This utility calls a Supabase Edge Function to estimate nutritional information
  * from a meal description and optional photo using Google's Gemini AI.
  * 
- * AI Model: Google Gemini 2.5 Flash
+ * AI Model: Google Gemini 2.0 Flash
  * The Gemini API key is stored in Supabase Edge Function environment variables.
  */
 
@@ -62,7 +62,7 @@ async function imageUriToBase64(uri: string): Promise<string> {
 /**
  * Estimate meal nutrition using Supabase Edge Function with Google Gemini AI
  * 
- * AI Model: Google Gemini 2.5 Flash
+ * AI Model: Google Gemini 2.0 Flash
  */
 export async function estimateMealWithGemini(
   description: string,
@@ -71,46 +71,45 @@ export async function estimateMealWithGemini(
   console.log('[AI Estimator] Starting estimation...');
   console.log('[AI Estimator] Description:', description);
   console.log('[AI Estimator] Has image:', !!imageUri);
-  console.log('[AI Estimator] AI Model: Google Gemini 2.5 Flash');
+  console.log('[AI Estimator] AI Model: Google Gemini 2.0 Flash');
 
   try {
     // Prepare request body
     const requestBody: any = {
-      description: description,
+      text: description,
+      imageBase64: null,
     };
 
     // Add image if provided
     if (imageUri) {
       console.log('[AI Estimator] Converting image to base64...');
       const base64Image = await imageUriToBase64(imageUri);
-      requestBody.image = base64Image;
+      requestBody.imageBase64 = base64Image;
     }
 
-    // Call Supabase Edge Function
     console.log('[AI Estimator] Calling Supabase Edge Function...');
+
+    // Call Supabase Edge Function
     const { data, error } = await supabase.functions.invoke('gemini-meal-estimate', {
       body: requestBody,
     });
 
     console.log('[AI Estimator] Response received');
-    console.log('[AI Estimator] Error:', error);
-    console.log('[AI Estimator] Data:', data);
 
+    // Check for errors
     if (error) {
       console.error('[AI Estimator] Edge Function error:', error);
       console.error('[AI Estimator] Error details:', JSON.stringify(error, null, 2));
       
-      // Parse error message from response
-      let errorMessage = error.message || 'Unknown error';
+      // Extract error message
+      let errorMessage = 'AI estimation failed. Please try again.';
       
-      // Try to extract error from context if available
+      // Try to parse error from context
       if (error.context) {
         try {
           const contextData = typeof error.context === 'string' 
             ? JSON.parse(error.context) 
             : error.context;
-          
-          console.error('[AI Estimator] Error context:', contextData);
           
           if (contextData.error) {
             errorMessage = contextData.error;
@@ -120,40 +119,17 @@ export async function estimateMealWithGemini(
         }
       }
       
-      console.error('[AI Estimator] Parsed error message:', errorMessage);
-      
-      // Handle specific error cases
-      if (errorMessage.includes('not configured') || errorMessage.includes('API key')) {
-        throw new Error(
-          '⚠️ AI service not configured!\n\n' +
-          'The Gemini API key may be missing or invalid. Please contact support.'
-        );
+      // Use error message if available
+      if (error.message) {
+        errorMessage = error.message;
       }
       
-      if (errorMessage.includes('Rate limit') || errorMessage.includes('429')) {
-        throw new Error('⏱️ Too many requests. Please wait a moment and try again.');
-      }
-      
-      if (errorMessage.includes('timeout') || errorMessage.includes('504')) {
-        throw new Error(
-          '⏱️ Request timeout.\n\n' +
-          'The AI model is taking too long to respond.\n\n' +
-          'Please try again in a few seconds.'
-        );
-      }
-
-      if (errorMessage.includes('502') || errorMessage.includes('Bad Gateway') || errorMessage.includes('Failed to connect')) {
-        throw new Error(
-          '🔧 Service temporarily unavailable.\n\n' +
-          'The AI service encountered an error. This usually resolves itself.\n\n' +
-          'Please try again in a moment.'
-        );
-      }
-      
-      throw new Error(errorMessage || 'AI estimation failed. Please try again or log manually.');
+      console.error('[AI Estimator] Final error message:', errorMessage);
+      throw new Error(errorMessage);
     }
 
     if (!data) {
+      console.error('[AI Estimator] No data in response');
       throw new Error('No response from AI service. Please try again.');
     }
 
@@ -192,12 +168,13 @@ export async function estimateMealWithGemini(
 
     console.log('[AI Estimator] Estimation successful');
     console.log('[AI Estimator] Ingredients:', data.ingredients.length);
-    console.log('[AI Estimator] AI Model: Google Gemini 2.5 Flash');
+    console.log('[AI Estimator] AI Model: Google Gemini 2.0 Flash');
     
     return data as EstimationResult;
   } catch (error: any) {
     console.error('[AI Estimator] Error:', error);
     
+    // Re-throw with the error message
     if (error.message) {
       throw error;
     }

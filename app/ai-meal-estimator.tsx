@@ -24,6 +24,7 @@ export default function AIMealEstimatorScreen() {
   const [mealDescription, setMealDescription] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handlePickImage = async () => {
     try {
@@ -84,6 +85,8 @@ export default function AIMealEstimatorScreen() {
       return;
     }
 
+    // Clear previous errors
+    setErrorMessage(null);
     setEstimating(true);
 
     try {
@@ -110,7 +113,9 @@ export default function AIMealEstimatorScreen() {
       });
     } catch (error: any) {
       console.error('[AIMealEstimator] Estimation error:', error);
-      Alert.alert('Estimation Failed', error.message || 'Failed to estimate meal. Please try again.');
+      const errorMsg = error.message || 'Failed to estimate meal. Please try again.';
+      setErrorMessage(errorMsg);
+      Alert.alert('Estimation Failed', errorMsg);
     } finally {
       setEstimating(false);
     }
@@ -143,6 +148,20 @@ export default function AIMealEstimatorScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {errorMessage && (
+            <View style={[styles.errorCard, { backgroundColor: 'rgba(255, 59, 48, 0.1)', borderColor: '#FF3B30' }]}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="error"
+                size={24}
+                color="#FF3B30"
+              />
+              <Text style={[styles.errorText, { color: '#FF3B30' }]}>
+                {errorMessage}
+              </Text>
+            </View>
+          )}
+
           <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Describe Your Meal
@@ -295,6 +314,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xxl,
+  },
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    flex: 1,
+    ...typography.body,
+    lineHeight: 20,
   },
   card: {
     borderRadius: borderRadius.lg,
