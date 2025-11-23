@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
-import MacroBar from '@/components/MacroBar';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -531,40 +530,6 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Macros Card */}
-        <View style={[styles.macrosCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Macronutrients
-          </Text>
-          
-          <View style={styles.macrosContent}>
-            <MacroBar
-              label="Protein"
-              current={totalMacros.protein}
-              target={goal?.protein_g || 150}
-              color={colors.protein}
-            />
-            <MacroBar
-              label="Carbs"
-              current={totalMacros.carbs}
-              target={goal?.carbs_g || 200}
-              color={colors.carbs}
-            />
-            <MacroBar
-              label="Fats"
-              current={totalMacros.fats}
-              target={goal?.fats_g || 65}
-              color={colors.fats}
-            />
-            <MacroBar
-              label="Fiber"
-              current={totalMacros.fiber}
-              target={goal?.fiber_g || 30}
-              color={colors.fiber}
-            />
-          </View>
-        </View>
-
         {/* Meals */}
         {meals.map((meal, index) => (
           <React.Fragment key={index}>
@@ -793,16 +758,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     minWidth: 70,
     textAlign: 'right',
-  },
-  macrosCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  macrosContent: {
-    gap: spacing.md,
   },
   mealCard: {
     borderRadius: borderRadius.lg,
