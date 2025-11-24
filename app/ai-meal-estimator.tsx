@@ -138,9 +138,9 @@ export default function AIMealEstimatorScreen() {
         
         try {
           const errorJson = JSON.parse(errorText);
-          Alert.alert('Error', errorJson.error || 'Failed to estimate meal');
+          Alert.alert('AI Estimate Failed', errorJson.error || 'AI estimate failed — check connection and try again.');
         } catch {
-          Alert.alert('Error', 'Failed to estimate meal. Please try again.');
+          Alert.alert('AI Estimate Failed', 'AI estimate failed — check connection and try again.');
         }
         setLoading(false);
         return;
@@ -148,6 +148,15 @@ export default function AIMealEstimatorScreen() {
 
       const result = await response.json();
       console.log('[AIMealEstimator] Success! Result:', result);
+      
+      // Check if result contains a warning in notes
+      if (result.notes && result.notes.includes('⚠️')) {
+        Alert.alert(
+          'AI Estimate',
+          result.notes,
+          [{ text: 'OK', onPress: () => {} }]
+        );
+      }
 
       setEstimatedMeal(result);
       setServings(result.servings || 1);
@@ -158,7 +167,7 @@ export default function AIMealEstimatorScreen() {
       setEditableFiber(result.fiber_g.toString());
     } catch (error) {
       console.error('[AIMealEstimator] Error:', error);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert('AI Estimate Failed', 'AI estimate failed — check connection and try again.');
     } finally {
       setLoading(false);
     }
