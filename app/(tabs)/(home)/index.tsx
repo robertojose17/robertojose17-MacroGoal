@@ -62,13 +62,25 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error('[Home] Error loading earliest log date:', error);
+      // Non-blocking error - continue without earliest date
     }
   };
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      
+      // CRITICAL: Wrap user fetch in try/catch
+      let user = null;
+      try {
+        const { data: { user: fetchedUser } } = await supabase.auth.getUser();
+        user = fetchedUser;
+      } catch (error) {
+        console.error('[Home] Error fetching user:', error);
+        setLoading(false);
+        return;
+      }
+      
       if (!user) {
         console.log('[Home] No user found');
         setLoading(false);
@@ -77,21 +89,41 @@ export default function HomeScreen() {
 
       console.log('[Home] Loading data for user:', user.id);
 
-      // Load goal
-      const { data: goalData, error: goalError } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
+      // Load goal with error handling
+      try {
+        const { data: goalData, error: goalError } = await supabase
+          .from('goals')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
 
-      if (goalError) {
-        console.error('[Home] Error loading goal:', goalError);
-      } else if (goalData) {
-        console.log('[Home] Goal loaded:', goalData);
-        setGoal(goalData);
-      } else {
-        console.log('[Home] No active goal found, using defaults');
+        if (goalError) {
+          console.error('[Home] Error loading goal:', goalError);
+          // Use defaults on error
+          setGoal({
+            daily_calories: 2000,
+            protein_g: 150,
+            carbs_g: 200,
+            fats_g: 65,
+            fiber_g: 30,
+          });
+        } else if (goalData) {
+          console.log('[Home] Goal loaded:', goalData);
+          setGoal(goalData);
+        } else {
+          console.log('[Home] No active goal found, using defaults');
+          setGoal({
+            daily_calories: 2000,
+            protein_g: 150,
+            carbs_g: 200,
+            fats_g: 65,
+            fiber_g: 30,
+          });
+        }
+      } catch (error) {
+        console.error('[Home] Exception loading goal:', error);
+        // Use defaults on exception
         setGoal({
           daily_calories: 2000,
           protein_g: 150,
@@ -101,105 +133,113 @@ export default function HomeScreen() {
         });
       }
 
-      // Load meals for selected date
-      const dateString = selectedDate.toISOString().split('T')[0];
-      const { data: mealsData, error: mealsError } = await supabase
-        .from('meals')
-        .select(`
-          id,
-          meal_type,
-          meal_items (
+      // Load meals for selected date with error handling
+      try {
+        const dateString = selectedDate.toISOString().split('T')[0];
+        const { data: mealsData, error: mealsError } = await supabase
+          .from('meals')
+          .select(`
             id,
-            quantity,
-            calories,
-            protein,
-            carbs,
-            fats,
-            fiber,
-            serving_description,
-            grams,
-            foods (
+            meal_type,
+            meal_items (
               id,
-              name,
-              brand,
-              serving_amount,
-              serving_unit,
-              user_created
+              quantity,
+              calories,
+              protein,
+              carbs,
+              fats,
+              fiber,
+              serving_description,
+              grams,
+              foods (
+                id,
+                name,
+                brand,
+                serving_amount,
+                serving_unit,
+                user_created
+              )
             )
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('date', dateString);
+          `)
+          .eq('user_id', user.id)
+          .eq('date', dateString);
 
-      if (mealsError) {
-        console.error('[Home] Error loading meals:', mealsError);
-      } else {
-        console.log('[Home] Meals loaded:', mealsData);
-        
-        // Organize meals by type
-        const mealsByType: Record<MealType, any[]> = {
-          breakfast: [],
-          lunch: [],
-          dinner: [],
-          snack: [],
-        };
+        if (mealsError) {
+          console.error('[Home] Error loading meals:', mealsError);
+          // Continue with empty meals on error
+        } else {
+          console.log('[Home] Meals loaded:', mealsData);
+          
+          // Organize meals by type
+          const mealsByType: Record<MealType, any[]> = {
+            breakfast: [],
+            lunch: [],
+            dinner: [],
+            snack: [],
+          };
 
-        let totalCals = 0;
-        let totalP = 0;
-        let totalC = 0;
-        let totalF = 0;
-        let totalFib = 0;
+          let totalCals = 0;
+          let totalP = 0;
+          let totalC = 0;
+          let totalF = 0;
+          let totalFib = 0;
 
-        if (mealsData && mealsData.length > 0) {
-          mealsData.forEach((meal: any) => {
-            if (meal.meal_items) {
-              meal.meal_items.forEach((item: any) => {
-                mealsByType[meal.meal_type as MealType].push(item);
-                totalCals += item.calories || 0;
-                totalP += item.protein || 0;
-                totalC += item.carbs || 0;
-                totalF += item.fats || 0;
-                totalFib += item.fiber || 0;
-              });
-            }
-          });
+          if (mealsData && mealsData.length > 0) {
+            mealsData.forEach((meal: any) => {
+              if (meal.meal_items) {
+                meal.meal_items.forEach((item: any) => {
+                  mealsByType[meal.meal_type as MealType].push(item);
+                  totalCals += item.calories || 0;
+                  totalP += item.protein || 0;
+                  totalC += item.carbs || 0;
+                  totalF += item.fats || 0;
+                  totalFib += item.fiber || 0;
+                });
+              }
+            });
+          }
+
+          // Update meals state
+          const updatedMeals: MealData[] = [
+            { 
+              type: 'breakfast', 
+              label: 'Breakfast', 
+              items: mealsByType.breakfast,
+              totalCalories: mealsByType.breakfast.reduce((sum, item) => sum + (item.calories || 0), 0)
+            },
+            { 
+              type: 'lunch', 
+              label: 'Lunch', 
+              items: mealsByType.lunch,
+              totalCalories: mealsByType.lunch.reduce((sum, item) => sum + (item.calories || 0), 0)
+            },
+            { 
+              type: 'dinner', 
+              label: 'Dinner', 
+              items: mealsByType.dinner,
+              totalCalories: mealsByType.dinner.reduce((sum, item) => sum + (item.calories || 0), 0)
+            },
+            { 
+              type: 'snack', 
+              label: 'Snacks', 
+              items: mealsByType.snack,
+              totalCalories: mealsByType.snack.reduce((sum, item) => sum + (item.calories || 0), 0)
+            },
+          ];
+
+          setMeals(updatedMeals);
+          setTotalCalories(totalCals);
+          setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
         }
-
-        // Update meals state
-        const updatedMeals: MealData[] = [
-          { 
-            type: 'breakfast', 
-            label: 'Breakfast', 
-            items: mealsByType.breakfast,
-            totalCalories: mealsByType.breakfast.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-          { 
-            type: 'lunch', 
-            label: 'Lunch', 
-            items: mealsByType.lunch,
-            totalCalories: mealsByType.lunch.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-          { 
-            type: 'dinner', 
-            label: 'Dinner', 
-            items: mealsByType.dinner,
-            totalCalories: mealsByType.dinner.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-          { 
-            type: 'snack', 
-            label: 'Snacks', 
-            items: mealsByType.snack,
-            totalCalories: mealsByType.snack.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-        ];
-
-        setMeals(updatedMeals);
-        setTotalCalories(totalCals);
-        setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
+      } catch (error) {
+        console.error('[Home] Exception loading meals:', error);
+        // Continue with empty meals on exception
       }
     } catch (error) {
       console.error('[Home] Error in loadData:', error);
+      // Ensure we show something even on error
     } finally {
+      // CRITICAL: Always resolve loading state
       setLoading(false);
       setRefreshing(false);
     }
@@ -211,21 +251,31 @@ export default function HomeScreen() {
   };
 
   const handleAddFood = (mealType: MealType) => {
-    console.log('[Home] Opening add food for meal:', mealType);
-    const dateString = selectedDate.toISOString().split('T')[0];
-    router.push(`/add-food?meal=${mealType}&date=${dateString}`);
+    try {
+      console.log('[Home] Opening add food for meal:', mealType);
+      const dateString = selectedDate.toISOString().split('T')[0];
+      router.push(`/add-food?meal=${mealType}&date=${dateString}`);
+    } catch (error) {
+      console.error('[Home] Error navigating to add food:', error);
+      Alert.alert('Error', 'Failed to open add food screen');
+    }
   };
 
   const handleEditFood = (item: any) => {
-    console.log('[Home] Opening edit food:', item.id);
-    const dateString = selectedDate.toISOString().split('T')[0];
-    router.push({
-      pathname: '/edit-food',
-      params: {
-        itemId: item.id,
-        date: dateString,
-      },
-    });
+    try {
+      console.log('[Home] Opening edit food:', item.id);
+      const dateString = selectedDate.toISOString().split('T')[0];
+      router.push({
+        pathname: '/edit-food',
+        params: {
+          itemId: item.id,
+          date: dateString,
+        },
+      });
+    } catch (error) {
+      console.error('[Home] Error navigating to edit food:', error);
+      Alert.alert('Error', 'Failed to open edit screen');
+    }
   };
 
   const handleDeleteFood = async (item: any) => {
@@ -338,69 +388,101 @@ export default function HomeScreen() {
   };
 
   const goToPreviousDay = () => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() - 1);
-    setSelectedDate(newDate);
+    try {
+      const newDate = new Date(selectedDate);
+      newDate.setDate(newDate.getDate() - 1);
+      setSelectedDate(newDate);
+    } catch (error) {
+      console.error('[Home] Error going to previous day:', error);
+    }
   };
 
   const goToNextDay = () => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + 1);
-    setSelectedDate(newDate);
+    try {
+      const newDate = new Date(selectedDate);
+      newDate.setDate(newDate.getDate() + 1);
+      setSelectedDate(newDate);
+    } catch (error) {
+      console.error('[Home] Error going to next day:', error);
+    }
   };
 
   const goToToday = () => {
-    setSelectedDate(new Date());
+    try {
+      setSelectedDate(new Date());
+    } catch (error) {
+      console.error('[Home] Error going to today:', error);
+    }
   };
 
   const isToday = () => {
-    const today = new Date();
-    return selectedDate.toDateString() === today.toDateString();
+    try {
+      const today = new Date();
+      return selectedDate.toDateString() === today.toDateString();
+    } catch (error) {
+      console.error('[Home] Error checking if today:', error);
+      return false;
+    }
   };
 
   const isFutureDate = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected >= today;
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selected = new Date(selectedDate);
+      selected.setHours(0, 0, 0, 0);
+      return selected >= today;
+    } catch (error) {
+      console.error('[Home] Error checking if future date:', error);
+      return false;
+    }
   };
 
   const isEarliestDate = () => {
-    if (!earliestLogDate) return false;
-    const earliest = new Date(earliestLogDate);
-    earliest.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected <= earliest;
+    try {
+      if (!earliestLogDate) return false;
+      const earliest = new Date(earliestLogDate);
+      earliest.setHours(0, 0, 0, 0);
+      const selected = new Date(selectedDate);
+      selected.setHours(0, 0, 0, 0);
+      return selected <= earliest;
+    } catch (error) {
+      console.error('[Home] Error checking if earliest date:', error);
+      return false;
+    }
   };
 
   // Helper function to get serving description for display
   // ALWAYS use the logged serving_description if available
   const getServingDisplayText = (item: any): string => {
-    // Priority 1: Use the stored serving_description (this is what the user selected)
-    if (item.serving_description) {
-      console.log('[Home] Using stored serving_description:', item.serving_description);
-      return item.serving_description;
-    }
+    try {
+      // Priority 1: Use the stored serving_description (this is what the user selected)
+      if (item.serving_description) {
+        console.log('[Home] Using stored serving_description:', item.serving_description);
+        return item.serving_description;
+      }
 
-    // Priority 2: If grams is available, show that
-    if (item.grams) {
-      console.log('[Home] Using grams fallback:', item.grams);
-      return `${Math.round(item.grams)} g`;
-    }
+      // Priority 2: If grams is available, show that
+      if (item.grams) {
+        console.log('[Home] Using grams fallback:', item.grams);
+        return `${Math.round(item.grams)} g`;
+      }
 
-    // Priority 3: Last resort fallback (should rarely happen)
-    console.log('[Home] Using quantity fallback');
-    const quantity = item.quantity || 1;
-    const servingAmount = item.foods?.serving_amount || 100;
-    const servingUnit = item.foods?.serving_unit || 'g';
-    
-    if (quantity === 1) {
-      return `${servingAmount} ${servingUnit}`;
+      // Priority 3: Last resort fallback (should rarely happen)
+      console.log('[Home] Using quantity fallback');
+      const quantity = item.quantity || 1;
+      const servingAmount = item.foods?.serving_amount || 100;
+      const servingUnit = item.foods?.serving_unit || 'g';
+      
+      if (quantity === 1) {
+        return `${servingAmount} ${servingUnit}`;
+      }
+      
+      return `${quantity}x ${servingAmount} ${servingUnit}`;
+    } catch (error) {
+      console.error('[Home] Error getting serving display text:', error);
+      return '1 serving';
     }
-    
-    return `${quantity}x ${servingAmount} ${servingUnit}`;
   };
 
   if (loading) {

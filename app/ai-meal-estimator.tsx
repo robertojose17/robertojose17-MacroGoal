@@ -22,7 +22,9 @@ interface EstimatedMeal {
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  
+  // CRITICAL: Safe parameter reading with fallbacks
+  const params = useLocalSearchParams() || {};
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -44,50 +46,64 @@ export default function AIMealEstimatorScreen() {
   const [editableFiber, setEditableFiber] = useState('');
 
   const handleTakePhoto = async () => {
-    console.log('[AIMealEstimator] Taking photo...');
-    
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
-      return;
-    }
+    try {
+      console.log('[AIMealEstimator] Taking photo...');
+      
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+        return;
+      }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: 'images',
-      allowsEditing: true,
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: 'images',
+        allowsEditing: true,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      console.log('[AIMealEstimator] Photo taken:', result.assets[0].uri);
-      setImageUri(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        console.log('[AIMealEstimator] Photo taken:', result.assets[0].uri);
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('[AIMealEstimator] Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
     }
   };
 
   const handleChoosePhoto = async () => {
-    console.log('[AIMealEstimator] Choosing photo...');
-    
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Photo library permission is required to choose photos.');
-      return;
-    }
+    try {
+      console.log('[AIMealEstimator] Choosing photo...');
+      
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Photo library permission is required to choose photos.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      allowsEditing: true,
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images',
+        allowsEditing: true,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      console.log('[AIMealEstimator] Photo chosen:', result.assets[0].uri);
-      setImageUri(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        console.log('[AIMealEstimator] Photo chosen:', result.assets[0].uri);
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('[AIMealEstimator] Error choosing photo:', error);
+      Alert.alert('Error', 'Failed to choose photo. Please try again.');
     }
   };
 
   const handleRemoveImage = () => {
-    console.log('[AIMealEstimator] Removing image');
-    setImageUri(null);
+    try {
+      console.log('[AIMealEstimator] Removing image');
+      setImageUri(null);
+    } catch (error) {
+      console.error('[AIMealEstimator] Error removing image:', error);
+    }
   };
 
   const handleEstimate = async () => {
@@ -142,7 +158,6 @@ export default function AIMealEstimatorScreen() {
         } catch {
           Alert.alert('AI Estimate Failed', 'AI estimate failed — check connection and try again.');
         }
-        setLoading(false);
         return;
       }
 
@@ -169,6 +184,7 @@ export default function AIMealEstimatorScreen() {
       console.error('[AIMealEstimator] Error:', error);
       Alert.alert('AI Estimate Failed', 'AI estimate failed — check connection and try again.');
     } finally {
+      // CRITICAL: Always resolve loading state
       setLoading(false);
     }
   };
@@ -309,27 +325,40 @@ export default function AIMealEstimatorScreen() {
   };
 
   const handleBack = () => {
-    if (estimatedMeal) {
-      Alert.alert(
-        'Discard Estimate?',
-        'Are you sure you want to go back? Your estimate will be lost.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-        ]
-      );
-    } else {
+    try {
+      if (estimatedMeal) {
+        Alert.alert(
+          'Discard Estimate?',
+          'Are you sure you want to go back? Your estimate will be lost.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+          ]
+        );
+      } else {
+        router.back();
+      }
+    } catch (error) {
+      console.error('[AIMealEstimator] Error navigating back:', error);
       router.back();
     }
   };
 
   const incrementServings = () => {
-    setServings(prev => prev + 1);
+    try {
+      setServings(prev => prev + 1);
+    } catch (error) {
+      console.error('[AIMealEstimator] Error incrementing servings:', error);
+    }
   };
 
   const decrementServings = () => {
-    if (servings > 1) {
-      setServings(prev => prev - 1);
+    try {
+      if (servings > 1) {
+        setServings(prev => prev - 1);
+      }
+    } catch (error) {
+      console.error('[AIMealEstimator] Error decrementing servings:', error);
     }
   };
 
