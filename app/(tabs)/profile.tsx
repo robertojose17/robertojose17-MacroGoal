@@ -333,6 +333,21 @@ export default function ProfileScreen() {
         )}
 
         <TouchableOpacity
+          style={[styles.testAIButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.primary }]}
+          onPress={() => router.push('/test-ai')}
+        >
+          <IconSymbol
+            ios_icon_name="sparkles"
+            android_material_icon_name="auto_awesome"
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={[styles.testAIText, { color: colors.primary }]}>
+            Test AI Integration
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
         >
@@ -488,6 +503,20 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  testAIButton: {
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  testAIText: {
+    fontWeight: '600',
+    fontSize: 16,
   },
   logoutButton: {
     borderRadius: borderRadius.lg,
