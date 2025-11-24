@@ -293,7 +293,7 @@ export default function AIMealEstimatorScreen() {
               color={colors.info}
             />
             <Text style={[styles.infoText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              AI estimates are approximations. You can review and edit the results before logging.
+              Powered by Google Gemini 1.5 Flash AI. Estimates are approximations - you can review and edit results before logging.
             </Text>
           </View>
 

@@ -6,7 +6,8 @@
  * from a meal description and optional photo using Google's Gemini AI.
  * 
  * AI Model: Google Gemini 1.5 Flash
- * The Gemini API key is stored in Supabase Edge Function environment variables.
+ * API Key: GOOGLE_AI_API_KEY (stored in Supabase Edge Function environment variables)
+ * SDK: @google/genai npm package
  */
 
 import { supabase } from '@/app/integrations/supabase/client';
@@ -73,6 +74,8 @@ export async function estimateMealWithGemini(
   console.log('[AI Estimator] Description:', description);
   console.log('[AI Estimator] Has image:', !!imageUri);
   console.log('[AI Estimator] AI Model: Google Gemini 1.5 Flash');
+  console.log('[AI Estimator] SDK: @google/genai');
+  console.log('[AI Estimator] API Key: GOOGLE_AI_API_KEY (server-side only)');
 
   try {
     // Prepare request body
@@ -196,11 +199,12 @@ export async function estimateMealWithGemini(
     }
 
     console.log('[AI Estimator] ========================================');
-    console.log('[AI Estimator] Estimation successful!');
+    console.log('[AI Estimator] ✅ Estimation successful!');
     console.log('[AI Estimator] Items count:', data.items.length);
     console.log('[AI Estimator] Total calories:', data.total.calories);
     console.log('[AI Estimator] Confidence:', data.confidence);
     console.log('[AI Estimator] AI Model: Google Gemini 1.5 Flash');
+    console.log('[AI Estimator] SDK: @google/genai');
     console.log('[AI Estimator] ========================================');
     
     return data as EstimationResult;
