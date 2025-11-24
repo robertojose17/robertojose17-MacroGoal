@@ -339,20 +339,6 @@ export default function AddFoodScreen() {
     });
   };
 
-  const handleAIMealEstimator = () => {
-    console.log('[AddFood] Navigating to AI Meal Estimator');
-    router.push({
-      pathname: '/ai-meal-estimator',
-      params: {
-        meal: mealType,
-        date: date,
-        mode: mode,
-        returnTo: returnTo,
-        mealId: myMealId,
-      },
-    });
-  };
-
   const handleCreateMyMeal = () => {
     console.log('[AddFood] Navigating to create My Meal');
     router.push('/my-meal-builder');
@@ -1289,24 +1275,6 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  style={[styles.quickActionCardFull, styles.quickActionCardAI]}
-                  onPress={handleAIMealEstimator}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.quickActionIconContainer}>
-                    <IconSymbol
-                      ios_icon_name="sparkles"
-                      android_material_icon_name="auto_awesome"
-                      size={32}
-                      color="#F59E0B"
-                    />
-                  </View>
-                  <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                    AI Meal Estimator
-                  </Text>
-                </TouchableOpacity>
               </React.Fragment>
             )}
 
@@ -1524,18 +1492,6 @@ const styles = StyleSheet.create({
   },
   quickActionCardRight: {
     backgroundColor: '#D1FAE5',
-  },
-  quickActionCardAI: {
-    backgroundColor: '#FEF3C7',
-  },
-  quickActionCardFull: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.lg + spacing.md,
-    borderRadius: borderRadius.lg,
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
-    elevation: 1,
-    marginBottom: spacing.lg,
   },
   quickActionIconContainer: {
     marginBottom: spacing.sm,
