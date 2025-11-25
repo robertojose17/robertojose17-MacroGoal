@@ -10,9 +10,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface EstimatedMeal {
-  name: string;
-  servings: number;
-  calories: number;
+  food_name: string;
+  serving_description: string;
+  calories_kcal: number;
   protein_g: number;
   carbs_g: number;
   fat_g: number;
@@ -35,7 +35,7 @@ export default function AIMealEstimatorScreen() {
   const myMealId = (params.mealId as string) || undefined;
 
   const [description, setDescription] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [estimatedMeal, setEstimatedMeal] = useState<EstimatedMeal | null>(null);
   const [servings, setServings] = useState(1);
@@ -44,6 +44,8 @@ export default function AIMealEstimatorScreen() {
   const [editableCarbs, setEditableCarbs] = useState('');
   const [editableFat, setEditableFat] = useState('');
   const [editableFiber, setEditableFiber] = useState('');
+
+  console.log('[AIMealEstimator] Screen loaded with params:', { mode, mealType, date, returnTo, myMealId });
 
   const handleTakePhoto = async () => {
     try {
@@ -63,7 +65,11 @@ export default function AIMealEstimatorScreen() {
 
       if (!result.canceled && result.assets[0]) {
         console.log('[AIMealEstimator] Photo taken:', result.assets[0].uri);
-        setImageUri(result.assets[0].uri);
+        if (images.length < 3) {
+          setImages([...images, result.assets[0].uri]);
+        } else {
+          Alert.alert('Limit Reached', 'You can only attach up to 3 photos.');
+        }
       }
     } catch (error) {
       console.error('[AIMealEstimator] Error taking photo:', error);
@@ -89,7 +95,11 @@ export default function AIMealEstimatorScreen() {
 
       if (!result.canceled && result.assets[0]) {
         console.log('[AIMealEstimator] Photo chosen:', result.assets[0].uri);
-        setImageUri(result.assets[0].uri);
+        if (images.length < 3) {
+          setImages([...images, result.assets[0].uri]);
+        } else {
+          Alert.alert('Limit Reached', 'You can only attach up to 3 photos.');
+        }
       }
     } catch (error) {
       console.error('[AIMealEstimator] Error choosing photo:', error);
@@ -97,10 +107,10 @@ export default function AIMealEstimatorScreen() {
     }
   };
 
-  const handleRemoveImage = () => {
+  const handleRemoveImage = (index: number) => {
     try {
-      console.log('[AIMealEstimator] Removing image');
-      setImageUri(null);
+      console.log('[AIMealEstimator] Removing image at index:', index);
+      setImages(images.filter((_, i) => i !== index));
     } catch (error) {
       console.error('[AIMealEstimator] Error removing image:', error);
     }
@@ -115,13 +125,15 @@ export default function AIMealEstimatorScreen() {
     setLoading(true);
     console.log('[AIMealEstimator] Starting estimation...');
     console.log('[AIMealEstimator] Description:', description);
-    console.log('[AIMealEstimator] Has image:', !!imageUri);
+    console.log('[AIMealEstimator] Number of images:', images.length);
 
     try {
       const formData = new FormData();
-      formData.append('description', description.trim());
+      formData.append('text', description.trim());
 
-      if (imageUri) {
+      // Add first image if available (OpenAI supports multiple but we'll use first for simplicity)
+      if (images.length > 0) {
+        const imageUri = images[0];
         const filename = imageUri.split('/').pop() || 'photo.jpg';
         const match = /\.(\w+)$/.exec(filename);
         const type = match ? `image/${match[1]}` : 'image/jpeg';
@@ -161,7 +173,7 @@ export default function AIMealEstimatorScreen() {
         return;
       }
 
-      const result = await response.json();
+      const result: EstimatedMeal = await response.json();
       console.log('[AIMealEstimator] Success! Result:', result);
       
       // Check if result contains a warning in notes
@@ -174,8 +186,8 @@ export default function AIMealEstimatorScreen() {
       }
 
       setEstimatedMeal(result);
-      setServings(result.servings || 1);
-      setEditableCalories(result.calories.toString());
+      setServings(1);
+      setEditableCalories(result.calories_kcal.toString());
       setEditableProtein(result.protein_g.toString());
       setEditableCarbs(result.carbs_g.toString());
       setEditableFat(result.fat_g.toString());
@@ -212,7 +224,7 @@ export default function AIMealEstimatorScreen() {
       const { data: foodData, error: foodError } = await supabase
         .from('foods')
         .insert({
-          name: estimatedMeal.name,
+          name: estimatedMeal.food_name,
           serving_amount: 1,
           serving_unit: 'serving',
           calories: finalCalories,
@@ -247,7 +259,7 @@ export default function AIMealEstimatorScreen() {
           carbs: finalCarbs * servings,
           fats: finalFat * servings,
           fiber: finalFiber * servings,
-          serving_description: `${servings} serving${servings !== 1 ? 's' : ''}`,
+          serving_description: `${servings} ${estimatedMeal.serving_description}`,
           grams: null,
         };
 
@@ -306,7 +318,7 @@ export default function AIMealEstimatorScreen() {
           carbs: finalCarbs * servings,
           fats: finalFat * servings,
           fiber: finalFiber * servings,
-          serving_description: `${servings} serving${servings !== 1 ? 's' : ''}`,
+          serving_description: `${servings} ${estimatedMeal.serving_description}`,
           grams: null,
         });
 
@@ -409,7 +421,11 @@ export default function AIMealEstimatorScreen() {
               </View>
 
               <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
-                {estimatedMeal.name}
+                {estimatedMeal.food_name}
+              </Text>
+
+              <Text style={[styles.servingDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {estimatedMeal.serving_description}
               </Text>
 
               {estimatedMeal.notes && (
@@ -554,6 +570,12 @@ export default function AIMealEstimatorScreen() {
                   {Math.round(displayCalories * servings)} kcal
                 </Text>
               </View>
+
+              <View style={styles.confidenceNote}>
+                <Text style={[styles.confidenceText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  ℹ️ Estimates are approximations. You can edit before logging.
+                </Text>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -568,7 +590,7 @@ export default function AIMealEstimatorScreen() {
               onPress={handleBack}
             >
               <Text style={[styles.secondaryButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Back
+                Cancel
               </Text>
             </TouchableOpacity>
 
@@ -611,7 +633,7 @@ export default function AIMealEstimatorScreen() {
             </Text>
             <TextInput
               style={[styles.textArea, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="e.g., 'chipotle bowl chicken no rice'"
+              placeholder="e.g., 'Chipotle bowl chicken no rice guac'"
               placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
               value={description}
               onChangeText={setDescription}
@@ -623,25 +645,34 @@ export default function AIMealEstimatorScreen() {
 
           <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              Add Photo (Optional)
+              Add Photos (Optional)
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Up to 3 photos
             </Text>
             
-            {imageUri ? (
+            {images.length > 0 && (
               <View style={styles.imagePreviewContainer}>
-                <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-                <TouchableOpacity
-                  style={styles.removeImageButton}
-                  onPress={handleRemoveImage}
-                >
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="cancel"
-                    size={32}
-                    color="#FF3B30"
-                  />
-                </TouchableOpacity>
+                {images.map((uri, index) => (
+                  <View key={index} style={styles.imagePreviewWrapper}>
+                    <Image source={{ uri }} style={styles.imagePreview} />
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={() => handleRemoveImage(index)}
+                    >
+                      <IconSymbol
+                        ios_icon_name="xmark.circle.fill"
+                        android_material_icon_name="cancel"
+                        size={24}
+                        color="#FF3B30"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
-            ) : (
+            )}
+
+            {images.length < 3 && (
               <View style={styles.imageButtonsRow}>
                 <TouchableOpacity
                   style={[styles.imageButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -682,7 +713,12 @@ export default function AIMealEstimatorScreen() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="#FFFFFF" />
+                <Text style={[styles.primaryButtonText, { marginLeft: spacing.sm }]}>
+                  Estimating…
+                </Text>
+              </View>
             ) : (
               <Text style={styles.primaryButtonText}>Estimate Macros</Text>
             )}
@@ -765,21 +801,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   imagePreviewContainer: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    flexWrap: 'wrap',
+  },
+  imagePreviewWrapper: {
     position: 'relative',
+    width: 100,
+    height: 100,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
   imagePreview: {
     width: '100%',
-    height: 200,
-    borderRadius: borderRadius.md,
+    height: '100%',
   },
   removeImageButton: {
     position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
+    top: 4,
+    right: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 16,
+    borderRadius: 12,
   },
   primaryButton: {
     borderRadius: borderRadius.md,
@@ -791,6 +834,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   secondaryButton: {
     borderRadius: borderRadius.md,
@@ -820,6 +867,10 @@ const styles = StyleSheet.create({
   },
   mealName: {
     ...typography.h2,
+    marginBottom: spacing.xs,
+  },
+  servingDescription: {
+    ...typography.body,
     marginBottom: spacing.xs,
   },
   notes: {
@@ -902,6 +953,17 @@ const styles = StyleSheet.create({
   totalValue: {
     ...typography.h3,
     fontSize: 20,
+  },
+  confidenceNote: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  confidenceText: {
+    ...typography.caption,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   bottomSpacer: {
     height: 100,

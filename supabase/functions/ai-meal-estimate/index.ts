@@ -1,9 +1,22 @@
 
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
+
+interface MealEstimateResponse {
+  food_name: string;
+  serving_description: string;
+  calories_kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  notes?: string;
+}
 
 Deno.serve(async (req) => {
   console.log('[AI Meal Estimate] Request received:', req.method);
@@ -22,14 +35,14 @@ Deno.serve(async (req) => {
 
   try {
     // Get API key from environment
-    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     
     // Log key presence (never log the actual key)
-    console.log(`[AI Meal Estimate] key_present: ${!!GOOGLE_AI_API_KEY}`);
+    console.log(`[AI Meal Estimate] OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
     
-    if (!GOOGLE_AI_API_KEY) {
-      console.error('[AI Meal Estimate] ❌ CRITICAL: GOOGLE_AI_API_KEY not configured!');
-      return new Response(JSON.stringify({ error: "Missing GOOGLE_AI_API_KEY" }), {
+    if (!OPENAI_API_KEY) {
+      console.error('[AI Meal Estimate] ❌ CRITICAL: OPENAI_API_KEY not configured!');
+      return new Response(JSON.stringify({ error: "Missing OPENAI_API_KEY configuration" }), {
         status: 500,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
@@ -37,48 +50,48 @@ Deno.serve(async (req) => {
 
     // Parse form data
     const formData = await req.formData();
-    const description = formData.get("description");
+    const text = formData.get("text");
     const imageFile = formData.get("image");
 
-    console.log('[AI Meal Estimate] Description:', description);
+    console.log('[AI Meal Estimate] Text description:', text);
     console.log('[AI Meal Estimate] Has image:', !!imageFile);
 
-    if (!description || typeof description !== 'string' || description.trim().length === 0) {
-      return new Response(JSON.stringify({ error: "Description is required" }), {
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "Text description is required" }), {
         status: 400,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
-    // Build the Gemini API URL with the API key
-    const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_AI_API_KEY}`;
+    // Build the system prompt for strict JSON output
+    const systemPrompt = `You are a nutrition expert AI. Analyze meal descriptions and/or images to estimate nutritional content.
 
-    // Build the system prompt
-    const systemPrompt = `You are a nutrition expert. Analyze the meal description and estimate its nutritional content.
-
-Return ONLY valid JSON in this exact format (no markdown, no extra text):
+CRITICAL: Return ONLY valid JSON in this EXACT format (no markdown, no code blocks, no extra text):
 {
-  "name": "Meal name from description",
-  "servings": 1,
-  "calories": number,
+  "food_name": "descriptive meal name",
+  "serving_description": "serving size description (e.g., '1 bowl', '2 slices', '1 serving')",
+  "calories_kcal": number,
   "protein_g": number,
   "carbs_g": number,
   "fat_g": number,
   "fiber_g": number,
-  "notes": "Brief assumptions or notes (optional)"
+  "notes": "brief assumptions or confidence notes (optional)"
 }
 
 Rules:
-- All nutrition values are per serving
-- Be realistic with portion sizes
-- If unsure, provide conservative estimates
+- All nutrition values must be realistic for human food portions
+- Round calories to nearest whole number
+- Round macros to 1 decimal place
+- If uncertain, provide conservative estimates and note assumptions
+- serving_description should be human-readable (e.g., "1 medium bowl", "2 slices", "1 serving")
+- If serving size is unknown, use "1 serving"
 - Keep notes brief (1-2 sentences max)`;
 
-    const userPrompt = `${systemPrompt}\n\nEstimate the nutrition for this meal: ${description.trim()}`;
+    const userPrompt = `Estimate the nutrition for this meal: ${text.trim()}`;
 
-    // Prepare content parts
-    const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [
-      { text: userPrompt }
+    // Prepare content parts for OpenAI
+    const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+      { type: "text", text: userPrompt }
     ];
 
     // Add image if provided
@@ -86,105 +99,92 @@ Rules:
       console.log('[AI Meal Estimate] Processing image...');
       const imageBytes = await imageFile.arrayBuffer();
       const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
+      const mimeType = imageFile.type || "image/jpeg";
       
-      parts.push({
-        inline_data: {
-          mime_type: imageFile.type || "image/jpeg",
-          data: base64Image
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${mimeType};base64,${base64Image}`
         }
       });
       console.log('[AI Meal Estimate] Image added to request');
     }
 
-    // Build the request body
-    const requestBody = {
-      contents: [
-        {
-          role: "user",
-          parts: parts
-        }
-      ]
-    };
+    console.log('[AI Meal Estimate] Calling OpenAI API...');
 
-    console.log('[AI Meal Estimate] Calling Gemini API...');
-
-    // Call Gemini API directly
-    const geminiResponse = await fetch(geminiApiUrl, {
+    // Call OpenAI Chat Completions API
+    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify({
+        model: "gpt-4o-mini", // Vision-capable and cost-effective
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent }
+        ],
+        temperature: 0.7,
+        max_tokens: 500,
+        response_format: { type: "json_object" } // Force JSON output
+      })
     });
 
-    console.log('[AI Meal Estimate] Gemini response status:', geminiResponse.status);
+    console.log('[AI Meal Estimate] OpenAI response status:', openaiResponse.status);
 
     // Handle non-OK responses
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error('[AI Meal Estimate] ❌ Gemini API error:', geminiResponse.status, errorText);
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error('[AI Meal Estimate] ❌ OpenAI API error:', openaiResponse.status, errorText);
       
       return new Response(JSON.stringify({
         error: "AI estimate failed — check connection and try again.",
-        details: `Gemini API returned ${geminiResponse.status}: ${errorText}`
+        details: `OpenAI API returned ${openaiResponse.status}`
       }), {
         status: 502,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
-    const geminiData = await geminiResponse.json();
-    console.log('[AI Meal Estimate] Gemini response received');
+    const openaiData = await openaiResponse.json();
+    console.log('[AI Meal Estimate] OpenAI response received');
 
-    // Extract text from Gemini response
-    const candidates = geminiData.candidates;
-    if (!candidates || candidates.length === 0) {
-      console.error('[AI Meal Estimate] No candidates in response');
+    // Extract text from OpenAI response
+    const responseText = openaiData?.choices?.[0]?.message?.content;
+    
+    if (!responseText) {
+      console.error('[AI Meal Estimate] No content in OpenAI response');
       return new Response(JSON.stringify({
         error: "AI estimate failed — no response from AI",
-        details: "No candidates returned"
+        details: "No content returned"
       }), {
         status: 502,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
-    const content = candidates[0].content;
-    if (!content || !content.parts || content.parts.length === 0) {
-      console.error('[AI Meal Estimate] No content in response');
-      return new Response(JSON.stringify({
-        error: "AI estimate failed — no content in response",
-        details: "No parts in content"
-      }), {
-        status: 502,
-        headers: { "content-type": "application/json", ...CORS_HEADERS }
-      });
-    }
-
-    const text = content.parts[0].text;
-    console.log('[AI Meal Estimate] Gemini text response:', text);
+    console.log('[AI Meal Estimate] OpenAI response text:', responseText);
 
     // Parse JSON response
-    let jsonResponse;
+    let jsonResponse: MealEstimateResponse;
     try {
-      // Try to extract JSON from markdown code blocks if present
-      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
-      jsonResponse = JSON.parse(jsonText);
+      // Try to parse the response as JSON
+      jsonResponse = JSON.parse(responseText);
       console.log('[AI Meal Estimate] ✅ Parsed JSON successfully');
     } catch (parseError) {
       console.error('[AI Meal Estimate] ❌ Failed to parse JSON:', parseError);
-      console.error('[AI Meal Estimate] Raw text:', text);
+      console.error('[AI Meal Estimate] Raw text:', responseText);
       
       // Return a safe default with warning
       return new Response(JSON.stringify({
-        name: description.trim().substring(0, 50),
-        servings: 1,
-        calories: 400,
-        protein_g: 20,
-        carbs_g: 40,
-        fat_g: 15,
-        fiber_g: 5,
+        food_name: text.trim().substring(0, 50),
+        serving_description: "1 serving",
+        calories_kcal: 400,
+        protein_g: 20.0,
+        carbs_g: 40.0,
+        fat_g: 15.0,
+        fiber_g: 5.0,
         notes: "⚠️ AI could not parse meal. Using default estimates. Please edit values."
       }), {
         status: 200,
@@ -193,18 +193,18 @@ Rules:
     }
 
     // Validate response structure
-    if (!jsonResponse.name || typeof jsonResponse.calories !== 'number') {
+    if (!jsonResponse.food_name || typeof jsonResponse.calories_kcal !== 'number') {
       console.error('[AI Meal Estimate] ⚠️ Invalid response structure:', jsonResponse);
       
       // Return a safe default with warning
       return new Response(JSON.stringify({
-        name: description.trim().substring(0, 50),
-        servings: 1,
-        calories: 400,
-        protein_g: 20,
-        carbs_g: 40,
-        fat_g: 15,
-        fiber_g: 5,
+        food_name: text.trim().substring(0, 50),
+        serving_description: "1 serving",
+        calories_kcal: 400,
+        protein_g: 20.0,
+        carbs_g: 40.0,
+        fat_g: 15.0,
+        fiber_g: 5.0,
         notes: "⚠️ AI response was incomplete. Using default estimates. Please edit values."
       }), {
         status: 200,
@@ -212,11 +212,11 @@ Rules:
       });
     }
 
-    // Ensure all required fields have default values
-    const finalResponse = {
-      name: jsonResponse.name || description.trim().substring(0, 50),
-      servings: jsonResponse.servings || 1,
-      calories: Math.round(jsonResponse.calories || 0),
+    // Ensure all required fields have default values and proper formatting
+    const finalResponse: MealEstimateResponse = {
+      food_name: jsonResponse.food_name || text.trim().substring(0, 50),
+      serving_description: jsonResponse.serving_description || "1 serving",
+      calories_kcal: Math.round(jsonResponse.calories_kcal || 0),
       protein_g: Math.round((jsonResponse.protein_g || 0) * 10) / 10,
       carbs_g: Math.round((jsonResponse.carbs_g || 0) * 10) / 10,
       fat_g: Math.round((jsonResponse.fat_g || 0) * 10) / 10,
