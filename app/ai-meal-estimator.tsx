@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface EstimatedMeal {
@@ -116,6 +117,19 @@ export default function AIMealEstimatorScreen() {
     }
   };
 
+  const convertImageToBase64 = async (uri: string): Promise<string | null> => {
+    try {
+      console.log('[AIMealEstimator] Converting image to base64:', uri);
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return base64;
+    } catch (error) {
+      console.error('[AIMealEstimator] Error converting image to base64:', error);
+      return null;
+    }
+  };
+
   const handleEstimate = async () => {
     if (!description.trim()) {
       Alert.alert('Error', 'Please enter a meal description');
@@ -128,22 +142,20 @@ export default function AIMealEstimatorScreen() {
     console.log('[AIMealEstimator] Number of images:', images.length);
 
     try {
-      const formData = new FormData();
-      formData.append('text', description.trim());
-
-      // Add first image if available (OpenAI supports multiple but we'll use first for simplicity)
+      // Convert first image to base64 if available
+      let imageBase64: string | null = null;
       if (images.length > 0) {
-        const imageUri = images[0];
-        const filename = imageUri.split('/').pop() || 'photo.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-        formData.append('image', {
-          uri: imageUri,
-          name: filename,
-          type: type,
-        } as any);
+        imageBase64 = await convertImageToBase64(images[0]);
+        if (!imageBase64) {
+          console.warn('[AIMealEstimator] Failed to convert image, proceeding without image');
+        }
       }
+
+      // Prepare JSON body for OpenRouter
+      const requestBody = {
+        description: description.trim(),
+        imageBase64: imageBase64,
+      };
 
       const edgeFunctionUrl = 'https://esgptfiofoaeguslgvcq.supabase.co/functions/v1/ai-meal-estimate';
       console.log('[AIMealEstimator] Calling Edge Function:', edgeFunctionUrl);
@@ -154,8 +166,9 @@ export default function AIMealEstimatorScreen() {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session?.access_token || ''}`,
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify(requestBody),
       });
 
       console.log('[AIMealEstimator] Response status:', response.status);
@@ -173,25 +186,29 @@ export default function AIMealEstimatorScreen() {
         return;
       }
 
-      const result: EstimatedMeal = await response.json();
+      // Parse OpenRouter response
+      const result = await response.json();
       console.log('[AIMealEstimator] Success! Result:', result);
       
-      // Check if result contains a warning in notes
-      if (result.notes && result.notes.includes('⚠️')) {
-        Alert.alert(
-          'AI Estimate',
-          result.notes,
-          [{ text: 'OK', onPress: () => {} }]
-        );
-      }
+      // Transform OpenRouter response to EstimatedMeal format
+      const estimatedMeal: EstimatedMeal = {
+        food_name: `AI Estimated: ${description.substring(0, 50)}${description.length > 50 ? '...' : ''}`,
+        serving_description: '1 serving',
+        calories_kcal: result.calories || 0,
+        protein_g: result.protein_g || 0,
+        carbs_g: result.carbs_g || 0,
+        fat_g: result.fats_g || 0,
+        fiber_g: result.fiber_g || 0,
+        notes: 'ℹ️ AI estimates are approximations. Review and edit before logging.',
+      };
 
-      setEstimatedMeal(result);
+      setEstimatedMeal(estimatedMeal);
       setServings(1);
-      setEditableCalories(result.calories_kcal.toString());
-      setEditableProtein(result.protein_g.toString());
-      setEditableCarbs(result.carbs_g.toString());
-      setEditableFat(result.fat_g.toString());
-      setEditableFiber(result.fiber_g.toString());
+      setEditableCalories(estimatedMeal.calories_kcal.toString());
+      setEditableProtein(estimatedMeal.protein_g.toString());
+      setEditableCarbs(estimatedMeal.carbs_g.toString());
+      setEditableFat(estimatedMeal.fat_g.toString());
+      setEditableFiber(estimatedMeal.fiber_g.toString());
     } catch (error) {
       console.error('[AIMealEstimator] Error:', error);
       Alert.alert('AI Estimate Failed', 'AI estimate failed — check connection and try again.');
@@ -416,7 +433,7 @@ export default function AIMealEstimatorScreen() {
                   color={colors.primary}
                 />
                 <Text style={[styles.aiBadge, { color: colors.primary }]}>
-                  AI Estimated
+                  AI Estimated via OpenRouter
                 </Text>
               </View>
 
