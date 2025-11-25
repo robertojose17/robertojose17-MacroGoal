@@ -7,20 +7,20 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
+interface MealEstimateRequest {
+  description: string;
+  imageBase64: string | null;
+}
+
 interface MealEstimateResponse {
-  food_name: string;
-  serving_description: string;
-  calories_kcal: number;
+  calories: number;
   protein_g: number;
   carbs_g: number;
-  fat_g: number;
+  fats_g: number;
   fiber_g: number;
-  notes?: string;
 }
 
 Deno.serve(async (req) => {
-  console.log('[AI Meal Estimate] Request received:', req.method);
-
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -37,112 +37,99 @@ Deno.serve(async (req) => {
     // Get API key from environment - USING OPENROUTER
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     
-    // Log key presence (never log the actual key)
-    console.log(`[AI Meal Estimate] OPENROUTER_API_KEY present: ${!!OPENROUTER_API_KEY}`);
-    
     if (!OPENROUTER_API_KEY) {
-      console.error('[AI Meal Estimate] ❌ CRITICAL: OPENROUTER_API_KEY not configured!');
-      return new Response(JSON.stringify({ error: "Missing OPENROUTER_API_KEY configuration" }), {
+      console.error('[AI-MEAL] CRITICAL: OPENROUTER_API_KEY not configured');
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
         status: 500,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
-    // Parse form data
-    const formData = await req.formData();
-    const text = formData.get("text");
-    const imageFile = formData.get("image");
+    // Parse JSON body
+    const body: MealEstimateRequest = await req.json();
+    const { description, imageBase64 } = body;
 
-    console.log('[AI Meal Estimate] Text description:', text);
-    console.log('[AI Meal Estimate] Has image:', !!imageFile);
+    console.log("[AI-MEAL] request", { hasImage: !!imageBase64 });
 
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      return new Response(JSON.stringify({ error: "Text description is required" }), {
+    // Validate required field
+    if (!description || typeof description !== 'string' || description.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "Description is required" }), {
         status: 400,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
     // Build the system prompt for strict JSON output
-    const systemPrompt = `You are a nutrition expert AI. Analyze meal descriptions and/or images to estimate nutritional content.
-
-CRITICAL: Return ONLY valid JSON in this EXACT format (no markdown, no code blocks, no extra text):
+    const systemPrompt = `You are a nutrition assistant. The user describes a meal (and may send a photo). 
+Estimate total calories, protein_g, carbs_g, fats_g, and fiber_g for 1 serving.
+Respond ONLY with strict JSON in this exact format:
 {
-  "food_name": "descriptive meal name",
-  "serving_description": "serving size description (e.g., '1 bowl', '2 slices', '1 serving')",
-  "calories_kcal": number,
+  "calories": number,
   "protein_g": number,
   "carbs_g": number,
-  "fat_g": number,
-  "fiber_g": number,
-  "notes": "brief assumptions or confidence notes (optional)"
+  "fats_g": number,
+  "fiber_g": number
 }
+No extra text, no markdown, no explanations.`;
 
-Rules:
-- All nutrition values must be realistic for human food portions
-- Round calories to nearest whole number
-- Round macros to 1 decimal place
-- If uncertain, provide conservative estimates and note assumptions
-- serving_description should be human-readable (e.g., "1 medium bowl", "2 slices", "1 serving")
-- If serving size is unknown, use "1 serving"
-- Keep notes brief (1-2 sentences max)`;
-
-    const userPrompt = `Estimate the nutrition for this meal: ${text.trim()}`;
-
-    // Prepare content parts for OpenRouter (OpenAI-compatible format)
+    // Prepare content for OpenRouter (OpenAI-compatible format)
     const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
-      { type: "text", text: userPrompt }
+      { type: "text", text: description.trim() }
     ];
 
     // Add image if provided
-    if (imageFile && imageFile instanceof File) {
-      console.log('[AI Meal Estimate] Processing image...');
-      const imageBytes = await imageFile.arrayBuffer();
-      const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
-      const mimeType = imageFile.type || "image/jpeg";
-      
+    if (imageBase64 && typeof imageBase64 === 'string') {
       userContent.push({
         type: "image_url",
         image_url: {
-          url: `data:${mimeType};base64,${base64Image}`
+          url: `data:image/jpeg;base64,${imageBase64}`
         }
       });
-      console.log('[AI Meal Estimate] Image added to request');
     }
 
-    console.log('[AI Meal Estimate] Calling OpenRouter API...');
+    // Helper function to call OpenRouter
+    const callOpenRouter = async (retryPrompt?: string): Promise<Response> => {
+      const messages = retryPrompt 
+        ? [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+            { role: "assistant", content: "I'll provide the nutrition estimate in strict JSON format." },
+            { role: "user", content: retryPrompt }
+          ]
+        : [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent }
+          ];
 
-    // Call OpenRouter API (OpenAI-compatible endpoint)
-    const openrouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://esgptfiofoaeguslgvcq.supabase.co",
-        "X-Title": "Elite Macro Tracker"
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-4o-mini", // Vision-capable and cost-effective model via OpenRouter
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent }
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-        response_format: { type: "json_object" } // Force JSON output
-      })
-    });
+      return await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://esgptfiofoaeguslgvcq.supabase.co",
+          "X-Title": "Elite Macro Tracker"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini",
+          messages: messages,
+          temperature: 0.7,
+          max_tokens: 500,
+          response_format: { type: "json_object" }
+        })
+      });
+    };
 
-    console.log('[AI Meal Estimate] OpenRouter response status:', openrouterResponse.status);
+    // First attempt
+    let openrouterResponse = await callOpenRouter();
 
     // Handle non-OK responses
     if (!openrouterResponse.ok) {
-      const errorText = await openrouterResponse.text();
-      console.error('[AI Meal Estimate] ❌ OpenRouter API error:', openrouterResponse.status, errorText);
+      const status = openrouterResponse.status;
+      console.error('[AI-MEAL] OpenRouter request failed:', status);
       
       return new Response(JSON.stringify({
-        error: "AI estimation failed. Please try again.",
-        details: `OpenRouter API returned ${openrouterResponse.status}`
+        error: "OpenRouter request failed",
+        status: status
       }), {
         status: 502,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
@@ -150,83 +137,71 @@ Rules:
     }
 
     const openrouterData = await openrouterResponse.json();
-    console.log('[AI Meal Estimate] OpenRouter response received');
-
-    // Extract text from OpenRouter response
-    const responseText = openrouterData?.choices?.[0]?.message?.content;
+    let responseText = openrouterData?.choices?.[0]?.message?.content;
     
     if (!responseText) {
-      console.error('[AI Meal Estimate] No content in OpenRouter response');
+      console.error('[AI-MEAL] No content in OpenRouter response');
       return new Response(JSON.stringify({
-        error: "AI estimation failed. Please try again.",
-        details: "No content returned"
+        error: "Invalid JSON from model"
       }), {
         status: 502,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
-    console.log('[AI Meal Estimate] OpenRouter response text:', responseText);
-
-    // Parse JSON response
-    let jsonResponse: MealEstimateResponse;
+    // Try to parse JSON response
+    let jsonResponse: any;
     try {
-      // Try to parse the response as JSON
       jsonResponse = JSON.parse(responseText);
-      console.log('[AI Meal Estimate] ✅ Parsed JSON successfully');
     } catch (parseError) {
-      console.error('[AI Meal Estimate] ❌ Failed to parse JSON:', parseError);
-      console.error('[AI Meal Estimate] Raw text:', responseText);
+      console.warn('[AI-MEAL] Invalid JSON on first attempt, retrying...');
       
-      // Return a safe default with warning
-      return new Response(JSON.stringify({
-        food_name: text.trim().substring(0, 50),
-        serving_description: "1 serving",
-        calories_kcal: 400,
-        protein_g: 20.0,
-        carbs_g: 40.0,
-        fat_g: 15.0,
-        fiber_g: 5.0,
-        notes: "⚠️ AI could not parse meal. Using default estimates. Please edit values."
-      }), {
-        status: 200,
-        headers: { "content-type": "application/json", ...CORS_HEADERS }
-      });
+      // Retry with explicit instruction
+      openrouterResponse = await callOpenRouter("Return ONLY valid JSON, no text outside JSON.");
+      
+      if (!openrouterResponse.ok) {
+        return new Response(JSON.stringify({
+          error: "OpenRouter request failed",
+          status: openrouterResponse.status
+        }), {
+          status: 502,
+          headers: { "content-type": "application/json", ...CORS_HEADERS }
+        });
+      }
+
+      const retryData = await openrouterResponse.json();
+      responseText = retryData?.choices?.[0]?.message?.content;
+      
+      if (!responseText) {
+        return new Response(JSON.stringify({
+          error: "Invalid JSON from model"
+        }), {
+          status: 502,
+          headers: { "content-type": "application/json", ...CORS_HEADERS }
+        });
+      }
+
+      try {
+        jsonResponse = JSON.parse(responseText);
+      } catch (retryParseError) {
+        console.error('[AI-MEAL] Invalid JSON after retry');
+        return new Response(JSON.stringify({
+          error: "Invalid JSON from model"
+        }), {
+          status: 502,
+          headers: { "content-type": "application/json", ...CORS_HEADERS }
+        });
+      }
     }
 
-    // Validate response structure
-    if (!jsonResponse.food_name || typeof jsonResponse.calories_kcal !== 'number') {
-      console.error('[AI Meal Estimate] ⚠️ Invalid response structure:', jsonResponse);
-      
-      // Return a safe default with warning
-      return new Response(JSON.stringify({
-        food_name: text.trim().substring(0, 50),
-        serving_description: "1 serving",
-        calories_kcal: 400,
-        protein_g: 20.0,
-        carbs_g: 40.0,
-        fat_g: 15.0,
-        fiber_g: 5.0,
-        notes: "⚠️ AI response was incomplete. Using default estimates. Please edit values."
-      }), {
-        status: 200,
-        headers: { "content-type": "application/json", ...CORS_HEADERS }
-      });
-    }
-
-    // Ensure all required fields have default values and proper formatting
+    // Ensure all fields exist and are numbers, default to 0 if missing
     const finalResponse: MealEstimateResponse = {
-      food_name: jsonResponse.food_name || text.trim().substring(0, 50),
-      serving_description: jsonResponse.serving_description || "1 serving",
-      calories_kcal: Math.round(jsonResponse.calories_kcal || 0),
-      protein_g: Math.round((jsonResponse.protein_g || 0) * 10) / 10,
-      carbs_g: Math.round((jsonResponse.carbs_g || 0) * 10) / 10,
-      fat_g: Math.round((jsonResponse.fat_g || 0) * 10) / 10,
-      fiber_g: Math.round((jsonResponse.fiber_g || 0) * 10) / 10,
-      notes: jsonResponse.notes || undefined
+      calories: Number(jsonResponse.calories) || 0,
+      protein_g: Number(jsonResponse.protein_g) || 0,
+      carbs_g: Number(jsonResponse.carbs_g) || 0,
+      fats_g: Number(jsonResponse.fats_g) || 0,
+      fiber_g: Number(jsonResponse.fiber_g) || 0
     };
-
-    console.log('[AI Meal Estimate] ✅ Success! Final response:', finalResponse);
 
     return new Response(JSON.stringify(finalResponse), {
       status: 200,
@@ -234,10 +209,10 @@ Rules:
     });
 
   } catch (error) {
-    console.error('[AI Meal Estimate] ❌ Unexpected error:', error);
+    console.error('[AI-MEAL] Unexpected error:', error);
     
     return new Response(JSON.stringify({
-      error: "AI estimation failed. Please try again.",
+      error: "AI estimation failed",
       details: error instanceof Error ? error.message : String(error)
     }), {
       status: 500,
