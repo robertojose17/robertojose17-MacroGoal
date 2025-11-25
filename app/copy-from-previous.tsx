@@ -66,7 +66,7 @@ export default function CopyFromPreviousScreen() {
 
   useEffect(() => {
     loadDatesWithData();
-  }, []);
+  }, [loadDatesWithData]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -74,7 +74,7 @@ export default function CopyFromPreviousScreen() {
     }
   }, [selectedDate]);
 
-  const loadDatesWithData = async () => {
+  const loadDatesWithData = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -165,7 +165,7 @@ export default function CopyFromPreviousScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, targetDate]);
 
   const loadMealsForDate = async (date: string) => {
     try {

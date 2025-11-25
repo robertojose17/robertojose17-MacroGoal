@@ -37,7 +37,7 @@ export default function MyMealBuilderScreen() {
       hasLoadedRef.current = true;
       loadMyMeal();
     }
-  }, [isEditing, mealId]);
+  }, [isEditing, mealId, loadMyMeal]);
 
   useFocusEffect(
     useCallback(() => {
@@ -77,7 +77,7 @@ export default function MyMealBuilderScreen() {
     }, [params.newFoodItem])
   );
 
-  const loadMyMeal = async () => {
+  const loadMyMeal = useCallback(async () => {
     if (!mealId) return;
 
     try {
@@ -135,9 +135,9 @@ export default function MyMealBuilderScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [mealId]);
 
-  const handleAddFood = () => {
+  const handleAddFood = useCallback(() => {
     console.log('[MyMealBuilder] Opening Add Food in mymeal mode');
     console.log('[MyMealBuilder] Passing builder session ID:', builderSessionIdRef.current);
     
@@ -151,7 +151,7 @@ export default function MyMealBuilderScreen() {
         mealId: mealId || '',
       },
     });
-  };
+  }, [items.length, router, mealId]);
 
   const handleRemoveItem = (itemId: string) => {
     console.log('[MyMealBuilder] Removing item:', itemId);

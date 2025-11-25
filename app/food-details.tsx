@@ -125,7 +125,7 @@ export default function FoodDetailsScreen() {
         },
       ]);
     }
-  }, [offDataString]);
+  }, [offDataString, router]);
 
   const checkFavoriteStatus = async (prod: OpenFoodFactsProduct) => {
     try {

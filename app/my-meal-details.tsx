@@ -26,10 +26,10 @@ export default function MyMealDetailsScreen() {
     useCallback(() => {
       console.log('[MyMealDetails] Screen focused, loading meal');
       loadMyMeal();
-    }, [])
+    }, [loadMyMeal])
   );
 
-  const loadMyMeal = async () => {
+  const loadMyMeal = useCallback(async () => {
     try {
       setLoading(true);
       console.log('[MyMealDetails] Loading My Meal:', mealId);
@@ -84,7 +84,7 @@ export default function MyMealDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [mealId]);
 
   const handleEdit = () => {
     console.log('[MyMealDetails] Navigating to edit meal');

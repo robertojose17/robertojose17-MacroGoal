@@ -37,15 +37,7 @@ export default function HomeScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [earliestLogDate, setEarliestLogDate] = useState<Date | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[Home iOS] Screen focused, loading data');
-      loadData();
-      loadEarliestLogDate();
-    }, [selectedDate])
-  );
-
-  const loadEarliestLogDate = async () => {
+  const loadEarliestLogDate = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -64,9 +56,9 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('[Home iOS] Error loading earliest log date:', error);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -204,7 +196,15 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedDate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[Home iOS] Screen focused, loading data');
+      loadData();
+      loadEarliestLogDate();
+    }, [loadData, loadEarliestLogDate])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

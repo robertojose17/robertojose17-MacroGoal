@@ -42,9 +42,9 @@ export default function EditGoalsScreen() {
 
   useEffect(() => {
     loadCurrentGoals();
-  }, []);
+  }, [loadCurrentGoals]);
 
-  const loadCurrentGoals = async () => {
+  const loadCurrentGoals = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -130,7 +130,7 @@ export default function EditGoalsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   const validateMacros = (): boolean => {
     if (macroPreset !== 'custom') return true;

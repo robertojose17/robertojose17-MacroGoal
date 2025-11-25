@@ -73,7 +73,7 @@ Respond ONLY with strict JSON in this exact format:
 No extra text, no markdown, no explanations.`;
 
     // Prepare content for OpenRouter (OpenAI-compatible format)
-    const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+    const userContent: { type: string; text?: string; image_url?: { url: string } }[] = [
       { type: "text", text: description.trim() }
     ];
 

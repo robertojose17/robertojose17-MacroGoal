@@ -56,7 +56,7 @@ export default function AddFoodScreen() {
     console.log("[AddFood] returnTo:", returnTo);
     console.log("[AddFood] mealId:", myMealId);
     loadData();
-  }, []);
+  }, [loadData, mode, myMealId, params, returnTo]);
 
   // Refresh data when screen comes into focus
   useFocusEffect(
@@ -70,7 +70,7 @@ export default function AddFoodScreen() {
     }, [params.refresh])
   );
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const recent = await getRecentFoods();
@@ -88,7 +88,7 @@ export default function AddFoodScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const loadFavorites = async () => {
     try {

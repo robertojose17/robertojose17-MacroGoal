@@ -59,7 +59,7 @@ export default function FoodSearchScreen() {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, []);
+  }, [date, mealType]);
 
   useEffect(() => {
     // Clear previous debounce timer

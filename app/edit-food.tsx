@@ -29,9 +29,9 @@ export default function EditFoodScreen() {
 
   useEffect(() => {
     loadItem();
-  }, [itemId]);
+  }, [itemId, loadItem]);
 
-  const loadItem = async () => {
+  const loadItem = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -98,7 +98,7 @@ export default function EditFoodScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [itemId, router]);
 
   const handleSave = async () => {
     if (!grams || parseFloat(grams) <= 0) {
