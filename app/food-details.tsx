@@ -125,7 +125,8 @@ export default function FoodDetailsScreen() {
         },
       ]);
     }
-  }, [offDataString, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offDataString]);
 
   const checkFavoriteStatus = async (prod: OpenFoodFactsProduct) => {
     try {

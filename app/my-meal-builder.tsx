@@ -37,7 +37,8 @@ export default function MyMealBuilderScreen() {
       hasLoadedRef.current = true;
       loadMyMeal();
     }
-  }, [isEditing, mealId, loadMyMeal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, mealId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,7 +75,8 @@ export default function MyMealBuilderScreen() {
           console.error('[MyMealBuilder] Error parsing new food item:', error);
         }
       }
-    }, [params.newFoodItem, items.length, router])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [params.newFoodItem])
   );
 
   const loadMyMeal = async () => {

@@ -59,7 +59,8 @@ export default function FoodSearchScreen() {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [date, mealType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Clear previous debounce timer

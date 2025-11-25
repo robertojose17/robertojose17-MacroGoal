@@ -29,7 +29,8 @@ export default function EditFoodScreen() {
 
   useEffect(() => {
     loadItem();
-  }, [itemId, loadItem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemId]);
 
   const loadItem = async () => {
     try {

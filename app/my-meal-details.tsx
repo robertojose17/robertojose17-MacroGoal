@@ -26,7 +26,8 @@ export default function MyMealDetailsScreen() {
     useCallback(() => {
       console.log('[MyMealDetails] Screen focused, loading meal');
       loadMyMeal();
-    }, [loadMyMeal])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
   );
 
   const loadMyMeal = async () => {

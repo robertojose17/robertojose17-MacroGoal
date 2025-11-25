@@ -1,5 +1,5 @@
 
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
+// Edge Runtime types are automatically available in Deno Deploy
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -90,7 +90,7 @@ Rules:
     const userPrompt = `Estimate the nutrition for this meal: ${text.trim()}`;
 
     // Prepare content parts for OpenAI
-    const userContent: { type: string; text?: string; image_url?: { url: string } }[] = [
+    const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
       { type: "text", text: userPrompt }
     ];
 

@@ -56,7 +56,8 @@ export default function AddFoodScreen() {
     console.log("[AddFood] returnTo:", returnTo);
     console.log("[AddFood] mealId:", myMealId);
     loadData();
-  }, [loadData, mode, myMealId, params, returnTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Refresh data when screen comes into focus
   useFocusEffect(
