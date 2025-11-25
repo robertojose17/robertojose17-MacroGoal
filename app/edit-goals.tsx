@@ -42,7 +42,6 @@ export default function EditGoalsScreen() {
 
   useEffect(() => {
     loadCurrentGoals();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadCurrentGoals = async () => {

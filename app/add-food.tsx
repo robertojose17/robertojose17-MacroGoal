@@ -56,7 +56,6 @@ export default function AddFoodScreen() {
     console.log("[AddFood] returnTo:", returnTo);
     console.log("[AddFood] mealId:", myMealId);
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Refresh data when screen comes into focus
@@ -330,20 +329,6 @@ export default function AddFoodScreen() {
     console.log('[AddFood] Navigating to quick-add');
     router.push({
       pathname: '/quick-add',
-      params: {
-        meal: mealType,
-        date: date,
-        mode: mode,
-        returnTo: returnTo,
-        mealId: myMealId,
-      },
-    });
-  };
-
-  const handleAIMealEstimator = () => {
-    console.log('[AddFood] Navigating to AI Meal Estimator');
-    router.push({
-      pathname: '/ai-meal-estimator',
       params: {
         meal: mealType,
         date: date,
@@ -1290,28 +1275,6 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                <View style={styles.quickActionsRow}>
-                  <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardAI]}
-                    onPress={handleAIMealEstimator}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.quickActionIconContainer}>
-                      <IconSymbol
-                        ios_icon_name="sparkles"
-                        android_material_icon_name="auto_awesome"
-                        size={32}
-                        color="#F59E0B"
-                      />
-                    </View>
-                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                      AI Meal Estimator
-                    </Text>
-                  </TouchableOpacity>
-
-                  <View style={[styles.quickActionCard, styles.quickActionCardPlaceholder]} />
-                </View>
               </React.Fragment>
             )}
 
@@ -1529,12 +1492,6 @@ const styles = StyleSheet.create({
   },
   quickActionCardRight: {
     backgroundColor: '#D1FAE5',
-  },
-  quickActionCardAI: {
-    backgroundColor: '#FEF3C7',
-  },
-  quickActionCardPlaceholder: {
-    backgroundColor: 'transparent',
   },
   quickActionIconContainer: {
     marginBottom: spacing.sm,

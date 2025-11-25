@@ -40,7 +40,6 @@ export default function BarcodeScanScreen() {
         clearTimeout(timeoutRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Request permission if not granted
@@ -48,7 +47,6 @@ export default function BarcodeScanScreen() {
     if (permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permission]);
 
   const handleBarcodeScanned = async (result: BarcodeScanningResult) => {
