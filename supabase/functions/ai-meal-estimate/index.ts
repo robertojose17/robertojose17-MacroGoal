@@ -34,15 +34,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Get API key from environment
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    // Get API key from environment - USING OPENROUTER
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     
     // Log key presence (never log the actual key)
-    console.log(`[AI Meal Estimate] OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
+    console.log(`[AI Meal Estimate] OPENROUTER_API_KEY present: ${!!OPENROUTER_API_KEY}`);
     
-    if (!OPENAI_API_KEY) {
-      console.error('[AI Meal Estimate] ❌ CRITICAL: OPENAI_API_KEY not configured!');
-      return new Response(JSON.stringify({ error: "Missing OPENAI_API_KEY configuration" }), {
+    if (!OPENROUTER_API_KEY) {
+      console.error('[AI Meal Estimate] ❌ CRITICAL: OPENROUTER_API_KEY not configured!');
+      return new Response(JSON.stringify({ error: "Missing OPENROUTER_API_KEY configuration" }), {
         status: 500,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
@@ -89,7 +89,7 @@ Rules:
 
     const userPrompt = `Estimate the nutrition for this meal: ${text.trim()}`;
 
-    // Prepare content parts for OpenAI
+    // Prepare content parts for OpenRouter (OpenAI-compatible format)
     const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
       { type: "text", text: userPrompt }
     ];
@@ -110,17 +110,19 @@ Rules:
       console.log('[AI Meal Estimate] Image added to request');
     }
 
-    console.log('[AI Meal Estimate] Calling OpenAI API...');
+    console.log('[AI Meal Estimate] Calling OpenRouter API...');
 
-    // Call OpenAI Chat Completions API
-    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Call OpenRouter API (OpenAI-compatible endpoint)
+    const openrouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://esgptfiofoaeguslgvcq.supabase.co",
+        "X-Title": "Elite Macro Tracker"
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini", // Vision-capable and cost-effective
+        model: "openai/gpt-4o-mini", // Vision-capable and cost-effective model via OpenRouter
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent }
@@ -131,32 +133,32 @@ Rules:
       })
     });
 
-    console.log('[AI Meal Estimate] OpenAI response status:', openaiResponse.status);
+    console.log('[AI Meal Estimate] OpenRouter response status:', openrouterResponse.status);
 
     // Handle non-OK responses
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      console.error('[AI Meal Estimate] ❌ OpenAI API error:', openaiResponse.status, errorText);
+    if (!openrouterResponse.ok) {
+      const errorText = await openrouterResponse.text();
+      console.error('[AI Meal Estimate] ❌ OpenRouter API error:', openrouterResponse.status, errorText);
       
       return new Response(JSON.stringify({
-        error: "AI estimate failed — check connection and try again.",
-        details: `OpenAI API returned ${openaiResponse.status}`
+        error: "AI estimation failed. Please try again.",
+        details: `OpenRouter API returned ${openrouterResponse.status}`
       }), {
         status: 502,
         headers: { "content-type": "application/json", ...CORS_HEADERS }
       });
     }
 
-    const openaiData = await openaiResponse.json();
-    console.log('[AI Meal Estimate] OpenAI response received');
+    const openrouterData = await openrouterResponse.json();
+    console.log('[AI Meal Estimate] OpenRouter response received');
 
-    // Extract text from OpenAI response
-    const responseText = openaiData?.choices?.[0]?.message?.content;
+    // Extract text from OpenRouter response
+    const responseText = openrouterData?.choices?.[0]?.message?.content;
     
     if (!responseText) {
-      console.error('[AI Meal Estimate] No content in OpenAI response');
+      console.error('[AI Meal Estimate] No content in OpenRouter response');
       return new Response(JSON.stringify({
-        error: "AI estimate failed — no response from AI",
+        error: "AI estimation failed. Please try again.",
         details: "No content returned"
       }), {
         status: 502,
@@ -164,7 +166,7 @@ Rules:
       });
     }
 
-    console.log('[AI Meal Estimate] OpenAI response text:', responseText);
+    console.log('[AI Meal Estimate] OpenRouter response text:', responseText);
 
     // Parse JSON response
     let jsonResponse: MealEstimateResponse;
@@ -235,7 +237,7 @@ Rules:
     console.error('[AI Meal Estimate] ❌ Unexpected error:', error);
     
     return new Response(JSON.stringify({
-      error: "AI estimate failed — check connection and try again.",
+      error: "AI estimation failed. Please try again.",
       details: error instanceof Error ? error.message : String(error)
     }), {
       status: 500,
