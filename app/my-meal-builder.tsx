@@ -37,7 +37,7 @@ export default function MyMealBuilderScreen() {
       hasLoadedRef.current = true;
       loadMyMeal();
     }
-  }, [isEditing, mealId]);
+  }, [isEditing, mealId, loadMyMeal]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,7 +74,7 @@ export default function MyMealBuilderScreen() {
           console.error('[MyMealBuilder] Error parsing new food item:', error);
         }
       }
-    }, [params.newFoodItem])
+    }, [params.newFoodItem, items.length, router])
   );
 
   const loadMyMeal = async () => {

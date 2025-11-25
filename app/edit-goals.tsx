@@ -42,7 +42,7 @@ export default function EditGoalsScreen() {
 
   useEffect(() => {
     loadCurrentGoals();
-  }, []);
+  }, [loadCurrentGoals]);
 
   const loadCurrentGoals = async () => {
     try {

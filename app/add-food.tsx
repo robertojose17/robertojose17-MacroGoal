@@ -56,7 +56,7 @@ export default function AddFoodScreen() {
     console.log("[AddFood] returnTo:", returnTo);
     console.log("[AddFood] mealId:", myMealId);
     loadData();
-  }, []);
+  }, [loadData, mode, myMealId, params, returnTo]);
 
   // Refresh data when screen comes into focus
   useFocusEffect(

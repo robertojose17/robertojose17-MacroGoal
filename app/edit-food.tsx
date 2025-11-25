@@ -29,7 +29,7 @@ export default function EditFoodScreen() {
 
   useEffect(() => {
     loadItem();
-  }, [itemId]);
+  }, [itemId, loadItem]);
 
   const loadItem = async () => {
     try {

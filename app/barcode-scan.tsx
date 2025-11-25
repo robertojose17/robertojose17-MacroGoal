@@ -40,14 +40,14 @@ export default function BarcodeScanScreen() {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, []);
+  }, [date, mealType]);
 
   // Request permission if not granted
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
     }
-  }, [permission]);
+  }, [permission, requestPermission]);
 
   const handleBarcodeScanned = async (result: BarcodeScanningResult) => {
     // Prevent multiple scans

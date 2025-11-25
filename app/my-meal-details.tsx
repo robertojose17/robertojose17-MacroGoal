@@ -26,7 +26,7 @@ export default function MyMealDetailsScreen() {
     useCallback(() => {
       console.log('[MyMealDetails] Screen focused, loading meal');
       loadMyMeal();
-    }, [])
+    }, [loadMyMeal])
   );
 
   const loadMyMeal = async () => {

@@ -66,7 +66,7 @@ export default function CopyFromPreviousScreen() {
 
   useEffect(() => {
     loadDatesWithData();
-  }, []);
+  }, [loadDatesWithData]);
 
   useEffect(() => {
     if (selectedDate) {
