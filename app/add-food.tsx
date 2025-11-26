@@ -113,27 +113,12 @@ export default function AddFoodScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    console.log("[AddFood] Params:", params);
-    console.log("[AddFood] mode:", mode);
-    console.log("[AddFood] returnTo:", returnTo);
-    console.log("[AddFood] mealId:", myMealId);
-    loadData();
-  }, [loadData, mode, myMealId, params, returnTo]);
-
-  // Refresh data when screen comes into focus ONLY if refresh param is set
+  // Load data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log('[AddFood] Screen focused');
-      console.log('[AddFood] Refresh param:', params.refresh);
-      
-      // Only reload if explicitly requested via refresh param
-      if (params.refresh === 'true' || params.refresh === true) {
-        console.log('[AddFood] Refreshing data due to refresh param');
-        loadFavorites();
-        loadMyMeals();
-      }
-    }, [params.refresh])
+      console.log('[AddFood] Screen focused, loading data');
+      loadData();
+    }, [loadData])
   );
 
   /**
