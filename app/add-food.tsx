@@ -121,15 +121,18 @@ export default function AddFoodScreen() {
     loadData();
   }, [loadData, mode, myMealId, params, returnTo]);
 
-  // Refresh data when screen comes into focus
+  // Refresh data when screen comes into focus ONLY if refresh param is set
   useFocusEffect(
     useCallback(() => {
-      console.log('[AddFood] Screen focused, refreshing data');
+      console.log('[AddFood] Screen focused');
       console.log('[AddFood] Refresh param:', params.refresh);
       
-      // Reload favorites and my meals
-      loadFavorites();
-      loadMyMeals();
+      // Only reload if explicitly requested via refresh param
+      if (params.refresh === 'true' || params.refresh === true) {
+        console.log('[AddFood] Refreshing data due to refresh param');
+        loadFavorites();
+        loadMyMeals();
+      }
     }, [params.refresh])
   );
 

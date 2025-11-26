@@ -300,52 +300,55 @@ export default function ChatbotScreen() {
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
         >
-          {messages.map((message, index) => (
-            <View
-              key={index}
-              style={[
-                styles.messageWrapper,
-                message.role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
-              ]}
-            >
+          {messages.map((message, index) => {
+            const key = message.timestamp ? `msg-${message.timestamp}-${index}` : `msg-${index}`;
+            return (
               <View
+                key={key}
                 style={[
-                  styles.messageBubble,
-                  message.role === 'user'
-                    ? { backgroundColor: colors.primary }
-                    : { backgroundColor: isDark ? colors.cardDark : colors.card },
+                  styles.messageWrapper,
+                  message.role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
                 ]}
               >
-                <Text
+                <View
                   style={[
-                    styles.messageText,
-                    {
-                      color: message.role === 'user' ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
-                    },
+                    styles.messageBubble,
+                    message.role === 'user'
+                      ? { backgroundColor: colors.primary }
+                      : { backgroundColor: isDark ? colors.cardDark : colors.card },
                   ]}
                 >
-                  {message.content}
-                </Text>
-                {message.timestamp && (
                   <Text
                     style={[
-                      styles.messageTime,
+                      styles.messageText,
                       {
-                        color:
-                          message.role === 'user'
-                            ? 'rgba(255, 255, 255, 0.7)'
-                            : isDark
-                            ? colors.textSecondaryDark
-                            : colors.textSecondary,
+                        color: message.role === 'user' ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
                       },
                     ]}
                   >
-                    {formatTime(message.timestamp)}
+                    {message.content}
                   </Text>
-                )}
+                  {message.timestamp && (
+                    <Text
+                      style={[
+                        styles.messageTime,
+                        {
+                          color:
+                            message.role === 'user'
+                              ? 'rgba(255, 255, 255, 0.7)'
+                              : isDark
+                              ? colors.textSecondaryDark
+                              : colors.textSecondary,
+                        },
+                      ]}
+                    >
+                      {formatTime(message.timestamp)}
+                    </Text>
+                  )}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
           {loading && (
             <View style={styles.loadingWrapper}>
               <View style={[styles.loadingBubble, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
