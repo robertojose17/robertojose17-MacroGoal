@@ -18,6 +18,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
+import { supabase } from '@/app/integrations/supabase/client';
 
 // Generate a unique ID for each message
 let messageIdCounter = 0;
@@ -563,42 +564,173 @@ After the JSON, you can add a brief explanation if needed.`,
     });
   }, [latestEstimate]);
 
-  const handleLogMeal = useCallback(() => {
+  const handleLogMeal = useCallback(async () => {
     if (!latestEstimate) return;
     
     // Check if at least one ingredient is included
-    const hasIncludedIngredients = latestEstimate.ingredients.some((ing) => ing.included);
-    if (!hasIncludedIngredients) {
+    const includedIngredients = latestEstimate.ingredients.filter((ing) => ing.included);
+    if (includedIngredients.length === 0) {
       Alert.alert('No Ingredients', 'Please include at least one ingredient to log this meal.');
       return;
     }
     
     try {
-      console.log('[Chatbot] Logging meal with edited totals:', {
-        calories: latestEstimate.totalCalories,
-        protein: latestEstimate.totalProtein,
-        carbs: latestEstimate.totalCarbs,
-        fats: latestEstimate.totalFats,
-        fiber: latestEstimate.totalFiber,
-      });
+      console.log('[Chatbot] Logging meal with', includedIngredients.length, 'ingredients');
       
-      // Navigate to Quick Add with pre-filled data using edited totals
-      router.push({
-        pathname: '/quick-add',
-        params: {
-          meal: mealType,
-          date: date,
-          mode: mode,
-          returnTo: returnTo,
-          mealId: myMealId,
-          prefillName: latestEstimate.name,
-          prefillCalories: latestEstimate.totalCalories.toString(),
-          prefillProtein: latestEstimate.totalProtein.toString(),
-          prefillCarbs: latestEstimate.totalCarbs.toString(),
-          prefillFats: latestEstimate.totalFats.toString(),
-          prefillFiber: latestEstimate.totalFiber.toString(),
-        },
-      });
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[Chatbot] No user found');
+        Alert.alert('Error', 'You must be logged in to add food');
+        return;
+      }
+
+      console.log('[Chatbot] User ID:', user.id);
+
+      // Get or create meal for the date
+      console.log('[Chatbot] Looking for existing meal...');
+      const { data: existingMeal } = await supabase
+        .from('meals')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .eq('meal_type', mealType)
+        .maybeSingle();
+
+      let mealId = existingMeal?.id;
+
+      if (!mealId) {
+        console.log('[Chatbot] No existing meal found, creating new meal...');
+        const { data: newMeal, error: mealError } = await supabase
+          .from('meals')
+          .insert({
+            user_id: user.id,
+            date: date,
+            meal_type: mealType,
+          })
+          .select()
+          .single();
+
+        if (mealError) {
+          console.error('[Chatbot] Error creating meal:', mealError);
+          Alert.alert('Error', `Failed to create meal: ${mealError.message}`);
+          return;
+        }
+
+        mealId = newMeal.id;
+        console.log('[Chatbot] New meal created:', mealId);
+      } else {
+        console.log('[Chatbot] Using existing meal:', mealId);
+      }
+
+      // Log each included ingredient as a separate food item
+      let successCount = 0;
+      let failedIngredients: string[] = [];
+
+      for (const ingredient of includedIngredients) {
+        try {
+          console.log('[Chatbot] Creating food entry for ingredient:', ingredient.name);
+          
+          // Create food entry for this ingredient
+          const foodPayload = {
+            name: `${ingredient.name} (AI Estimated)`,
+            serving_amount: ingredient.quantity,
+            serving_unit: ingredient.unit,
+            calories: ingredient.calories,
+            protein: ingredient.protein,
+            carbs: ingredient.carbs,
+            fats: ingredient.fats,
+            fiber: ingredient.fiber,
+            user_created: true,
+            created_by: user.id,
+          };
+
+          const { data: foodData, error: foodError } = await supabase
+            .from('foods')
+            .insert(foodPayload)
+            .select()
+            .single();
+
+          if (foodError) {
+            console.error('[Chatbot] Error creating food for ingredient:', ingredient.name, foodError);
+            failedIngredients.push(ingredient.name);
+            continue;
+          }
+
+          console.log('[Chatbot] Food created for ingredient:', foodData.id);
+
+          // Create meal item for this ingredient
+          const mealItemPayload = {
+            meal_id: mealId,
+            food_id: foodData.id,
+            quantity: 1, // Quantity is already baked into the food entry
+            calories: ingredient.calories,
+            protein: ingredient.protein,
+            carbs: ingredient.carbs,
+            fats: ingredient.fats,
+            fiber: ingredient.fiber,
+            serving_description: `${ingredient.quantity} ${ingredient.unit}`,
+            grams: ingredient.unit === 'g' ? ingredient.quantity : null,
+          };
+
+          const { data: mealItemData, error: mealItemError } = await supabase
+            .from('meal_items')
+            .insert(mealItemPayload)
+            .select()
+            .single();
+
+          if (mealItemError) {
+            console.error('[Chatbot] Error creating meal item for ingredient:', ingredient.name, mealItemError);
+            failedIngredients.push(ingredient.name);
+            continue;
+          }
+
+          console.log('[Chatbot] ✅ Meal item created for ingredient:', ingredient.name);
+          successCount++;
+        } catch (error) {
+          console.error('[Chatbot] Unexpected error logging ingredient:', ingredient.name, error);
+          failedIngredients.push(ingredient.name);
+        }
+      }
+
+      // Show result to user
+      if (successCount === includedIngredients.length) {
+        console.log('[Chatbot] ✅ All ingredients logged successfully!');
+        Alert.alert(
+          'Success',
+          `Added ${successCount} ingredient${successCount > 1 ? 's' : ''} to ${mealType}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate back to home/diary
+                router.replace('/(tabs)/(home)/');
+              },
+            },
+          ]
+        );
+      } else if (successCount > 0) {
+        console.log(`[Chatbot] ⚠️ Partial success: ${successCount}/${includedIngredients.length} ingredients logged`);
+        Alert.alert(
+          'Partial Success',
+          `Added ${successCount} of ${includedIngredients.length} ingredients. Failed: ${failedIngredients.join(', ')}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.replace('/(tabs)/(home)/');
+              },
+            },
+          ]
+        );
+      } else {
+        console.error('[Chatbot] ❌ Failed to log any ingredients');
+        Alert.alert(
+          'Error',
+          'Failed to log ingredients. Please try again or use Quick Add manually.',
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
       console.error('[Chatbot] Error logging meal:', error);
       Alert.alert('Error', 'Failed to log meal. Please try again.');
