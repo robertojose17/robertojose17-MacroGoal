@@ -25,7 +25,7 @@ export default function ChatbotScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: 'Hello! I\'m your nutrition assistant. I can help you with meal planning, nutrition advice, and answer questions about your fitness goals. How can I help you today?',
+      content: 'Describe the meal you want me to estimate. The more details you include — ingredients, portions, extras, sauces, or any modifications — the more accurate your calories and macros will be.',
       timestamp: Date.now(),
     },
   ]);
@@ -57,7 +57,7 @@ export default function ChatbotScreen() {
     const apiMessages: ChatMessage[] = [
       {
         role: 'system',
-        content: 'You are a helpful nutrition and fitness assistant for Elite Macro Tracker app. Provide concise, accurate advice about nutrition, meal planning, macros, and fitness. Be friendly and supportive.',
+        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
       },
       ...messages.filter((m) => m.role !== 'system'),
       userMessage,
