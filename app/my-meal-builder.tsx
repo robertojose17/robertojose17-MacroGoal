@@ -83,7 +83,15 @@ export default function MyMealBuilderScreen() {
       }
 
       console.log('[MyMealBuilder] Loaded', itemsData?.length || 0, 'items');
-      setItems(itemsData || []);
+      
+      // FIXED: Normalize the data structure - Supabase returns "foods" (plural) from the join,
+      // but we need "food" (singular) to match the structure of newly added items
+      const normalizedItems = (itemsData || []).map(item => ({
+        ...item,
+        food: (item as any).foods || item.food, // Use "foods" from DB join, fallback to "food"
+      }));
+      
+      setItems(normalizedItems);
     } catch (error) {
       console.error('[MyMealBuilder] Error in loadMyMeal:', error);
     } finally {
