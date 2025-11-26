@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,14 @@ export default function QuickAddScreen() {
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
+  // Pre-fill parameters from AI Estimator
+  const prefillName = (params.prefillName as string) || '';
+  const prefillCalories = (params.prefillCalories as string) || '';
+  const prefillProtein = (params.prefillProtein as string) || '';
+  const prefillCarbs = (params.prefillCarbs as string) || '';
+  const prefillFats = (params.prefillFats as string) || '';
+  const prefillFiber = (params.prefillFiber as string) || '';
+
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
   const [protein, setProtein] = useState('');
@@ -27,6 +35,20 @@ export default function QuickAddScreen() {
   const [fats, setFats] = useState('');
   const [fiber, setFiber] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Pre-fill form when component mounts
+  useEffect(() => {
+    console.log('[QuickAdd] Checking for pre-fill data');
+    if (prefillName) {
+      console.log('[QuickAdd] Pre-filling form with AI estimate data');
+      setFoodName(prefillName);
+      setCalories(prefillCalories);
+      setProtein(prefillProtein);
+      setCarbs(prefillCarbs);
+      setFats(prefillFats);
+      setFiber(prefillFiber);
+    }
+  }, [prefillName, prefillCalories, prefillProtein, prefillCarbs, prefillFats, prefillFiber]);
 
   const handleSave = async () => {
     if (!foodName.trim() || !calories.trim()) {

@@ -12,15 +12,37 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
 
+type AIEstimate = {
+  name: string;
+  description?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber: number;
+  defaultAmount: number;
+  defaultUnit: string;
+};
+
 export default function ChatbotScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Extract context from params (passed from Add Food screen)
+  const mode = (params.mode as string) || 'diary';
+  const mealType = (params.meal as string) || 'breakfast';
+  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -30,6 +52,8 @@ export default function ChatbotScreen() {
     },
   ]);
   const [inputText, setInputText] = useState('');
+  const [latestEstimate, setLatestEstimate] = useState<AIEstimate | null>(null);
+  const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
   const { sendMessage, loading } = useChatbot();
 
@@ -40,6 +64,119 @@ export default function ChatbotScreen() {
     }, 100);
   }, [messages]);
 
+  /**
+   * Parse AI response to extract macro estimates
+   * Looks for patterns like "Calories: 450" or "Protein: 25g"
+   */
+  const parseAIEstimate = (content: string, userMessage: string): AIEstimate | null => {
+    console.log('[Chatbot] Parsing AI response for estimates');
+    
+    // Look for calorie patterns
+    const caloriePatterns = [
+      /calories?[:\s]+(\d+)/i,
+      /(\d+)\s*cal/i,
+      /(\d+)\s*kcal/i,
+    ];
+    
+    // Look for macro patterns
+    const proteinPatterns = [
+      /protein[:\s]+(\d+\.?\d*)\s*g/i,
+      /(\d+\.?\d*)\s*g\s+protein/i,
+    ];
+    
+    const carbsPatterns = [
+      /carb(?:ohydrate)?s?[:\s]+(\d+\.?\d*)\s*g/i,
+      /(\d+\.?\d*)\s*g\s+carb/i,
+    ];
+    
+    const fatsPatterns = [
+      /fats?[:\s]+(\d+\.?\d*)\s*g/i,
+      /(\d+\.?\d*)\s*g\s+fat/i,
+    ];
+    
+    const fiberPatterns = [
+      /fiber[:\s]+(\d+\.?\d*)\s*g/i,
+      /(\d+\.?\d*)\s*g\s+fiber/i,
+    ];
+    
+    // Extract values
+    let calories = 0;
+    let protein = 0;
+    let carbs = 0;
+    let fats = 0;
+    let fiber = 0;
+    
+    // Try to find calories
+    for (const pattern of caloriePatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        calories = parseFloat(match[1]);
+        break;
+      }
+    }
+    
+    // Try to find protein
+    for (const pattern of proteinPatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        protein = parseFloat(match[1]);
+        break;
+      }
+    }
+    
+    // Try to find carbs
+    for (const pattern of carbsPatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        carbs = parseFloat(match[1]);
+        break;
+      }
+    }
+    
+    // Try to find fats
+    for (const pattern of fatsPatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        fats = parseFloat(match[1]);
+        break;
+      }
+    }
+    
+    // Try to find fiber
+    for (const pattern of fiberPatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        fiber = parseFloat(match[1]);
+        break;
+      }
+    }
+    
+    // Only return estimate if we found at least calories
+    if (calories > 0) {
+      console.log('[Chatbot] Found estimate:', { calories, protein, carbs, fats, fiber });
+      
+      // Use user's message as the meal name (truncate if too long)
+      const mealName = userMessage.length > 50 
+        ? userMessage.substring(0, 47) + '...' 
+        : userMessage;
+      
+      return {
+        name: mealName,
+        description: content,
+        calories,
+        protein,
+        carbs,
+        fats,
+        fiber,
+        defaultAmount: 1,
+        defaultUnit: 'serving',
+      };
+    }
+    
+    console.log('[Chatbot] No valid estimate found in response');
+    return null;
+  };
+
   const handleSend = async () => {
     if (!inputText.trim() || loading) return;
 
@@ -48,6 +185,9 @@ export default function ChatbotScreen() {
       content: inputText.trim(),
       timestamp: Date.now(),
     };
+
+    // Store the user message for meal naming
+    setLastUserMessage(inputText.trim());
 
     // Add user message to chat
     setMessages((prev) => [...prev, userMessage]);
@@ -73,6 +213,13 @@ export default function ChatbotScreen() {
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
+      
+      // Try to parse the estimate from the response
+      const estimate = parseAIEstimate(result.message, lastUserMessage);
+      if (estimate) {
+        console.log('[Chatbot] Setting latest estimate:', estimate);
+        setLatestEstimate(estimate);
+      }
     } else {
       // Add error message
       const errorMessage: ChatMessage = {
@@ -82,6 +229,31 @@ export default function ChatbotScreen() {
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
+  };
+
+  const handleLogMeal = () => {
+    if (!latestEstimate) return;
+    
+    console.log('[Chatbot] Logging meal to diary:', latestEstimate);
+    
+    // Navigate to Quick Add with pre-filled data
+    router.push({
+      pathname: '/quick-add',
+      params: {
+        meal: mealType,
+        date: date,
+        mode: mode,
+        returnTo: returnTo,
+        mealId: myMealId,
+        // Pre-fill data from AI estimate
+        prefillName: latestEstimate.name,
+        prefillCalories: latestEstimate.calories.toString(),
+        prefillProtein: latestEstimate.protein.toString(),
+        prefillCarbs: latestEstimate.carbs.toString(),
+        prefillFats: latestEstimate.fats.toString(),
+        prefillFiber: latestEstimate.fiber.toString(),
+      },
+    });
   };
 
   const formatTime = (timestamp: number) => {
@@ -95,6 +267,14 @@ export default function ChatbotScreen() {
       edges={['top']}
     >
       <View style={[styles.header, { borderBottomColor: isDark ? colors.borderDark : colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <IconSymbol
+            ios_icon_name="chevron.left"
+            android_material_icon_name="arrow_back"
+            size={24}
+            color={isDark ? colors.textDark : colors.text}
+          />
+        </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <IconSymbol
             ios_icon_name="sparkles"
@@ -106,6 +286,7 @@ export default function ChatbotScreen() {
             AI Meal Estimator
           </Text>
         </View>
+        <View style={{ width: 24 }} />
       </View>
 
       <KeyboardAvoidingView
@@ -175,6 +356,25 @@ export default function ChatbotScreen() {
               </View>
             </View>
           )}
+          
+          {/* Log this meal button - only show when we have a valid estimate */}
+          {latestEstimate && !loading && (
+            <View style={styles.logMealButtonWrapper}>
+              <TouchableOpacity
+                style={[styles.logMealButton, { backgroundColor: colors.primary }]}
+                onPress={handleLogMeal}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="plus.circle.fill"
+                  android_material_icon_name="add_circle"
+                  size={24}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.logMealButtonText}>Log this meal</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
 
         <View style={[styles.inputContainer, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
@@ -222,11 +422,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   headerTitleContainer: {
     flexDirection: 'row',
@@ -283,6 +486,27 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+  },
+  logMealButtonWrapper: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  logMealButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
+    elevation: 3,
+  },
+  logMealButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    color: '#FFFFFF',
   },
   inputContainer: {
     flexDirection: 'row',

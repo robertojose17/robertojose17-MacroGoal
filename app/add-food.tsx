@@ -341,7 +341,16 @@ export default function AddFoodScreen() {
 
   const handleAIMealEstimator = () => {
     console.log('[AddFood] Navigating to AI Meal Estimator');
-    router.push('/chatbot');
+    router.push({
+      pathname: '/chatbot',
+      params: {
+        meal: mealType,
+        date: date,
+        mode: mode,
+        returnTo: returnTo,
+        mealId: myMealId,
+      },
+    });
   };
 
   const handleCreateMyMeal = () => {
