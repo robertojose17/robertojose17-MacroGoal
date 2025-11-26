@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
-import MacroBar from '@/components/MacroBar';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -36,15 +35,30 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [earliestLogDate, setEarliestLogDate] = useState<Date | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[Home iOS] Screen focused, loading data');
-      loadData();
-    }, [selectedDate])
-  );
+  const loadEarliestLogDate = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-  const loadData = async () => {
+      const { data, error } = await supabase
+        .from('meals')
+        .select('date')
+        .eq('user_id', user.id)
+        .order('date', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        setEarliestLogDate(new Date(data.date));
+      }
+    } catch (error) {
+      console.error('[Home iOS] Error loading earliest log date:', error);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -95,6 +109,8 @@ export default function HomeScreen() {
             carbs,
             fats,
             fiber,
+            serving_description,
+            grams,
             foods (
               id,
               name,
@@ -180,7 +196,15 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedDate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[Home iOS] Screen focused, loading data');
+      loadData();
+      loadEarliestLogDate();
+    }, [loadData, loadEarliestLogDate])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -205,35 +229,108 @@ export default function HomeScreen() {
     });
   };
 
-  const handleDeleteFood = (item: any) => {
+  const handleDeleteFood = async (item: any) => {
+    console.log('[Home iOS] Delete requested for item:', item.id);
+    
     Alert.alert(
-      'Delete Food',
-      `Are you sure you want to delete ${item.foods?.name || 'this food'}?`,
+      'Delete this food entry?',
+      `Remove ${item.foods?.name || 'this food'} from your diary?`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
+          onPress: () => console.log('[Home iOS] Delete cancelled'),
         },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            console.log('[Home iOS] Delete confirmed, proceeding...');
+            
+            // Store original state for rollback
+            const originalMeals = [...meals];
+            const originalTotalCalories = totalCalories;
+            const originalTotalMacros = { ...totalMacros };
+            
             try {
-              const { error } = await supabase
+              // Optimistic UI update - remove item immediately
+              console.log('[Home iOS] Applying optimistic update...');
+              const updatedMeals = meals.map(meal => ({
+                ...meal,
+                items: meal.items.filter(i => i.id !== item.id),
+                totalCalories: meal.items
+                  .filter(i => i.id !== item.id)
+                  .reduce((sum, i) => sum + (i.calories || 0), 0)
+              }));
+              
+              setMeals(updatedMeals);
+              
+              // Recalculate totals
+              const newTotalCals = updatedMeals.reduce((sum, meal) => sum + meal.totalCalories, 0);
+              const newTotalP = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.protein || 0), 0), 0);
+              const newTotalC = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.carbs || 0), 0), 0);
+              const newTotalF = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.fats || 0), 0), 0);
+              const newTotalFib = updatedMeals.reduce((sum, meal) => 
+                sum + meal.items.reduce((s, i) => s + (i.fiber || 0), 0), 0);
+              
+              setTotalCalories(newTotalCals);
+              setTotalMacros({ 
+                protein: newTotalP, 
+                carbs: newTotalC, 
+                fats: newTotalF, 
+                fiber: newTotalFib 
+              });
+              
+              console.log('[Home iOS] Optimistic update applied, now deleting from database...');
+              
+              // Get current user for verification
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) {
+                throw new Error('No authenticated user found');
+              }
+              
+              console.log('[Home iOS] Authenticated user:', user.id);
+              console.log('[Home iOS] Deleting meal_item with id:', item.id);
+              
+              // Delete from database
+              const { error, data } = await supabase
                 .from('meal_items')
                 .delete()
-                .eq('id', item.id);
-
+                .eq('id', item.id)
+                .select();
+              
               if (error) {
-                console.error('[Home iOS] Error deleting food:', error);
-                Alert.alert('Error', 'Failed to delete food');
-              } else {
-                console.log('[Home iOS] Food deleted successfully');
-                loadData();
+                console.error('[Home iOS] Supabase delete error:', error);
+                console.error('[Home iOS] Error details:', JSON.stringify(error, null, 2));
+                throw error;
               }
-            } catch (error) {
-              console.error('[Home iOS] Error in handleDeleteFood:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
+              
+              console.log('[Home iOS] Delete response:', data);
+              console.log('[Home iOS] ✅ Food deleted successfully from database');
+              
+              // Success - the optimistic update is already applied
+              // No need to reload, UI is already updated
+              
+            } catch (error: any) {
+              console.error('[Home iOS] ❌ Error in handleDeleteFood:', error);
+              console.error('[Home iOS] Error message:', error?.message);
+              console.error('[Home iOS] Error details:', JSON.stringify(error, null, 2));
+              
+              // Rollback optimistic update
+              console.log('[Home iOS] Rolling back optimistic update...');
+              setMeals(originalMeals);
+              setTotalCalories(originalTotalCalories);
+              setTotalMacros(originalTotalMacros);
+              
+              // Show detailed error to user
+              Alert.alert(
+                'Delete Failed', 
+                error?.message || 'Failed to delete food entry. Please try again.',
+                [{ text: 'OK' }]
+              );
             }
           },
         },
@@ -262,6 +359,51 @@ export default function HomeScreen() {
     return selectedDate.toDateString() === today.toDateString();
   };
 
+  const isFutureDate = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+    return selected >= today;
+  };
+
+  const isEarliestDate = () => {
+    if (!earliestLogDate) return false;
+    const earliest = new Date(earliestLogDate);
+    earliest.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+    return selected <= earliest;
+  };
+
+  // Helper function to get serving description for display
+  // ALWAYS use the logged serving_description if available
+  const getServingDisplayText = (item: any): string => {
+    // Priority 1: Use the stored serving_description (this is what the user selected)
+    if (item.serving_description) {
+      console.log('[Home iOS] Using stored serving_description:', item.serving_description);
+      return item.serving_description;
+    }
+
+    // Priority 2: If grams is available, show that
+    if (item.grams) {
+      console.log('[Home iOS] Using grams fallback:', item.grams);
+      return `${Math.round(item.grams)} g`;
+    }
+
+    // Priority 3: Last resort fallback (should rarely happen)
+    console.log('[Home iOS] Using quantity fallback');
+    const quantity = item.quantity || 1;
+    const servingAmount = item.foods?.serving_amount || 100;
+    const servingUnit = item.foods?.serving_unit || 'g';
+    
+    if (quantity === 1) {
+      return `${servingAmount} ${servingUnit}`;
+    }
+    
+    return `${quantity}x ${servingAmount} ${servingUnit}`;
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -276,6 +418,9 @@ export default function HomeScreen() {
 
   const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
 
+  const leftArrowDisabled = isEarliestDate();
+  const rightArrowDisabled = isFutureDate();
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <ScrollView 
@@ -287,12 +432,18 @@ export default function HomeScreen() {
       >
         {/* Date Navigation */}
         <View style={[styles.dateNavigation, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <TouchableOpacity onPress={goToPreviousDay} style={styles.dateButton}>
+          <TouchableOpacity 
+            onPress={goToPreviousDay} 
+            style={styles.dateButton}
+            disabled={leftArrowDisabled}
+            activeOpacity={leftArrowDisabled ? 1 : 0.7}
+          >
             <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="chevron_left"
+              ios_icon_name="arrow.left"
+              android_material_icon_name="arrow_back"
               size={24}
               color={isDark ? colors.textDark : colors.text}
+              style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
             />
           </TouchableOpacity>
           
@@ -305,12 +456,18 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity onPress={goToNextDay} style={styles.dateButton}>
+          <TouchableOpacity 
+            onPress={goToNextDay} 
+            style={styles.dateButton}
+            disabled={rightArrowDisabled}
+            activeOpacity={rightArrowDisabled ? 1 : 0.7}
+          >
             <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
+              ios_icon_name="arrow.right"
+              android_material_icon_name="arrow_forward"
               size={24}
               color={isDark ? colors.textDark : colors.text}
+              style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
             />
           </TouchableOpacity>
         </View>
@@ -340,63 +497,36 @@ export default function HomeScreen() {
               label="kcal"
             />
             
-            <View style={styles.caloriesStats}>
-              <StatItem
-                label="Consumed"
-                value={Math.round(totalCalories)}
-                unit="kcal"
-                color={colors.calories}
+            <View style={styles.macroSummaryCompact}>
+              <MacroSummaryRowCompact
+                label="Protein"
+                eaten={Math.round(totalMacros.protein)}
+                goal={goal?.protein_g || 150}
+                color={colors.protein}
                 isDark={isDark}
               />
-              <StatItem
-                label="Remaining"
-                value={Math.round(caloriesRemaining)}
-                unit="kcal"
-                color={caloriesRemaining >= 0 ? colors.success : colors.error}
+              <MacroSummaryRowCompact
+                label="Carbs"
+                eaten={Math.round(totalMacros.carbs)}
+                goal={goal?.carbs_g || 200}
+                color={colors.carbs}
                 isDark={isDark}
               />
-              <StatItem
-                label="Target"
-                value={goal?.daily_calories || 2000}
-                unit="kcal"
-                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              <MacroSummaryRowCompact
+                label="Fats"
+                eaten={Math.round(totalMacros.fats)}
+                goal={goal?.fats_g || 65}
+                color={colors.fats}
+                isDark={isDark}
+              />
+              <MacroSummaryRowCompact
+                label="Fiber"
+                eaten={Math.round(totalMacros.fiber)}
+                goal={goal?.fiber_g || 30}
+                color={colors.fiber}
                 isDark={isDark}
               />
             </View>
-          </View>
-        </View>
-
-        {/* Macros Card */}
-        <View style={[styles.macrosCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Macronutrients
-          </Text>
-          
-          <View style={styles.macrosContent}>
-            <MacroBar
-              label="Protein"
-              current={totalMacros.protein}
-              target={goal?.protein_g || 150}
-              color={colors.protein}
-            />
-            <MacroBar
-              label="Carbs"
-              current={totalMacros.carbs}
-              target={goal?.carbs_g || 200}
-              color={colors.carbs}
-            />
-            <MacroBar
-              label="Fats"
-              current={totalMacros.fats}
-              target={goal?.fats_g || 65}
-              color={colors.fats}
-            />
-            <MacroBar
-              label="Fiber"
-              current={totalMacros.fiber}
-              target={goal?.fiber_g || 30}
-              color={colors.fiber}
-            />
           </View>
         </View>
 
@@ -413,15 +543,16 @@ export default function HomeScreen() {
                     {Math.round(meal.totalCalories)} kcal
                   </Text>
                 </View>
+                {/* Blue "+" icon - Opens Add Food for this meal */}
                 <TouchableOpacity
                   style={styles.addMealButton}
                   onPress={() => handleAddFood(meal.type)}
                 >
                   <IconSymbol
-                    ios_icon_name="add.circle"
+                    ios_icon_name="plus.circle.fill"
                     android_material_icon_name="add_circle"
                     size={28}
-                    color={colors.primary}
+                    color={colors.info}
                   />
                 </TouchableOpacity>
               </View>
@@ -454,7 +585,7 @@ export default function HomeScreen() {
                             </Text>
                           )}
                           <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.foods?.serving_amount || 1} {item.foods?.serving_unit || 'serving'}
+                            {getServingDisplayText(item)}
                           </Text>
                         </View>
                         <View style={styles.foodActions}>
@@ -468,7 +599,10 @@ export default function HomeScreen() {
                           </View>
                           <TouchableOpacity
                             style={styles.deleteButton}
-                            onPress={() => handleDeleteFood(item)}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFood(item);
+                            }}
                           >
                             <IconSymbol
                               ios_icon_name="trash"
@@ -493,15 +627,30 @@ export default function HomeScreen() {
   );
 }
 
-function StatItem({ label, value, unit, color, isDark }: any) {
+function MacroSummaryRowCompact({ label, eaten, goal, color, isDark }: any) {
+  const percentage = Math.min((eaten / goal) * 100, 100);
+  
   return (
-    <View style={styles.statItem}>
-      <Text style={[styles.statValue, { color }]}>
-        {value}
-      </Text>
-      <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+    <View style={styles.macroSummaryRowCompact}>
+      <Text style={[styles.macroSummaryLabelCompact, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
         {label}
       </Text>
+      <View style={styles.macroSummaryBarContainer}>
+        <View style={[styles.macroSummaryBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+          <View
+            style={[
+              styles.macroSummaryBarFill,
+              {
+                width: `${percentage}%`,
+                backgroundColor: color,
+              },
+            ]}
+          />
+        </View>
+        <Text style={[styles.macroSummaryProgressCompact, { color: isDark ? colors.textDark : colors.text }]}>
+          {eaten} / {goal}g
+        </Text>
+      </View>
     </View>
   );
 }
@@ -534,6 +683,10 @@ const styles = StyleSheet.create({
   },
   dateButton: {
     padding: spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dateCenter: {
     alignItems: 'center',
@@ -574,31 +727,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.lg,
   },
-  caloriesStats: {
+  macroSummaryCompact: {
     flex: 1,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  statItem: {
+  macroSummaryRowCompact: {
+    gap: 4,
+  },
+  macroSummaryLabelCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  macroSummaryBarContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing.xs,
   },
-  statValue: {
-    ...typography.bodyBold,
-    fontSize: 18,
+  macroSummaryBarBackground: {
+    flex: 1,
+    height: 6,
+    borderRadius: borderRadius.full,
+    overflow: 'hidden',
   },
-  statLabel: {
-    ...typography.caption,
+  macroSummaryBarFill: {
+    height: '100%',
+    borderRadius: borderRadius.full,
   },
-  macrosCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  macrosContent: {
-    gap: spacing.md,
+  macroSummaryProgressCompact: {
+    fontSize: 11,
+    fontWeight: '500',
+    minWidth: 70,
+    textAlign: 'right',
   },
   mealCard: {
     borderRadius: borderRadius.lg,

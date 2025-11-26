@@ -31,6 +31,9 @@ export default function ProgressCircle({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
+  // Calculate remaining calories
+  const remaining = target - current;
+
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       <View style={styles.circleContainer}>
@@ -73,8 +76,8 @@ export default function ProgressCircle({
         </View>
       </View>
       <View style={styles.textContainer}>
-        <Text style={[styles.value, { color: isDark ? colors.textDark : colors.text }]}>
-          {Math.round(current)}
+        <Text style={[styles.value, { color: remaining >= 0 ? (isDark ? colors.textDark : colors.text) : colors.error }]}>
+          {Math.round(remaining)}
         </Text>
         {label && (
           <Text style={[styles.label, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -82,7 +85,7 @@ export default function ProgressCircle({
           </Text>
         )}
         <Text style={[styles.target, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-          / {Math.round(target)}{unit}
+          {Math.round(current)} / {Math.round(target)}{unit}
         </Text>
       </View>
     </View>

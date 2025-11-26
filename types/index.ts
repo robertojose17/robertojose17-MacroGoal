@@ -49,6 +49,7 @@ export interface Food {
   is_favorite?: boolean;
   fdc_id?: number; // FoodData Central ID
   data_type?: string; // FDC data type: 'Branded', 'Foundation', 'Survey (FNDDS)', 'SR Legacy'
+  last_serving_description?: string; // Last used serving description for recent foods
 }
 
 export interface Meal {
@@ -114,4 +115,34 @@ export interface OnboardingData {
   custom_fats?: number;
   preferred_units?: UnitSystem;
   target_weight?: number;
+}
+
+export interface MyMeal {
+  id: string;
+  user_id: string;
+  name: string;
+  note?: string;
+  total_calories: number;
+  total_protein: number;
+  total_carbs: number;
+  total_fats: number;
+  total_fiber: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MyMealItem {
+  id: string;
+  my_meal_id: string;
+  food_id: string;
+  food?: Food;
+  quantity: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber: number;
+  serving_description?: string;
+  grams?: number;
+  created_at?: string;
 }

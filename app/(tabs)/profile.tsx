@@ -101,28 +101,14 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleResetOnboarding = async () => {
-    Alert.alert(
-      'Reset Goals',
-      'This will let you set up your goals again.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            if (user) {
-              await supabase
-                .from('users')
-                .update({ onboarding_completed: false })
-                .eq('id', user.id);
-              
-              router.push('/onboarding/complete');
-            }
-          },
-        },
-      ]
-    );
+  const handleEditGoals = () => {
+    if (!user?.onboarding_completed) {
+      // If onboarding not completed, go to onboarding
+      router.push('/onboarding/complete');
+    } else {
+      // Otherwise, go to edit goals screen
+      router.push('/edit-goals');
+    }
   };
 
   const calculateAge = (dob: string) => {
@@ -324,7 +310,7 @@ export default function ProfileScreen() {
 
             <TouchableOpacity
               style={[styles.editButton, { backgroundColor: colors.primary }]}
-              onPress={handleResetOnboarding}
+              onPress={handleEditGoals}
             >
               <Text style={styles.editButtonText}>Edit Goals</Text>
             </TouchableOpacity>
@@ -339,7 +325,7 @@ export default function ProfileScreen() {
             </Text>
             <TouchableOpacity
               style={[styles.editButton, { backgroundColor: colors.primary }]}
-              onPress={() => router.push('/onboarding/complete')}
+              onPress={handleEditGoals}
             >
               <Text style={styles.editButtonText}>Set Up Goals</Text>
             </TouchableOpacity>

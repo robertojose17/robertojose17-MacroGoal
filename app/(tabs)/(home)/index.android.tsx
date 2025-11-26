@@ -53,7 +53,7 @@ export default function HomeScreen() {
         setEarliestLogDate(new Date(data.date));
       }
     } catch (error) {
-      console.error('[Home] Error loading earliest log date:', error);
+      console.error('[Home Android] Error loading earliest log date:', error);
     }
   }, []);
 
@@ -62,12 +62,12 @@ export default function HomeScreen() {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('[Home] No user found');
+        console.log('[Home Android] No user found');
         setLoading(false);
         return;
       }
 
-      console.log('[Home] Loading data for user:', user.id);
+      console.log('[Home Android] Loading data for user:', user.id);
 
       // Load goal
       const { data: goalData, error: goalError } = await supabase
@@ -78,12 +78,12 @@ export default function HomeScreen() {
         .maybeSingle();
 
       if (goalError) {
-        console.error('[Home] Error loading goal:', goalError);
+        console.error('[Home Android] Error loading goal:', goalError);
       } else if (goalData) {
-        console.log('[Home] Goal loaded:', goalData);
+        console.log('[Home Android] Goal loaded:', goalData);
         setGoal(goalData);
       } else {
-        console.log('[Home] No active goal found, using defaults');
+        console.log('[Home Android] No active goal found, using defaults');
         setGoal({
           daily_calories: 2000,
           protein_g: 150,
@@ -124,9 +124,9 @@ export default function HomeScreen() {
         .eq('date', dateString);
 
       if (mealsError) {
-        console.error('[Home] Error loading meals:', mealsError);
+        console.error('[Home Android] Error loading meals:', mealsError);
       } else {
-        console.log('[Home] Meals loaded:', mealsData);
+        console.log('[Home Android] Meals loaded:', mealsData);
         
         // Organize meals by type
         const mealsByType: Record<MealType, any[]> = {
@@ -190,7 +190,7 @@ export default function HomeScreen() {
         setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
       }
     } catch (error) {
-      console.error('[Home] Error in loadData:', error);
+      console.error('[Home Android] Error in loadData:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -199,7 +199,7 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[Home] Screen focused, loading data');
+      console.log('[Home Android] Screen focused, loading data');
       loadData();
       loadEarliestLogDate();
     }, [loadData, loadEarliestLogDate])
@@ -211,13 +211,13 @@ export default function HomeScreen() {
   };
 
   const handleAddFood = (mealType: MealType) => {
-    console.log('[Home] Opening add food for meal:', mealType);
+    console.log('[Home Android] Opening add food for meal:', mealType);
     const dateString = selectedDate.toISOString().split('T')[0];
     router.push(`/add-food?meal=${mealType}&date=${dateString}`);
   };
 
   const handleEditFood = (item: any) => {
-    console.log('[Home] Opening edit food:', item.id);
+    console.log('[Home Android] Opening edit food:', item.id);
     const dateString = selectedDate.toISOString().split('T')[0];
     router.push({
       pathname: '/edit-food',
@@ -229,7 +229,7 @@ export default function HomeScreen() {
   };
 
   const handleDeleteFood = async (item: any) => {
-    console.log('[Home] Delete requested for item:', item.id);
+    console.log('[Home Android] Delete requested for item:', item.id);
     
     Alert.alert(
       'Delete this food entry?',
@@ -238,13 +238,13 @@ export default function HomeScreen() {
         {
           text: 'Cancel',
           style: 'cancel',
-          onPress: () => console.log('[Home] Delete cancelled'),
+          onPress: () => console.log('[Home Android] Delete cancelled'),
         },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            console.log('[Home] Delete confirmed, proceeding...');
+            console.log('[Home Android] Delete confirmed, proceeding...');
             
             // Store original state for rollback
             const originalMeals = [...meals];
@@ -253,7 +253,7 @@ export default function HomeScreen() {
             
             try {
               // Optimistic UI update - remove item immediately
-              console.log('[Home] Applying optimistic update...');
+              console.log('[Home Android] Applying optimistic update...');
               const updatedMeals = meals.map(meal => ({
                 ...meal,
                 items: meal.items.filter(i => i.id !== item.id),
@@ -283,7 +283,7 @@ export default function HomeScreen() {
                 fiber: newTotalFib 
               });
               
-              console.log('[Home] Optimistic update applied, now deleting from database...');
+              console.log('[Home Android] Optimistic update applied, now deleting from database...');
               
               // Get current user for verification
               const { data: { user } } = await supabase.auth.getUser();
@@ -291,8 +291,8 @@ export default function HomeScreen() {
                 throw new Error('No authenticated user found');
               }
               
-              console.log('[Home] Authenticated user:', user.id);
-              console.log('[Home] Deleting meal_item with id:', item.id);
+              console.log('[Home Android] Authenticated user:', user.id);
+              console.log('[Home Android] Deleting meal_item with id:', item.id);
               
               // Delete from database
               const { error, data } = await supabase
@@ -302,24 +302,24 @@ export default function HomeScreen() {
                 .select();
               
               if (error) {
-                console.error('[Home] Supabase delete error:', error);
-                console.error('[Home] Error details:', JSON.stringify(error, null, 2));
+                console.error('[Home Android] Supabase delete error:', error);
+                console.error('[Home Android] Error details:', JSON.stringify(error, null, 2));
                 throw error;
               }
               
-              console.log('[Home] Delete response:', data);
-              console.log('[Home] ✅ Food deleted successfully from database');
+              console.log('[Home Android] Delete response:', data);
+              console.log('[Home Android] ✅ Food deleted successfully from database');
               
               // Success - the optimistic update is already applied
               // No need to reload, UI is already updated
               
             } catch (error: any) {
-              console.error('[Home] ❌ Error in handleDeleteFood:', error);
-              console.error('[Home] Error message:', error?.message);
-              console.error('[Home] Error details:', JSON.stringify(error, null, 2));
+              console.error('[Home Android] ❌ Error in handleDeleteFood:', error);
+              console.error('[Home Android] Error message:', error?.message);
+              console.error('[Home Android] Error details:', JSON.stringify(error, null, 2));
               
               // Rollback optimistic update
-              console.log('[Home] Rolling back optimistic update...');
+              console.log('[Home Android] Rolling back optimistic update...');
               setMeals(originalMeals);
               setTotalCalories(originalTotalCalories);
               setTotalMacros(originalTotalMacros);
@@ -380,18 +380,18 @@ export default function HomeScreen() {
   const getServingDisplayText = (item: any): string => {
     // Priority 1: Use the stored serving_description (this is what the user selected)
     if (item.serving_description) {
-      console.log('[Home] Using stored serving_description:', item.serving_description);
+      console.log('[Home Android] Using stored serving_description:', item.serving_description);
       return item.serving_description;
     }
 
     // Priority 2: If grams is available, show that
     if (item.grams) {
-      console.log('[Home] Using grams fallback:', item.grams);
+      console.log('[Home Android] Using grams fallback:', item.grams);
       return `${Math.round(item.grams)} g`;
     }
 
     // Priority 3: Last resort fallback (should rarely happen)
-    console.log('[Home] Using quantity fallback');
+    console.log('[Home Android] Using quantity fallback');
     const quantity = item.quantity || 1;
     const servingAmount = item.foods?.serving_amount || 100;
     const servingUnit = item.foods?.serving_unit || 'g';
@@ -672,7 +672,7 @@ const styles = StyleSheet.create({
     ...typography.body,
   },
   scrollContent: {
-    paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
+    paddingTop: spacing.lg,
     paddingHorizontal: spacing.md,
     paddingBottom: 120,
   },

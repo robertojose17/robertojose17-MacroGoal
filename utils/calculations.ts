@@ -125,6 +125,53 @@ export function calculateMacros(
 }
 
 /**
+ * Calculate macros based on preset percentages
+ * @param targetCalories - Target daily calories
+ * @param weight - Weight in kg
+ * @param preset - Macro preset name
+ * @returns Macro breakdown in grams
+ */
+export function calculateMacrosWithPreset(
+  targetCalories: number,
+  weight: number,
+  preset: 'balanced' | 'high_protein' | 'low_carb' | 'keto'
+) {
+  let proteinPercent = 0.30;
+  let carbsPercent = 0.40;
+  let fatsPercent = 0.30;
+
+  switch (preset) {
+    case 'balanced':
+      proteinPercent = 0.30;
+      carbsPercent = 0.40;
+      fatsPercent = 0.30;
+      break;
+    case 'high_protein':
+      proteinPercent = 0.40;
+      carbsPercent = 0.35;
+      fatsPercent = 0.25;
+      break;
+    case 'low_carb':
+      proteinPercent = 0.35;
+      carbsPercent = 0.25;
+      fatsPercent = 0.40;
+      break;
+    case 'keto':
+      proteinPercent = 0.25;
+      carbsPercent = 0.05;
+      fatsPercent = 0.70;
+      break;
+  }
+
+  const protein = Math.round((targetCalories * proteinPercent) / 4);
+  const carbs = Math.round((targetCalories * carbsPercent) / 4);
+  const fats = Math.round((targetCalories * fatsPercent) / 9);
+  const fiber = Math.round(targetCalories / 1000 * 14);
+
+  return { protein, carbs, fats, fiber };
+}
+
+/**
  * Calculate goal from onboarding data
  * Note: Onboarding data should already have weight in kg and height in cm
  * @param data - OnboardingData with weight in kg and height in cm

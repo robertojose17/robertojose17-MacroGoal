@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,11 +27,7 @@ export default function EditFoodScreen() {
   const [fats, setFats] = useState('');
   const [fiber, setFiber] = useState('');
 
-  useEffect(() => {
-    loadItem();
-  }, [itemId]);
-
-  const loadItem = async () => {
+  const loadItem = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -98,7 +94,11 @@ export default function EditFoodScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [itemId, router]);
+
+  useEffect(() => {
+    loadItem();
+  }, [loadItem]);
 
   const handleSave = async () => {
     if (!grams || parseFloat(grams) <= 0) {

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,8 +14,19 @@ export default function QuickAddScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
+
+  // Pre-fill parameters from AI Estimator
+  const prefillName = (params.prefillName as string) || '';
+  const prefillCalories = (params.prefillCalories as string) || '';
+  const prefillProtein = (params.prefillProtein as string) || '';
+  const prefillCarbs = (params.prefillCarbs as string) || '';
+  const prefillFats = (params.prefillFats as string) || '';
+  const prefillFiber = (params.prefillFiber as string) || '';
 
   const [foodName, setFoodName] = useState('');
   const [calories, setCalories] = useState('');
@@ -24,6 +35,20 @@ export default function QuickAddScreen() {
   const [fats, setFats] = useState('');
   const [fiber, setFiber] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Pre-fill form when component mounts
+  useEffect(() => {
+    console.log('[QuickAdd] Checking for pre-fill data');
+    if (prefillName) {
+      console.log('[QuickAdd] Pre-filling form with AI estimate data');
+      setFoodName(prefillName);
+      setCalories(prefillCalories);
+      setProtein(prefillProtein);
+      setCarbs(prefillCarbs);
+      setFats(prefillFats);
+      setFiber(prefillFiber);
+    }
+  }, [prefillName, prefillCalories, prefillProtein, prefillCarbs, prefillFats, prefillFiber]);
 
   const handleSave = async () => {
     if (!foodName.trim() || !calories.trim()) {
@@ -34,41 +59,92 @@ export default function QuickAddScreen() {
     setSaving(true);
 
     try {
+      console.log('[QuickAdd] Starting Quick Add save process...');
+      console.log('[QuickAdd] Mode:', mode);
+      console.log('[QuickAdd] Meal:', mealType, 'Date:', date);
+      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        console.error('[QuickAdd] No user found');
         Alert.alert('Error', 'You must be logged in to add food');
         setSaving(false);
         return;
       }
 
+      console.log('[QuickAdd] User ID:', user.id);
+
       // Create food entry
+      const foodPayload = {
+        name: foodName.trim(),
+        serving_amount: 1,
+        serving_unit: 'serving',
+        calories: parseFloat(calories) || 0,
+        protein: parseFloat(protein) || 0,
+        carbs: parseFloat(carbs) || 0,
+        fats: parseFloat(fats) || 0,
+        fiber: parseFloat(fiber) || 0,
+        user_created: true,
+        created_by: user.id,
+      };
+
+      console.log('[QuickAdd] Creating food with payload:', foodPayload);
+
       const { data: foodData, error: foodError } = await supabase
         .from('foods')
-        .insert({
-          name: foodName.trim(),
-          serving_amount: 1,
-          serving_unit: 'serving',
-          calories: parseFloat(calories) || 0,
-          protein: parseFloat(protein) || 0,
-          carbs: parseFloat(carbs) || 0,
-          fats: parseFloat(fats) || 0,
-          fiber: parseFloat(fiber) || 0,
-          user_created: true,
-          created_by: user.id,
-        })
+        .insert(foodPayload)
         .select()
         .single();
 
       if (foodError) {
         console.error('[QuickAdd] Error creating food:', foodError);
-        Alert.alert('Error', 'Failed to create food entry');
+        Alert.alert('Error', `Failed to create food entry: ${foodError.message}`);
         setSaving(false);
         return;
       }
 
-      console.log('[QuickAdd] Food created:', foodData);
+      console.log('[QuickAdd] Food created successfully:', foodData);
 
+      const finalCalories = parseFloat(calories) || 0;
+      const finalProtein = parseFloat(protein) || 0;
+      const finalCarbs = parseFloat(carbs) || 0;
+      const finalFats = parseFloat(fats) || 0;
+      const finalFiber = parseFloat(fiber) || 0;
+
+      // CHECK MODE: If mymeal, return to builder instead of logging to diary
+      if (mode === 'mymeal') {
+        console.log('[QuickAdd] Mode is mymeal, returning to builder with food item');
+
+        const newFoodItem = {
+          food_id: foodData.id,
+          food: foodData,
+          quantity: 1,
+          calories: finalCalories,
+          protein: finalProtein,
+          carbs: finalCarbs,
+          fats: finalFats,
+          fiber: finalFiber,
+          serving_description: '1 serving',
+          grams: null,
+        };
+
+        console.log('[QuickAdd] Dismissing to builder with food item');
+        
+        // Use dismissTo to go directly back to the builder, skipping add-food
+        router.dismissTo({
+          pathname: returnTo || '/my-meal-builder',
+          params: {
+            mealId: myMealId || '',
+            newFoodItem: JSON.stringify(newFoodItem),
+          },
+        });
+
+        setSaving(false);
+        return;
+      }
+
+      // NORMAL DIARY MODE: Log to diary
       // Create or get meal for the date
+      console.log('[QuickAdd] Looking for existing meal...');
       const { data: existingMeal } = await supabase
         .from('meals')
         .select('id')
@@ -80,6 +156,7 @@ export default function QuickAddScreen() {
       let mealId = existingMeal?.id;
 
       if (!mealId) {
+        console.log('[QuickAdd] No existing meal found, creating new meal...');
         const { data: newMeal, error: mealError } = await supabase
           .from('meals')
           .insert({
@@ -92,43 +169,58 @@ export default function QuickAddScreen() {
 
         if (mealError) {
           console.error('[QuickAdd] Error creating meal:', mealError);
-          Alert.alert('Error', 'Failed to create meal');
+          Alert.alert('Error', `Failed to create meal: ${mealError.message}`);
           setSaving(false);
           return;
         }
 
         mealId = newMeal.id;
+        console.log('[QuickAdd] New meal created:', mealId);
+      } else {
+        console.log('[QuickAdd] Using existing meal:', mealId);
       }
 
       // Add meal item
-      const { error: mealItemError } = await supabase
+      const mealItemPayload = {
+        meal_id: mealId,
+        food_id: foodData.id,
+        quantity: 1,
+        calories: finalCalories,
+        protein: finalProtein,
+        carbs: finalCarbs,
+        fats: finalFats,
+        fiber: finalFiber,
+        serving_description: '1 serving',
+        grams: null,
+      };
+
+      console.log('[QuickAdd] Creating meal item with payload:', mealItemPayload);
+
+      const { data: mealItemData, error: mealItemError } = await supabase
         .from('meal_items')
-        .insert({
-          meal_id: mealId,
-          food_id: foodData.id,
-          quantity: 1,
-          calories: parseFloat(calories) || 0,
-          protein: parseFloat(protein) || 0,
-          carbs: parseFloat(carbs) || 0,
-          fats: parseFloat(fats) || 0,
-          fiber: parseFloat(fiber) || 0,
-        });
+        .insert(mealItemPayload)
+        .select()
+        .single();
 
       if (mealItemError) {
         console.error('[QuickAdd] Error creating meal item:', mealItemError);
-        Alert.alert('Error', 'Failed to add food to meal');
+        Alert.alert('Error', `Failed to add food to meal: ${mealItemError.message}`);
         setSaving(false);
         return;
       }
 
-      console.log('[QuickAdd] Food added successfully, dismissing all screens back to diary');
+      console.log('[QuickAdd] ✅ Meal item created successfully:', mealItemData);
+      console.log('[QuickAdd] Quick Add complete! Navigating back to diary...');
       
-      // Dismiss all screens back to the home/diary screen
-      // This will close quick-add and add-food in one go
-      router.dismissTo('/(tabs)/(home)/');
+      // Success! Navigate back
+      setSaving(false);
+      
+      // Use replace to go directly back to home, which will trigger a refresh
+      router.replace('/(tabs)/(home)/');
+      
     } catch (error) {
-      console.error('[QuickAdd] Error in handleSave:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('[QuickAdd] Unexpected error in handleSave:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
       setSaving(false);
     }
   };
@@ -271,7 +363,9 @@ export default function QuickAddScreen() {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>Add to Diary</Text>
+              <Text style={styles.saveButtonText}>
+                {mode === 'mymeal' ? 'Add to My Meal' : `Add to ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`}
+              </Text>
             )}
           </TouchableOpacity>
 

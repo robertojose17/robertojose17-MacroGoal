@@ -1,13 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
+import { colors, spacing, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { searchByBarcode } from '@/utils/foodDataCentral';
+import { lookupProductByBarcode } from '@/utils/openFoodFacts';
 
 type ScanState = 'scanning' | 'loading' | 'not-found' | 'error';
 
@@ -17,118 +16,160 @@ export default function BarcodeScanScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>('scanning');
-  const [scannedBarcode, setScannedBarcode] = useState<string>('');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const hasScannedRef = useRef(false);
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Prevent multiple scans
+  const isProcessingRef = useRef(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    console.log('[BarcodeScanner] ✓ Screen mounted on platform:', Platform.OS);
-    if (permission && !permission.granted) {
+    console.log('[BarcodeScan] Screen mounted, meal:', mealType, 'date:', date);
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [date, mealType]);
+
+  // Request permission if not granted
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
     }
-  }, [permission]);
+  }, [permission, requestPermission]);
 
-  const handleBarCodeScanned = async ({ data }: { data: string }) => {
+  const handleBarcodeScanned = async (result: BarcodeScanningResult) => {
     // Prevent multiple scans
-    if (hasScannedRef.current || scanState !== 'scanning') {
-      console.log('[BarcodeScanner] Ignoring duplicate scan');
+    if (isProcessingRef.current) {
+      console.log('[BarcodeScan] Already processing a scan, ignoring...');
       return;
     }
 
-    hasScannedRef.current = true;
-    setScannedBarcode(data);
+    isProcessingRef.current = true;
+    const barcode = result.data;
+    
+    console.log('[BarcodeScan] ========== BARCODE DETECTED ==========');
+    console.log('[BarcodeScan] Type:', result.type);
+    console.log('[BarcodeScan] Code:', barcode);
+    
+    setScannedCode(barcode);
     setScanState('loading');
 
-    console.log('[BarcodeScanner] 📷 Scanned barcode:', data);
-    console.log('[BarcodeScanner] 📱 Platform:', Platform.OS);
-    console.log('[BarcodeScanner] Camera stopped, fetching product from FDC...');
+    // Set hard timeout (10 seconds)
+    timeoutRef.current = setTimeout(() => {
+      console.log('[BarcodeScan] ⏱️ Lookup timeout reached');
+      setScanState('error');
+      setErrorMessage('Request timed out. Please check your internet connection and try again.');
+      isProcessingRef.current = false;
+    }, 10000);
 
     try {
-      // Fetch product with a timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000)
-      );
+      console.log('[BarcodeScan] Looking up product in OpenFoodFacts...');
+      const product = await lookupProductByBarcode(barcode);
       
-      const fetchPromise = searchByBarcode(data);
-      
-      const food = await Promise.race([fetchPromise, timeoutPromise]) as any;
+      // Clear timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
 
-      if (food) {
-        console.log('[BarcodeScanner] ✅ Food found from FDC:', food.description);
-        console.log('[BarcodeScanner] Data type:', food.dataType);
-        console.log('[BarcodeScanner] Navigating directly to food-details (NOT diary)');
+      if (product) {
+        console.log('[BarcodeScan] ✅ Product found:', product.product_name);
         
-        // Navigate directly to food-details
-        // IMPORTANT: Always navigate, even if serving size is incomplete
-        router.push({
+        // Navigate directly to Food Details screen
+        router.replace({
           pathname: '/food-details',
           params: {
             meal: mealType,
             date: date,
-            fdcData: JSON.stringify(food),
+            offData: JSON.stringify(product),
             source: 'barcode',
+            mode: mode,
+            returnTo: returnTo || '/add-food',
+            mealId: myMealId,
           },
         });
       } else {
-        console.log('[BarcodeScanner] ⚠️ Food not found in FDC');
+        console.log('[BarcodeScan] ❌ Product not found in OpenFoodFacts');
         setScanState('not-found');
+        isProcessingRef.current = false;
       }
     } catch (error) {
-      console.error('[BarcodeScanner] ❌ Error fetching product:', error);
+      console.error('[BarcodeScan] ❌ Error looking up product:', error);
       
-      let errorMsg = 'Unknown error';
-      
-      if (error instanceof Error) {
-        errorMsg = error.message;
-        
-        // Check if it's an API key error
-        if (errorMsg.includes('API key')) {
-          errorMsg = 'FDC API key invalid or misconfigured.\n\nPlease set the FOODDATA_CENTRAL_API_KEY environment variable and restart the app.';
-        } else if (errorMsg.includes('timeout')) {
-          errorMsg = 'Request timed out. Please check your internet connection and try again.';
-        } else {
-          errorMsg = 'Temporary connection error. Please try again.';
-        }
+      // Clear timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
       
-      setErrorMessage(errorMsg);
       setScanState('error');
+      setErrorMessage(error instanceof Error ? error.message : 'An unexpected error occurred');
+      isProcessingRef.current = false;
     }
   };
 
-  const handleTryAgain = () => {
-    console.log('[BarcodeScanner] Restarting scanner');
-    hasScannedRef.current = false;
-    setScannedBarcode('');
-    setErrorMessage('');
+  const handleScanAgain = () => {
+    console.log('[BarcodeScan] Scan again requested');
+    setScannedCode(null);
+    setErrorMessage(null);
     setScanState('scanning');
+    isProcessingRef.current = false;
   };
 
-  const handleAddManually = () => {
-    console.log('[BarcodeScanner] Navigating to quick add');
-    router.push(`/quick-add?meal=${mealType}&date=${date}`);
+  const handleSearchLibrary = () => {
+    console.log('[BarcodeScan] Navigating to search library');
+    router.replace({
+      pathname: '/food-search',
+      params: {
+        meal: mealType,
+        date: date,
+      },
+    });
   };
 
+  const handleQuickAdd = () => {
+    console.log('[BarcodeScan] Navigating to quick add');
+    router.replace({
+      pathname: '/quick-add',
+      params: {
+        meal: mealType,
+        date: date,
+      },
+    });
+  };
+
+  // Permission not determined yet
   if (!permission) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.loadingContainer}>
+      <View style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+        <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.messageText, { color: isDark ? colors.textDark : colors.text }]}>
+            Loading camera...
+          </Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
+  // Permission not granted
   if (!permission.granted) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+      <View style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <IconSymbol
               ios_icon_name="chevron.left"
               android_material_icon_name="arrow_back"
@@ -136,23 +177,20 @@ export default function BarcodeScanScreen() {
               color={isDark ? colors.textDark : colors.text}
             />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Scan Barcode
           </Text>
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.permissionContainer}>
-          <IconSymbol
-            ios_icon_name="camera"
-            android_material_icon_name="camera_alt"
-            size={64}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
-          <Text style={[styles.permissionText, { color: isDark ? colors.textDark : colors.text }]}>
-            Camera permission is required
+        <View style={styles.centerContent}>
+          <Text style={[styles.permissionIcon, { color: isDark ? colors.textDark : colors.text }]}>
+            📷
           </Text>
-          <Text style={[styles.permissionSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+          <Text style={[styles.permissionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Camera Permission Required
+          </Text>
+          <Text style={[styles.permissionMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             We need access to your camera to scan barcodes
           </Text>
           <TouchableOpacity
@@ -162,156 +200,35 @@ export default function BarcodeScanScreen() {
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // Show error screen
-  if (scanState === 'error') {
-    const isAuthError = errorMessage.includes('API key');
-    
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Scan Barcode
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <View style={styles.notFoundContainer}>
-          <Text style={styles.notFoundIcon}>{isAuthError ? '🔐' : '⚠️'}</Text>
-          <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            {isAuthError ? 'API Key Error' : 'Connection Error'}
-          </Text>
-          <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {errorMessage}
-          </Text>
-          {scannedBarcode && (
-            <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Barcode: {scannedBarcode}
-            </Text>
-          )}
-
-          <View style={styles.notFoundButtons}>
-            <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
-              onPress={handleTryAgain}
-            >
-              <IconSymbol
-                ios_icon_name="camera"
-                android_material_icon_name="camera_alt"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Try Again
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: colors.primary }]}
-              onPress={handleAddManually}
-            >
-              <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={24}
-                color="#FFFFFF"
-              />
-              <Text style={[styles.notFoundButtonText, { color: '#FFFFFF' }]}>
-                Add Manually
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show "not found" screen (camera is stopped)
-  if (scanState === 'not-found') {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Scan Barcode
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <View style={styles.notFoundContainer}>
-          <Text style={styles.notFoundIcon}>🔍</Text>
-          <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Food not found in database
-          </Text>
-          <Text style={[styles.notFoundSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            This product is not available in the FoodData Central database
-          </Text>
-          {scannedBarcode && (
-            <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Barcode: {scannedBarcode}
-            </Text>
-          )}
-
-          <View style={styles.notFoundButtons}>
-            <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: isDark ? colors.borderDark : colors.border }]}
-              onPress={handleTryAgain}
-            >
-              <IconSymbol
-                ios_icon_name="camera"
-                android_material_icon_name="camera_alt"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.notFoundButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                Scan Another Barcode
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.notFoundButton, { backgroundColor: colors.primary }]}
-              onPress={handleAddManually}
-            >
-              <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={24}
-                color="#FFFFFF"
-              />
-              <Text style={[styles.notFoundButtonText, { color: '#FFFFFF' }]}>
-                Add Manually
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show loading screen (camera is stopped)
+  // Loading state
   if (scanState === 'loading') {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+      <View style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
+            Searching product...
+          </Text>
+          {scannedCode && (
+            <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Barcode: {scannedCode}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // Not found state
+  if (scanState === 'not-found') {
+    return (
+      <View style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <IconSymbol
               ios_icon_name="chevron.left"
               android_material_icon_name="arrow_back"
@@ -319,78 +236,166 @@ export default function BarcodeScanScreen() {
               color={isDark ? colors.textDark : colors.text}
             />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Scan Barcode
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Product Not Found
           </Text>
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Looking up product in FoodData Central...
+        <View style={styles.centerContent}>
+          <Text style={styles.notFoundIcon}>🔍</Text>
+          <Text style={[styles.notFoundTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Product Not Found
           </Text>
-          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Platform: {Platform.OS}
+          <Text style={[styles.notFoundMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            We couldn&apos;t find this product in OpenFoodFacts database
           </Text>
-          {scannedBarcode && (
-            <Text style={[styles.barcodeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Barcode: {scannedBarcode}
+          {scannedCode && (
+            <Text style={[styles.notFoundBarcode, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Barcode: {scannedCode}
             </Text>
           )}
+
+          <View style={styles.notFoundButtons}>
+            <TouchableOpacity
+              style={[styles.notFoundButton, { backgroundColor: colors.primary }]}
+              onPress={handleScanAgain}
+            >
+              <IconSymbol
+                ios_icon_name="barcode.viewfinder"
+                android_material_icon_name="qr_code_scanner"
+                size={20}
+                color="#FFFFFF"
+              />
+              <Text style={styles.notFoundButtonText}>Scan Again</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: colors.primary }]}
+              onPress={handleSearchLibrary}
+            >
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={[styles.notFoundButtonTextAlt, { color: colors.primary }]}>Search Library</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.notFoundButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: colors.primary }]}
+              onPress={handleQuickAdd}
+            >
+              <IconSymbol
+                ios_icon_name="pencil"
+                android_material_icon_name="edit"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={[styles.notFoundButtonTextAlt, { color: colors.primary }]}>Quick Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // Show camera view (scanning state)
+  // Error state
+  if (scanState === 'error') {
+    return (
+      <View style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Error
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.centerContent}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Something Went Wrong
+          </Text>
+          <Text style={[styles.errorMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {errorMessage || 'An unexpected error occurred'}
+          </Text>
+
+          <View style={styles.errorButtons}>
+            <TouchableOpacity
+              style={[styles.errorButton, { backgroundColor: colors.primary }]}
+              onPress={handleScanAgain}
+            >
+              <Text style={styles.errorButtonText}>Try Again</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.errorButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderWidth: 1, borderColor: colors.primary }]}
+              onPress={handleSearchLibrary}
+            >
+              <Text style={[styles.errorButtonTextAlt, { color: colors.primary }]}>Search Manually</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // Scanning state - show camera
   return (
-    <View style={styles.fullScreenContainer}>
+    <View style={styles.container}>
       <CameraView
         style={styles.camera}
         facing="back"
         barcodeScannerSettings={{
-          barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
+          barcodeTypes: [
+            'ean13',
+            'ean8',
+            'upc_a',
+            'upc_e',
+            'code128',
+            'code39',
+            'qr',
+          ],
         }}
-        onBarcodeScanned={handleBarCodeScanned}
+        onBarcodeScanned={handleBarcodeScanned}
       >
-        <SafeAreaView style={styles.cameraOverlay} edges={['top']}>
-          <View style={styles.headerTransparent}>
-            <TouchableOpacity 
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
+        {/* Header overlay */}
+        <View style={styles.cameraHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.cameraBackButton}>
+            <View style={styles.cameraBackButtonInner}>
               <IconSymbol
                 ios_icon_name="chevron.left"
                 android_material_icon_name="arrow_back"
-                size={28}
+                size={24}
                 color="#FFFFFF"
               />
-            </TouchableOpacity>
-            <Text style={styles.titleWhite}>
-              Scan Barcode
-            </Text>
-            <View style={{ width: 28 }} />
-          </View>
-
-          <View style={styles.scanAreaContainer}>
-            <View style={styles.scanArea}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
             </View>
-            <Text style={styles.instructionText}>
-              Position barcode within the frame
-            </Text>
-            <Text style={styles.fdcBadge}>
-              Powered by FoodData Central (USDA)
-            </Text>
-            <Text style={styles.platformBadge}>
-              Running on {Platform.OS}
-            </Text>
-          </View>
-        </SafeAreaView>
+          </TouchableOpacity>
+        </View>
+
+        {/* Scanning frame */}
+        <View style={styles.scanningFrame}>
+          <View style={styles.frameCornerTopLeft} />
+          <View style={styles.frameCornerTopRight} />
+          <View style={styles.frameCornerBottomLeft} />
+          <View style={styles.frameCornerBottomRight} />
+        </View>
+
+        {/* Instruction text */}
+        <View style={styles.instructionContainer}>
+          <Text style={styles.instructionText}>
+            Position barcode within the frame
+          </Text>
+        </View>
       </CameraView>
     </View>
   );
@@ -400,64 +405,129 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  fullScreenContainer: {
+  camera: {
     flex: 1,
-    backgroundColor: '#000000',
   },
-  loadingContainer: {
-    flex: 1,
+  cameraHeader: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 0,
+    right: 0,
+    paddingHorizontal: spacing.md,
+    zIndex: 10,
+  },
+  cameraBackButton: {
+    width: 44,
+    height: 44,
+  },
+  cameraBackButtonInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
+  },
+  scanningFrame: {
+    position: 'absolute',
+    top: '30%',
+    left: '10%',
+    right: '10%',
+    height: 200,
+  },
+  frameCornerTopLeft: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 40,
+    height: 40,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderColor: '#FFFFFF',
+  },
+  frameCornerTopRight: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderColor: '#FFFFFF',
+  },
+  frameCornerBottomLeft: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: 40,
+    height: 40,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderColor: '#FFFFFF',
+  },
+  frameCornerBottomRight: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderColor: '#FFFFFF',
+  },
+  instructionContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  instructionText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
-    paddingBottom: spacing.md,
-  },
-  headerTransparent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : spacing.sm,
+    paddingTop: Platform.OS === 'android' ? spacing.lg : spacing.md,
     paddingBottom: spacing.md,
   },
   backButton: {
     padding: spacing.xs,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: borderRadius.full,
   },
-  title: {
+  headerTitle: {
     ...typography.h3,
     flex: 1,
     textAlign: 'center',
   },
-  titleWhite: {
-    ...typography.h3,
-    flex: 1,
-    textAlign: 'center',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  permissionContainer: {
+  centerContent: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
   },
-  permissionText: {
-    ...typography.h3,
-    marginTop: spacing.lg,
+  messageText: {
+    ...typography.body,
+    marginTop: spacing.md,
+  },
+  permissionIcon: {
+    fontSize: 80,
+    marginBottom: spacing.lg,
+  },
+  permissionTitle: {
+    ...typography.h2,
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
-  permissionSubtext: {
+  permissionMessage: {
     ...typography.body,
     textAlign: 'center',
     marginBottom: spacing.xl,
@@ -465,18 +535,20 @@ const styles = StyleSheet.create({
   permissionButton: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: 8,
   },
   permissionButtonText: {
     color: '#FFFFFF',
-    fontWeight: '600',
     fontSize: 16,
+    fontWeight: '600',
   },
-  notFoundContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
+  loadingText: {
+    ...typography.h3,
+    marginTop: spacing.lg,
+  },
+  loadingSubtext: {
+    ...typography.caption,
+    marginTop: spacing.sm,
   },
   notFoundIcon: {
     fontSize: 80,
@@ -487,17 +559,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
-  notFoundSubtext: {
+  notFoundMessage: {
     ...typography.body,
     textAlign: 'center',
-    marginBottom: spacing.md,
-    lineHeight: 22,
+    marginBottom: spacing.sm,
   },
-  barcodeText: {
+  notFoundBarcode: {
     ...typography.caption,
-    textAlign: 'center',
     marginBottom: spacing.xl,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontStyle: 'italic',
   },
   notFoundButtons: {
     width: '100%',
@@ -508,107 +578,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
+    borderRadius: 8,
     gap: spacing.sm,
   },
   notFoundButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
-  camera: {
-    flex: 1,
+  notFoundButtonTextAlt: {
+    fontSize: 16,
+    fontWeight: '600',
   },
-  cameraOverlay: {
-    flex: 1,
+  errorIcon: {
+    fontSize: 80,
+    marginBottom: spacing.lg,
   },
-  scanAreaContainer: {
-    flex: 1,
+  errorTitle: {
+    ...typography.h2,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    ...typography.body,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  errorButtons: {
+    width: '100%',
+    gap: spacing.md,
+  },
+  errorButton: {
+    paddingVertical: spacing.md,
+    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  scanArea: {
-    width: 280,
-    height: 200,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    position: 'relative',
-  },
-  corner: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderColor: '#FFFFFF',
-  },
-  topLeft: {
-    top: -2,
-    left: -2,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-  },
-  topRight: {
-    top: -2,
-    right: -2,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-  },
-  bottomLeft: {
-    bottom: -2,
-    left: -2,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-  },
-  bottomRight: {
-    bottom: -2,
-    right: -2,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-  },
-  instructionText: {
+  errorButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    marginTop: spacing.xl,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
-  fdcBadge: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: spacing.sm,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-    opacity: 0.8,
-  },
-  platformBadge: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '500',
-    marginTop: spacing.xs,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-    opacity: 0.6,
-  },
-  loadingText: {
-    fontSize: 18,
+  errorButtonTextAlt: {
+    fontSize: 16,
     fontWeight: '600',
-    marginTop: spacing.lg,
-    textAlign: 'center',
-  },
-  loadingSubtext: {
-    fontSize: 14,
-    marginTop: spacing.sm,
-    textAlign: 'center',
   },
 });
