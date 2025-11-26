@@ -1,7 +1,72 @@
 
-# ⚠️ ACTION REQUIRED: Configure FDC API Key
+# ⚠️ ACTION REQUIRED: Configure API Keys
 
-## What Was Fixed
+## 🎯 Two API Keys Needed
+
+### 1. Google AI API Key (For AI Meal Estimator) - NEW ✨
+### 2. FDC API Key (For Food Library)
+
+---
+
+## 🆕 1. Google AI API Key (AI Meal Estimator)
+
+### What Was Implemented
+
+The AI Meal Estimator now uses **Google Gemini 1.5 Flash** AI:
+
+1. ✅ Official `@google/genai` SDK integration
+2. ✅ Supabase Edge Function deployed
+3. ✅ Text + image analysis support
+4. ✅ Comprehensive error handling
+5. ✅ Detailed logging and monitoring
+
+### Quick Setup (5 minutes)
+
+#### Step 1: Get Google AI API Key (2 min)
+
+1. Visit: **https://aistudio.google.com/app/apikey**
+2. Sign in with your Google account
+3. Click **"Get API Key"** or **"Create API Key"**
+4. Copy the generated key
+
+#### Step 2: Add to Supabase (2 min)
+
+1. Open: **https://supabase.com/dashboard**
+2. Select project: `esgptfiofoaeguslgvcq`
+3. Navigate to: **Edge Functions → Settings → Secrets**
+4. Click **"Add Secret"**
+5. Enter:
+   - **Name**: `GOOGLE_AI_API_KEY`
+   - **Value**: [Paste your API key]
+6. Click **"Save"**
+
+#### Step 3: Test (1 min)
+
+1. Open the app
+2. Go to: **Diary → Add Food → AI Meal Estimator**
+3. Enter: `"chipotle bowl chicken no rice"`
+4. Click: **"Estimate Macros"**
+5. Verify: Results appear with calories and macros
+
+### Success Indicators
+
+✅ No "Missing GOOGLE_AI_API_KEY" error
+✅ Results appear within 5 seconds
+✅ Detailed ingredient breakdown
+✅ Confidence score displayed
+✅ Logs show "✅ Estimation successful!"
+
+### Documentation
+
+- `SETUP_GOOGLE_AI_API_KEY.md` - Detailed setup guide
+- `AI_GEMINI_INTEGRATION.md` - Technical documentation
+- `CHECKLIST.md` - Complete checklist
+
+---
+
+## 2. FDC API Key (Food Library)
+
+### What Was Fixed
 
 The FoodData Central (FDC) integration has been fixed with:
 
