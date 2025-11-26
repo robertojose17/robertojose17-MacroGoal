@@ -829,44 +829,45 @@ export default function AddFoodScreen() {
     const macrosText = `P: ${Math.round(food.protein)}g • C: ${Math.round(food.carbs)}g • F: ${Math.round(food.fats)}g`;
     
     return (
-      <View 
-        key={food.id ?? `recent-food-${index}`}
-        style={[
-          styles.foodCard,
-          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
-        ]}
-      >
-        <Pressable
-          style={styles.foodInfoPressable}
-          onPress={() => handleOpenRecentFoodDetails(food)}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+      <React.Fragment key={food.id ?? `recent-food-${index}`}>
+        <View 
+          style={[
+            styles.foodCard,
+            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+          ]}
         >
-          <View style={styles.foodInfo}>
-            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {food.name}
-            </Text>
-            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {food.brand ? `${food.brand} • ` : ''}{servingText} • {Math.round(food.calories)} cal
-            </Text>
-            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {macrosText}
-            </Text>
-          </View>
-        </Pressable>
-        
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => handleAddRecentFood(food)}
-          activeOpacity={0.7}
-        >
-          <IconSymbol
-            ios_icon_name="plus"
-            android_material_icon_name="add"
-            size={20}
-            color="#FFFFFF"
-          />
-        </TouchableOpacity>
-      </View>
+          <Pressable
+            style={styles.foodInfoPressable}
+            onPress={() => handleOpenRecentFoodDetails(food)}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <View style={styles.foodInfo}>
+              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                {food.name}
+              </Text>
+              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {food.brand ? `${food.brand} • ` : ''}{servingText} • {Math.round(food.calories)} cal
+              </Text>
+              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {macrosText}
+              </Text>
+            </View>
+          </Pressable>
+          
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => handleAddRecentFood(food)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="plus"
+              android_material_icon_name="add"
+              size={20}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+        </View>
+      </React.Fragment>
     );
   };
 
@@ -884,40 +885,41 @@ export default function AddFoodScreen() {
     const macrosText = `P: ${protein}g • C: ${carbs}g • F: ${fat}g`;
     
     return (
-      <View 
-        key={product.code ?? `search-result-${index}`}
-        style={[
-          styles.foodCard,
-          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
-        ]}
-      >
-        <Pressable
-          style={styles.foodInfoPressable}
-          onPress={() => handleOpenSearchResultDetails(product)}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+      <React.Fragment key={product.code ?? `search-result-${index}`}>
+        <View 
+          style={[
+            styles.foodCard,
+            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+          ]}
         >
-          <View style={styles.foodInfo}>
-            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {displayName}
-            </Text>
-            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {displayBrand ? `${displayBrand} • ` : ''}{servingText} • {calories} cal
-            </Text>
-            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {macrosText}
-            </Text>
+          <Pressable
+            style={styles.foodInfoPressable}
+            onPress={() => handleOpenSearchResultDetails(product)}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <View style={styles.foodInfo}>
+              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                {displayName}
+              </Text>
+              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {displayBrand ? `${displayBrand} • ` : ''}{servingText} • {calories} cal
+              </Text>
+              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {macrosText}
+              </Text>
+            </View>
+          </Pressable>
+          
+          <View style={styles.chevronContainer}>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
           </View>
-        </Pressable>
-        
-        <View style={styles.chevronContainer}>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron_right"
-            size={20}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
         </View>
-      </View>
+      </React.Fragment>
     );
   };
 
@@ -932,97 +934,99 @@ export default function AddFoodScreen() {
     const macrosText = `P: ${protein}g • C: ${carbs}g • F: ${fat}g`;
 
     return (
-      <View 
-        key={favorite.id ?? `favorite-${index}`}
-        style={[
-          styles.foodCard,
-          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
-        ]}
-      >
-        <Pressable
-          style={styles.foodInfoPressable}
-          onPress={() => handleOpenFavoriteDetails(favorite)}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+      <React.Fragment key={favorite.id ?? `favorite-${index}`}>
+        <View 
+          style={[
+            styles.foodCard,
+            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+          ]}
         >
-          <View style={styles.foodInfo}>
-            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {favorite.food_name}
-            </Text>
-            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
-            </Text>
-            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {macrosText}
-            </Text>
+          <Pressable
+            style={styles.foodInfoPressable}
+            onPress={() => handleOpenFavoriteDetails(favorite)}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <View style={styles.foodInfo}>
+              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                {favorite.food_name}
+              </Text>
+              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
+              </Text>
+              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {macrosText}
+              </Text>
+            </View>
+          </Pressable>
+          
+          <View style={styles.favoriteActions}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAddFavorite(favorite)}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={() => handleRemoveFavorite(favorite.id)}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="trash"
+                android_material_icon_name="delete"
+                size={18}
+                color="#FF3B30"
+              />
+            </TouchableOpacity>
           </View>
-        </Pressable>
-        
-        <View style={styles.favoriteActions}>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => handleAddFavorite(favorite)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="plus"
-              android_material_icon_name="add"
-              size={20}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.removeButton}
-            onPress={() => handleRemoveFavorite(favorite.id)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="trash"
-              android_material_icon_name="delete"
-              size={18}
-              color="#FF3B30"
-            />
-          </TouchableOpacity>
         </View>
-      </View>
+      </React.Fragment>
     );
   };
 
   const renderMyMealCard = (meal: MyMeal, index: number) => {
     return (
-      <TouchableOpacity
-        key={meal.id ?? `my-meal-${index}`}
-        style={[
-          styles.mealCard,
-          { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
-        ]}
-        onPress={() => handleOpenMyMeal(meal)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.mealInfo}>
-          <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {meal.name}
-          </Text>
-          {meal.note && (
-            <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {meal.note}
+      <React.Fragment key={meal.id ?? `my-meal-${index}`}>
+        <TouchableOpacity
+          style={[
+            styles.mealCard,
+            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+          ]}
+          onPress={() => handleOpenMyMeal(meal)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.mealInfo}>
+            <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
+              {meal.name}
             </Text>
-          )}
-          <View style={styles.mealStats}>
-            <Text style={[styles.mealCalories, { color: colors.calories }]}>
-              {Math.round(meal.total_calories)} cal
-            </Text>
-            <Text style={[styles.mealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              P: {Math.round(meal.total_protein)}g • C: {Math.round(meal.total_carbs)}g • F: {Math.round(meal.total_fats)}g
-            </Text>
+            {meal.note && (
+              <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {meal.note}
+              </Text>
+            )}
+            <View style={styles.mealStats}>
+              <Text style={[styles.mealCalories, { color: colors.calories }]}>
+                {Math.round(meal.total_calories)} cal
+              </Text>
+              <Text style={[styles.mealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                P: {Math.round(meal.total_protein)}g • C: {Math.round(meal.total_carbs)}g • F: {Math.round(meal.total_fats)}g
+              </Text>
+            </View>
           </View>
-        </View>
-        <IconSymbol
-          ios_icon_name="chevron.right"
-          android_material_icon_name="chevron_right"
-          size={20}
-          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-        />
-      </TouchableOpacity>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="chevron_right"
+            size={20}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </React.Fragment>
     );
   };
 
