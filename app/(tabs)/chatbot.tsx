@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,16 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
+
+// Generate a unique ID for each message
+let messageIdCounter = 0;
+const generateMessageId = () => {
+  messageIdCounter += 1;
+  return `msg-${Date.now()}-${messageIdCounter}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// Extended message type with guaranteed ID
+type MessageWithId = ChatMessage & { id: string };
 
 type AIEstimate = {
   name: string;
@@ -37,6 +47,7 @@ export default function ChatbotScreen() {
   const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
   const isMountedRef = useRef(true);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Extract context from params (passed from Add Food screen)
   const mode = (params.mode as string) || 'diary';
@@ -45,8 +56,9 @@ export default function ChatbotScreen() {
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<MessageWithId[]>([
     {
+      id: generateMessageId(),
       role: 'assistant',
       content: 'Describe the meal you want me to estimate. The more details you include — ingredients, portions, extras, sauces, or any modifications — the more accurate your calories and macros will be.',
       timestamp: Date.now(),
@@ -58,27 +70,47 @@ export default function ChatbotScreen() {
 
   const { sendMessage, loading } = useChatbot();
 
+  // Setup and cleanup
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
   }, []);
 
-  useEffect(() => {
-    // Scroll to bottom when messages change
-    setTimeout(() => {
-      if (isMountedRef.current) {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
+  // Scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    if (!isMountedRef.current) return;
+    
+    // Clear any existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    // Set new timeout
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current && scrollViewRef.current) {
+        try {
+          scrollViewRef.current.scrollToEnd({ animated: true });
+        } catch (error) {
+          console.warn('[ChatbotScreen] Error scrolling to bottom:', error);
+        }
       }
     }, 100);
-  }, [messages]);
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages.length, scrollToBottom]);
 
   /**
    * Parse AI response to extract macro estimates
    * Looks for patterns like "Calories: 450" or "Protein: 25g"
    */
-  const parseAIEstimate = (content: string, userMessage: string): AIEstimate | null => {
+  const parseAIEstimate = useCallback((content: string, userMessage: string): AIEstimate | null => {
     try {
       if (!content || typeof content !== 'string') {
         console.log('[Chatbot] Invalid content for parsing');
@@ -127,7 +159,7 @@ export default function ChatbotScreen() {
         const match = content.match(pattern);
         if (match && match[1]) {
           const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed > 0) {
             calories = parsed;
             break;
           }
@@ -139,7 +171,7 @@ export default function ChatbotScreen() {
         const match = content.match(pattern);
         if (match && match[1]) {
           const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed >= 0) {
             protein = parsed;
             break;
           }
@@ -151,7 +183,7 @@ export default function ChatbotScreen() {
         const match = content.match(pattern);
         if (match && match[1]) {
           const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed >= 0) {
             carbs = parsed;
             break;
           }
@@ -163,7 +195,7 @@ export default function ChatbotScreen() {
         const match = content.match(pattern);
         if (match && match[1]) {
           const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed >= 0) {
             fats = parsed;
             break;
           }
@@ -175,7 +207,7 @@ export default function ChatbotScreen() {
         const match = content.match(pattern);
         if (match && match[1]) {
           const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed >= 0) {
             fiber = parsed;
             break;
           }
@@ -210,33 +242,52 @@ export default function ChatbotScreen() {
       console.error('[Chatbot] Error parsing AI estimate:', error);
       return null;
     }
-  };
+  }, []);
 
   const handleSend = async () => {
-    if (!inputText.trim() || loading) return;
+    const trimmedInput = inputText.trim();
+    if (!trimmedInput || loading) return;
 
-    const userMessage: ChatMessage = {
+    const userMessage: MessageWithId = {
+      id: generateMessageId(),
       role: 'user',
-      content: inputText.trim(),
+      content: trimmedInput,
       timestamp: Date.now(),
     };
 
     // Store the user message for meal naming
-    setLastUserMessage(inputText.trim());
+    setLastUserMessage(trimmedInput);
 
     // Add user message to chat
-    setMessages((prev) => [...prev, userMessage]);
-    setInputText('');
+    if (isMountedRef.current) {
+      setMessages((prev) => [...prev, userMessage]);
+      setInputText('');
+    }
 
     try {
       // Prepare messages for API (include system message)
+      const systemMessage: ChatMessage = {
+        role: 'system',
+        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
+      };
+
+      // Filter and validate messages before sending
+      const validMessages = messages.filter((m) => {
+        return m && typeof m === 'object' && m.role && m.content && m.role !== 'system';
+      });
+
       const apiMessages: ChatMessage[] = [
+        systemMessage,
+        ...validMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
         {
-          role: 'system',
-          content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
+          role: userMessage.role,
+          content: userMessage.content,
+          timestamp: userMessage.timestamp,
         },
-        ...messages.filter((m) => m && m.role !== 'system'),
-        userMessage,
       ];
 
       // Send to chatbot
@@ -244,8 +295,9 @@ export default function ChatbotScreen() {
 
       if (!isMountedRef.current) return;
 
-      if (result && result.message) {
-        const assistantMessage: ChatMessage = {
+      if (result && result.message && typeof result.message === 'string') {
+        const assistantMessage: MessageWithId = {
+          id: generateMessageId(),
           role: 'assistant',
           content: result.message,
           timestamp: Date.now(),
@@ -260,7 +312,8 @@ export default function ChatbotScreen() {
         }
       } else {
         // Add error message
-        const errorMessage: ChatMessage = {
+        const errorMessage: MessageWithId = {
+          id: generateMessageId(),
           role: 'assistant',
           content: 'Sorry, I encountered an error. Please try again.',
           timestamp: Date.now(),
@@ -270,8 +323,10 @@ export default function ChatbotScreen() {
     } catch (error) {
       console.error('[ChatbotScreen] Error in handleSend:', error);
       if (!isMountedRef.current) return;
+      
       // Add error message
-      const errorMessage: ChatMessage = {
+      const errorMessage: MessageWithId = {
+        id: generateMessageId(),
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please try again.',
         timestamp: Date.now(),
@@ -280,7 +335,7 @@ export default function ChatbotScreen() {
     }
   };
 
-  const handleLogMeal = () => {
+  const handleLogMeal = useCallback(() => {
     if (!latestEstimate) return;
     
     try {
@@ -307,81 +362,97 @@ export default function ChatbotScreen() {
     } catch (error) {
       console.error('[Chatbot] Error logging meal:', error);
     }
-  };
+  }, [latestEstimate, mealType, date, mode, returnTo, myMealId, router]);
 
-  const formatTime = (timestamp: number | undefined) => {
+  const formatTime = useCallback((timestamp: number | undefined): string => {
     try {
-      if (!timestamp || typeof timestamp !== 'number') return '';
+      if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) {
+        return '';
+      }
       const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return '';
+      if (isNaN(date.getTime())) {
+        return '';
+      }
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     } catch (error) {
-      console.error('[ChatbotScreen] Error formatting time:', error);
+      console.warn('[ChatbotScreen] Error formatting time:', error);
       return '';
     }
-  };
+  }, []);
 
-  // Render a single message with full error handling
-  const renderMessage = (message: ChatMessage | null | undefined, index: number) => {
-    // Safety check: ensure message exists and has required properties
-    if (!message || typeof message !== 'object') {
-      console.warn('[ChatbotScreen] Invalid message at index', index);
-      return null;
-    }
+  // Render a single message with comprehensive error handling
+  const renderMessage = useCallback((message: MessageWithId, index: number) => {
+    try {
+      // Validate message object
+      if (!message || typeof message !== 'object') {
+        console.warn('[ChatbotScreen] Invalid message at index', index);
+        return null;
+      }
 
-    // Ensure message has required properties with defaults
-    const role = message.role || 'assistant';
-    const content = message.content || '';
-    const timestamp = message.timestamp || Date.now();
+      // Extract properties with safe defaults
+      const id = message.id || `fallback-${index}`;
+      const role = message.role || 'assistant';
+      const content = message.content || '';
+      const timestamp = message.timestamp;
 
-    // Create stable unique key
-    const key = `msg-${timestamp}-${index}`;
+      // Skip rendering if no content
+      if (!content) {
+        return null;
+      }
 
-    return (
-      <View
-        key={key}
-        style={[
-          styles.messageWrapper,
-          role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
-        ]}
-      >
+      const isUser = role === 'user';
+
+      return (
         <View
+          key={id}
           style={[
-            styles.messageBubble,
-            role === 'user'
-              ? { backgroundColor: colors.primary }
-              : { backgroundColor: isDark ? colors.cardDark : colors.card },
+            styles.messageWrapper,
+            isUser ? styles.userMessageWrapper : styles.assistantMessageWrapper,
           ]}
         >
-          <Text
+          <View
             style={[
-              styles.messageText,
-              {
-                color: role === 'user' ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
-              },
+              styles.messageBubble,
+              isUser
+                ? { backgroundColor: colors.primary }
+                : { backgroundColor: isDark ? colors.cardDark : colors.card },
             ]}
           >
-            {content}
-          </Text>
-          <Text
-            style={[
-              styles.messageTime,
-              {
-                color:
-                  role === 'user'
-                    ? 'rgba(255, 255, 255, 0.7)'
-                    : isDark
-                    ? colors.textSecondaryDark
-                    : colors.textSecondary,
-              },
-            ]}
-          >
-            {formatTime(timestamp)}
-          </Text>
+            <Text
+              style={[
+                styles.messageText,
+                {
+                  color: isUser ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
+                },
+              ]}
+            >
+              {content}
+            </Text>
+            {timestamp && (
+              <Text
+                style={[
+                  styles.messageTime,
+                  {
+                    color:
+                      isUser
+                        ? 'rgba(255, 255, 255, 0.7)'
+                        : isDark
+                        ? colors.textSecondaryDark
+                        : colors.textSecondary,
+                  },
+                ]}
+              >
+                {formatTime(timestamp)}
+              </Text>
+            )}
+          </View>
         </View>
-      </View>
-    );
-  };
+      );
+    } catch (error) {
+      console.error('[ChatbotScreen] Error rendering message at index', index, error);
+      return null;
+    }
+  }, [isDark, formatTime]);
 
   return (
     <SafeAreaView
@@ -424,7 +495,13 @@ export default function ChatbotScreen() {
         >
           {Array.isArray(messages) && messages.length > 0 ? (
             messages.map((message, index) => renderMessage(message, index))
-          ) : null}
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                No messages yet
+              </Text>
+            </View>
+          )}
           
           {loading && (
             <View style={styles.loadingWrapper}>
@@ -528,6 +605,15 @@ const styles = StyleSheet.create({
   messagesContent: {
     padding: spacing.md,
     paddingBottom: spacing.lg,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  emptyText: {
+    ...typography.body,
   },
   messageWrapper: {
     marginBottom: spacing.md,
