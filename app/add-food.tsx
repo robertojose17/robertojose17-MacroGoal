@@ -68,6 +68,7 @@ export default function AddFoodScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('[AddFood] No user found for My Meals');
+        setMyMeals([]);
         return;
       }
 
@@ -81,12 +82,14 @@ export default function AddFoodScreen() {
 
       if (error) {
         console.error('[AddFood] Error loading My Meals:', error);
+        setMyMeals([]);
       } else {
         console.log('[AddFood] Loaded', mealsData?.length || 0, 'My Meals');
         setMyMeals(mealsData || []);
       }
     } catch (error) {
-      console.error('[AddFood] Error in loadMyMeals:', error);
+      console.error('[AddFood] Error loading My Meals:', error);
+      setMyMeals([]);
     }
   };
 
