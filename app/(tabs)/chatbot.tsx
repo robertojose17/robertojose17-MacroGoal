@@ -69,112 +69,117 @@ export default function ChatbotScreen() {
    * Looks for patterns like "Calories: 450" or "Protein: 25g"
    */
   const parseAIEstimate = (content: string, userMessage: string): AIEstimate | null => {
-    console.log('[Chatbot] Parsing AI response for estimates');
-    
-    // Look for calorie patterns
-    const caloriePatterns = [
-      /calories?[:\s]+(\d+)/i,
-      /(\d+)\s*cal/i,
-      /(\d+)\s*kcal/i,
-    ];
-    
-    // Look for macro patterns
-    const proteinPatterns = [
-      /protein[:\s]+(\d+\.?\d*)\s*g/i,
-      /(\d+\.?\d*)\s*g\s+protein/i,
-    ];
-    
-    const carbsPatterns = [
-      /carb(?:ohydrate)?s?[:\s]+(\d+\.?\d*)\s*g/i,
-      /(\d+\.?\d*)\s*g\s+carb/i,
-    ];
-    
-    const fatsPatterns = [
-      /fats?[:\s]+(\d+\.?\d*)\s*g/i,
-      /(\d+\.?\d*)\s*g\s+fat/i,
-    ];
-    
-    const fiberPatterns = [
-      /fiber[:\s]+(\d+\.?\d*)\s*g/i,
-      /(\d+\.?\d*)\s*g\s+fiber/i,
-    ];
-    
-    // Extract values
-    let calories = 0;
-    let protein = 0;
-    let carbs = 0;
-    let fats = 0;
-    let fiber = 0;
-    
-    // Try to find calories
-    for (const pattern of caloriePatterns) {
-      const match = content.match(pattern);
-      if (match) {
-        calories = parseFloat(match[1]);
-        break;
-      }
-    }
-    
-    // Try to find protein
-    for (const pattern of proteinPatterns) {
-      const match = content.match(pattern);
-      if (match) {
-        protein = parseFloat(match[1]);
-        break;
-      }
-    }
-    
-    // Try to find carbs
-    for (const pattern of carbsPatterns) {
-      const match = content.match(pattern);
-      if (match) {
-        carbs = parseFloat(match[1]);
-        break;
-      }
-    }
-    
-    // Try to find fats
-    for (const pattern of fatsPatterns) {
-      const match = content.match(pattern);
-      if (match) {
-        fats = parseFloat(match[1]);
-        break;
-      }
-    }
-    
-    // Try to find fiber
-    for (const pattern of fiberPatterns) {
-      const match = content.match(pattern);
-      if (match) {
-        fiber = parseFloat(match[1]);
-        break;
-      }
-    }
-    
-    // Only return estimate if we found at least calories
-    if (calories > 0) {
-      console.log('[Chatbot] Found estimate:', { calories, protein, carbs, fats, fiber });
+    try {
+      console.log('[Chatbot] Parsing AI response for estimates');
       
-      // Use user's message as the meal name (truncate if too long)
-      const mealName = userMessage.length > 50 
-        ? userMessage.substring(0, 47) + '...' 
-        : userMessage;
+      // Look for calorie patterns
+      const caloriePatterns = [
+        /calories?[:\s]+(\d+)/i,
+        /(\d+)\s*cal/i,
+        /(\d+)\s*kcal/i,
+      ];
       
-      return {
-        name: mealName,
-        description: content,
-        calories,
-        protein,
-        carbs,
-        fats,
-        fiber,
-        defaultAmount: 1,
-        defaultUnit: 'serving',
-      };
+      // Look for macro patterns
+      const proteinPatterns = [
+        /protein[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+protein/i,
+      ];
+      
+      const carbsPatterns = [
+        /carb(?:ohydrate)?s?[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+carb/i,
+      ];
+      
+      const fatsPatterns = [
+        /fats?[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+fat/i,
+      ];
+      
+      const fiberPatterns = [
+        /fiber[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+fiber/i,
+      ];
+      
+      // Extract values
+      let calories = 0;
+      let protein = 0;
+      let carbs = 0;
+      let fats = 0;
+      let fiber = 0;
+      
+      // Try to find calories
+      for (const pattern of caloriePatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          calories = parseFloat(match[1]);
+          break;
+        }
+      }
+      
+      // Try to find protein
+      for (const pattern of proteinPatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          protein = parseFloat(match[1]);
+          break;
+        }
+      }
+      
+      // Try to find carbs
+      for (const pattern of carbsPatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          carbs = parseFloat(match[1]);
+          break;
+        }
+      }
+      
+      // Try to find fats
+      for (const pattern of fatsPatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          fats = parseFloat(match[1]);
+          break;
+        }
+      }
+      
+      // Try to find fiber
+      for (const pattern of fiberPatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          fiber = parseFloat(match[1]);
+          break;
+        }
+      }
+      
+      // Only return estimate if we found at least calories
+      if (calories > 0) {
+        console.log('[Chatbot] Found estimate:', { calories, protein, carbs, fats, fiber });
+        
+        // Use user's message as the meal name (truncate if too long)
+        const mealName = userMessage.length > 50 
+          ? userMessage.substring(0, 47) + '...' 
+          : userMessage;
+        
+        return {
+          name: mealName,
+          description: content,
+          calories,
+          protein,
+          carbs,
+          fats,
+          fiber,
+          defaultAmount: 1,
+          defaultUnit: 'serving',
+        };
+      }
+      
+      console.log('[Chatbot] No valid estimate found in response');
+      return null;
+    } catch (error) {
+      console.error('[Chatbot] Error parsing AI estimate:', error);
+      return null;
     }
-    
-    console.log('[Chatbot] No valid estimate found in response');
-    return null;
   };
 
   const handleSend = async () => {
@@ -193,34 +198,45 @@ export default function ChatbotScreen() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
 
-    // Prepare messages for API (include system message)
-    const apiMessages: ChatMessage[] = [
-      {
-        role: 'system',
-        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
-      },
-      ...messages.filter((m) => m.role !== 'system'),
-      userMessage,
-    ];
+    try {
+      // Prepare messages for API (include system message)
+      const apiMessages: ChatMessage[] = [
+        {
+          role: 'system',
+          content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
+        },
+        ...messages.filter((m) => m.role !== 'system'),
+        userMessage,
+      ];
 
-    // Send to chatbot
-    const result = await sendMessage({ messages: apiMessages });
+      // Send to chatbot
+      const result = await sendMessage({ messages: apiMessages });
 
-    if (result) {
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: result.message,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-      
-      // Try to parse the estimate from the response
-      const estimate = parseAIEstimate(result.message, lastUserMessage);
-      if (estimate) {
-        console.log('[Chatbot] Setting latest estimate:', estimate);
-        setLatestEstimate(estimate);
+      if (result && result.message) {
+        const assistantMessage: ChatMessage = {
+          role: 'assistant',
+          content: result.message,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        
+        // Try to parse the estimate from the response
+        const estimate = parseAIEstimate(result.message, lastUserMessage);
+        if (estimate) {
+          console.log('[Chatbot] Setting latest estimate:', estimate);
+          setLatestEstimate(estimate);
+        }
+      } else {
+        // Add error message
+        const errorMessage: ChatMessage = {
+          role: 'assistant',
+          content: 'Sorry, I encountered an error. Please try again.',
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
       }
-    } else {
+    } catch (error) {
+      console.error('[ChatbotScreen] Error in handleSend:', error);
       // Add error message
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -234,31 +250,40 @@ export default function ChatbotScreen() {
   const handleLogMeal = () => {
     if (!latestEstimate) return;
     
-    console.log('[Chatbot] Logging meal to diary:', latestEstimate);
-    
-    // Navigate to Quick Add with pre-filled data
-    router.push({
-      pathname: '/quick-add',
-      params: {
-        meal: mealType,
-        date: date,
-        mode: mode,
-        returnTo: returnTo,
-        mealId: myMealId,
-        // Pre-fill data from AI estimate
-        prefillName: latestEstimate.name,
-        prefillCalories: latestEstimate.calories.toString(),
-        prefillProtein: latestEstimate.protein.toString(),
-        prefillCarbs: latestEstimate.carbs.toString(),
-        prefillFats: latestEstimate.fats.toString(),
-        prefillFiber: latestEstimate.fiber.toString(),
-      },
-    });
+    try {
+      console.log('[Chatbot] Logging meal to diary:', latestEstimate);
+      
+      // Navigate to Quick Add with pre-filled data
+      router.push({
+        pathname: '/quick-add',
+        params: {
+          meal: mealType,
+          date: date,
+          mode: mode,
+          returnTo: returnTo,
+          mealId: myMealId,
+          // Pre-fill data from AI estimate
+          prefillName: latestEstimate.name,
+          prefillCalories: latestEstimate.calories.toString(),
+          prefillProtein: latestEstimate.protein.toString(),
+          prefillCarbs: latestEstimate.carbs.toString(),
+          prefillFats: latestEstimate.fats.toString(),
+          prefillFiber: latestEstimate.fiber.toString(),
+        },
+      });
+    } catch (error) {
+      console.error('[Chatbot] Error logging meal:', error);
+    }
   };
 
   const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      console.error('[ChatbotScreen] Error formatting time:', error);
+      return '';
+    }
   };
 
   return (
@@ -301,7 +326,8 @@ export default function ChatbotScreen() {
           showsVerticalScrollIndicator={false}
         >
           {messages.map((message, index) => {
-            const key = message.timestamp ? `msg-${message.timestamp}-${index}` : `msg-${index}`;
+            // Ensure stable, unique key using timestamp and index
+            const key = `msg-${message.timestamp ?? Date.now()}-${index}`;
             return (
               <View
                 key={key}

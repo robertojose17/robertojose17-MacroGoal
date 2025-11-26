@@ -55,27 +55,38 @@ export default function ChatbotScreen() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
 
-    // Prepare messages for API (include system message)
-    const apiMessages: ChatMessage[] = [
-      {
-        role: 'system',
-        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.Start by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
-      },
-      ...messages.filter((m) => m.role !== 'system'),
-      userMessage,
-    ];
+    try {
+      // Prepare messages for API (include system message)
+      const apiMessages: ChatMessage[] = [
+        {
+          role: 'system',
+          content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.Start by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
+        },
+        ...messages.filter((m) => m.role !== 'system'),
+        userMessage,
+      ];
 
-    // Send to chatbot
-    const result = await sendMessage({ messages: apiMessages });
+      // Send to chatbot
+      const result = await sendMessage({ messages: apiMessages });
 
-    if (result) {
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: result.message,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } else {
+      if (result && result.message) {
+        const assistantMessage: ChatMessage = {
+          role: 'assistant',
+          content: result.message,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        // Add error message
+        const errorMessage: ChatMessage = {
+          role: 'assistant',
+          content: 'Sorry, I encountered an error. Please try again.',
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('[ChatbotScreen] Error in handleSend:', error);
       // Add error message
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -87,8 +98,13 @@ export default function ChatbotScreen() {
   };
 
   const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      console.error('[ChatbotScreen] Error formatting time:', error);
+      return '';
+    }
   };
 
   return (
@@ -131,7 +147,8 @@ export default function ChatbotScreen() {
           showsVerticalScrollIndicator={false}
         >
           {messages.map((message, index) => {
-            const key = message.timestamp ? `msg-${message.timestamp}-${index}` : `msg-${index}`;
+            // Ensure stable, unique key using timestamp and index
+            const key = `msg-${message.timestamp ?? Date.now()}-${index}`;
             return (
               <View
                 key={key}
