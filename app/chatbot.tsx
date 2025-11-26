@@ -181,6 +181,11 @@ export default function ChatbotScreen() {
     }
   }, []);
 
+  // Filter valid messages before rendering
+  const validMessages = messages.filter((message) => {
+    return message && typeof message === 'object' && message.content && message.id;
+  });
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -220,30 +225,13 @@ export default function ChatbotScreen() {
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
         >
-          {Array.isArray(messages) && messages.length > 0 ? (
-            messages.map((message, index) => {
-              // Validate message object
-              if (!message || typeof message !== 'object') {
-                console.warn('[ChatbotScreen] Invalid message at index', index);
-                return null;
-              }
-
-              // Extract properties with safe defaults
-              const id = message.id || `fallback-${index}`;
-              const role = message.role || 'assistant';
-              const content = message.content || '';
-              const timestamp = message.timestamp;
-
-              // Skip rendering if no content
-              if (!content) {
-                return null;
-              }
-
-              const isUser = role === 'user';
+          {validMessages.length > 0 ? (
+            validMessages.map((message) => {
+              const isUser = message.role === 'user';
 
               return (
                 <View
-                  key={id}
+                  key={message.id}
                   style={[
                     styles.messageWrapper,
                     isUser ? styles.userMessageWrapper : styles.assistantMessageWrapper,
@@ -265,9 +253,9 @@ export default function ChatbotScreen() {
                         },
                       ]}
                     >
-                      {content}
+                      {message.content}
                     </Text>
-                    {timestamp && (
+                    {message.timestamp && (
                       <Text
                         style={[
                           styles.messageTime,
@@ -281,7 +269,7 @@ export default function ChatbotScreen() {
                           },
                         ]}
                       >
-                        {formatTime(timestamp)}
+                        {formatTime(message.timestamp)}
                       </Text>
                     )}
                   </View>
