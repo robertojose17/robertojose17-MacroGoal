@@ -36,6 +36,7 @@ export default function ChatbotScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
+  const isMountedRef = useRef(true);
 
   // Extract context from params (passed from Add Food screen)
   const mode = (params.mode as string) || 'diary';
@@ -58,9 +59,18 @@ export default function ChatbotScreen() {
   const { sendMessage, loading } = useChatbot();
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     // Scroll to bottom when messages change
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      if (isMountedRef.current) {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }
     }, 100);
   }, [messages]);
 
@@ -70,6 +80,11 @@ export default function ChatbotScreen() {
    */
   const parseAIEstimate = (content: string, userMessage: string): AIEstimate | null => {
     try {
+      if (!content || typeof content !== 'string') {
+        console.log('[Chatbot] Invalid content for parsing');
+        return null;
+      }
+
       console.log('[Chatbot] Parsing AI response for estimates');
       
       // Look for calorie patterns
@@ -110,45 +125,60 @@ export default function ChatbotScreen() {
       // Try to find calories
       for (const pattern of caloriePatterns) {
         const match = content.match(pattern);
-        if (match) {
-          calories = parseFloat(match[1]);
-          break;
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed)) {
+            calories = parsed;
+            break;
+          }
         }
       }
       
       // Try to find protein
       for (const pattern of proteinPatterns) {
         const match = content.match(pattern);
-        if (match) {
-          protein = parseFloat(match[1]);
-          break;
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed)) {
+            protein = parsed;
+            break;
+          }
         }
       }
       
       // Try to find carbs
       for (const pattern of carbsPatterns) {
         const match = content.match(pattern);
-        if (match) {
-          carbs = parseFloat(match[1]);
-          break;
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed)) {
+            carbs = parsed;
+            break;
+          }
         }
       }
       
       // Try to find fats
       for (const pattern of fatsPatterns) {
         const match = content.match(pattern);
-        if (match) {
-          fats = parseFloat(match[1]);
-          break;
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed)) {
+            fats = parsed;
+            break;
+          }
         }
       }
       
       // Try to find fiber
       for (const pattern of fiberPatterns) {
         const match = content.match(pattern);
-        if (match) {
-          fiber = parseFloat(match[1]);
-          break;
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed)) {
+            fiber = parsed;
+            break;
+          }
         }
       }
       
@@ -157,9 +187,9 @@ export default function ChatbotScreen() {
         console.log('[Chatbot] Found estimate:', { calories, protein, carbs, fats, fiber });
         
         // Use user's message as the meal name (truncate if too long)
-        const mealName = userMessage.length > 50 
+        const mealName = userMessage && userMessage.length > 50 
           ? userMessage.substring(0, 47) + '...' 
-          : userMessage;
+          : userMessage || 'AI Estimated Meal';
         
         return {
           name: mealName,
@@ -212,6 +242,8 @@ export default function ChatbotScreen() {
       // Send to chatbot
       const result = await sendMessage({ messages: apiMessages });
 
+      if (!isMountedRef.current) return;
+
       if (result && result.message) {
         const assistantMessage: ChatMessage = {
           role: 'assistant',
@@ -237,6 +269,7 @@ export default function ChatbotScreen() {
       }
     } catch (error) {
       console.error('[ChatbotScreen] Error in handleSend:', error);
+      if (!isMountedRef.current) return;
       // Add error message
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -276,9 +309,11 @@ export default function ChatbotScreen() {
     }
   };
 
-  const formatTime = (timestamp: number) => {
+  const formatTime = (timestamp: number | undefined) => {
     try {
+      if (!timestamp) return '';
       const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return '';
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     } catch (error) {
       console.error('[ChatbotScreen] Error formatting time:', error);
@@ -326,8 +361,8 @@ export default function ChatbotScreen() {
           showsVerticalScrollIndicator={false}
         >
           {messages.map((message, index) => {
-            // Ensure stable, unique key using timestamp and index
-            const key = `msg-${message.timestamp ?? Date.now()}-${index}`;
+            // Create stable unique key using timestamp and index
+            const key = `msg-${message.timestamp || 0}-${index}`;
             return (
               <View
                 key={key}
@@ -352,7 +387,7 @@ export default function ChatbotScreen() {
                       },
                     ]}
                   >
-                    {message.content}
+                    {message.content || ''}
                   </Text>
                   {message.timestamp && (
                     <Text

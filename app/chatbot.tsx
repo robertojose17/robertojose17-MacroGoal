@@ -23,6 +23,7 @@ export default function ChatbotScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
+  const isMountedRef = useRef(true);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -36,9 +37,18 @@ export default function ChatbotScreen() {
   const { sendMessage, loading } = useChatbot();
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     // Scroll to bottom when messages change
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      if (isMountedRef.current) {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }
     }, 100);
   }, [messages]);
 
@@ -69,6 +79,8 @@ export default function ChatbotScreen() {
       // Send to chatbot
       const result = await sendMessage({ messages: apiMessages });
 
+      if (!isMountedRef.current) return;
+
       if (result && result.message) {
         const assistantMessage: ChatMessage = {
           role: 'assistant',
@@ -87,6 +99,7 @@ export default function ChatbotScreen() {
       }
     } catch (error) {
       console.error('[ChatbotScreen] Error in handleSend:', error);
+      if (!isMountedRef.current) return;
       // Add error message
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -97,9 +110,11 @@ export default function ChatbotScreen() {
     }
   };
 
-  const formatTime = (timestamp: number) => {
+  const formatTime = (timestamp: number | undefined) => {
     try {
+      if (!timestamp) return '';
       const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return '';
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     } catch (error) {
       console.error('[ChatbotScreen] Error formatting time:', error);
@@ -147,8 +162,8 @@ export default function ChatbotScreen() {
           showsVerticalScrollIndicator={false}
         >
           {messages.map((message, index) => {
-            // Ensure stable, unique key using timestamp and index
-            const key = `msg-${message.timestamp ?? Date.now()}-${index}`;
+            // Create stable unique key using timestamp and index
+            const key = `msg-${message.timestamp || 0}-${index}`;
             return (
               <View
                 key={key}
@@ -173,7 +188,7 @@ export default function ChatbotScreen() {
                       },
                     ]}
                   >
-                    {message.content}
+                    {message.content || ''}
                   </Text>
                   {message.timestamp && (
                     <Text
