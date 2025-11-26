@@ -400,7 +400,7 @@ export default function AddFoodScreen() {
       router.push({
         pathname: '/food-details',
         params: {
-          offData: JSON.stringify(product),
+          offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
           mode: mode,
