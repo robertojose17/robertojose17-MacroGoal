@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -63,16 +63,6 @@ export default function CopyFromPreviousScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [meals, setMeals] = useState<MealData[]>([]);
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    loadDatesWithData();
-  }, [loadDatesWithData]);
-
-  useEffect(() => {
-    if (selectedDate) {
-      loadMealsForDate(selectedDate);
-    }
-  }, [selectedDate]);
 
   const loadDatesWithData = useCallback(async () => {
     try {
@@ -167,7 +157,7 @@ export default function CopyFromPreviousScreen() {
     }
   }, [router, targetDate]);
 
-  const loadMealsForDate = async (date: string) => {
+  const loadMealsForDate = useCallback(async (date: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -244,7 +234,17 @@ export default function CopyFromPreviousScreen() {
       console.error('[CopyFromPrevious] Error in loadMealsForDate:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadDatesWithData();
+  }, [loadDatesWithData]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      loadMealsForDate(selectedDate);
+    }
+  }, [selectedDate, loadMealsForDate]);
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
@@ -484,7 +484,7 @@ export default function CopyFromPreviousScreen() {
           ) : (
             datesWithData.map((dateData, index) => (
               <TouchableOpacity
-                key={index}
+                key={`date-${dateData.date}-${index}`}
                 style={[
                   styles.dateCard,
                   { backgroundColor: isDark ? colors.cardDark : colors.card }
@@ -572,7 +572,7 @@ export default function CopyFromPreviousScreen() {
 
                 return (
                   <View
-                    key={index}
+                    key={`meal-${meal.type}-${index}`}
                     style={[
                       styles.mealCard,
                       { backgroundColor: isDark ? colors.cardDark : colors.card }
@@ -624,7 +624,7 @@ export default function CopyFromPreviousScreen() {
 
                         return (
                           <TouchableOpacity
-                            key={entryIndex}
+                            key={`entry-${entry.id}-${entryIndex}`}
                             style={[
                               styles.foodItem,
                               entryIndex < meal.entries.length - 1 && styles.foodItemBorder
