@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -28,16 +29,35 @@ const generateMessageId = () => {
 // Extended message type with guaranteed ID
 type MessageWithId = ChatMessage & { id: string };
 
-type AIEstimate = {
+type Ingredient = {
+  id: string;
   name: string;
-  description?: string;
+  quantity: number;
+  unit: string;
   calories: number;
   protein: number;
   carbs: number;
   fats: number;
   fiber: number;
-  defaultAmount: number;
-  defaultUnit: string;
+  included: boolean;
+  // Store original values for proper scaling
+  originalQuantity: number;
+  originalCalories: number;
+  originalProtein: number;
+  originalCarbs: number;
+  originalFats: number;
+  originalFiber: number;
+};
+
+type AIEstimate = {
+  name: string;
+  description?: string;
+  ingredients: Ingredient[];
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFats: number;
+  totalFiber: number;
 };
 
 export default function ChatbotScreen() {
@@ -60,7 +80,7 @@ export default function ChatbotScreen() {
     {
       id: generateMessageId(),
       role: 'assistant',
-      content: 'Describe the meal you want me to estimate. The more details you include — ingredients, portions, extras, sauces, or any modifications — the more accurate your calories and macros will be.',
+      content: 'Describe the meal you want me to estimate. The more details you include the more accurate your calories and macros will be.',
       timestamp: Date.now(),
     },
   ]);
@@ -107,8 +127,8 @@ export default function ChatbotScreen() {
   }, [messages.length, scrollToBottom]);
 
   /**
-   * Parse AI response to extract macro estimates
-   * Looks for patterns like "Calories: 450" or "Protein: 25g"
+   * Parse AI response to extract ingredient-level estimates
+   * First tries to parse JSON format, then falls back to text parsing
    */
   const parseAIEstimate = useCallback((content: string, userMessage: string): AIEstimate | null => {
     try {
@@ -117,16 +137,104 @@ export default function ChatbotScreen() {
         return null;
       }
 
-      console.log('[Chatbot] Parsing AI response for estimates');
+      console.log('[Chatbot] Parsing AI response for ingredient estimates');
       
-      // Look for calorie patterns
+      // Try to extract JSON from the response
+      let jsonData = null;
+      
+      // Look for JSON block in markdown code fence
+      const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonBlockMatch && jsonBlockMatch[1]) {
+        try {
+          jsonData = JSON.parse(jsonBlockMatch[1].trim());
+          console.log('[Chatbot] Found JSON in code block');
+        } catch (e) {
+          console.log('[Chatbot] Failed to parse JSON from code block');
+        }
+      }
+      
+      // Try to find raw JSON object
+      if (!jsonData) {
+        const jsonMatch = content.match(/\{[\s\S]*"ingredients"[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            jsonData = JSON.parse(jsonMatch[0]);
+            console.log('[Chatbot] Found raw JSON object');
+          } catch (e) {
+            console.log('[Chatbot] Failed to parse raw JSON');
+          }
+        }
+      }
+      
+      // If we found JSON with ingredients, parse it
+      if (jsonData && jsonData.ingredients && Array.isArray(jsonData.ingredients)) {
+        console.log('[Chatbot] Parsing structured ingredient data');
+        
+        const ingredients: Ingredient[] = jsonData.ingredients.map((ing: any, index: number) => {
+          const quantity = parseFloat(ing.quantity) || 1;
+          const calories = parseFloat(ing.calories) || 0;
+          const protein = parseFloat(ing.protein) || 0;
+          const carbs = parseFloat(ing.carbs) || 0;
+          const fats = parseFloat(ing.fats) || 0;
+          const fiber = parseFloat(ing.fiber) || 0;
+          
+          return {
+            id: `ing-${Date.now()}-${index}`,
+            name: ing.name || 'Unknown ingredient',
+            quantity,
+            unit: ing.unit || 'serving',
+            calories,
+            protein,
+            carbs,
+            fats,
+            fiber,
+            included: true,
+            // Store original values for proper scaling
+            originalQuantity: quantity,
+            originalCalories: calories,
+            originalProtein: protein,
+            originalCarbs: carbs,
+            originalFats: fats,
+            originalFiber: fiber,
+          };
+        });
+        
+        // Calculate totals
+        const totals = ingredients.reduce((acc, ing) => ({
+          calories: acc.calories + ing.calories,
+          protein: acc.protein + ing.protein,
+          carbs: acc.carbs + ing.carbs,
+          fats: acc.fats + ing.fats,
+          fiber: acc.fiber + ing.fiber,
+        }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
+        
+        const mealName = userMessage && userMessage.length > 50 
+          ? userMessage.substring(0, 47) + '...' 
+          : userMessage || 'AI Estimated Meal';
+        
+        console.log('[Chatbot] Successfully parsed ingredients:', ingredients.length);
+        
+        return {
+          name: mealName,
+          description: content,
+          ingredients,
+          totalCalories: Math.round(totals.calories),
+          totalProtein: Math.round(totals.protein * 10) / 10,
+          totalCarbs: Math.round(totals.carbs * 10) / 10,
+          totalFats: Math.round(totals.fats * 10) / 10,
+          totalFiber: Math.round(totals.fiber * 10) / 10,
+        };
+      }
+      
+      // Fallback: Try to parse text-based format for single total
+      console.log('[Chatbot] Falling back to text-based parsing');
+      
       const caloriePatterns = [
         /calories?[:\s]+(\d+)/i,
         /(\d+)\s*cal/i,
         /(\d+)\s*kcal/i,
       ];
       
-      // Look for macro patterns
       const proteinPatterns = [
         /protein[:\s]+(\d+\.?\d*)\s*g/i,
         /(\d+\.?\d*)\s*g\s+protein/i,
@@ -147,14 +255,12 @@ export default function ChatbotScreen() {
         /(\d+\.?\d*)\s*g\s+fiber/i,
       ];
       
-      // Extract values
       let calories = 0;
       let protein = 0;
       let carbs = 0;
       let fats = 0;
       let fiber = 0;
       
-      // Try to find calories
       for (const pattern of caloriePatterns) {
         const match = content.match(pattern);
         if (match && match[1]) {
@@ -166,7 +272,6 @@ export default function ChatbotScreen() {
         }
       }
       
-      // Try to find protein
       for (const pattern of proteinPatterns) {
         const match = content.match(pattern);
         if (match && match[1]) {
@@ -178,7 +283,6 @@ export default function ChatbotScreen() {
         }
       }
       
-      // Try to find carbs
       for (const pattern of carbsPatterns) {
         const match = content.match(pattern);
         if (match && match[1]) {
@@ -190,7 +294,6 @@ export default function ChatbotScreen() {
         }
       }
       
-      // Try to find fats
       for (const pattern of fatsPatterns) {
         const match = content.match(pattern);
         if (match && match[1]) {
@@ -202,7 +305,6 @@ export default function ChatbotScreen() {
         }
       }
       
-      // Try to find fiber
       for (const pattern of fiberPatterns) {
         const match = content.match(pattern);
         if (match && match[1]) {
@@ -214,25 +316,42 @@ export default function ChatbotScreen() {
         }
       }
       
-      // Only return estimate if we found at least calories
       if (calories > 0) {
-        console.log('[Chatbot] Found estimate:', { calories, protein, carbs, fats, fiber });
+        console.log('[Chatbot] Found single total estimate:', { calories, protein, carbs, fats, fiber });
         
-        // Use user's message as the meal name (truncate if too long)
         const mealName = userMessage && userMessage.length > 50 
           ? userMessage.substring(0, 47) + '...' 
           : userMessage || 'AI Estimated Meal';
         
-        return {
+        // Create a single "ingredient" representing the whole meal
+        const singleIngredient: Ingredient = {
+          id: `ing-${Date.now()}-0`,
           name: mealName,
-          description: content,
+          quantity: 1,
+          unit: 'serving',
           calories,
           protein,
           carbs,
           fats,
           fiber,
-          defaultAmount: 1,
-          defaultUnit: 'serving',
+          included: true,
+          originalQuantity: 1,
+          originalCalories: calories,
+          originalProtein: protein,
+          originalCarbs: carbs,
+          originalFats: fats,
+          originalFiber: fiber,
+        };
+        
+        return {
+          name: mealName,
+          description: content,
+          ingredients: [singleIngredient],
+          totalCalories: Math.round(calories),
+          totalProtein: Math.round(protein * 10) / 10,
+          totalCarbs: Math.round(carbs * 10) / 10,
+          totalFats: Math.round(fats * 10) / 10,
+          totalFiber: Math.round(fiber * 10) / 10,
         };
       }
       
@@ -255,23 +374,43 @@ export default function ChatbotScreen() {
       timestamp: Date.now(),
     };
 
-    // Store the user message for meal naming
     setLastUserMessage(trimmedInput);
-
-    // Add user message to chat
+    
     if (isMountedRef.current) {
       setMessages((prev) => [...prev, userMessage]);
       setInputText('');
     }
 
     try {
-      // Prepare messages for API (include system message)
+      // Enhanced system message requesting structured ingredient data
       const systemMessage: ChatMessage = {
         role: 'system',
-        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
+        content: `You are an AI Meal Estimator. Your job is to estimate calories and macronutrients for meals.
+
+IMPORTANT: You MUST respond with a JSON object in this exact format:
+
+\`\`\`json
+{
+  "ingredients": [
+    {
+      "name": "ingredient name",
+      "quantity": number,
+      "unit": "g" or "oz" or "cup" or "tbsp" or "serving",
+      "calories": number,
+      "protein": number,
+      "carbs": number,
+      "fats": number,
+      "fiber": number
+    }
+  ]
+}
+\`\`\`
+
+Break down the meal into individual ingredients with their estimated quantities and macros. Be specific and realistic with portions. If the user doesn't specify exact amounts, use typical serving sizes.
+
+After the JSON, you can add a brief explanation if needed.`,
       };
 
-      // Filter and validate messages before sending
       const validMessages = messages.filter((m) => {
         return m && typeof m === 'object' && m.role && m.content && m.role !== 'system';
       });
@@ -290,7 +429,6 @@ export default function ChatbotScreen() {
         },
       ];
 
-      // Send to chatbot
       const result = await sendMessage({ messages: apiMessages });
 
       if (!isMountedRef.current) return;
@@ -304,14 +442,20 @@ export default function ChatbotScreen() {
         };
         setMessages((prev) => [...prev, assistantMessage]);
         
-        // Try to parse the estimate from the response
-        const estimate = parseAIEstimate(result.message, lastUserMessage);
+        const estimate = parseAIEstimate(result.message, trimmedInput);
         if (estimate) {
-          console.log('[Chatbot] Setting latest estimate:', estimate);
+          console.log('[Chatbot] Setting latest estimate with', estimate.ingredients.length, 'ingredients');
           setLatestEstimate(estimate);
+        } else {
+          console.log('[Chatbot] Could not parse estimate from response');
+          // Show user-friendly error message
+          Alert.alert(
+            'Unable to Parse Response',
+            'The AI response could not be parsed into ingredient data. Please try rephrasing your meal description or provide more details.',
+            [{ text: 'OK' }]
+          );
         }
       } else {
-        // Add error message
         const errorMessage: MessageWithId = {
           id: generateMessageId(),
           role: 'assistant',
@@ -324,7 +468,6 @@ export default function ChatbotScreen() {
       console.error('[ChatbotScreen] Error in handleSend:', error);
       if (!isMountedRef.current) return;
       
-      // Add error message
       const errorMessage: MessageWithId = {
         id: generateMessageId(),
         role: 'assistant',
@@ -335,13 +478,111 @@ export default function ChatbotScreen() {
     }
   };
 
+  // Update ingredient quantity and recalculate totals
+  const handleQuantityChange = useCallback((ingredientId: string, newQuantity: string) => {
+    if (!latestEstimate) return;
+    
+    const quantity = parseFloat(newQuantity);
+    if (isNaN(quantity) || quantity < 0) return;
+    
+    setLatestEstimate((prev) => {
+      if (!prev) return prev;
+      
+      const updatedIngredients = prev.ingredients.map((ing) => {
+        if (ing.id !== ingredientId) return ing;
+        
+        // Calculate ratio based on original quantity
+        const ratio = quantity / ing.originalQuantity;
+        
+        // Scale all macros proportionally from original values
+        return {
+          ...ing,
+          quantity,
+          calories: Math.round(ing.originalCalories * ratio),
+          protein: Math.round((ing.originalProtein * ratio) * 10) / 10,
+          carbs: Math.round((ing.originalCarbs * ratio) * 10) / 10,
+          fats: Math.round((ing.originalFats * ratio) * 10) / 10,
+          fiber: Math.round((ing.originalFiber * ratio) * 10) / 10,
+        };
+      });
+      
+      // Recalculate totals from included ingredients only
+      const totals = updatedIngredients
+        .filter((ing) => ing.included)
+        .reduce((acc, ing) => ({
+          calories: acc.calories + ing.calories,
+          protein: acc.protein + ing.protein,
+          carbs: acc.carbs + ing.carbs,
+          fats: acc.fats + ing.fats,
+          fiber: acc.fiber + ing.fiber,
+        }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
+      
+      return {
+        ...prev,
+        ingredients: updatedIngredients,
+        totalCalories: Math.round(totals.calories),
+        totalProtein: Math.round(totals.protein * 10) / 10,
+        totalCarbs: Math.round(totals.carbs * 10) / 10,
+        totalFats: Math.round(totals.fats * 10) / 10,
+        totalFiber: Math.round(totals.fiber * 10) / 10,
+      };
+    });
+  }, [latestEstimate]);
+
+  // Toggle ingredient inclusion and recalculate totals
+  const handleToggleIngredient = useCallback((ingredientId: string) => {
+    if (!latestEstimate) return;
+    
+    setLatestEstimate((prev) => {
+      if (!prev) return prev;
+      
+      const updatedIngredients = prev.ingredients.map((ing) => 
+        ing.id === ingredientId ? { ...ing, included: !ing.included } : ing
+      );
+      
+      // Recalculate totals from included ingredients only
+      const totals = updatedIngredients
+        .filter((ing) => ing.included)
+        .reduce((acc, ing) => ({
+          calories: acc.calories + ing.calories,
+          protein: acc.protein + ing.protein,
+          carbs: acc.carbs + ing.carbs,
+          fats: acc.fats + ing.fats,
+          fiber: acc.fiber + ing.fiber,
+        }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
+      
+      return {
+        ...prev,
+        ingredients: updatedIngredients,
+        totalCalories: Math.round(totals.calories),
+        totalProtein: Math.round(totals.protein * 10) / 10,
+        totalCarbs: Math.round(totals.carbs * 10) / 10,
+        totalFats: Math.round(totals.fats * 10) / 10,
+        totalFiber: Math.round(totals.fiber * 10) / 10,
+      };
+    });
+  }, [latestEstimate]);
+
   const handleLogMeal = useCallback(() => {
     if (!latestEstimate) return;
     
+    // Check if at least one ingredient is included
+    const hasIncludedIngredients = latestEstimate.ingredients.some((ing) => ing.included);
+    if (!hasIncludedIngredients) {
+      Alert.alert('No Ingredients', 'Please include at least one ingredient to log this meal.');
+      return;
+    }
+    
     try {
-      console.log('[Chatbot] Logging meal to diary:', latestEstimate);
+      console.log('[Chatbot] Logging meal with edited totals:', {
+        calories: latestEstimate.totalCalories,
+        protein: latestEstimate.totalProtein,
+        carbs: latestEstimate.totalCarbs,
+        fats: latestEstimate.totalFats,
+        fiber: latestEstimate.totalFiber,
+      });
       
-      // Navigate to Quick Add with pre-filled data
+      // Navigate to Quick Add with pre-filled data using edited totals
       router.push({
         pathname: '/quick-add',
         params: {
@@ -350,17 +591,17 @@ export default function ChatbotScreen() {
           mode: mode,
           returnTo: returnTo,
           mealId: myMealId,
-          // Pre-fill data from AI estimate
           prefillName: latestEstimate.name,
-          prefillCalories: latestEstimate.calories.toString(),
-          prefillProtein: latestEstimate.protein.toString(),
-          prefillCarbs: latestEstimate.carbs.toString(),
-          prefillFats: latestEstimate.fats.toString(),
-          prefillFiber: latestEstimate.fiber.toString(),
+          prefillCalories: latestEstimate.totalCalories.toString(),
+          prefillProtein: latestEstimate.totalProtein.toString(),
+          prefillCarbs: latestEstimate.totalCarbs.toString(),
+          prefillFats: latestEstimate.totalFats.toString(),
+          prefillFiber: latestEstimate.totalFiber.toString(),
         },
       });
     } catch (error) {
       console.error('[Chatbot] Error logging meal:', error);
+      Alert.alert('Error', 'Failed to log meal. Please try again.');
     }
   }, [latestEstimate, mealType, date, mode, returnTo, myMealId, router]);
 
@@ -380,7 +621,6 @@ export default function ChatbotScreen() {
     }
   }, []);
 
-  // Filter valid messages before rendering
   const validMessages = messages.filter((message) => {
     return message && typeof message === 'object' && message.content && message.id;
   });
@@ -488,15 +728,142 @@ export default function ChatbotScreen() {
               <View style={[styles.loadingBubble, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Thinking...
+                  Analyzing meal...
                 </Text>
               </View>
             </View>
           )}
           
-          {/* Log this meal button - only show when we have a valid estimate */}
+          {/* Ingredient breakdown and totals - only show when we have a valid estimate */}
           {latestEstimate && !loading && (
-            <View style={styles.logMealButtonWrapper}>
+            <View style={styles.estimateContainer}>
+              {/* Totals Card */}
+              <View style={[styles.totalsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                <Text style={[styles.totalsTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                  Meal Totals
+                </Text>
+                <View style={styles.totalsGrid}>
+                  <View style={styles.totalItem}>
+                    <Text style={[styles.totalValue, { color: colors.primary }]}>
+                      {latestEstimate.totalCalories}
+                    </Text>
+                    <Text style={[styles.totalLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      kcal
+                    </Text>
+                  </View>
+                  <View style={styles.totalItem}>
+                    <Text style={[styles.totalValue, { color: isDark ? colors.textDark : colors.text }]}>
+                      {latestEstimate.totalProtein}g
+                    </Text>
+                    <Text style={[styles.totalLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Protein
+                    </Text>
+                  </View>
+                  <View style={styles.totalItem}>
+                    <Text style={[styles.totalValue, { color: isDark ? colors.textDark : colors.text }]}>
+                      {latestEstimate.totalCarbs}g
+                    </Text>
+                    <Text style={[styles.totalLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Carbs
+                    </Text>
+                  </View>
+                  <View style={styles.totalItem}>
+                    <Text style={[styles.totalValue, { color: isDark ? colors.textDark : colors.text }]}>
+                      {latestEstimate.totalFats}g
+                    </Text>
+                    <Text style={[styles.totalLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Fats
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Ingredients List */}
+              <View style={[styles.ingredientsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                <Text style={[styles.ingredientsTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                  Ingredients
+                </Text>
+                <Text style={[styles.ingredientsSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Adjust quantities or remove items before logging
+                </Text>
+                
+                {latestEstimate.ingredients.map((ingredient, index) => (
+                  <View
+                    key={ingredient.id}
+                    style={[
+                      styles.ingredientRow,
+                      { 
+                        backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                        opacity: ingredient.included ? 1 : 0.5,
+                      },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      onPress={() => handleToggleIngredient(ingredient.id)}
+                      style={styles.ingredientCheckbox}
+                    >
+                      <IconSymbol
+                        ios_icon_name={ingredient.included ? 'checkmark.circle.fill' : 'circle'}
+                        android_material_icon_name={ingredient.included ? 'check_circle' : 'radio_button_unchecked'}
+                        size={24}
+                        color={ingredient.included ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
+                      />
+                    </TouchableOpacity>
+                    
+                    <View style={styles.ingredientContent}>
+                      <Text style={[styles.ingredientName, { color: isDark ? colors.textDark : colors.text }]}>
+                        {ingredient.name}
+                      </Text>
+                      
+                      <View style={styles.ingredientQuantityRow}>
+                        <TextInput
+                          style={[
+                            styles.quantityInput,
+                            {
+                              backgroundColor: isDark ? colors.cardDark : colors.card,
+                              borderColor: isDark ? colors.borderDark : colors.border,
+                              color: isDark ? colors.textDark : colors.text,
+                            },
+                          ]}
+                          value={ingredient.quantity.toString()}
+                          onChangeText={(text) => handleQuantityChange(ingredient.id, text)}
+                          keyboardType="decimal-pad"
+                          editable={ingredient.included}
+                        />
+                        <Text style={[styles.unitText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          {ingredient.unit}
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.ingredientMacros}>
+                        <Text style={[styles.macroText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          {ingredient.calories} kcal
+                        </Text>
+                        <Text style={[styles.macroDivider, { color: isDark ? colors.borderDark : colors.border }]}>
+                          •
+                        </Text>
+                        <Text style={[styles.macroText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          P: {ingredient.protein}g
+                        </Text>
+                        <Text style={[styles.macroDivider, { color: isDark ? colors.borderDark : colors.border }]}>
+                          •
+                        </Text>
+                        <Text style={[styles.macroText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          C: {ingredient.carbs}g
+                        </Text>
+                        <Text style={[styles.macroDivider, { color: isDark ? colors.borderDark : colors.border }]}>
+                          •
+                        </Text>
+                        <Text style={[styles.macroText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          F: {ingredient.fats}g
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {/* Log Meal Button */}
               <TouchableOpacity
                 style={[styles.logMealButton, { backgroundColor: colors.primary }]}
                 onPress={handleLogMeal}
@@ -523,7 +890,7 @@ export default function ChatbotScreen() {
                 color: isDark ? colors.textDark : colors.text,
               },
             ]}
-            placeholder="Type your message..."
+            placeholder="Describe your meal..."
             placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
             value={inputText}
             onChangeText={setInputText}
@@ -633,10 +1000,98 @@ const styles = StyleSheet.create({
   loadingText: {
     ...typography.body,
   },
-  logMealButtonWrapper: {
+  estimateContainer: {
     marginTop: spacing.md,
+    gap: spacing.md,
+  },
+  totalsCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 2,
+  },
+  totalsTitle: {
+    ...typography.h3,
     marginBottom: spacing.md,
+  },
+  totalsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  totalItem: {
     alignItems: 'center',
+  },
+  totalValue: {
+    ...typography.h2,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  totalLabel: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  ingredientsCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 2,
+  },
+  ingredientsTitle: {
+    ...typography.h3,
+    marginBottom: spacing.xs,
+  },
+  ingredientsSubtitle: {
+    ...typography.caption,
+    marginBottom: spacing.md,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+  },
+  ingredientCheckbox: {
+    marginRight: spacing.sm,
+    paddingTop: 2,
+  },
+  ingredientContent: {
+    flex: 1,
+  },
+  ingredientName: {
+    ...typography.bodyBold,
+    marginBottom: spacing.xs,
+  },
+  ingredientQuantityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+    gap: spacing.sm,
+  },
+  quantityInput: {
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    fontSize: 14,
+    minWidth: 60,
+  },
+  unitText: {
+    ...typography.body,
+    fontSize: 14,
+  },
+  ingredientMacros: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  macroText: {
+    ...typography.caption,
+    fontSize: 12,
+  },
+  macroDivider: {
+    ...typography.caption,
+    fontSize: 12,
   },
   logMealButton: {
     flexDirection: 'row',
