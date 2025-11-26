@@ -339,6 +339,11 @@ export default function AddFoodScreen() {
     });
   };
 
+  const handleAIMealEstimator = () => {
+    console.log('[AddFood] Navigating to AI Meal Estimator');
+    router.push('/(tabs)/chatbot');
+  };
+
   const handleCreateMyMeal = () => {
     console.log('[AddFood] Navigating to create My Meal');
     router.push('/my-meal-builder');
@@ -395,7 +400,7 @@ export default function AddFoodScreen() {
       router.push({
         pathname: '/food-details',
         params: {
-          offData: JSON.stringify(offProduct),
+          offData: JSON.stringify(product),
           meal: mealType,
           date: date,
           mode: mode,
@@ -1272,6 +1277,26 @@ export default function AddFoodScreen() {
                     </View>
                     <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
                       Copy from Previous
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.quickActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.quickActionCard, { backgroundColor: '#FEF3C7', flex: 1 }]}
+                    onPress={handleAIMealEstimator}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.quickActionIconContainer}>
+                      <IconSymbol
+                        ios_icon_name="sparkles"
+                        android_material_icon_name="auto_awesome"
+                        size={32}
+                        color="#F59E0B"
+                      />
+                    </View>
+                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                      AI Meal Estimator
                     </Text>
                   </TouchableOpacity>
                 </View>

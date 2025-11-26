@@ -103,7 +103,7 @@ export default function ChatbotScreen() {
             color={colors.primary}
           />
           <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            AI Assistant
+            AI Meal Estimator
           </Text>
         </View>
       </View>

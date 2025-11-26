@@ -34,15 +34,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="chatbot"
         options={{
-          title: 'AI Chat',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'sparkles' : 'sparkles'}
-              android_material_icon_name="auto_awesome"
-              size={28}
-              color={color}
-            />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
