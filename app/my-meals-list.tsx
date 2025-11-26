@@ -72,11 +72,9 @@ export default function MyMealsListScreen() {
   };
 
   const renderMyMealCard = (meal: MyMeal, index: number) => {
-    const itemCount = 0; // We'll load this in the details screen
-    
     return (
       <TouchableOpacity
-        key={index}
+        key={meal.id || `meal-${index}`}
         style={[
           styles.mealCard,
           { backgroundColor: isDark ? colors.cardDark : colors.card }

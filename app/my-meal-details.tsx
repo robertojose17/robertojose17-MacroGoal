@@ -22,13 +22,7 @@ export default function MyMealDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [showMealTypeModal, setShowMealTypeModal] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[MyMealDetails] Screen focused, loading meal');
-      loadMyMeal();
-    }, [loadMyMeal])
-  );
-
+  // FIXED: Removed loadMyMeal from dependency array to prevent circular dependency
   const loadMyMeal = useCallback(async () => {
     try {
       setLoading(true);
@@ -85,6 +79,13 @@ export default function MyMealDetailsScreen() {
       setLoading(false);
     }
   }, [mealId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[MyMealDetails] Screen focused, loading meal');
+      loadMyMeal();
+    }, [loadMyMeal])
+  );
 
   const handleEdit = () => {
     console.log('[MyMealDetails] Navigating to edit meal');
@@ -329,7 +330,7 @@ export default function MyMealDetailsScreen() {
 
           {items.map((item, index) => (
             <View 
-              key={index}
+              key={item.id || `item-${index}`}
               style={[
                 styles.foodItem,
                 { backgroundColor: isDark ? colors.cardDark : colors.card }

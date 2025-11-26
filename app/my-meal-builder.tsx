@@ -30,53 +30,7 @@ export default function MyMealBuilderScreen() {
   const [items, setItems] = useState<MyMealItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load existing meal data on mount (only once)
-  useEffect(() => {
-    if (isEditing && !hasLoadedRef.current) {
-      console.log('[MyMealBuilder] Initial load for editing meal:', mealId);
-      hasLoadedRef.current = true;
-      loadMyMeal();
-    }
-  }, [isEditing, mealId, loadMyMeal]);
-
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[MyMealBuilder] Screen focused');
-      console.log('[MyMealBuilder] Builder Session ID:', builderSessionIdRef.current);
-      console.log('[MyMealBuilder] Current items count:', items.length);
-      
-      // If we have a new food item from the Add Food flow, add it
-      if (params.newFoodItem) {
-        try {
-          const newItem = JSON.parse(params.newFoodItem as string);
-          console.log('[MyMealBuilder] ========== ADDING NEW FOOD ITEM ==========');
-          console.log('[MyMealBuilder] Food:', newItem.food?.name || 'Unknown');
-          console.log('[MyMealBuilder] Calories:', newItem.calories);
-          
-          // Generate a temporary ID for the item
-          const itemWithTempId = {
-            ...newItem,
-            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          };
-          
-          // APPEND to existing items (never overwrite)
-          setItems(prev => {
-            console.log('[MyMealBuilder] Previous items count:', prev.length);
-            const updated = [...prev, itemWithTempId];
-            console.log('[MyMealBuilder] Updated items count:', updated.length);
-            console.log('[MyMealBuilder] ========================================');
-            return updated;
-          });
-          
-          // Clear the param IMMEDIATELY to prevent re-adding on next focus
-          router.setParams({ newFoodItem: undefined });
-        } catch (error) {
-          console.error('[MyMealBuilder] Error parsing new food item:', error);
-        }
-      }
-    }, [params.newFoodItem])
-  );
-
+  // FIXED: Removed loadMyMeal from dependency array to prevent circular dependency
   const loadMyMeal = useCallback(async () => {
     if (!mealId) return;
 
@@ -137,6 +91,54 @@ export default function MyMealBuilderScreen() {
     }
   }, [mealId]);
 
+  // Load existing meal data on mount (only once)
+  useEffect(() => {
+    if (isEditing && !hasLoadedRef.current) {
+      console.log('[MyMealBuilder] Initial load for editing meal:', mealId);
+      hasLoadedRef.current = true;
+      loadMyMeal();
+    }
+  }, [isEditing, mealId, loadMyMeal]);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[MyMealBuilder] Screen focused');
+      console.log('[MyMealBuilder] Builder Session ID:', builderSessionIdRef.current);
+      console.log('[MyMealBuilder] Current items count:', items.length);
+      
+      // If we have a new food item from the Add Food flow, add it
+      if (params.newFoodItem) {
+        try {
+          const newItem = JSON.parse(params.newFoodItem as string);
+          console.log('[MyMealBuilder] ========== ADDING NEW FOOD ITEM ==========');
+          console.log('[MyMealBuilder] Food:', newItem.food?.name || 'Unknown');
+          console.log('[MyMealBuilder] Calories:', newItem.calories);
+          
+          // Generate a temporary ID for the item
+          const itemWithTempId = {
+            ...newItem,
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          };
+          
+          // APPEND to existing items (never overwrite)
+          setItems(prev => {
+            console.log('[MyMealBuilder] Previous items count:', prev.length);
+            const updated = [...prev, itemWithTempId];
+            console.log('[MyMealBuilder] Updated items count:', updated.length);
+            console.log('[MyMealBuilder] ========================================');
+            return updated;
+          });
+          
+          // Clear the param IMMEDIATELY to prevent re-adding on next focus
+          router.setParams({ newFoodItem: undefined });
+        } catch (error) {
+          console.error('[MyMealBuilder] Error parsing new food item:', error);
+        }
+      }
+    }, [params.newFoodItem, router])
+  );
+
+  // FIXED: Removed items.length from dependency array
   const handleAddFood = useCallback(() => {
     console.log('[MyMealBuilder] Opening Add Food in mymeal mode');
     console.log('[MyMealBuilder] Passing builder session ID:', builderSessionIdRef.current);
@@ -151,12 +153,12 @@ export default function MyMealBuilderScreen() {
         mealId: mealId || '',
       },
     });
-  }, [items.length, router, mealId]);
+  }, [router, mealId]);
 
-  const handleRemoveItem = (itemId: string) => {
+  const handleRemoveItem = useCallback((itemId: string) => {
     console.log('[MyMealBuilder] Removing item:', itemId);
     setItems(prev => prev.filter(item => item.id !== itemId));
-  };
+  }, []);
 
   const handleSave = async () => {
     console.log('[MyMealBuilder] Saving My Meal');
@@ -425,7 +427,7 @@ export default function MyMealBuilderScreen() {
           ) : (
             items.map((item, index) => (
               <View 
-                key={index}
+                key={item.id || `item-${index}`}
                 style={[
                   styles.foodItem,
                   { backgroundColor: isDark ? colors.cardDark : colors.card }
