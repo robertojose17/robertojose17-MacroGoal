@@ -482,9 +482,9 @@ export default function CopyFromPreviousScreen() {
               </Text>
             </View>
           ) : (
-            datesWithData.map((dateData, index) => (
+            datesWithData.map((dateData) => (
               <TouchableOpacity
-                key={`date-${dateData.date}-${index}`}
+                key={dateData.date}
                 style={[
                   styles.dateCard,
                   { backgroundColor: isDark ? colors.cardDark : colors.card }
@@ -564,7 +564,7 @@ export default function CopyFromPreviousScreen() {
                 </Text>
               </View>
             ) : (
-              meals.map((meal, index) => {
+              meals.map((meal) => {
                 if (meal.entries.length === 0) return null;
 
                 const fullySelected = isMealFullySelected(meal.type);
@@ -572,7 +572,7 @@ export default function CopyFromPreviousScreen() {
 
                 return (
                   <View
-                    key={`meal-${meal.type}-${index}`}
+                    key={meal.type}
                     style={[
                       styles.mealCard,
                       { backgroundColor: isDark ? colors.cardDark : colors.card }
@@ -624,7 +624,7 @@ export default function CopyFromPreviousScreen() {
 
                         return (
                           <TouchableOpacity
-                            key={`entry-${entry.id}-${entryIndex}`}
+                            key={entry.id}
                             style={[
                               styles.foodItem,
                               entryIndex < meal.entries.length - 1 && styles.foodItemBorder
