@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Tabs } from 'expo-router/unstable-native-tabs';
+import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
