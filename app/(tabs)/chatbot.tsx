@@ -380,80 +380,6 @@ export default function ChatbotScreen() {
     }
   }, []);
 
-  // Render a single message with comprehensive error handling
-  const renderMessage = useCallback((message: MessageWithId, index: number) => {
-    try {
-      // Validate message object
-      if (!message || typeof message !== 'object') {
-        console.warn('[ChatbotScreen] Invalid message at index', index);
-        return null;
-      }
-
-      // Extract properties with safe defaults
-      const id = message.id || `fallback-${index}`;
-      const role = message.role || 'assistant';
-      const content = message.content || '';
-      const timestamp = message.timestamp;
-
-      // Skip rendering if no content
-      if (!content) {
-        return null;
-      }
-
-      const isUser = role === 'user';
-
-      return (
-        <View
-          key={id}
-          style={[
-            styles.messageWrapper,
-            isUser ? styles.userMessageWrapper : styles.assistantMessageWrapper,
-          ]}
-        >
-          <View
-            style={[
-              styles.messageBubble,
-              isUser
-                ? { backgroundColor: colors.primary }
-                : { backgroundColor: isDark ? colors.cardDark : colors.card },
-            ]}
-          >
-            <Text
-              style={[
-                styles.messageText,
-                {
-                  color: isUser ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
-                },
-              ]}
-            >
-              {content}
-            </Text>
-            {timestamp && (
-              <Text
-                style={[
-                  styles.messageTime,
-                  {
-                    color:
-                      isUser
-                        ? 'rgba(255, 255, 255, 0.7)'
-                        : isDark
-                        ? colors.textSecondaryDark
-                        : colors.textSecondary,
-                  },
-                ]}
-              >
-                {formatTime(timestamp)}
-              </Text>
-            )}
-          </View>
-        </View>
-      );
-    } catch (error) {
-      console.error('[ChatbotScreen] Error rendering message at index', index, error);
-      return null;
-    }
-  }, [isDark, formatTime]);
-
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -494,7 +420,73 @@ export default function ChatbotScreen() {
           showsVerticalScrollIndicator={false}
         >
           {Array.isArray(messages) && messages.length > 0 ? (
-            messages.map((message, index) => renderMessage(message, index))
+            messages.map((message, index) => {
+              // Validate message object
+              if (!message || typeof message !== 'object') {
+                console.warn('[ChatbotScreen] Invalid message at index', index);
+                return null;
+              }
+
+              // Extract properties with safe defaults
+              const id = message.id || `fallback-${index}`;
+              const role = message.role || 'assistant';
+              const content = message.content || '';
+              const timestamp = message.timestamp;
+
+              // Skip rendering if no content
+              if (!content) {
+                return null;
+              }
+
+              const isUser = role === 'user';
+
+              return (
+                <View
+                  key={id}
+                  style={[
+                    styles.messageWrapper,
+                    isUser ? styles.userMessageWrapper : styles.assistantMessageWrapper,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      isUser
+                        ? { backgroundColor: colors.primary }
+                        : { backgroundColor: isDark ? colors.cardDark : colors.card },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.messageText,
+                        {
+                          color: isUser ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
+                        },
+                      ]}
+                    >
+                      {content}
+                    </Text>
+                    {timestamp && (
+                      <Text
+                        style={[
+                          styles.messageTime,
+                          {
+                            color:
+                              isUser
+                                ? 'rgba(255, 255, 255, 0.7)'
+                                : isDark
+                                ? colors.textSecondaryDark
+                                : colors.textSecondary,
+                          },
+                        ]}
+                      >
+                        {formatTime(timestamp)}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })
           ) : (
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
