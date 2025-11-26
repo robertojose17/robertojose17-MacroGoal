@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -29,6 +28,18 @@ const generateMessageId = () => {
 // Extended message type with guaranteed ID
 type MessageWithId = ChatMessage & { id: string };
 
+type AIEstimate = {
+  name: string;
+  description?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber: number;
+  defaultAmount: number;
+  defaultUnit: string;
+};
+
 export default function ChatbotScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -38,6 +49,7 @@ export default function ChatbotScreen() {
   const isMountedRef = useRef(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Extract context from params (passed from Add Food screen)
   const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
@@ -53,6 +65,8 @@ export default function ChatbotScreen() {
     },
   ]);
   const [inputText, setInputText] = useState('');
+  const [latestEstimate, setLatestEstimate] = useState<AIEstimate | null>(null);
+  const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
   const { sendMessage, loading } = useChatbot();
 
@@ -92,6 +106,144 @@ export default function ChatbotScreen() {
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
 
+  /**
+   * Parse AI response to extract macro estimates
+   * Looks for patterns like "Calories: 450" or "Protein: 25g"
+   */
+  const parseAIEstimate = useCallback((content: string, userMessage: string): AIEstimate | null => {
+    try {
+      if (!content || typeof content !== 'string') {
+        console.log('[Chatbot] Invalid content for parsing');
+        return null;
+      }
+
+      console.log('[Chatbot] Parsing AI response for estimates');
+      
+      // Look for calorie patterns
+      const caloriePatterns = [
+        /calories?[:\s]+(\d+)/i,
+        /(\d+)\s*cal/i,
+        /(\d+)\s*kcal/i,
+      ];
+      
+      // Look for macro patterns
+      const proteinPatterns = [
+        /protein[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+protein/i,
+      ];
+      
+      const carbsPatterns = [
+        /carb(?:ohydrate)?s?[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+carb/i,
+      ];
+      
+      const fatsPatterns = [
+        /fats?[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+fat/i,
+      ];
+      
+      const fiberPatterns = [
+        /fiber[:\s]+(\d+\.?\d*)\s*g/i,
+        /(\d+\.?\d*)\s*g\s+fiber/i,
+      ];
+      
+      // Extract values
+      let calories = 0;
+      let protein = 0;
+      let carbs = 0;
+      let fats = 0;
+      let fiber = 0;
+      
+      // Try to find calories
+      for (const pattern of caloriePatterns) {
+        const match = content.match(pattern);
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed) && parsed > 0) {
+            calories = parsed;
+            break;
+          }
+        }
+      }
+      
+      // Try to find protein
+      for (const pattern of proteinPatterns) {
+        const match = content.match(pattern);
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed) && parsed >= 0) {
+            protein = parsed;
+            break;
+          }
+        }
+      }
+      
+      // Try to find carbs
+      for (const pattern of carbsPatterns) {
+        const match = content.match(pattern);
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed) && parsed >= 0) {
+            carbs = parsed;
+            break;
+          }
+        }
+      }
+      
+      // Try to find fats
+      for (const pattern of fatsPatterns) {
+        const match = content.match(pattern);
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed) && parsed >= 0) {
+            fats = parsed;
+            break;
+          }
+        }
+      }
+      
+      // Try to find fiber
+      for (const pattern of fiberPatterns) {
+        const match = content.match(pattern);
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed) && parsed >= 0) {
+            fiber = parsed;
+            break;
+          }
+        }
+      }
+      
+      // Only return estimate if we found at least calories
+      if (calories > 0) {
+        console.log('[Chatbot] Found estimate:', { calories, protein, carbs, fats, fiber });
+        
+        // Use user's message as the meal name (truncate if too long)
+        const mealName = userMessage && userMessage.length > 50 
+          ? userMessage.substring(0, 47) + '...' 
+          : userMessage || 'AI Estimated Meal';
+        
+        return {
+          name: mealName,
+          description: content,
+          calories,
+          protein,
+          carbs,
+          fats,
+          fiber,
+          defaultAmount: 1,
+          defaultUnit: 'serving',
+        };
+      }
+      
+      console.log('[Chatbot] No valid estimate found in response');
+      return null;
+    } catch (error) {
+      console.error('[Chatbot] Error parsing AI estimate:', error);
+      return null;
+    }
+  }, []);
+
   const handleSend = async () => {
     const trimmedInput = inputText.trim();
     if (!trimmedInput || loading) return;
@@ -103,6 +255,9 @@ export default function ChatbotScreen() {
       timestamp: Date.now(),
     };
 
+    // Store the user message for meal naming
+    setLastUserMessage(trimmedInput);
+
     // Add user message to chat
     if (isMountedRef.current) {
       setMessages((prev) => [...prev, userMessage]);
@@ -113,7 +268,7 @@ export default function ChatbotScreen() {
       // Prepare messages for API (include system message)
       const systemMessage: ChatMessage = {
         role: 'system',
-        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness. Start by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
+        content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
       };
 
       // Filter and validate messages before sending
@@ -148,33 +303,12 @@ export default function ChatbotScreen() {
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
-
-        // Check if the response contains macro estimates
-        // If it does, offer to log it
-        const hasCalories = /\d+\s*(cal|kcal|calories)/i.test(result.message);
-        const hasProtein = /protein[:\s]+\d+/i.test(result.message);
         
-        if (hasCalories && hasProtein) {
-          console.log('[ChatbotScreen] Response contains macro estimates');
-          // Show option to log this meal
-          setTimeout(() => {
-            if (isMountedRef.current) {
-              Alert.alert(
-                'Log This Meal?',
-                'Would you like to add this meal estimate to your diary?',
-                [
-                  {
-                    text: 'Not Now',
-                    style: 'cancel',
-                  },
-                  {
-                    text: 'Log It',
-                    onPress: () => handleLogMeal(result.message),
-                  },
-                ]
-              );
-            }
-          }, 500);
+        // Try to parse the estimate from the response
+        const estimate = parseAIEstimate(result.message, lastUserMessage);
+        if (estimate) {
+          console.log('[Chatbot] Setting latest estimate:', estimate);
+          setLatestEstimate(estimate);
         }
       } else {
         // Add error message
@@ -201,47 +335,34 @@ export default function ChatbotScreen() {
     }
   };
 
-  const handleLogMeal = (aiResponse: string) => {
-    console.log('[ChatbotScreen] Logging meal from AI response');
+  const handleLogMeal = useCallback(() => {
+    if (!latestEstimate) return;
     
-    // Parse the AI response to extract macros
-    // This is a simple parser - in production you'd want more robust parsing
-    const caloriesMatch = aiResponse.match(/(\d+)\s*(cal|kcal|calories)/i);
-    const proteinMatch = aiResponse.match(/protein[:\s]+(\d+\.?\d*)/i);
-    const carbsMatch = aiResponse.match(/carb(?:s|ohydrate)?[:\s]+(\d+\.?\d*)/i);
-    const fatsMatch = aiResponse.match(/fat[:\s]+(\d+\.?\d*)/i);
-    const fiberMatch = aiResponse.match(/fiber[:\s]+(\d+\.?\d*)/i);
-    
-    const calories = caloriesMatch ? caloriesMatch[1] : '0';
-    const protein = proteinMatch ? proteinMatch[1] : '0';
-    const carbs = carbsMatch ? carbsMatch[1] : '0';
-    const fats = fatsMatch ? fatsMatch[1] : '0';
-    const fiber = fiberMatch ? fiberMatch[1] : '0';
-    
-    // Extract meal name from the user's last message
-    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-    const mealName = lastUserMessage ? lastUserMessage.content.substring(0, 50) : 'AI Estimated Meal';
-    
-    console.log('[ChatbotScreen] Parsed macros:', { calories, protein, carbs, fats, fiber });
-    
-    // Navigate to Quick Add with pre-filled data
-    router.push({
-      pathname: '/quick-add',
-      params: {
-        mode: mode,
-        meal: mealType,
-        date: date,
-        returnTo: returnTo,
-        mealId: myMealId,
-        prefillName: mealName,
-        prefillCalories: calories,
-        prefillProtein: protein,
-        prefillCarbs: carbs,
-        prefillFats: fats,
-        prefillFiber: fiber,
-      },
-    });
-  };
+    try {
+      console.log('[Chatbot] Logging meal to diary:', latestEstimate);
+      
+      // Navigate to Quick Add with pre-filled data
+      router.push({
+        pathname: '/quick-add',
+        params: {
+          meal: mealType,
+          date: date,
+          mode: mode,
+          returnTo: returnTo,
+          mealId: myMealId,
+          // Pre-fill data from AI estimate
+          prefillName: latestEstimate.name,
+          prefillCalories: latestEstimate.calories.toString(),
+          prefillProtein: latestEstimate.protein.toString(),
+          prefillCarbs: latestEstimate.carbs.toString(),
+          prefillFats: latestEstimate.fats.toString(),
+          prefillFiber: latestEstimate.fiber.toString(),
+        },
+      });
+    } catch (error) {
+      console.error('[Chatbot] Error logging meal:', error);
+    }
+  }, [latestEstimate, mealType, date, mode, returnTo, myMealId, router]);
 
   const formatTime = useCallback((timestamp: number | undefined): string => {
     try {
@@ -372,6 +493,25 @@ export default function ChatbotScreen() {
               </View>
             </View>
           )}
+          
+          {/* Log this meal button - only show when we have a valid estimate */}
+          {latestEstimate && !loading && (
+            <View style={styles.logMealButtonWrapper}>
+              <TouchableOpacity
+                style={[styles.logMealButton, { backgroundColor: colors.primary }]}
+                onPress={handleLogMeal}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="plus.circle.fill"
+                  android_material_icon_name="add_circle"
+                  size={24}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.logMealButtonText}>Log this meal</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
 
         <View style={[styles.inputContainer, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
@@ -492,6 +632,27 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+  },
+  logMealButtonWrapper: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  logMealButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
+    elevation: 3,
+  },
+  logMealButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    color: '#FFFFFF',
   },
   inputContainer: {
     flexDirection: 'row',

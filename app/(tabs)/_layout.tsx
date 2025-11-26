@@ -39,12 +39,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="chatbot"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
