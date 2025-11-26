@@ -143,10 +143,10 @@ export default function MyMealBuilderScreen() {
           console.error('[MyMealBuilder] Error parsing new food item:', error);
         }
       }
-    }, [params.newFoodItem, router])
+    }, [params.newFoodItem, router, items.length])
   );
 
-  // FIXED: Removed items.length from dependency array
+  // FIXED: Added items.length to dependency array to satisfy react-hooks/exhaustive-deps
   const handleAddFood = useCallback(() => {
     console.log('[MyMealBuilder] Opening Add Food in mymeal mode');
     console.log('[MyMealBuilder] Passing builder session ID:', builderSessionIdRef.current);
@@ -161,7 +161,7 @@ export default function MyMealBuilderScreen() {
         mealId: mealId || '',
       },
     });
-  }, [router, mealId]);
+  }, [router, mealId, items.length]);
 
   const handleRemoveItem = useCallback((itemId: string) => {
     console.log('[MyMealBuilder] Removing item:', itemId);
