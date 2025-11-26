@@ -235,7 +235,7 @@ export default function ChatbotScreen() {
           role: 'system',
           content: 'You are an AI Meal Estimator. Your primary goal is to estimate calories and macronutrients (protein, carbs, fats, and fiber) for any food or meal the user describes. Always provide clear and structured macro estimates. If the user provides a photo, include it as part of your estimation. Your top priority is accuracy and helpfulness.\n\nStart by asking the user to clearly describe the meal they want to estimate (ingredients, portion sizes, cooking style, etc.).',
         },
-        ...messages.filter((m) => m.role !== 'system'),
+        ...messages.filter((m) => m && m.role !== 'system'),
         userMessage,
       ];
 
@@ -311,7 +311,7 @@ export default function ChatbotScreen() {
 
   const formatTime = (timestamp: number | undefined) => {
     try {
-      if (!timestamp) return '';
+      if (!timestamp || typeof timestamp !== 'number') return '';
       const date = new Date(timestamp);
       if (isNaN(date.getTime())) return '';
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -319,6 +319,68 @@ export default function ChatbotScreen() {
       console.error('[ChatbotScreen] Error formatting time:', error);
       return '';
     }
+  };
+
+  // Render a single message with full error handling
+  const renderMessage = (message: ChatMessage | null | undefined, index: number) => {
+    // Safety check: ensure message exists and has required properties
+    if (!message || typeof message !== 'object') {
+      console.warn('[ChatbotScreen] Invalid message at index', index);
+      return null;
+    }
+
+    // Ensure message has required properties with defaults
+    const role = message.role || 'assistant';
+    const content = message.content || '';
+    const timestamp = message.timestamp || Date.now();
+
+    // Create stable unique key
+    const key = `msg-${timestamp}-${index}`;
+
+    return (
+      <View
+        key={key}
+        style={[
+          styles.messageWrapper,
+          role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
+        ]}
+      >
+        <View
+          style={[
+            styles.messageBubble,
+            role === 'user'
+              ? { backgroundColor: colors.primary }
+              : { backgroundColor: isDark ? colors.cardDark : colors.card },
+          ]}
+        >
+          <Text
+            style={[
+              styles.messageText,
+              {
+                color: role === 'user' ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
+              },
+            ]}
+          >
+            {content}
+          </Text>
+          <Text
+            style={[
+              styles.messageTime,
+              {
+                color:
+                  role === 'user'
+                    ? 'rgba(255, 255, 255, 0.7)'
+                    : isDark
+                    ? colors.textSecondaryDark
+                    : colors.textSecondary,
+              },
+            ]}
+          >
+            {formatTime(timestamp)}
+          </Text>
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -360,56 +422,10 @@ export default function ChatbotScreen() {
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
         >
-          {messages.map((message, index) => {
-            // Create stable unique key using timestamp and index
-            const key = `msg-${message.timestamp || 0}-${index}`;
-            return (
-              <View
-                key={key}
-                style={[
-                  styles.messageWrapper,
-                  message.role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.messageBubble,
-                    message.role === 'user'
-                      ? { backgroundColor: colors.primary }
-                      : { backgroundColor: isDark ? colors.cardDark : colors.card },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.messageText,
-                      {
-                        color: message.role === 'user' ? '#FFFFFF' : isDark ? colors.textDark : colors.text,
-                      },
-                    ]}
-                  >
-                    {message.content || ''}
-                  </Text>
-                  {message.timestamp && (
-                    <Text
-                      style={[
-                        styles.messageTime,
-                        {
-                          color:
-                            message.role === 'user'
-                              ? 'rgba(255, 255, 255, 0.7)'
-                              : isDark
-                              ? colors.textSecondaryDark
-                              : colors.textSecondary,
-                        },
-                      ]}
-                    >
-                      {formatTime(message.timestamp)}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            );
-          })}
+          {Array.isArray(messages) && messages.length > 0 ? (
+            messages.map((message, index) => renderMessage(message, index))
+          ) : null}
+          
           {loading && (
             <View style={styles.loadingWrapper}>
               <View style={[styles.loadingBubble, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
