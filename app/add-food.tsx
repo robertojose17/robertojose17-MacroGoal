@@ -50,46 +50,6 @@ export default function AddFoodScreen() {
     snack: 'Snacks',
   };
 
-  useEffect(() => {
-    console.log("[AddFood] Params:", params);
-    console.log("[AddFood] mode:", mode);
-    console.log("[AddFood] returnTo:", returnTo);
-    console.log("[AddFood] mealId:", myMealId);
-    loadData();
-  }, [loadData, mode, myMealId, params, returnTo]);
-
-  // Refresh data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[AddFood] Screen focused, refreshing data');
-      console.log('[AddFood] Refresh param:', params.refresh);
-      
-      // Reload favorites and my meals
-      loadFavorites();
-      loadMyMeals();
-    }, [params.refresh])
-  );
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const recent = await getRecentFoods();
-      setRecentFoods(recent);
-
-      // Load favorites
-      await loadFavorites();
-
-      // Load my meals
-      await loadMyMeals();
-
-      console.log('[AddFood] Loaded data:', { recent: recent.length });
-    } catch (error) {
-      console.error('[AddFood] Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const loadFavorites = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -129,6 +89,46 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error in loadMyMeals:', error);
     }
   };
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const recent = await getRecentFoods();
+      setRecentFoods(recent);
+
+      // Load favorites
+      await loadFavorites();
+
+      // Load my meals
+      await loadMyMeals();
+
+      console.log('[AddFood] Loaded data:', { recent: recent.length });
+    } catch (error) {
+      console.error('[AddFood] Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log("[AddFood] Params:", params);
+    console.log("[AddFood] mode:", mode);
+    console.log("[AddFood] returnTo:", returnTo);
+    console.log("[AddFood] mealId:", myMealId);
+    loadData();
+  }, [loadData, mode, myMealId, params, returnTo]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[AddFood] Screen focused, refreshing data');
+      console.log('[AddFood] Refresh param:', params.refresh);
+      
+      // Reload favorites and my meals
+      loadFavorites();
+      loadMyMeals();
+    }, [params.refresh])
+  );
 
   /**
    * INLINE SEARCH LOGIC
