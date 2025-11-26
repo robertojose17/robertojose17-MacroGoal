@@ -10,9 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -30,11 +31,18 @@ type MessageWithId = ChatMessage & { id: string };
 
 export default function ChatbotScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
   const isMountedRef = useRef(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const mode = (params.mode as string) || 'diary';
+  const mealType = (params.meal as string) || 'breakfast';
+  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
+  const myMealId = (params.mealId as string) || undefined;
 
   const [messages, setMessages] = useState<MessageWithId[]>([
     {
@@ -140,6 +148,34 @@ export default function ChatbotScreen() {
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // Check if the response contains macro estimates
+        // If it does, offer to log it
+        const hasCalories = /\d+\s*(cal|kcal|calories)/i.test(result.message);
+        const hasProtein = /protein[:\s]+\d+/i.test(result.message);
+        
+        if (hasCalories && hasProtein) {
+          console.log('[ChatbotScreen] Response contains macro estimates');
+          // Show option to log this meal
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              Alert.alert(
+                'Log This Meal?',
+                'Would you like to add this meal estimate to your diary?',
+                [
+                  {
+                    text: 'Not Now',
+                    style: 'cancel',
+                  },
+                  {
+                    text: 'Log It',
+                    onPress: () => handleLogMeal(result.message),
+                  },
+                ]
+              );
+            }
+          }, 500);
+        }
       } else {
         // Add error message
         const errorMessage: MessageWithId = {
@@ -163,6 +199,48 @@ export default function ChatbotScreen() {
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
+  };
+
+  const handleLogMeal = (aiResponse: string) => {
+    console.log('[ChatbotScreen] Logging meal from AI response');
+    
+    // Parse the AI response to extract macros
+    // This is a simple parser - in production you'd want more robust parsing
+    const caloriesMatch = aiResponse.match(/(\d+)\s*(cal|kcal|calories)/i);
+    const proteinMatch = aiResponse.match(/protein[:\s]+(\d+\.?\d*)/i);
+    const carbsMatch = aiResponse.match(/carb(?:s|ohydrate)?[:\s]+(\d+\.?\d*)/i);
+    const fatsMatch = aiResponse.match(/fat[:\s]+(\d+\.?\d*)/i);
+    const fiberMatch = aiResponse.match(/fiber[:\s]+(\d+\.?\d*)/i);
+    
+    const calories = caloriesMatch ? caloriesMatch[1] : '0';
+    const protein = proteinMatch ? proteinMatch[1] : '0';
+    const carbs = carbsMatch ? carbsMatch[1] : '0';
+    const fats = fatsMatch ? fatsMatch[1] : '0';
+    const fiber = fiberMatch ? fiberMatch[1] : '0';
+    
+    // Extract meal name from the user's last message
+    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+    const mealName = lastUserMessage ? lastUserMessage.content.substring(0, 50) : 'AI Estimated Meal';
+    
+    console.log('[ChatbotScreen] Parsed macros:', { calories, protein, carbs, fats, fiber });
+    
+    // Navigate to Quick Add with pre-filled data
+    router.push({
+      pathname: '/quick-add',
+      params: {
+        mode: mode,
+        meal: mealType,
+        date: date,
+        returnTo: returnTo,
+        mealId: myMealId,
+        prefillName: mealName,
+        prefillCalories: calories,
+        prefillProtein: protein,
+        prefillCarbs: carbs,
+        prefillFats: fats,
+        prefillFiber: fiber,
+      },
+    });
   };
 
   const formatTime = useCallback((timestamp: number | undefined): string => {
