@@ -827,7 +827,7 @@ export default function AddFoodScreen() {
     
     return (
       <View 
-        key={index}
+        key={food.id ?? `recent-food-${index}`}
         style={[
           styles.foodCard,
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
@@ -882,7 +882,7 @@ export default function AddFoodScreen() {
     
     return (
       <View 
-        key={index}
+        key={product.code ?? `search-result-${index}`}
         style={[
           styles.foodCard,
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
@@ -930,7 +930,7 @@ export default function AddFoodScreen() {
 
     return (
       <View 
-        key={index}
+        key={favorite.id ?? `favorite-${index}`}
         style={[
           styles.foodCard,
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
@@ -987,7 +987,7 @@ export default function AddFoodScreen() {
   const renderMyMealCard = (meal: MyMeal, index: number) => {
     return (
       <TouchableOpacity
-        key={index}
+        key={meal.id ?? `my-meal-${index}`}
         style={[
           styles.mealCard,
           { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
