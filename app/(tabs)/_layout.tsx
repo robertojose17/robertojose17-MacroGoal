@@ -39,6 +39,34 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              ios_icon_name={focused ? 'chart.bar.fill' : 'chart.bar'}
+              android_material_icon_name="analytics"
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="check-ins"
+        options={{
+          title: 'Check-Ins',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              ios_icon_name={focused ? 'checkmark.circle.fill' : 'checkmark.circle'}
+              android_material_icon_name="check_circle"
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
