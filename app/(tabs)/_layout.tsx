@@ -25,20 +25,6 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="(home)"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'house.fill' : 'house'}
-              android_material_icon_name="home"
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="dashboard"
         options={{
           title: 'Dashboard',
@@ -46,6 +32,20 @@ export default function TabLayout() {
             <IconSymbol
               ios_icon_name={focused ? 'chart.bar.fill' : 'chart.bar'}
               android_material_icon_name="analytics"
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="(home)"
+        options={{
+          title: 'Food',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              ios_icon_name={focused ? 'house.fill' : 'house'}
+              android_material_icon_name="home"
               size={28}
               color={color}
             />

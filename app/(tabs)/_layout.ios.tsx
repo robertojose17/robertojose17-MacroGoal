@@ -20,7 +20,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="(home)"
         options={{
-          title: 'Home',
+          title: 'Food',
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol
               ios_icon_name={focused ? 'house.fill' : 'house'}
