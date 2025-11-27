@@ -44,8 +44,8 @@ export default function TabLayout() {
           title: 'Food',
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol
-              ios_icon_name={focused ? 'house.fill' : 'house'}
-              android_material_icon_name="home"
+              ios_icon_name={focused ? 'fork.knife.circle.fill' : 'fork.knife.circle'}
+              android_material_icon_name="restaurant"
               size={28}
               color={color}
             />

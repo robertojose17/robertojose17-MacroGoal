@@ -18,13 +18,41 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              ios_icon_name={focused ? 'chart.bar.fill' : 'chart.bar'}
+              android_material_icon_name="analytics"
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="(home)"
         options={{
           title: 'Food',
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol
-              ios_icon_name={focused ? 'house.fill' : 'house'}
-              android_material_icon_name="home"
+              ios_icon_name={focused ? 'fork.knife.circle.fill' : 'fork.knife.circle'}
+              android_material_icon_name="restaurant"
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="check-ins"
+        options={{
+          title: 'Check-Ins',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              ios_icon_name={focused ? 'checkmark.circle.fill' : 'checkmark.circle'}
+              android_material_icon_name="check_circle"
               size={28}
               color={color}
             />
