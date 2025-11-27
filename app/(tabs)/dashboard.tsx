@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -39,6 +40,11 @@ interface DailySummary {
   total_fiber: number;
 }
 
+interface CustomDateRange {
+  startDate: Date;
+  endDate: Date;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -50,7 +56,22 @@ export default function DashboardScreen() {
   const [goal, setGoal] = useState<any>(null);
   const [todayCheckIn, setTodayCheckIn] = useState<CheckIn | null>(null);
   const [todaySummary, setTodaySummary] = useState<DailySummary | null>(null);
-  const [selectedRange, setSelectedRange] = useState<TimeRange>('7days');
+  
+  // Separate time ranges for nutrition and progress
+  const [nutritionRange, setNutritionRange] = useState<TimeRange>('7days');
+  const [progressRange, setProgressRange] = useState<TimeRange>('7days');
+  
+  // Custom date ranges
+  const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
+  const [progressCustomRange, setProgressCustomRange] = useState<CustomDateRange | null>(null);
+  
+  // Date picker state
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'nutrition' | 'progress'>('nutrition');
+  const [datePickerType, setDatePickerType] = useState<'start' | 'end'>('start');
+  const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
+  const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
+  
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [weightData, setWeightData] = useState<any[]>([]);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
@@ -129,7 +150,7 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedRange]);
+  }, [nutritionRange, nutritionCustomRange, progressRange, progressCustomRange]);
 
   const loadTodaySummary = async (userId: string, date: string) => {
     try {
@@ -185,10 +206,13 @@ export default function DashboardScreen() {
       const endDate = new Date();
       const startDate = new Date();
       
-      if (selectedRange === '7days') {
+      if (nutritionRange === '7days') {
         startDate.setDate(startDate.getDate() - 7);
-      } else if (selectedRange === '30days') {
+      } else if (nutritionRange === '30days') {
         startDate.setDate(startDate.getDate() - 30);
+      } else if (nutritionRange === 'custom' && nutritionCustomRange) {
+        startDate.setTime(nutritionCustomRange.startDate.getTime());
+        endDate.setTime(nutritionCustomRange.endDate.getTime());
       }
 
       const { data: mealsData } = await supabase
@@ -297,10 +321,13 @@ export default function DashboardScreen() {
       const endDate = new Date();
       const startDate = new Date();
       
-      if (selectedRange === '7days') {
+      if (progressRange === '7days') {
         startDate.setDate(startDate.getDate() - 7);
-      } else if (selectedRange === '30days') {
+      } else if (progressRange === '30days') {
         startDate.setDate(startDate.getDate() - 30);
+      } else if (progressRange === 'custom' && progressCustomRange) {
+        startDate.setTime(progressCustomRange.startDate.getTime());
+        endDate.setTime(progressCustomRange.endDate.getTime());
       }
 
       // Load weight check-ins
@@ -408,6 +435,79 @@ export default function DashboardScreen() {
     return `${Math.round(weight)} kg`;
   };
 
+  // Handle custom date range selection
+  const handleCustomRangeSelect = (mode: 'nutrition' | 'progress') => {
+    setDatePickerMode(mode);
+    setDatePickerType('start');
+    setTempStartDate(new Date());
+    setTempEndDate(new Date());
+    setShowDatePicker(true);
+  };
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+
+    if (event.type === 'dismissed') {
+      // User cancelled - revert to previous selection
+      if (datePickerMode === 'nutrition') {
+        if (nutritionRange === 'custom' && !nutritionCustomRange) {
+          setNutritionRange('7days');
+        }
+      } else {
+        if (progressRange === 'custom' && !progressCustomRange) {
+          setProgressRange('7days');
+        }
+      }
+      return;
+    }
+
+    if (selectedDate) {
+      if (datePickerType === 'start') {
+        setTempStartDate(selectedDate);
+        // Move to end date picker
+        setDatePickerType('end');
+        if (Platform.OS === 'ios') {
+          // On iOS, we'll show both pickers in the modal
+        } else {
+          // On Android, show the next picker
+          setTimeout(() => setShowDatePicker(true), 100);
+        }
+      } else {
+        setTempEndDate(selectedDate);
+        
+        // Validate date range
+        if (selectedDate < tempStartDate) {
+          Alert.alert('Invalid Range', 'End date must be after start date');
+          return;
+        }
+
+        // Apply the custom range
+        const customRange = { startDate: tempStartDate, endDate: selectedDate };
+        
+        if (datePickerMode === 'nutrition') {
+          setNutritionCustomRange(customRange);
+          setNutritionRange('custom');
+        } else {
+          setProgressCustomRange(customRange);
+          setProgressRange('custom');
+        }
+
+        if (Platform.OS === 'android') {
+          setShowDatePicker(false);
+        }
+      }
+    }
+  };
+
+  const getCustomRangeLabel = (range: CustomDateRange | null) => {
+    if (!range) return 'Custom';
+    const start = range.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const end = range.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${start} - ${end}`;
+  };
+
   if (loading) {
     return (
       <SafeAreaView
@@ -426,6 +526,7 @@ export default function DashboardScreen() {
   const caloriesGoal = goal?.daily_calories || 2000;
   const caloriesEaten = todaySummary?.total_calories || 0;
   const caloriesRemaining = caloriesGoal - caloriesEaten;
+  const caloriesProgress = Math.min((caloriesEaten / caloriesGoal) * 100, 100);
 
   return (
     <SafeAreaView
@@ -493,7 +594,20 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Macros */}
+          {/* Progress Bar */}
+          <View style={[styles.progressBarContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+            <View 
+              style={[
+                styles.progressBarFill, 
+                { 
+                  width: `${caloriesProgress}%`,
+                  backgroundColor: caloriesRemaining >= 0 ? colors.success : colors.error
+                }
+              ]} 
+            />
+          </View>
+
+          {/* Macros - Updated to match Home screen layout */}
           <View style={styles.macrosGrid}>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.protein }]}>
@@ -567,14 +681,14 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.rangeButton,
-                selectedRange === '7days' && { backgroundColor: colors.primary },
+                nutritionRange === '7days' && { backgroundColor: colors.primary },
               ]}
-              onPress={() => setSelectedRange('7days')}
+              onPress={() => setNutritionRange('7days')}
             >
               <Text
                 style={[
                   styles.rangeButtonText,
-                  { color: selectedRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                  { color: nutritionRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
                 ]}
               >
                 Last 7 days
@@ -583,17 +697,33 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.rangeButton,
-                selectedRange === '30days' && { backgroundColor: colors.primary },
+                nutritionRange === '30days' && { backgroundColor: colors.primary },
               ]}
-              onPress={() => setSelectedRange('30days')}
+              onPress={() => setNutritionRange('30days')}
             >
               <Text
                 style={[
                   styles.rangeButtonText,
-                  { color: selectedRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                  { color: nutritionRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
                 ]}
               >
                 Last 30 days
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.rangeButton,
+                nutritionRange === 'custom' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => handleCustomRangeSelect('nutrition')}
+            >
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: nutritionRange === 'custom' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                {nutritionRange === 'custom' ? getCustomRangeLabel(nutritionCustomRange) : 'Custom'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -659,14 +789,14 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.rangeButton,
-                selectedRange === '7days' && { backgroundColor: colors.primary },
+                progressRange === '7days' && { backgroundColor: colors.primary },
               ]}
-              onPress={() => setSelectedRange('7days')}
+              onPress={() => setProgressRange('7days')}
             >
               <Text
                 style={[
                   styles.rangeButtonText,
-                  { color: selectedRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                  { color: progressRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
                 ]}
               >
                 Last 7 days
@@ -675,17 +805,33 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.rangeButton,
-                selectedRange === '30days' && { backgroundColor: colors.primary },
+                progressRange === '30days' && { backgroundColor: colors.primary },
               ]}
-              onPress={() => setSelectedRange('30days')}
+              onPress={() => setProgressRange('30days')}
             >
               <Text
                 style={[
                   styles.rangeButtonText,
-                  { color: selectedRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                  { color: progressRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
                 ]}
               >
                 Last 30 days
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.rangeButton,
+                progressRange === 'custom' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => handleCustomRangeSelect('progress')}
+            >
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: progressRange === 'custom' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                {progressRange === 'custom' ? getCustomRangeLabel(progressCustomRange) : 'Custom'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -821,6 +967,113 @@ export default function DashboardScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowDatePicker(false);
+            // Revert to previous selection if cancelled
+            if (datePickerMode === 'nutrition') {
+              if (nutritionRange === 'custom' && !nutritionCustomRange) {
+                setNutritionRange('7days');
+              }
+            } else {
+              if (progressRange === 'custom' && !progressCustomRange) {
+                setProgressRange('7days');
+              }
+            }
+          }}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowDatePicker(false);
+              // Revert to previous selection if cancelled
+              if (datePickerMode === 'nutrition') {
+                if (nutritionRange === 'custom' && !nutritionCustomRange) {
+                  setNutritionRange('7days');
+                }
+              } else {
+                if (progressRange === 'custom' && !progressCustomRange) {
+                  setProgressRange('7days');
+                }
+              }
+            }}
+          >
+            <View style={[styles.datePickerContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+              <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Select {datePickerType === 'start' ? 'Start' : 'End'} Date
+              </Text>
+              
+              <DateTimePicker
+                value={datePickerType === 'start' ? tempStartDate : tempEndDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                maximumDate={new Date()}
+                style={styles.datePicker}
+              />
+
+              {Platform.OS === 'ios' && (
+                <View style={styles.datePickerButtons}>
+                  <TouchableOpacity
+                    style={[styles.datePickerButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                    onPress={() => {
+                      setShowDatePicker(false);
+                      // Revert to previous selection
+                      if (datePickerMode === 'nutrition') {
+                        if (nutritionRange === 'custom' && !nutritionCustomRange) {
+                          setNutritionRange('7days');
+                        }
+                      } else {
+                        if (progressRange === 'custom' && !progressCustomRange) {
+                          setProgressRange('7days');
+                        }
+                      }
+                    }}
+                  >
+                    <Text style={[styles.datePickerButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.datePickerButton, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      if (datePickerType === 'start') {
+                        setDatePickerType('end');
+                      } else {
+                        // Validate and apply
+                        if (tempEndDate < tempStartDate) {
+                          Alert.alert('Invalid Range', 'End date must be after start date');
+                          return;
+                        }
+                        const customRange = { startDate: tempStartDate, endDate: tempEndDate };
+                        if (datePickerMode === 'nutrition') {
+                          setNutritionCustomRange(customRange);
+                          setNutritionRange('custom');
+                        } else {
+                          setProgressCustomRange(customRange);
+                          setProgressRange('custom');
+                        }
+                        setShowDatePicker(false);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.datePickerButtonText, { color: '#FFFFFF' }]}>
+                      {datePickerType === 'start' ? 'Next' : 'Done'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -887,6 +1140,16 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: colors.border,
   },
+  progressBarContainer: {
+    height: 8,
+    borderRadius: borderRadius.full,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: borderRadius.full,
+  },
   macrosGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -924,14 +1187,14 @@ const styles = StyleSheet.create({
   rangeButton: {
     flex: 1,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.xs,
     borderRadius: borderRadius.md,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
   },
   rangeButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   statRow: {
@@ -1050,6 +1313,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   modalCancelText: {
+    ...typography.bodyBold,
+  },
+  datePickerContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
+    elevation: 5,
+  },
+  datePicker: {
+    width: '100%',
+    marginVertical: spacing.md,
+  },
+  datePickerButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  datePickerButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  datePickerButtonText: {
     ...typography.bodyBold,
   },
 });
