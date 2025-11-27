@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { LineChart } from 'react-native-chart-kit';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -45,6 +46,12 @@ interface CustomDateRange {
   endDate: Date;
 }
 
+interface WeightDataPoint {
+  date: string;
+  actualWeight: number | null;
+  projectedWeight: number;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -59,7 +66,7 @@ export default function DashboardScreen() {
   
   // Separate time ranges for nutrition and progress
   const [nutritionRange, setNutritionRange] = useState<TimeRange>('7days');
-  const [progressRange, setProgressRange] = useState<TimeRange>('7days');
+  const [progressRange, setProgressRange] = useState<TimeRange>('30days');
   
   // Custom date ranges
   const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
@@ -73,7 +80,7 @@ export default function DashboardScreen() {
   const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
   
   const [nutritionStats, setNutritionStats] = useState<any>(null);
-  const [weightData, setWeightData] = useState<any[]>([]);
+  const [weightData, setWeightData] = useState<WeightDataPoint[]>([]);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -142,7 +149,7 @@ export default function DashboardScreen() {
       await loadNutritionTrends(authUser.id);
 
       // Load weight progress data
-      await loadWeightProgress(authUser.id);
+      await loadWeightProgress(authUser.id, userData?.preferred_units || 'metric', goalData);
 
     } catch (error) {
       console.error('[Dashboard] Error loading data:', error);
@@ -316,7 +323,7 @@ export default function DashboardScreen() {
     return currentStreak;
   };
 
-  const loadWeightProgress = async (userId: string) => {
+  const loadWeightProgress = async (userId: string, units: string, goalData: any) => {
     try {
       const endDate = new Date();
       const startDate = new Date();
@@ -330,17 +337,34 @@ export default function DashboardScreen() {
         endDate.setTime(progressCustomRange.endDate.getTime());
       }
 
-      // Load weight check-ins
-      const { data: checkInsData } = await supabase
+      // Load ALL weight check-ins (not just in range) to find the first one
+      const { data: allCheckInsData } = await supabase
         .from('check_ins')
         .select('date, weight')
         .eq('user_id', userId)
         .not('weight', 'is', null)
-        .gte('date', startDate.toISOString().split('T')[0])
-        .lte('date', endDate.toISOString().split('T')[0])
         .order('date', { ascending: true });
 
-      // Load meals data for calorie calculations
+      if (!allCheckInsData || allCheckInsData.length === 0) {
+        console.log('[Dashboard] No weight check-ins found');
+        setWeightData([]);
+        return;
+      }
+
+      // Get the first weight check-in as the starting point
+      const firstCheckIn = allCheckInsData[0];
+      const startWeight = firstCheckIn.weight;
+      const firstCheckInDate = new Date(firstCheckIn.date);
+
+      console.log('[Dashboard] First check-in:', firstCheckIn);
+
+      // Filter check-ins within the selected range
+      const checkInsInRange = allCheckInsData.filter((ci: any) => {
+        const ciDate = new Date(ci.date);
+        return ciDate >= startDate && ciDate <= endDate;
+      });
+
+      // Load meals data for calorie calculations (from first check-in date to end date)
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -350,11 +374,11 @@ export default function DashboardScreen() {
           )
         `)
         .eq('user_id', userId)
-        .gte('date', startDate.toISOString().split('T')[0])
+        .gte('date', firstCheckIn.date)
         .lte('date', endDate.toISOString().split('T')[0])
         .order('date', { ascending: true });
 
-      // Calculate daily calories
+      // Calculate daily calories eaten
       const dailyCalories: Record<string, number> = {};
       if (mealsData && mealsData.length > 0) {
         mealsData.forEach((meal: any) => {
@@ -369,39 +393,52 @@ export default function DashboardScreen() {
         });
       }
 
-      // Calculate estimated weight
-      const weightDataPoints: any[] = [];
-      if (checkInsData && checkInsData.length > 0) {
-        const startingWeight = checkInsData[0].weight;
-        const units = user?.preferred_units || 'metric';
-        const calsPerUnit = units === 'imperial' ? 3500 : 7700; // kcal per lb or kg
+      console.log('[Dashboard] Daily calories:', Object.keys(dailyCalories).length, 'days');
 
-        let cumulativeDeficit = 0;
-        const allDates = Object.keys(dailyCalories).sort();
+      // Calculate projected weight for each day
+      const calsPerUnit = units === 'imperial' ? 3500 : 7700; // kcal per lb or kg
+      const dailyGoal = goalData?.daily_calories || 2000;
 
-        allDates.forEach((date) => {
-          const dailyGoal = goal?.daily_calories || 2000;
-          const dailyEaten = dailyCalories[date] || 0;
-          const deficit = dailyGoal - dailyEaten;
-          cumulativeDeficit += deficit;
+      let cumulativeBalance = 0;
+      const weightDataPoints: WeightDataPoint[] = [];
 
-          const estimatedWeightChange = cumulativeDeficit / calsPerUnit;
-          const estimatedWeight = startingWeight - estimatedWeightChange;
+      // Generate all dates from first check-in to end date
+      const currentDate = new Date(firstCheckInDate);
+      const endDateTime = endDate.getTime();
 
-          // Find actual weight for this date
-          const actualCheckIn = checkInsData.find((ci: any) => ci.date === date);
+      while (currentDate.getTime() <= endDateTime) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        
+        // Calculate daily balance
+        const dailyEaten = dailyCalories[dateStr] || 0;
+        const dailyBalance = dailyEaten - dailyGoal;
+        cumulativeBalance += dailyBalance;
 
+        // Calculate projected weight change
+        const projectedWeightChange = cumulativeBalance / calsPerUnit;
+        const projectedWeight = startWeight + projectedWeightChange;
+
+        // Find actual weight for this date
+        const actualCheckIn = allCheckInsData.find((ci: any) => ci.date === dateStr);
+
+        // Only add data points within the selected range
+        if (currentDate >= startDate) {
           weightDataPoints.push({
-            date,
+            date: dateStr,
             actualWeight: actualCheckIn?.weight || null,
-            estimatedWeight,
+            projectedWeight,
           });
-        });
+        }
+
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1);
       }
 
+      console.log('[Dashboard] Weight data points:', weightDataPoints.length);
       setWeightData(weightDataPoints);
     } catch (error) {
       console.error('[Dashboard] Error loading weight progress:', error);
+      setWeightData([]);
     }
   };
 
@@ -457,7 +494,7 @@ export default function DashboardScreen() {
         }
       } else {
         if (progressRange === 'custom' && !progressCustomRange) {
-          setProgressRange('7days');
+          setProgressRange('30days');
         }
       }
       return;
@@ -508,6 +545,59 @@ export default function DashboardScreen() {
     return `${start} - ${end}`;
   };
 
+  // Prepare chart data
+  const chartData = useMemo(() => {
+    if (weightData.length === 0) return null;
+
+    const units = user?.preferred_units || 'metric';
+    const conversionFactor = units === 'imperial' ? 2.20462 : 1;
+
+    // Get labels (dates)
+    const labels = weightData.map(point => {
+      const date = new Date(point.date);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+
+    // Get projected weights
+    const projectedWeights = weightData.map(point => 
+      point.projectedWeight * conversionFactor
+    );
+
+    // Get actual weights (only where available)
+    const actualWeights = weightData.map(point => 
+      point.actualWeight ? point.actualWeight * conversionFactor : null
+    );
+
+    // Find min and max for Y-axis
+    const allWeights = [
+      ...projectedWeights,
+      ...actualWeights.filter((w): w is number => w !== null)
+    ];
+    const minWeight = Math.min(...allWeights);
+    const maxWeight = Math.max(...allWeights);
+    const padding = (maxWeight - minWeight) * 0.1 || 5;
+
+    return {
+      labels,
+      datasets: [
+        {
+          data: projectedWeights,
+          color: () => colors.info,
+          strokeWidth: 2,
+        },
+        {
+          data: actualWeights.map(w => w || 0), // Replace null with 0 for chart
+          color: () => colors.primary,
+          strokeWidth: 2,
+          withDots: true,
+        },
+      ],
+      legend: ['Projected', 'Actual'],
+      minValue: minWeight - padding,
+      maxValue: maxWeight + padding,
+    };
+  }, [weightData, user?.preferred_units]);
+
   if (loading) {
     return (
       <SafeAreaView
@@ -527,6 +617,9 @@ export default function DashboardScreen() {
   const caloriesEaten = todaySummary?.total_calories || 0;
   const caloriesRemaining = caloriesGoal - caloriesEaten;
   const caloriesProgress = Math.min((caloriesEaten / caloriesGoal) * 100, 100);
+
+  const screenWidth = Dimensions.get('window').width;
+  const chartWidth = screenWidth - (spacing.md * 4);
 
   return (
     <SafeAreaView
@@ -778,7 +871,7 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Progress (Weight vs Estimated) */}
+        {/* Progress (Weight vs Projected) */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Progress
@@ -836,9 +929,9 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {weightData.length > 0 ? (
+          {chartData && weightData.length > 0 ? (
             <View style={styles.chartContainer}>
-              {/* Simple text-based chart representation */}
+              {/* Legend */}
               <View style={styles.legendRow}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
@@ -849,33 +942,52 @@ export default function DashboardScreen() {
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: colors.info }]} />
                   <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Estimated Weight
+                    Projected Weight
                   </Text>
                 </View>
               </View>
 
-              {/* Data points */}
-              <View style={styles.dataPointsContainer}>
-                {weightData.slice(-5).map((point, index) => (
-                  <React.Fragment key={index}>
-                    <View style={styles.dataPoint}>
-                      <Text style={[styles.dataPointDate, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                        {new Date(point.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </Text>
-                      <View style={styles.dataPointValues}>
-                        {point.actualWeight && (
-                          <Text style={[styles.dataPointValue, { color: colors.primary }]}>
-                            Actual: {formatWeight(point.actualWeight)}
-                          </Text>
-                        )}
-                        <Text style={[styles.dataPointValue, { color: colors.info }]}>
-                          Est: {formatWeight(point.estimatedWeight)}
-                        </Text>
-                      </View>
-                    </View>
-                  </React.Fragment>
-                ))}
-              </View>
+              {/* Line Chart */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <LineChart
+                  data={{
+                    labels: chartData.labels,
+                    datasets: chartData.datasets,
+                    legend: chartData.legend,
+                  }}
+                  width={Math.max(chartWidth, chartData.labels.length * 60)}
+                  height={220}
+                  chartConfig={{
+                    backgroundColor: isDark ? colors.cardDark : colors.card,
+                    backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
+                    backgroundGradientTo: isDark ? colors.cardDark : colors.card,
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => isDark ? `rgba(241, 245, 249, ${opacity})` : `rgba(30, 41, 59, ${opacity})`,
+                    labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity})` : `rgba(100, 116, 139, ${opacity})`,
+                    style: {
+                      borderRadius: borderRadius.md,
+                    },
+                    propsForDots: {
+                      r: '4',
+                      strokeWidth: '2',
+                    },
+                    propsForBackgroundLines: {
+                      strokeDasharray: '',
+                      stroke: isDark ? colors.borderDark : colors.border,
+                      strokeWidth: 1,
+                    },
+                  }}
+                  bezier
+                  style={styles.chart}
+                  fromZero={false}
+                  segments={5}
+                />
+              </ScrollView>
+
+              {/* Weight Unit Label */}
+              <Text style={[styles.chartLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Weight in {user?.preferred_units === 'imperial' ? 'lbs' : 'kg'}
+              </Text>
             </View>
           ) : (
             <View style={styles.noDataContainer}>
@@ -983,7 +1095,7 @@ export default function DashboardScreen() {
               }
             } else {
               if (progressRange === 'custom' && !progressCustomRange) {
-                setProgressRange('7days');
+                setProgressRange('30days');
               }
             }
           }}
@@ -1000,7 +1112,7 @@ export default function DashboardScreen() {
                 }
               } else {
                 if (progressRange === 'custom' && !progressCustomRange) {
-                  setProgressRange('7days');
+                  setProgressRange('30days');
                 }
               }
             }}
@@ -1032,7 +1144,7 @@ export default function DashboardScreen() {
                         }
                       } else {
                         if (progressRange === 'custom' && !progressCustomRange) {
-                          setProgressRange('7days');
+                          setProgressRange('30days');
                         }
                       }
                     }}
@@ -1247,24 +1359,14 @@ const styles = StyleSheet.create({
   legendText: {
     ...typography.caption,
   },
-  dataPointsContainer: {
-    gap: spacing.sm,
+  chart: {
+    marginVertical: spacing.sm,
+    borderRadius: borderRadius.md,
   },
-  dataPoint: {
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dataPointDate: {
+  chartLabel: {
     ...typography.caption,
-    marginBottom: spacing.xs,
-  },
-  dataPointValues: {
-    gap: spacing.xs,
-  },
-  dataPointValue: {
-    ...typography.body,
-    fontSize: 14,
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   noDataContainer: {
     alignItems: 'center',
