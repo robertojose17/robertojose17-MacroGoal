@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -75,7 +75,7 @@ export default function DashboardScreen() {
   // Date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState<'nutrition' | 'progress'>('nutrition');
-  const [datePickerType, setDatePickerType] = useState<'start' | 'end'>('start');
+  const [datePickerStep, setDatePickerStep] = useState<'start' | 'end'>('start');
   const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
   const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
   
@@ -157,7 +157,23 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [nutritionRange, nutritionCustomRange, progressRange, progressCustomRange]);
+  }, []);
+
+  // Reload nutrition trends when range changes
+  useEffect(() => {
+    if (user) {
+      console.log('[Dashboard] Nutrition range changed, reloading trends');
+      loadNutritionTrends(user.id);
+    }
+  }, [nutritionRange, nutritionCustomRange]);
+
+  // Reload weight progress when range changes
+  useEffect(() => {
+    if (user && goal) {
+      console.log('[Dashboard] Progress range changed, reloading weight data');
+      loadWeightProgress(user.id, user.preferred_units || 'metric', goal);
+    }
+  }, [progressRange, progressCustomRange]);
 
   const loadTodaySummary = async (userId: string, date: string) => {
     try {
@@ -222,6 +238,8 @@ export default function DashboardScreen() {
         endDate.setTime(nutritionCustomRange.endDate.getTime());
       }
 
+      console.log('[Dashboard] Loading nutrition trends from', startDate.toISOString().split('T')[0], 'to', endDate.toISOString().split('T')[0]);
+
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -275,6 +293,8 @@ export default function DashboardScreen() {
       const currentYear = new Date().getFullYear();
       const isLeapYear = (currentYear % 4 === 0 && currentYear % 100 !== 0) || (currentYear % 400 === 0);
       const daysInYear = isLeapYear ? 366 : 365;
+
+      console.log('[Dashboard] Nutrition stats:', { daysCount, avgCals, streak });
 
       setNutritionStats({
         daysTracked: daysCount,
@@ -336,6 +356,8 @@ export default function DashboardScreen() {
         startDate.setTime(progressCustomRange.startDate.getTime());
         endDate.setTime(progressCustomRange.endDate.getTime());
       }
+
+      console.log('[Dashboard] Loading weight progress from', startDate.toISOString().split('T')[0], 'to', endDate.toISOString().split('T')[0]);
 
       // Load ALL weight check-ins (not just in range) to find the first one
       const { data: allCheckInsData } = await supabase
@@ -474,68 +496,131 @@ export default function DashboardScreen() {
 
   // Handle custom date range selection
   const handleCustomRangeSelect = (mode: 'nutrition' | 'progress') => {
+    console.log('[Dashboard] Opening custom date picker for', mode);
     setDatePickerMode(mode);
-    setDatePickerType('start');
-    setTempStartDate(new Date());
-    setTempEndDate(new Date());
+    setDatePickerStep('start');
+    
+    // Initialize with reasonable defaults
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+    
+    setTempStartDate(start);
+    setTempEndDate(end);
     setShowDatePicker(true);
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
+  const handleDatePickerChange = (event: any, selectedDate?: Date) => {
+    console.log('[Dashboard] Date picker change:', event.type, selectedDate);
+    
+    // Handle dismissal/cancellation
+    if (event.type === 'dismissed' || event.type === 'neutralButtonPressed') {
       setShowDatePicker(false);
-    }
-
-    if (event.type === 'dismissed') {
-      // User cancelled - revert to previous selection
-      if (datePickerMode === 'nutrition') {
-        if (nutritionRange === 'custom' && !nutritionCustomRange) {
-          setNutritionRange('7days');
-        }
-      } else {
-        if (progressRange === 'custom' && !progressCustomRange) {
-          setProgressRange('30days');
-        }
+      // Revert to previous selection if no custom range was set
+      if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
+        setNutritionRange('7days');
+      } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
+        setProgressRange('30days');
       }
       return;
     }
 
-    if (selectedDate) {
-      if (datePickerType === 'start') {
-        setTempStartDate(selectedDate);
-        // Move to end date picker
-        setDatePickerType('end');
-        if (Platform.OS === 'ios') {
-          // On iOS, we'll show both pickers in the modal
-        } else {
-          // On Android, show the next picker
-          setTimeout(() => setShowDatePicker(true), 100);
-        }
-      } else {
-        setTempEndDate(selectedDate);
-        
-        // Validate date range
-        if (selectedDate < tempStartDate) {
-          Alert.alert('Invalid Range', 'End date must be after start date');
-          return;
-        }
-
-        // Apply the custom range
-        const customRange = { startDate: tempStartDate, endDate: selectedDate };
-        
-        if (datePickerMode === 'nutrition') {
-          setNutritionCustomRange(customRange);
-          setNutritionRange('custom');
-        } else {
-          setProgressCustomRange(customRange);
-          setProgressRange('custom');
-        }
-
-        if (Platform.OS === 'android') {
-          setShowDatePicker(false);
-        }
-      }
+    if (!selectedDate) {
+      return;
     }
+
+    if (datePickerStep === 'start') {
+      // User selected start date
+      setTempStartDate(selectedDate);
+      
+      if (Platform.OS === 'android') {
+        // On Android, close this picker and open the next one
+        setShowDatePicker(false);
+        setDatePickerStep('end');
+        // Small delay to ensure smooth transition
+        setTimeout(() => {
+          setShowDatePicker(true);
+        }, 300);
+      } else {
+        // On iOS, just move to the next step (modal stays open)
+        setDatePickerStep('end');
+      }
+    } else {
+      // User selected end date
+      setTempEndDate(selectedDate);
+      
+      // Validate date range
+      if (selectedDate < tempStartDate) {
+        Alert.alert('Invalid Range', 'End date must be after start date');
+        setShowDatePicker(false);
+        // Revert selection
+        if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
+          setNutritionRange('7days');
+        } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
+          setProgressRange('30days');
+        }
+        return;
+      }
+
+      // Apply the custom range
+      const customRange: CustomDateRange = { 
+        startDate: tempStartDate, 
+        endDate: selectedDate 
+      };
+      
+      console.log('[Dashboard] Applying custom range:', customRange);
+      
+      if (datePickerMode === 'nutrition') {
+        setNutritionCustomRange(customRange);
+        setNutritionRange('custom');
+      } else {
+        setProgressCustomRange(customRange);
+        setProgressRange('custom');
+      }
+
+      // Close the picker
+      setShowDatePicker(false);
+    }
+  };
+
+  const handleDatePickerCancel = () => {
+    console.log('[Dashboard] Date picker cancelled');
+    setShowDatePicker(false);
+    
+    // Revert to previous selection if no custom range was set
+    if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
+      setNutritionRange('7days');
+    } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
+      setProgressRange('30days');
+    }
+  };
+
+  const handleDatePickerConfirm = () => {
+    console.log('[Dashboard] Date picker confirmed');
+    
+    // Validate date range
+    if (tempEndDate < tempStartDate) {
+      Alert.alert('Invalid Range', 'End date must be after start date');
+      return;
+    }
+
+    // Apply the custom range
+    const customRange: CustomDateRange = { 
+      startDate: tempStartDate, 
+      endDate: tempEndDate 
+    };
+    
+    console.log('[Dashboard] Applying custom range:', customRange);
+    
+    if (datePickerMode === 'nutrition') {
+      setNutritionCustomRange(customRange);
+      setNutritionRange('custom');
+    } else {
+      setProgressCustomRange(customRange);
+      setProgressRange('custom');
+    }
+
+    setShowDatePicker(false);
   };
 
   const getCustomRangeLabel = (range: CustomDateRange | null) => {
@@ -1080,74 +1165,78 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Date Picker Modal */}
-      {showDatePicker && (
+      {/* Date Picker Modal - Platform-specific rendering */}
+      {showDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={datePickerStep === 'start' ? tempStartDate : tempEndDate}
+          mode="date"
+          display="default"
+          onChange={handleDatePickerChange}
+          maximumDate={new Date()}
+        />
+      )}
+
+      {showDatePicker && Platform.OS === 'ios' && (
         <Modal
           visible={showDatePicker}
           transparent
-          animationType="fade"
-          onRequestClose={() => {
-            setShowDatePicker(false);
-            // Revert to previous selection if cancelled
-            if (datePickerMode === 'nutrition') {
-              if (nutritionRange === 'custom' && !nutritionCustomRange) {
-                setNutritionRange('7days');
-              }
-            } else {
-              if (progressRange === 'custom' && !progressCustomRange) {
-                setProgressRange('30days');
-              }
-            }
-          }}
+          animationType="slide"
+          onRequestClose={handleDatePickerCancel}
         >
           <TouchableOpacity
             style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={() => {
-              setShowDatePicker(false);
-              // Revert to previous selection if cancelled
-              if (datePickerMode === 'nutrition') {
-                if (nutritionRange === 'custom' && !nutritionCustomRange) {
-                  setNutritionRange('7days');
-                }
-              } else {
-                if (progressRange === 'custom' && !progressCustomRange) {
-                  setProgressRange('30days');
-                }
-              }
-            }}
+            onPress={handleDatePickerCancel}
           >
-            <View style={[styles.datePickerContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-              <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                Select {datePickerType === 'start' ? 'Start' : 'End'} Date
-              </Text>
-              
-              <DateTimePicker
-                value={datePickerType === 'start' ? tempStartDate : tempEndDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                maximumDate={new Date()}
-                style={styles.datePicker}
-              />
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={[styles.datePickerContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                  Select Date Range
+                </Text>
+                
+                {/* Start Date Picker */}
+                <View style={styles.datePickerSection}>
+                  <Text style={[styles.datePickerLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                    Start Date
+                  </Text>
+                  <DateTimePicker
+                    value={tempStartDate}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (date) setTempStartDate(date);
+                    }}
+                    maximumDate={new Date()}
+                    style={styles.datePicker}
+                  />
+                </View>
 
-              {Platform.OS === 'ios' && (
+                {/* End Date Picker */}
+                <View style={styles.datePickerSection}>
+                  <Text style={[styles.datePickerLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                    End Date
+                  </Text>
+                  <DateTimePicker
+                    value={tempEndDate}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (date) setTempEndDate(date);
+                    }}
+                    maximumDate={new Date()}
+                    minimumDate={tempStartDate}
+                    style={styles.datePicker}
+                  />
+                </View>
+
+                {/* Buttons */}
                 <View style={styles.datePickerButtons}>
                   <TouchableOpacity
                     style={[styles.datePickerButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                    onPress={() => {
-                      setShowDatePicker(false);
-                      // Revert to previous selection
-                      if (datePickerMode === 'nutrition') {
-                        if (nutritionRange === 'custom' && !nutritionCustomRange) {
-                          setNutritionRange('7days');
-                        }
-                      } else {
-                        if (progressRange === 'custom' && !progressCustomRange) {
-                          setProgressRange('30days');
-                        }
-                      }
-                    }}
+                    onPress={handleDatePickerCancel}
                   >
                     <Text style={[styles.datePickerButtonText, { color: isDark ? colors.textDark : colors.text }]}>
                       Cancel
@@ -1155,34 +1244,15 @@ export default function DashboardScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.datePickerButton, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      if (datePickerType === 'start') {
-                        setDatePickerType('end');
-                      } else {
-                        // Validate and apply
-                        if (tempEndDate < tempStartDate) {
-                          Alert.alert('Invalid Range', 'End date must be after start date');
-                          return;
-                        }
-                        const customRange = { startDate: tempStartDate, endDate: tempEndDate };
-                        if (datePickerMode === 'nutrition') {
-                          setNutritionCustomRange(customRange);
-                          setNutritionRange('custom');
-                        } else {
-                          setProgressCustomRange(customRange);
-                          setProgressRange('custom');
-                        }
-                        setShowDatePicker(false);
-                      }
-                    }}
+                    onPress={handleDatePickerConfirm}
                   >
                     <Text style={[styles.datePickerButtonText, { color: '#FFFFFF' }]}>
-                      {datePickerType === 'start' ? 'Next' : 'Done'}
+                      Confirm
                     </Text>
                   </TouchableOpacity>
                 </View>
-              )}
-            </View>
+              </View>
+            </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
       )}
@@ -1425,9 +1495,15 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
     elevation: 5,
   },
+  datePickerSection: {
+    marginBottom: spacing.md,
+  },
+  datePickerLabel: {
+    ...typography.bodyBold,
+    marginBottom: spacing.xs,
+  },
   datePicker: {
     width: '100%',
-    marginVertical: spacing.md,
   },
   datePickerButtons: {
     flexDirection: 'row',
