@@ -21,12 +21,15 @@ import { supabase } from '@/app/integrations/supabase/client';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+type CheckInType = 'weight' | 'steps' | 'gym';
+
 export default function CheckInFormScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const checkInType = (params.type as CheckInType) || 'weight';
   const checkInId = params.checkInId as string | undefined;
   const isEditing = !!checkInId;
 
@@ -37,27 +40,27 @@ export default function CheckInFormScreen() {
   // Form fields
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  
+  // Weight fields
   const [weight, setWeight] = useState('');
-  const [steps, setSteps] = useState('');
-  const [stepsGoal, setStepsGoal] = useState('');
-  const [wentToGym, setWentToGym] = useState(false);
-  const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   
-  // Measurements
-  const [showMeasurements, setShowMeasurements] = useState(false);
-  const [chest, setChest] = useState('');
-  const [waist, setWaist] = useState('');
-  const [hips, setHips] = useState('');
-  const [arms, setArms] = useState('');
-  const [thighs, setThighs] = useState('');
+  // Steps fields
+  const [steps, setSteps] = useState('');
+  const [stepsGoal, setStepsGoal] = useState('');
+  
+  // Gym fields
+  const [wentToGym, setWentToGym] = useState(true);
+  
+  // Common
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     loadUserData();
     if (isEditing) {
       loadCheckInData();
-    } else {
+    } else if (checkInType === 'steps') {
       loadDefaultStepsGoal();
     }
   }, []);
@@ -131,21 +134,6 @@ export default function CheckInFormScreen() {
       setWentToGym(data.went_to_gym || false);
       setNotes(data.notes || '');
       setPhotoUrl(data.photo_url || null);
-
-      // Populate measurements
-      if (data.measurements) {
-        setChest(data.measurements.chest?.toString() || '');
-        setWaist(data.measurements.waist?.toString() || '');
-        setHips(data.measurements.hips?.toString() || '');
-        setArms(data.measurements.arms?.toString() || '');
-        setThighs(data.measurements.thighs?.toString() || '');
-        
-        // Show measurements section if any are filled
-        if (data.measurements.chest || data.measurements.waist || data.measurements.hips || 
-            data.measurements.arms || data.measurements.thighs) {
-          setShowMeasurements(true);
-        }
-      }
     } catch (error) {
       console.error('[CheckInForm] Error in loadCheckInData:', error);
     } finally {
@@ -170,7 +158,7 @@ export default function CheckInFormScreen() {
 
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
-        setPhotoUrl(null); // Clear existing URL if replacing
+        setPhotoUrl(null);
       }
     } catch (error) {
       console.error('[CheckInForm] Error taking photo:', error);
@@ -195,7 +183,7 @@ export default function CheckInFormScreen() {
 
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
-        setPhotoUrl(null); // Clear existing URL if replacing
+        setPhotoUrl(null);
       }
     } catch (error) {
       console.error('[CheckInForm] Error choosing photo:', error);
@@ -212,16 +200,13 @@ export default function CheckInFormScreen() {
     try {
       console.log('[CheckInForm] Uploading photo...');
       
-      // Create a unique filename
       const fileExt = uri.split('.').pop();
       const fileName = `${userId}/${Date.now()}.${fileExt}`;
       const filePath = `check-in-photos/${fileName}`;
 
-      // Convert URI to blob for upload
       const response = await fetch(uri);
       const blob = await response.blob();
 
-      // Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from('check-ins')
         .upload(filePath, blob, {
@@ -234,7 +219,6 @@ export default function CheckInFormScreen() {
         return null;
       }
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from('check-ins')
         .getPublicUrl(filePath);
@@ -257,16 +241,21 @@ export default function CheckInFormScreen() {
         return;
       }
 
-      // Validate at least one field is filled
-      if (!weight && !steps && !chest && !waist && !hips && !arms && !thighs && !notes && !photoUri && !photoUrl) {
-        Alert.alert('Empty Check-In', 'Please fill in at least one field');
+      // Validate based on check-in type
+      if (checkInType === 'weight' && !weight) {
+        Alert.alert('Missing Weight', 'Please enter your weight');
+        setSaving(false);
+        return;
+      }
+      if (checkInType === 'steps' && !steps) {
+        Alert.alert('Missing Steps', 'Please enter your steps');
         setSaving(false);
         return;
       }
 
-      // Upload photo if new one was selected
+      // Upload photo if new one was selected (only for weight check-ins)
       let finalPhotoUrl = photoUrl;
-      if (photoUri) {
+      if (checkInType === 'weight' && photoUri) {
         const uploadedUrl = await uploadPhoto(photoUri, authUser.id);
         if (uploadedUrl) {
           finalPhotoUrl = uploadedUrl;
@@ -275,27 +264,23 @@ export default function CheckInFormScreen() {
         }
       }
 
-      // Build measurements object
-      const measurements: any = {};
-      if (chest) measurements.chest = parseFloat(chest);
-      if (waist) measurements.waist = parseFloat(waist);
-      if (hips) measurements.hips = parseFloat(hips);
-      if (arms) measurements.arms = parseFloat(arms);
-      if (thighs) measurements.thighs = parseFloat(thighs);
-
-      // Build check-in data
-      const checkInData = {
+      // Build check-in data based on type
+      const checkInData: any = {
         user_id: authUser.id,
         date: date.toISOString().split('T')[0],
-        weight: weight ? parseFloat(weight) : null,
-        steps: steps ? parseInt(steps, 10) : null,
-        steps_goal: stepsGoal ? parseInt(stepsGoal, 10) : null,
-        went_to_gym: wentToGym,
         notes: notes || null,
-        photo_url: finalPhotoUrl,
-        measurements: Object.keys(measurements).length > 0 ? measurements : {},
         updated_at: new Date().toISOString(),
       };
+
+      if (checkInType === 'weight') {
+        checkInData.weight = weight ? parseFloat(weight) : null;
+        checkInData.photo_url = finalPhotoUrl;
+      } else if (checkInType === 'steps') {
+        checkInData.steps = steps ? parseInt(steps, 10) : null;
+        checkInData.steps_goal = stepsGoal ? parseInt(stepsGoal, 10) : null;
+      } else if (checkInType === 'gym') {
+        checkInData.went_to_gym = wentToGym;
+      }
 
       if (isEditing) {
         // Update existing check-in
@@ -343,10 +328,6 @@ export default function CheckInFormScreen() {
     return user?.preferred_units === 'imperial' ? 'lbs' : 'kg';
   };
 
-  const getMeasurementUnit = () => {
-    return user?.preferred_units === 'imperial' ? 'in' : 'cm';
-  };
-
   if (loading) {
     return (
       <SafeAreaView
@@ -379,7 +360,7 @@ export default function CheckInFormScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          {isEditing ? 'Edit Check-In' : 'New Check-In'}
+          {isEditing ? 'Edit' : 'New'} {checkInType === 'weight' ? 'Weight' : checkInType === 'steps' ? 'Steps' : 'Gym'} Check-In
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -424,296 +405,176 @@ export default function CheckInFormScreen() {
           )}
         </View>
 
-        {/* Weight */}
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-            Weight ({getWeightUnit()})
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                borderColor: isDark ? colors.borderDark : colors.border,
-                color: isDark ? colors.textDark : colors.text,
-              },
-            ]}
-            placeholder={`Enter weight in ${getWeightUnit()}`}
-            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="decimal-pad"
-          />
-        </View>
-
-        {/* Steps */}
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>Steps</Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                borderColor: isDark ? colors.borderDark : colors.border,
-                color: isDark ? colors.textDark : colors.text,
-              },
-            ]}
-            placeholder="Enter steps"
-            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            value={steps}
-            onChangeText={setSteps}
-            keyboardType="number-pad"
-          />
-          
-          <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text, marginTop: spacing.md }]}>
-            Steps Goal
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                borderColor: isDark ? colors.borderDark : colors.border,
-                color: isDark ? colors.textDark : colors.text,
-              },
-            ]}
-            placeholder="Enter steps goal"
-            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            value={stepsGoal}
-            onChangeText={setStepsGoal}
-            keyboardType="number-pad"
-          />
-        </View>
-
-        {/* Gym Toggle */}
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <TouchableOpacity
-            style={styles.toggleRow}
-            onPress={() => setWentToGym(!wentToGym)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.toggleLeft}>
-              <IconSymbol
-                ios_icon_name="dumbbell.fill"
-                android_material_icon_name="fitness_center"
-                size={24}
-                color={wentToGym ? colors.success : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
-              />
-              <Text style={[styles.toggleLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                Went to gym today?
+        {/* Weight Fields */}
+        {checkInType === 'weight' && (
+          <>
+            <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+                Weight ({getWeightUnit()})
               </Text>
-            </View>
-            <View
-              style={[
-                styles.toggle,
-                {
-                  backgroundColor: wentToGym ? colors.success : (isDark ? colors.borderDark : colors.border),
-                },
-              ]}
-            >
-              <View
+              <TextInput
                 style={[
-                  styles.toggleThumb,
+                  styles.input,
                   {
-                    transform: [{ translateX: wentToGym ? 20 : 0 }],
+                    backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                    borderColor: isDark ? colors.borderDark : colors.border,
+                    color: isDark ? colors.textDark : colors.text,
                   },
                 ]}
+                placeholder={`Enter weight in ${getWeightUnit()}`}
+                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                value={weight}
+                onChangeText={setWeight}
+                keyboardType="decimal-pad"
               />
             </View>
-          </TouchableOpacity>
-        </View>
 
-        {/* Measurements */}
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <TouchableOpacity
-            style={styles.collapsibleHeader}
-            onPress={() => setShowMeasurements(!showMeasurements)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Measurements ({getMeasurementUnit()})
-            </Text>
-            <IconSymbol
-              ios_icon_name={showMeasurements ? 'chevron.up' : 'chevron.down'}
-              android_material_icon_name={showMeasurements ? 'expand_less' : 'expand_more'}
-              size={24}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            {/* Photo */}
+            <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+                Progress Photo (Optional)
+              </Text>
+              
+              {(photoUri || photoUrl) ? (
+                <View style={styles.photoPreview}>
+                  <Image
+                    source={{ uri: photoUri || photoUrl || undefined }}
+                    style={styles.photoImage}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    style={[styles.removePhotoButton, { backgroundColor: colors.error }]}
+                    onPress={handleRemovePhoto}
+                  >
+                    <IconSymbol
+                      ios_icon_name="trash"
+                      android_material_icon_name="delete"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.photoButtons}>
+                  <TouchableOpacity
+                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                    onPress={handleTakePhoto}
+                  >
+                    <IconSymbol
+                      ios_icon_name="camera"
+                      android_material_icon_name="photo_camera"
+                      size={24}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.photoButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                      Take Photo
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                    onPress={handleChoosePhoto}
+                  >
+                    <IconSymbol
+                      ios_icon_name="photo"
+                      android_material_icon_name="photo_library"
+                      size={24}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.photoButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                      Choose Photo
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Steps Fields */}
+        {checkInType === 'steps' && (
+          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>Steps</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                  borderColor: isDark ? colors.borderDark : colors.border,
+                  color: isDark ? colors.textDark : colors.text,
+                },
+              ]}
+              placeholder="Enter steps"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              value={steps}
+              onChangeText={setSteps}
+              keyboardType="number-pad"
             />
-          </TouchableOpacity>
+            
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text, marginTop: spacing.md }]}>
+              Steps Goal
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                  borderColor: isDark ? colors.borderDark : colors.border,
+                  color: isDark ? colors.textDark : colors.text,
+                },
+              ]}
+              placeholder="Enter steps goal"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              value={stepsGoal}
+              onChangeText={setStepsGoal}
+              keyboardType="number-pad"
+            />
+          </View>
+        )}
 
-          {showMeasurements && (
-            <View style={styles.measurementsGrid}>
-              <View style={styles.measurementItem}>
-                <Text style={[styles.measurementLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Chest
-                </Text>
-                <TextInput
-                  style={[
-                    styles.measurementInput,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                      color: isDark ? colors.textDark : colors.text,
-                    },
-                  ]}
-                  placeholder="0"
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  value={chest}
-                  onChangeText={setChest}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <View style={styles.measurementItem}>
-                <Text style={[styles.measurementLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Waist
-                </Text>
-                <TextInput
-                  style={[
-                    styles.measurementInput,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                      color: isDark ? colors.textDark : colors.text,
-                    },
-                  ]}
-                  placeholder="0"
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  value={waist}
-                  onChangeText={setWaist}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <View style={styles.measurementItem}>
-                <Text style={[styles.measurementLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Hips
-                </Text>
-                <TextInput
-                  style={[
-                    styles.measurementInput,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                      color: isDark ? colors.textDark : colors.text,
-                    },
-                  ]}
-                  placeholder="0"
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  value={hips}
-                  onChangeText={setHips}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <View style={styles.measurementItem}>
-                <Text style={[styles.measurementLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Arms
-                </Text>
-                <TextInput
-                  style={[
-                    styles.measurementInput,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                      color: isDark ? colors.textDark : colors.text,
-                    },
-                  ]}
-                  placeholder="0"
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  value={arms}
-                  onChangeText={setArms}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <View style={styles.measurementItem}>
-                <Text style={[styles.measurementLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Thighs
-                </Text>
-                <TextInput
-                  style={[
-                    styles.measurementInput,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                      color: isDark ? colors.textDark : colors.text,
-                    },
-                  ]}
-                  placeholder="0"
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  value={thighs}
-                  onChangeText={setThighs}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Photo */}
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-            Progress Photo
-          </Text>
-          
-          {(photoUri || photoUrl) ? (
-            <View style={styles.photoPreview}>
-              <Image
-                source={{ uri: photoUri || photoUrl || undefined }}
-                style={styles.photoImage}
-                resizeMode="cover"
-              />
-              <TouchableOpacity
-                style={[styles.removePhotoButton, { backgroundColor: colors.error }]}
-                onPress={handleRemovePhoto}
-              >
+        {/* Gym Fields */}
+        {checkInType === 'gym' && (
+          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() => setWentToGym(!wentToGym)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.toggleLeft}>
                 <IconSymbol
-                  ios_icon_name="trash"
-                  android_material_icon_name="delete"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.photoButtons}>
-              <TouchableOpacity
-                style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={handleTakePhoto}
-              >
-                <IconSymbol
-                  ios_icon_name="camera"
-                  android_material_icon_name="photo_camera"
+                  ios_icon_name="dumbbell.fill"
+                  android_material_icon_name="fitness_center"
                   size={24}
-                  color={colors.primary}
+                  color={wentToGym ? colors.success : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
                 />
-                <Text style={[styles.photoButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                  Take Photo
+                <Text style={[styles.toggleLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Went to gym today?
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={handleChoosePhoto}
+              </View>
+              <View
+                style={[
+                  styles.toggle,
+                  {
+                    backgroundColor: wentToGym ? colors.success : (isDark ? colors.borderDark : colors.border),
+                  },
+                ]}
               >
-                <IconSymbol
-                  ios_icon_name="photo"
-                  android_material_icon_name="photo_library"
-                  size={24}
-                  color={colors.primary}
+                <View
+                  style={[
+                    styles.toggleThumb,
+                    {
+                      transform: [{ translateX: wentToGym ? 20 : 0 }],
+                    },
+                  ]}
                 />
-                <Text style={[styles.photoButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                  Choose Photo
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Notes */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>Notes</Text>
+          <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>Notes (Optional)</Text>
           <TextInput
             style={[
               styles.textArea,
@@ -723,7 +584,7 @@ export default function CheckInFormScreen() {
                 color: isDark ? colors.textDark : colors.text,
               },
             ]}
-            placeholder="Add any notes about your progress..."
+            placeholder="Add any notes..."
             placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
             value={notes}
             onChangeText={setNotes}
@@ -782,6 +643,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.h3,
+    flex: 1,
+    textAlign: 'center',
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
@@ -843,33 +706,6 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
-  },
-  collapsibleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  measurementsGrid: {
-    marginTop: spacing.md,
-    gap: spacing.md,
-  },
-  measurementItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  measurementLabel: {
-    ...typography.body,
-    flex: 1,
-  },
-  measurementInput: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    fontSize: 16,
-    width: 100,
-    textAlign: 'center',
   },
   photoButtons: {
     flexDirection: 'row',

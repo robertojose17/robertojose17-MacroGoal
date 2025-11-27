@@ -9,6 +9,7 @@ import {
   Platform,
   RefreshControl,
   Alert,
+  Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +18,8 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
+type CheckInType = 'weight' | 'steps' | 'gym';
+
 interface CheckIn {
   id: string;
   date: string;
@@ -24,7 +27,6 @@ interface CheckIn {
   steps: number | null;
   steps_goal: number | null;
   went_to_gym: boolean;
-  measurements: any;
   photo_url: string | null;
   notes: string | null;
 }
@@ -34,6 +36,7 @@ export default function CheckInsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const [selectedType, setSelectedType] = useState<CheckInType>('weight');
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,7 +101,10 @@ export default function CheckInsScreen() {
   };
 
   const handleNewCheckIn = () => {
-    router.push('/check-in-form');
+    router.push({
+      pathname: '/check-in-form',
+      params: { type: selectedType },
+    });
   };
 
   const handleViewCheckIn = (checkIn: CheckIn) => {
@@ -106,6 +112,38 @@ export default function CheckInsScreen() {
       pathname: '/check-in-details',
       params: { checkInId: checkIn.id },
     });
+  };
+
+  const handleDeleteCheckIn = async (checkIn: CheckIn) => {
+    Alert.alert(
+      'Delete Check-In',
+      'Are you sure you want to delete this check-in?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('check_ins')
+                .delete()
+                .eq('id', checkIn.id);
+
+              if (error) {
+                console.error('[CheckIns] Error deleting check-in:', error);
+                Alert.alert('Error', 'Failed to delete check-in');
+              } else {
+                console.log('[CheckIns] Check-in deleted successfully');
+                loadCheckIns();
+              }
+            } catch (error) {
+              console.error('[CheckIns] Error in handleDeleteCheckIn:', error);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const formatDate = (dateString: string) => {
@@ -137,6 +175,24 @@ export default function CheckInsScreen() {
     return `${Math.round(weight)} kg`;
   };
 
+  // Filter check-ins based on selected type
+  const getFilteredCheckIns = () => {
+    return checkIns.filter(checkIn => {
+      switch (selectedType) {
+        case 'weight':
+          return checkIn.weight !== null;
+        case 'steps':
+          return checkIn.steps !== null;
+        case 'gym':
+          return checkIn.went_to_gym !== null && checkIn.went_to_gym !== false;
+        default:
+          return false;
+      }
+    });
+  };
+
+  const filteredCheckIns = getFilteredCheckIns();
+
   if (loading) {
     return (
       <SafeAreaView
@@ -163,6 +219,63 @@ export default function CheckInsScreen() {
         </Text>
       </View>
 
+      {/* Segmented Control */}
+      <View style={styles.segmentedControlContainer}>
+        <View style={[styles.segmentedControl, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <TouchableOpacity
+            style={[
+              styles.segment,
+              selectedType === 'weight' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setSelectedType('weight')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                { color: selectedType === 'weight' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+              ]}
+            >
+              Weight
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.segment,
+              selectedType === 'steps' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setSelectedType('steps')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                { color: selectedType === 'steps' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+              ]}
+            >
+              Steps
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.segment,
+              selectedType === 'gym' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setSelectedType('gym')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                { color: selectedType === 'gym' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+              ]}
+            >
+              Gym
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -180,23 +293,35 @@ export default function CheckInsScreen() {
             size={24}
             color="#FFFFFF"
           />
-          <Text style={styles.newButtonText}>New Check-In</Text>
+          <Text style={styles.newButtonText}>
+            New {selectedType === 'weight' ? 'Weight' : selectedType === 'steps' ? 'Steps' : 'Gym'} Check-In
+          </Text>
         </TouchableOpacity>
 
         {/* Check-Ins List */}
-        {checkIns.length === 0 ? (
+        {filteredCheckIns.length === 0 ? (
           <View style={[styles.emptyCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <IconSymbol
-              ios_icon_name="chart.line.uptrend.xyaxis"
-              android_material_icon_name="trending_up"
+              ios_icon_name={
+                selectedType === 'weight' ? 'scalemass' :
+                selectedType === 'steps' ? 'figure.walk' :
+                'dumbbell.fill'
+              }
+              android_material_icon_name={
+                selectedType === 'weight' ? 'monitor_weight' :
+                selectedType === 'steps' ? 'directions_walk' :
+                'fitness_center'
+              }
               size={48}
               color={isDark ? colors.textSecondaryDark : colors.textSecondary}
             />
             <Text style={[styles.emptyTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              No Check-Ins Yet
+              No {selectedType === 'weight' ? 'Weight' : selectedType === 'steps' ? 'Steps' : 'Gym'} Check-Ins Yet
             </Text>
             <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Track your progress by recording weight, measurements, steps, and more.
+              {selectedType === 'weight' && 'Track your weight progress over time.'}
+              {selectedType === 'steps' && 'Log your daily steps and goals.'}
+              {selectedType === 'gym' && 'Record your gym workouts.'}
             </Text>
             <TouchableOpacity
               style={[styles.emptyButton, { backgroundColor: colors.primary }]}
@@ -207,93 +332,123 @@ export default function CheckInsScreen() {
           </View>
         ) : (
           <View style={styles.checkInsList}>
-            {checkIns.map((checkIn, index) => (
+            {filteredCheckIns.map((checkIn, index) => (
               <React.Fragment key={checkIn.id}>
-                <TouchableOpacity
-                  style={[styles.checkInCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-                  onPress={() => handleViewCheckIn(checkIn)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.checkInHeader}>
-                    <View style={styles.checkInDateContainer}>
-                      <IconSymbol
-                        ios_icon_name="calendar"
-                        android_material_icon_name="calendar_today"
-                        size={20}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.checkInDate, { color: isDark ? colors.textDark : colors.text }]}>
-                        {formatDate(checkIn.date)}
-                      </Text>
+                <View style={[styles.checkInCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                  <TouchableOpacity
+                    style={styles.checkInContent}
+                    onPress={() => handleViewCheckIn(checkIn)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.checkInHeader}>
+                      <View style={styles.checkInDateContainer}>
+                        <IconSymbol
+                          ios_icon_name="calendar"
+                          android_material_icon_name="calendar_today"
+                          size={20}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.checkInDate, { color: isDark ? colors.textDark : colors.text }]}>
+                          {formatDate(checkIn.date)}
+                        </Text>
+                      </View>
                     </View>
+
+                    <View style={styles.checkInStats}>
+                      {/* Weight */}
+                      {selectedType === 'weight' && checkIn.weight && (
+                        <View style={styles.statItem}>
+                          <IconSymbol
+                            ios_icon_name="scalemass"
+                            android_material_icon_name="monitor_weight"
+                            size={24}
+                            color={colors.primary}
+                          />
+                          <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
+                            {formatWeight(checkIn.weight)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Steps */}
+                      {selectedType === 'steps' && checkIn.steps !== null && (
+                        <View style={styles.statItem}>
+                          <IconSymbol
+                            ios_icon_name="figure.walk"
+                            android_material_icon_name="directions_walk"
+                            size={24}
+                            color={colors.primary}
+                          />
+                          <View>
+                            <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
+                              {checkIn.steps.toLocaleString()} steps
+                            </Text>
+                            {checkIn.steps_goal && (
+                              <Text style={[styles.statSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                                Goal: {checkIn.steps_goal.toLocaleString()}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Gym */}
+                      {selectedType === 'gym' && checkIn.went_to_gym && (
+                        <View style={styles.statItem}>
+                          <IconSymbol
+                            ios_icon_name="dumbbell.fill"
+                            android_material_icon_name="fitness_center"
+                            size={24}
+                            color={colors.success}
+                          />
+                          <Text style={[styles.statValue, { color: colors.success }]}>
+                            Workout Completed
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Photo indicator */}
+                      {selectedType === 'weight' && checkIn.photo_url && (
+                        <View style={styles.photoIndicator}>
+                          <IconSymbol
+                            ios_icon_name="photo"
+                            android_material_icon_name="photo"
+                            size={18}
+                            color={colors.info}
+                          />
+                          <Text style={[styles.photoIndicatorText, { color: colors.info }]}>
+                            Has photo
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Notes indicator */}
+                      {checkIn.notes && (
+                        <View style={styles.notesIndicator}>
+                          <IconSymbol
+                            ios_icon_name="note.text"
+                            android_material_icon_name="note"
+                            size={18}
+                            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Delete Button */}
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteCheckIn(checkIn)}
+                  >
                     <IconSymbol
-                      ios_icon_name="chevron.right"
-                      android_material_icon_name="chevron_right"
+                      ios_icon_name="trash"
+                      android_material_icon_name="delete"
                       size={20}
-                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                      color={colors.error}
                     />
-                  </View>
-
-                  <View style={styles.checkInStats}>
-                    {/* Weight */}
-                    {checkIn.weight && (
-                      <View style={styles.statItem}>
-                        <IconSymbol
-                          ios_icon_name="scalemass"
-                          android_material_icon_name="monitor_weight"
-                          size={18}
-                          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                        />
-                        <Text style={[styles.statText, { color: isDark ? colors.textDark : colors.text }]}>
-                          {formatWeight(checkIn.weight)}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Steps */}
-                    {checkIn.steps !== null && (
-                      <View style={styles.statItem}>
-                        <IconSymbol
-                          ios_icon_name="figure.walk"
-                          android_material_icon_name="directions_walk"
-                          size={18}
-                          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                        />
-                        <Text style={[styles.statText, { color: isDark ? colors.textDark : colors.text }]}>
-                          {checkIn.steps.toLocaleString()}
-                          {checkIn.steps_goal && ` / ${checkIn.steps_goal.toLocaleString()}`}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Gym */}
-                    {checkIn.went_to_gym && (
-                      <View style={styles.statItem}>
-                        <IconSymbol
-                          ios_icon_name="dumbbell.fill"
-                          android_material_icon_name="fitness_center"
-                          size={18}
-                          color={colors.success}
-                        />
-                        <Text style={[styles.statText, { color: colors.success }]}>
-                          Gym
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Photo indicator */}
-                    {checkIn.photo_url && (
-                      <View style={styles.statItem}>
-                        <IconSymbol
-                          ios_icon_name="photo"
-                          android_material_icon_name="photo"
-                          size={18}
-                          color={colors.info}
-                        />
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               </React.Fragment>
             ))}
           </View>
@@ -324,6 +479,28 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.h2,
+  },
+  segmentedControlContainer: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    borderRadius: borderRadius.lg,
+    padding: 4,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
@@ -379,6 +556,11 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkInContent: {
+    flex: 1,
   },
   checkInHeader: {
     flexDirection: 'row',
@@ -396,18 +578,37 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   checkInStats: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
-  statText: {
-    ...typography.body,
-    fontSize: 14,
+  statValue: {
+    ...typography.bodyBold,
+    fontSize: 16,
+  },
+  statSubtext: {
+    ...typography.caption,
+    fontSize: 12,
+  },
+  photoIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  photoIndicatorText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  notesIndicator: {
+    marginTop: spacing.xs,
+  },
+  deleteButton: {
+    padding: spacing.sm,
+    marginLeft: spacing.sm,
   },
   bottomSpacer: {
     height: 40,
