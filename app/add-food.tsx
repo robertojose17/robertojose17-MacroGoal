@@ -1261,7 +1261,7 @@ export default function AddFoodScreen() {
                         color="#8B5CF6"
                       />
                     </View>
-                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                    <Text style={styles.quickActionTitle}>
                       Barcode Scan
                     </Text>
                   </TouchableOpacity>
@@ -1279,7 +1279,7 @@ export default function AddFoodScreen() {
                         color="#10B981"
                       />
                     </View>
-                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                    <Text style={styles.quickActionTitle}>
                       Copy from Previous
                     </Text>
                   </TouchableOpacity>
@@ -1299,7 +1299,7 @@ export default function AddFoodScreen() {
                         color="#F59E0B"
                       />
                     </View>
-                    <Text style={[styles.quickActionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                    <Text style={styles.quickActionTitle}>
                       AI Meal Estimator
                     </Text>
                   </TouchableOpacity>
@@ -1528,6 +1528,7 @@ const styles = StyleSheet.create({
   quickActionTitle: {
     ...typography.bodyBold,
     fontSize: 15,
+    color: '#1F2937',
   },
   foodCard: {
     flexDirection: 'row',
