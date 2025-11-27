@@ -785,8 +785,8 @@ export default function DashboardScreen() {
             />
           </View>
 
-          {/* Macros - Updated to match Home screen layout */}
-          <View style={styles.macrosGrid}>
+          {/* Macros - Single Horizontal Row */}
+          <View style={styles.macrosRow}>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.protein }]}>
                 {Math.round(todaySummary?.total_protein || 0)} / {goal?.protein_g || 150}g
@@ -923,7 +923,7 @@ export default function DashboardScreen() {
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Average macros per day:
                 </Text>
-                <View style={styles.macrosRow}>
+                <View style={styles.macrosStatsRow}>
                   <Text style={[styles.macroStat, { color: colors.protein }]}>
                     Protein: {Math.round(nutritionStats.avgProtein)}g
                   </Text>
@@ -1332,23 +1332,26 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: borderRadius.full,
   },
-  macrosGrid: {
+  macrosRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
+    gap: spacing.xs,
   },
   macroItem: {
-    width: '48%',
-    marginBottom: spacing.sm,
+    flex: 1,
+    alignItems: 'center',
   },
   macroValue: {
     ...typography.bodyBold,
-    fontSize: 14,
+    fontSize: 13,
     marginBottom: 2,
+    textAlign: 'center',
   },
   macroLabel: {
     ...typography.caption,
+    fontSize: 11,
+    textAlign: 'center',
   },
   activityRow: {
     gap: spacing.sm,
@@ -1389,7 +1392,7 @@ const styles = StyleSheet.create({
   statValue: {
     ...typography.bodyBold,
   },
-  macrosRow: {
+  macrosStatsRow: {
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
