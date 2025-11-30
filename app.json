@@ -1,14 +1,15 @@
+
 {
   "expo": {
     "name": "Macro Goal",
     "slug": "Macro Goal",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/natively-dark.png",
+    "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/natively-dark.png",
+      "image": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -21,14 +22,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/natively-dark.png",
+        "foregroundImage": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.elitemacrotracker.app"
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
       "bundler": "metro"
     },
     "plugins": [
