@@ -19,6 +19,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
 import { supabase } from '@/app/integrations/supabase/client';
+import { useSubscription } from '@/hooks/useSubscription';
 
 // Generate a unique ID for each message
 let messageIdCounter = 0;
@@ -77,6 +78,9 @@ export default function ChatbotScreen() {
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
+  // Check subscription status
+  const { isSubscribed, loading: subscriptionLoading } = useSubscription();
+
   const [messages, setMessages] = useState<MessageWithId[]>([
     {
       id: generateMessageId(),
@@ -101,6 +105,31 @@ export default function ChatbotScreen() {
       }
     };
   }, []);
+
+  // Check subscription and redirect to paywall if not subscribed
+  useEffect(() => {
+    if (!subscriptionLoading && !isSubscribed) {
+      console.log('[Chatbot] User is not subscribed, redirecting to paywall');
+      Alert.alert(
+        'Premium Feature',
+        'AI Meal Estimator is a premium feature. Subscribe to unlock AI-powered meal estimation.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => router.back(),
+          },
+          {
+            text: 'Subscribe',
+            onPress: () => {
+              router.replace('/paywall');
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    }
+  }, [subscriptionLoading, isSubscribed, router]);
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -757,6 +786,28 @@ After the JSON, you can add a brief explanation if needed.`,
     return message && typeof message === 'object' && message.content && message.id;
   });
 
+  // Show loading while checking subscription
+  if (subscriptionLoading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+        edges={['top']}
+      >
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Checking subscription...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Don't render if not subscribed (will be redirected)
+  if (!isSubscribed) {
+    return null;
+  }
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -1054,6 +1105,15 @@ After the JSON, you can add a brief explanation if needed.`,
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  loadingText: {
+    ...typography.body,
   },
   header: {
     flexDirection: 'row',
