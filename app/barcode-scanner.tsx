@@ -11,6 +11,97 @@ import { IconSymbol } from '@/components/IconSymbol';
 // Toggle between API versions
 const USE_API_V2 = false; // Set to true to use v2 API
 
+/**
+ * Select the best product from multiple candidates based on nutrient completeness
+ * Returns the product with the most non-zero nutrient values
+ */
+function selectBestProduct(products: any[]): any {
+  if (!products || products.length === 0) {
+    return null;
+  }
+
+  if (products.length === 1) {
+    return products[0];
+  }
+
+  console.log('[BarcodeScanner] ========== SELECTING BEST PRODUCT ==========');
+  console.log('[BarcodeScanner] Evaluating', products.length, 'candidates');
+
+  let bestProduct = products[0];
+  let bestScore = 0;
+
+  for (let i = 0; i < products.length; i++) {
+    const product = products[i];
+    const nutriments = product.nutriments || {};
+
+    // Calculate nutrient completeness score
+    let score = 0;
+
+    // Check calories (multiple field names)
+    if (
+      (nutriments['energy-kcal_100g'] && nutriments['energy-kcal_100g'] > 0) ||
+      (nutriments['energy-kcal'] && nutriments['energy-kcal'] > 0) ||
+      (nutriments['energy_100g'] && nutriments['energy_100g'] > 0) ||
+      (nutriments['energy'] && nutriments['energy'] > 0)
+    ) {
+      score++;
+    }
+
+    // Check protein
+    if (
+      (nutriments['proteins_100g'] && nutriments['proteins_100g'] > 0) ||
+      (nutriments['proteins'] && nutriments['proteins'] > 0)
+    ) {
+      score++;
+    }
+
+    // Check carbs
+    if (
+      (nutriments['carbohydrates_100g'] && nutriments['carbohydrates_100g'] > 0) ||
+      (nutriments['carbohydrates'] && nutriments['carbohydrates'] > 0)
+    ) {
+      score++;
+    }
+
+    // Check fats
+    if (
+      (nutriments['fat_100g'] && nutriments['fat_100g'] > 0) ||
+      (nutriments['fat'] && nutriments['fat'] > 0)
+    ) {
+      score++;
+    }
+
+    // Check fiber
+    if (
+      (nutriments['fiber_100g'] && nutriments['fiber_100g'] > 0) ||
+      (nutriments['fiber'] && nutriments['fiber'] > 0)
+    ) {
+      score++;
+    }
+
+    console.log('[BarcodeScanner] Product', i + 1, 'score:', score, '-', product.product_name || 'Unknown');
+
+    // Update best product if this one has a higher score
+    if (score > bestScore) {
+      bestScore = score;
+      bestProduct = product;
+    } else if (score === bestScore) {
+      // Tie-breaker: prefer product with higher calories
+      const currentCalories = nutriments['energy-kcal_100g'] || nutriments['energy-kcal'] || 0;
+      const bestCalories = bestProduct.nutriments?.['energy-kcal_100g'] || bestProduct.nutriments?.['energy-kcal'] || 0;
+      
+      if (currentCalories > bestCalories) {
+        bestProduct = product;
+      }
+    }
+  }
+
+  console.log('[BarcodeScanner] ✅ Best product selected with score:', bestScore);
+  console.log('[BarcodeScanner] Best product name:', bestProduct.product_name || 'Unknown');
+
+  return bestProduct;
+}
+
 export default function BarcodeScannerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -184,17 +275,30 @@ export default function BarcodeScannerScreen() {
           console.log('[BarcodeScanner] ✅ Product has nutrition data');
         }
 
-        // IMPORTANT: Set loading to false and scanned to true BEFORE navigation
+        // IMPORTANT: Select best product if multiple candidates exist
+        // In this case, we only have one product from the barcode lookup,
+        // but we apply the selection logic for consistency
+        const candidates = [result.product];
+        const bestProduct = selectBestProduct(candidates);
+
+        if (!bestProduct) {
+          console.log('[BarcodeScanner] ❌ No valid product after selection');
+          throw new Error('No valid product found');
+        }
+
+        // IMPORTANT: Set loading to false BEFORE navigation
         setLoading(false);
         setScanned(true);
 
-        // Navigate to food details screen with the product data
+        // Navigate to food details screen with the best product data
         console.log('[BarcodeScanner] Navigating to food-details...');
         
-        router.push({
+        // CRITICAL CHANGE: Use dismissTo to close both camera AND add-food menu
+        // This ensures only the food-details screen remains visible
+        router.dismissTo({
           pathname: '/food-details',
           params: {
-            offData: JSON.stringify(result.product),
+            offData: JSON.stringify(bestProduct),
             meal: mealType,
             date: date,
             mode: mode,
@@ -203,7 +307,7 @@ export default function BarcodeScannerScreen() {
           },
         });
 
-        console.log('[BarcodeScanner] Navigation initiated');
+        console.log('[BarcodeScanner] Navigation initiated with dismissTo');
       } else {
         // Product not found
         console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
