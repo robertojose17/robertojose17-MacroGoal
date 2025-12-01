@@ -34,12 +34,18 @@ export default function FoodDetailsScreen() {
 
   useEffect(() => {
     console.log('[FoodDetails] Component mounted');
+    console.log('[FoodDetails] All params:', params);
+    console.log('[FoodDetails] offDataString length:', offDataString?.length || 0);
     console.log('[FoodDetails] Parsing OpenFoodFacts data...');
     
     if (offDataString) {
       try {
+        console.log('[FoodDetails] Attempting to parse offData...');
         const parsed = JSON.parse(offDataString);
-        console.log('[FoodDetails] OpenFoodFacts product parsed:', parsed.product_name);
+        console.log('[FoodDetails] OpenFoodFacts product parsed successfully');
+        console.log('[FoodDetails] Product name:', parsed.product_name);
+        console.log('[FoodDetails] Product code:', parsed.code);
+        console.log('[FoodDetails] Has nutriments:', !!parsed.nutriments);
         
         // Apply defaults for missing fields - NEVER block the UI
         const productWithDefaults: OpenFoodFactsProduct = {

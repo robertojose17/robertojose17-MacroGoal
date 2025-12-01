@@ -63,6 +63,7 @@ export default function BarcodeScanScreen() {
     console.log('[BarcodeScan] ========== BARCODE DETECTED ==========');
     console.log('[BarcodeScan] Type:', result.type);
     console.log('[BarcodeScan] Code:', barcode);
+    console.log('[BarcodeScan] Current params:', { mode, mealType, date, returnTo, myMealId });
     
     setScannedCode(barcode);
     setScanState('loading');
@@ -87,27 +88,47 @@ export default function BarcodeScanScreen() {
 
       if (product) {
         console.log('[BarcodeScan] ✅ Product found:', product.product_name);
-        console.log('[BarcodeScan] Navigating to food-details with params:', {
+        console.log('[BarcodeScan] Product details:', {
+          name: product.product_name,
+          brand: product.brands,
+          code: product.code,
+          hasNutriments: !!product.nutriments,
+        });
+        
+        // Prepare navigation params
+        const navParams: any = {
           meal: mealType,
           date: date,
-          mode: mode,
-          returnTo: returnTo || '/add-food',
-          mealId: myMealId,
-        });
+          offData: JSON.stringify(product),
+          source: 'barcode',
+        };
+        
+        // Add optional params only if they exist
+        if (mode) {
+          navParams.mode = mode;
+        }
+        if (returnTo) {
+          navParams.returnTo = returnTo;
+        }
+        if (myMealId) {
+          navParams.mealId = myMealId;
+        }
+        
+        console.log('[BarcodeScan] Navigating to food-details with params:', navParams);
+        console.log('[BarcodeScan] offData length:', navParams.offData.length);
         
         // Navigate to Food Details screen with push (not replace) to maintain stack
         router.push({
           pathname: '/food-details',
-          params: {
-            meal: mealType,
-            date: date,
-            offData: JSON.stringify(product),
-            source: 'barcode',
-            mode: mode,
-            returnTo: returnTo || '/add-food',
-            mealId: myMealId,
-          },
+          params: navParams,
         });
+        
+        console.log('[BarcodeScan] Navigation initiated successfully');
+        
+        // Reset processing flag after a short delay to allow navigation to complete
+        setTimeout(() => {
+          isProcessingRef.current = false;
+        }, 1000);
       } else {
         console.log('[BarcodeScan] ❌ Product not found in OpenFoodFacts');
         setScanState('not-found');
