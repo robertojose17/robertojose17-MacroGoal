@@ -19,6 +19,7 @@ import { LineChart } from 'react-native-chart-kit';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import MacroBar from '@/components/MacroBar';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type TimeRange = '7days' | '30days' | 'custom';
@@ -921,24 +922,38 @@ export default function DashboardScreen() {
                 </Text>
               </View>
 
-              {/* Average Macros */}
+              {/* Average Macros with Progress Bars */}
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Average macros per day:
                 </Text>
-                <View style={styles.macrosStatsRow}>
-                  <Text style={[styles.macroStat, { color: colors.protein }]}>
-                    Protein: {Math.round(nutritionStats.avgProtein)}g
-                  </Text>
-                  <Text style={[styles.macroStat, { color: colors.carbs }]}>
-                    Carbs: {Math.round(nutritionStats.avgCarbs)}g
-                  </Text>
-                  <Text style={[styles.macroStat, { color: colors.fats }]}>
-                    Fats: {Math.round(nutritionStats.avgFats)}g
-                  </Text>
-                  <Text style={[styles.macroStat, { color: colors.fiber }]}>
-                    Fiber: {Math.round(nutritionStats.avgFiber)}g
-                  </Text>
+                
+                {/* Macro Bars */}
+                <View style={styles.macroBarsContainer}>
+                  <MacroBar
+                    label="Protein"
+                    current={nutritionStats.avgProtein}
+                    target={goal?.protein_g || 150}
+                    color={colors.protein}
+                  />
+                  <MacroBar
+                    label="Carbs"
+                    current={nutritionStats.avgCarbs}
+                    target={goal?.carbs_g || 200}
+                    color={colors.carbs}
+                  />
+                  <MacroBar
+                    label="Fats"
+                    current={nutritionStats.avgFats}
+                    target={goal?.fats_g || 65}
+                    color={colors.fats}
+                  />
+                  <MacroBar
+                    label="Fiber"
+                    current={nutritionStats.avgFiber}
+                    target={goal?.fiber_g || 30}
+                    color={colors.fiber}
+                  />
                 </View>
               </View>
 
@@ -1395,13 +1410,8 @@ const styles = StyleSheet.create({
   statValue: {
     ...typography.bodyBold,
   },
-  macrosStatsRow: {
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  macroStat: {
-    ...typography.body,
-    fontSize: 14,
+  macroBarsContainer: {
+    marginTop: spacing.sm,
   },
   noDataText: {
     ...typography.body,
