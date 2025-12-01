@@ -126,17 +126,28 @@ export default function CheckInFormScreen() {
         return;
       }
 
-      // Populate form fields
-      setDate(new Date(data.date));
+      console.log('[CheckInForm] 📥 Loaded check-in data:', data);
+
+      // FIX: Parse date correctly from database (stored as YYYY-MM-DD)
+      // Create a date object at noon local time to avoid timezone issues
+      const [year, month, day] = data.date.split('-').map(Number);
+      const localDate = new Date(year, month - 1, day, 12, 0, 0);
+      console.log('[CheckInForm] 📅 Parsed date:', data.date, '→', localDate.toLocaleDateString());
+      setDate(localDate);
       
-      // Convert weight from kg (stored) to display units
+      // FIX: Weight is stored in kg, convert to display units WITHOUT double conversion
       if (data.weight) {
         const units = user?.preferred_units || 'metric';
+        console.log('[CheckInForm] ⚖️ Weight from DB:', data.weight, 'kg');
+        
         if (units === 'imperial') {
           // Convert kg to lbs for display
           const lbs = data.weight * 2.20462;
+          console.log('[CheckInForm] ⚖️ Converting to lbs for display:', lbs);
           setWeight(Math.round(lbs).toString());
         } else {
+          // Display in kg
+          console.log('[CheckInForm] ⚖️ Displaying in kg:', data.weight);
           setWeight(Math.round(data.weight).toString());
         }
       }
@@ -276,27 +287,36 @@ export default function CheckInFormScreen() {
         }
       }
 
+      // FIX: Convert date to YYYY-MM-DD format in LOCAL timezone (no UTC conversion)
+      // This ensures the date saved matches the date the user selected
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
+      console.log('[CheckInForm] 📅 Saving date:', dateString, '(from', date.toLocaleDateString(), ')');
+
       // Build check-in data based on type
       const checkInData: any = {
         user_id: authUser.id,
-        date: date.toISOString().split('T')[0],
+        date: dateString, // FIX: Use local date string, not ISO string
         notes: notes || null,
         updated_at: new Date().toISOString(),
       };
 
       if (checkInType === 'weight') {
-        // Convert weight to kg for storage
+        // FIX: Convert weight to kg for storage (always store in kg)
         const units = user?.preferred_units || 'metric';
         let weightInKg: number;
         
         if (units === 'imperial') {
           // User entered lbs, convert to kg for storage
-          weightInKg = parseFloat(weight) * 0.453592;
-          console.log('[CheckInForm] Converting weight:', weight, 'lbs to', weightInKg, 'kg');
+          weightInKg = parseFloat(weight) / 2.20462;
+          console.log('[CheckInForm] ⚖️ Converting weight:', weight, 'lbs →', weightInKg, 'kg');
         } else {
           // User entered kg, store as-is
           weightInKg = parseFloat(weight);
-          console.log('[CheckInForm] Storing weight:', weightInKg, 'kg');
+          console.log('[CheckInForm] ⚖️ Storing weight:', weightInKg, 'kg');
         }
         
         checkInData.weight = weightInKg;
@@ -307,6 +327,8 @@ export default function CheckInFormScreen() {
       } else if (checkInType === 'gym') {
         checkInData.went_to_gym = wentToGym;
       }
+
+      console.log('[CheckInForm] 💾 Saving check-in data:', checkInData);
 
       if (isEditing) {
         // Update existing check-in
@@ -321,7 +343,7 @@ export default function CheckInFormScreen() {
           return;
         }
 
-        console.log('[CheckInForm] Check-in updated successfully');
+        console.log('[CheckInForm] ✅ Check-in updated successfully');
         Alert.alert('Success', 'Check-in updated successfully', [
           { text: 'OK', onPress: () => router.back() },
         ]);
@@ -337,7 +359,7 @@ export default function CheckInFormScreen() {
           return;
         }
 
-        console.log('[CheckInForm] Check-in created successfully');
+        console.log('[CheckInForm] ✅ Check-in created successfully');
         Alert.alert('Success', 'Check-in saved successfully', [
           { text: 'OK', onPress: () => router.back() },
         ]);
@@ -423,7 +445,11 @@ export default function CheckInFormScreen() {
               onChange={(event, selectedDate) => {
                 setShowDatePicker(Platform.OS === 'ios');
                 if (selectedDate) {
-                  setDate(selectedDate);
+                  // FIX: Set date at noon to avoid timezone issues
+                  const noonDate = new Date(selectedDate);
+                  noonDate.setHours(12, 0, 0, 0);
+                  console.log('[CheckInForm] 📅 Date selected:', noonDate.toLocaleDateString());
+                  setDate(noonDate);
                 }
               }}
               maximumDate={new Date()}

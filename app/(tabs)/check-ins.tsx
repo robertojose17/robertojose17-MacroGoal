@@ -147,14 +147,22 @@ export default function CheckInsScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // FIX: Parse date correctly from YYYY-MM-DD format
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
+    
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
 
-    if (date.toDateString() === today.toDateString()) {
+    if (checkDate.getTime() === today.getTime()) {
       return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
+    } else if (checkDate.getTime() === yesterday.getTime()) {
       return 'Yesterday';
     } else {
       return date.toLocaleDateString('en-US', { 
@@ -167,11 +175,14 @@ export default function CheckInsScreen() {
 
   const formatWeight = (weight: number | null) => {
     if (!weight) return 'N/A';
-    // Weight is stored in kg in the database
+    // FIX: Weight is stored in kg in the database, convert to display units
     const units = user?.preferred_units || 'metric';
+    console.log('[CheckIns] ⚖️ Formatting weight:', weight, 'kg, units:', units);
+    
     if (units === 'imperial') {
       // Convert kg to lbs for display
       const lbs = Math.round(weight * 2.20462);
+      console.log('[CheckIns] ⚖️ Converted to:', lbs, 'lbs');
       return `${lbs} lbs`;
     }
     // Display in kg

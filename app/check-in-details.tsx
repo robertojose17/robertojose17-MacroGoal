@@ -136,7 +136,10 @@ export default function CheckInDetailsScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // FIX: Parse date correctly from YYYY-MM-DD format
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    
     return date.toLocaleDateString('en-US', { 
       weekday: 'long',
       month: 'long', 
@@ -147,11 +150,14 @@ export default function CheckInDetailsScreen() {
 
   const formatWeight = (weight: number | null) => {
     if (!weight) return 'N/A';
-    // Weight is stored in kg in the database
+    // FIX: Weight is stored in kg in the database, convert to display units
     const units = user?.preferred_units || 'metric';
+    console.log('[CheckInDetails] ⚖️ Formatting weight:', weight, 'kg, units:', units);
+    
     if (units === 'imperial') {
       // Convert kg to lbs for display
       const lbs = Math.round(weight * 2.20462);
+      console.log('[CheckInDetails] ⚖️ Converted to:', lbs, 'lbs');
       return `${lbs} lbs`;
     }
     // Display in kg
