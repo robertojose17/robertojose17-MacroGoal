@@ -30,6 +30,7 @@ export interface UseSubscriptionReturn {
   hasActiveSubscription: boolean;
   planType: PlanType;
   refreshSubscription: () => Promise<void>;
+  syncSubscription: () => Promise<void>;
   createCheckoutSession: (priceId: string, planType: 'monthly' | 'yearly') => Promise<void>;
   openCustomerPortal: () => Promise<void>;
 }
@@ -83,6 +84,34 @@ export function useSubscription(): UseSubscriptionReturn {
       setLoading(false);
     }
   }, []);
+
+  const syncSubscription = useCallback(async () => {
+    try {
+      console.log('[useSubscription] 🔄 Syncing subscription with Stripe...');
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('[useSubscription] ❌ Not authenticated');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('sync-subscription', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        console.error('[useSubscription] ❌ Error syncing subscription:', error);
+      } else {
+        console.log('[useSubscription] ✅ Subscription synced:', data);
+        // Refresh local subscription data
+        await fetchSubscription();
+      }
+    } catch (error) {
+      console.error('[useSubscription] ❌ Error in syncSubscription:', error);
+    }
+  }, [fetchSubscription]);
 
   useEffect(() => {
     fetchSubscription();
@@ -156,10 +185,10 @@ export function useSubscription(): UseSubscriptionReturn {
         const result = await WebBrowser.openBrowserAsync(data.url);
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes, refresh the subscription
+        // After the browser closes, sync and refresh the subscription
         if (result.type === 'cancel' || result.type === 'dismiss') {
-          console.log('[useSubscription] 🔄 Browser closed, refreshing subscription...');
-          await fetchSubscription();
+          console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
+          await syncSubscription();
         }
       } else {
         console.error('[useSubscription] ❌ No checkout URL in response');
@@ -178,7 +207,7 @@ export function useSubscription(): UseSubscriptionReturn {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       throw error;
     }
-  }, [fetchSubscription]);
+  }, [syncSubscription]);
 
   const openCustomerPortal = useCallback(async () => {
     try {
@@ -211,10 +240,10 @@ export function useSubscription(): UseSubscriptionReturn {
         const result = await WebBrowser.openBrowserAsync(data.url);
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes, refresh the subscription
+        // After the browser closes, sync and refresh the subscription
         if (result.type === 'cancel' || result.type === 'dismiss') {
-          console.log('[useSubscription] 🔄 Browser closed, refreshing subscription...');
-          await fetchSubscription();
+          console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
+          await syncSubscription();
         }
       } else {
         console.error('[useSubscription] ❌ No portal URL returned');
@@ -224,7 +253,7 @@ export function useSubscription(): UseSubscriptionReturn {
       console.error('[useSubscription] ❌ Error in openCustomerPortal:', error);
       throw error;
     }
-  }, [fetchSubscription]);
+  }, [syncSubscription]);
 
   const isSubscribed = subscription?.status === 'active' || subscription?.status === 'trialing';
   const hasActiveSubscription = isSubscribed;
@@ -236,6 +265,7 @@ export function useSubscription(): UseSubscriptionReturn {
     hasActiveSubscription,
     planType: subscription?.plan_type || null,
     refreshSubscription: fetchSubscription,
+    syncSubscription,
     createCheckoutSession,
     openCustomerPortal,
   };

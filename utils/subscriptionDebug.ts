@@ -1,75 +1,95 @@
 
-/**
- * Subscription System Debug Utilities
- * 
- * Use these functions to verify your subscription system is configured correctly
- */
-
-import { STRIPE_CONFIG } from './stripeConfig';
-
-export const debugSubscriptionConfig = () => {
-  console.log('========================================');
-  console.log('SUBSCRIPTION SYSTEM DEBUG');
-  console.log('========================================');
-  
-  console.log('\n📋 STRIPE CONFIGURATION:');
-  console.log('Monthly Price ID:', STRIPE_CONFIG.MONTHLY_PRICE_ID);
-  console.log('Yearly Price ID:', STRIPE_CONFIG.YEARLY_PRICE_ID);
-  console.log('Monthly Price: $' + STRIPE_CONFIG.MONTHLY_PRICE);
-  console.log('Yearly Price: $' + STRIPE_CONFIG.YEARLY_PRICE);
-  console.log('Yearly Monthly Equivalent: $' + STRIPE_CONFIG.YEARLY_MONTHLY_EQUIVALENT);
-  console.log('Yearly Savings: ' + STRIPE_CONFIG.YEARLY_SAVINGS_PERCENT + '%');
-  
-  console.log('\n⚠️  CONFIGURATION STATUS:');
-  
-  const monthlyConfigured = !STRIPE_CONFIG.MONTHLY_PRICE_ID.includes('TEST_ID_HERE');
-  const yearlyConfigured = !STRIPE_CONFIG.YEARLY_PRICE_ID.includes('TEST_ID_HERE');
-  
-  if (monthlyConfigured) {
-    console.log('✅ Monthly Price ID configured');
-  } else {
-    console.log('❌ Monthly Price ID NOT configured - Update utils/stripeConfig.ts');
-  }
-  
-  if (yearlyConfigured) {
-    console.log('✅ Yearly Price ID configured');
-  } else {
-    console.log('❌ Yearly Price ID NOT configured - Update utils/stripeConfig.ts');
-  }
-  
-  console.log('\n📝 NEXT STEPS:');
-  if (!monthlyConfigured || !yearlyConfigured) {
-    console.log('1. Go to https://dashboard.stripe.com/test/products');
-    console.log('2. Create products and prices');
-    console.log('3. Copy the Price IDs');
-    console.log('4. Update utils/stripeConfig.ts');
-    console.log('5. Restart the app');
-  } else {
-    console.log('✅ Configuration looks good!');
-    console.log('Make sure you have also:');
-    console.log('1. Set STRIPE_SECRET_KEY in Supabase Edge Functions');
-    console.log('2. Set STRIPE_WEBHOOK_SECRET in Supabase Edge Functions');
-    console.log('3. Set STRIPE_MONTHLY_PRICE_ID in Supabase Edge Functions');
-    console.log('4. Set STRIPE_YEARLY_PRICE_ID in Supabase Edge Functions');
-    console.log('5. Created webhook endpoint in Stripe Dashboard');
-  }
-  
-  console.log('\n📚 DOCUMENTATION:');
-  console.log('- Quick Start: QUICK_START_SUBSCRIPTION.md');
-  console.log('- Full Guide: STRIPE_SETUP_GUIDE.md');
-  console.log('- Summary: SUBSCRIPTION_IMPLEMENTATION_SUMMARY.md');
-  
-  console.log('\n========================================');
-  
-  return {
-    configured: monthlyConfigured && yearlyConfigured,
-    monthlyPriceId: STRIPE_CONFIG.MONTHLY_PRICE_ID,
-    yearlyPriceId: STRIPE_CONFIG.YEARLY_PRICE_ID,
-  };
-};
+import { supabase } from '@/app/integrations/supabase/client';
 
 /**
- * Call this function in your app to verify configuration
- * Example: import { debugSubscriptionConfig } from '@/utils/subscriptionDebug';
- *          debugSubscriptionConfig();
+ * Logs detailed subscription information for debugging
  */
+export async function logSubscriptionStatus() {
+  try {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[SubscriptionDebug] 🔍 Checking subscription status');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.log('[SubscriptionDebug] ❌ No user logged in');
+      return;
+    }
+
+    console.log('[SubscriptionDebug] 👤 User ID:', user.id);
+    console.log('[SubscriptionDebug] 📧 Email:', user.email);
+
+    // Fetch user data
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('user_type')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (userError) {
+      console.error('[SubscriptionDebug] ❌ Error fetching user:', userError);
+    } else {
+      console.log('[SubscriptionDebug] 👤 User Type:', userData?.user_type || 'unknown');
+    }
+
+    // Fetch subscription data
+    const { data: subscription, error: subError } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (subError) {
+      console.error('[SubscriptionDebug] ❌ Error fetching subscription:', subError);
+    } else if (!subscription) {
+      console.log('[SubscriptionDebug] ℹ️ No subscription record found');
+    } else {
+      console.log('[SubscriptionDebug] 📊 Subscription Details:');
+      console.log('[SubscriptionDebug]   - Status:', subscription.status);
+      console.log('[SubscriptionDebug]   - Plan Type:', subscription.plan_type || 'none');
+      console.log('[SubscriptionDebug]   - Stripe Customer ID:', subscription.stripe_customer_id || 'none');
+      console.log('[SubscriptionDebug]   - Stripe Subscription ID:', subscription.stripe_subscription_id || 'none');
+      console.log('[SubscriptionDebug]   - Stripe Price ID:', subscription.stripe_price_id || 'none');
+      console.log('[SubscriptionDebug]   - Current Period End:', subscription.current_period_end || 'none');
+      console.log('[SubscriptionDebug]   - Cancel at Period End:', subscription.cancel_at_period_end);
+      console.log('[SubscriptionDebug]   - Updated At:', subscription.updated_at);
+    }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  } catch (error) {
+    console.error('[SubscriptionDebug] ❌ Error:', error);
+  }
+}
+
+/**
+ * Manually syncs subscription status with Stripe
+ */
+export async function manualSyncSubscription() {
+  try {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[SubscriptionDebug] 🔄 Manually syncing subscription');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('[SubscriptionDebug] ❌ Not authenticated');
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke('sync-subscription', {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (error) {
+      console.error('[SubscriptionDebug] ❌ Error syncing:', error);
+    } else {
+      console.log('[SubscriptionDebug] ✅ Sync result:', data);
+    }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  } catch (error) {
+    console.error('[SubscriptionDebug] ❌ Error:', error);
+  }
+}
