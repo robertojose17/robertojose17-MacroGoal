@@ -2,7 +2,7 @@
 /**
  * OpenFoodFacts API Integration
  * Public API for food database lookup
- * This module handles BARCODE LOOKUP and TEXT SEARCH
+ * This module handles TEXT SEARCH ONLY
  * 
  * SIMPLIFIED FOR MOBILE RELIABILITY:
  * - No AbortController (removed to fix race conditions)
@@ -434,66 +434,6 @@ async function fetchWithTimeout(
   } catch (error) {
     console.log(`[OpenFoodFacts] ❌ Request failed:`, error);
     throw error;
-  }
-}
-
-/**
- * Lookup a product by barcode from OpenFoodFacts
- * NEVER throws errors - always returns null on failure
- * HARD TIMEOUT: 10 seconds
- * 
- * NOTE: This is for BARCODE SCAN only - DO NOT MODIFY
- */
-export async function lookupProductByBarcode(barcode: string): Promise<OpenFoodFactsProduct | null> {
-  try {
-    console.log(`[OpenFoodFacts] ========== BARCODE LOOKUP ==========`);
-    console.log(`[OpenFoodFacts] Barcode: "${barcode}"`);
-    console.log(`[OpenFoodFacts] Barcode length: ${barcode.length}`);
-    console.log(`[OpenFoodFacts] Barcode type: ${typeof barcode}`);
-    
-    const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-    console.log(`[OpenFoodFacts] Request URL: ${url}`);
-    
-    const response = await fetchWithTimeout(
-      url,
-      {},
-      10000 // 10 second timeout
-    );
-    
-    console.log(`[OpenFoodFacts] Response received, status: ${response.status}`);
-    console.log(`[OpenFoodFacts] Response ok: ${response.ok}`);
-    
-    if (!response.ok) {
-      console.log(`[OpenFoodFacts] ❌ Barcode lookup failed (status: ${response.status})`);
-      return null;
-    }
-
-    console.log(`[OpenFoodFacts] Parsing response JSON...`);
-    const data = await response.json();
-    console.log(`[OpenFoodFacts] Response data keys:`, Object.keys(data || {}));
-    console.log(`[OpenFoodFacts] Response status field:`, data.status);
-    console.log(`[OpenFoodFacts] Has product field:`, !!data.product);
-    
-    // Check if product was found
-    if (data.status === 0 || !data.product) {
-      console.log(`[OpenFoodFacts] ❌ Product not found for barcode: ${barcode}`);
-      return null;
-    }
-    
-    console.log(`[OpenFoodFacts] ✅ Product found:`, data.product.product_name);
-    console.log(`[OpenFoodFacts] Product code:`, data.product.code);
-    console.log(`[OpenFoodFacts] Product brand:`, data.product.brands);
-    console.log(`[OpenFoodFacts] Has nutriments:`, !!data.product.nutriments);
-    
-    return data.product;
-  } catch (error) {
-    console.error('[OpenFoodFacts] ❌ Error looking up barcode:', error);
-    if (error instanceof Error) {
-      console.error('[OpenFoodFacts] Error name:', error.name);
-      console.error('[OpenFoodFacts] Error message:', error.message);
-      console.error('[OpenFoodFacts] Error stack:', error.stack);
-    }
-    return null;
   }
 }
 

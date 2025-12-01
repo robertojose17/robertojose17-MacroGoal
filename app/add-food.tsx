@@ -291,20 +291,6 @@ export default function AddFoodScreen() {
     });
   };
 
-  const handleBarcodeScan = () => {
-    console.log('[AddFood] Navigating to barcode-scan');
-    router.push({
-      pathname: '/barcode-scan',
-      params: {
-        meal: mealType,
-        date: date,
-        mode: mode,
-        returnTo: returnTo,
-        mealId: myMealId,
-      },
-    });
-  };
-
   const handleCopyFromPrevious = () => {
     console.log('[AddFood] Navigating to copy-from-previous');
     router.push({
@@ -1250,24 +1236,6 @@ export default function AddFoodScreen() {
                 <View style={styles.quickActionsRow}>
                   <TouchableOpacity
                     style={[styles.quickActionCard, styles.quickActionCardLeft]}
-                    onPress={handleBarcodeScan}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.quickActionIconContainer}>
-                      <IconSymbol
-                        ios_icon_name="barcode.viewfinder"
-                        android_material_icon_name="qr_code_scanner"
-                        size={32}
-                        color="#8B5CF6"
-                      />
-                    </View>
-                    <Text style={styles.quickActionTitle}>
-                      Barcode Scan
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardRight]}
                     onPress={handleCopyFromPrevious}
                     activeOpacity={0.7}
                   >
@@ -1283,11 +1251,9 @@ export default function AddFoodScreen() {
                       Copy from Previous
                     </Text>
                   </TouchableOpacity>
-                </View>
 
-                <View style={styles.quickActionsRow}>
                   <TouchableOpacity
-                    style={[styles.quickActionCard, { backgroundColor: '#FEF3C7', flex: 1 }]}
+                    style={[styles.quickActionCard, styles.quickActionCardRight]}
                     onPress={handleAIMealEstimator}
                     activeOpacity={0.7}
                   >
@@ -1517,10 +1483,10 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   quickActionCardLeft: {
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#D1FAE5',
   },
   quickActionCardRight: {
-    backgroundColor: '#D1FAE5',
+    backgroundColor: '#FEF3C7',
   },
   quickActionIconContainer: {
     marginBottom: spacing.sm,
