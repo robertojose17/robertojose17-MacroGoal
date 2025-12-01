@@ -330,6 +330,19 @@ export default function AddFoodScreen() {
     });
   };
 
+  const handleBarcodeScanner = () => {
+    console.log('[AddFood] Navigating to Barcode Scanner');
+    router.push({
+      pathname: '/barcode-scanner',
+      params: {
+        meal: mealType,
+        date: date,
+        mode: mode,
+        mealId: myMealId,
+      },
+    });
+  };
+
   const handleCreateMyMeal = () => {
     console.log('[AddFood] Navigating to create My Meal');
     router.push('/my-meal-builder');
@@ -1233,9 +1246,9 @@ export default function AddFoodScreen() {
                 <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Quick Actions
                 </Text>
-                <View style={styles.quickActionsRow}>
+                <View style={styles.quickActionsGrid}>
                   <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardLeft]}
+                    style={[styles.quickActionCard, styles.quickActionCardGreen]}
                     onPress={handleCopyFromPrevious}
                     activeOpacity={0.7}
                   >
@@ -1243,7 +1256,7 @@ export default function AddFoodScreen() {
                       <IconSymbol
                         ios_icon_name="calendar"
                         android_material_icon_name="event"
-                        size={32}
+                        size={28}
                         color="#10B981"
                       />
                     </View>
@@ -1253,7 +1266,7 @@ export default function AddFoodScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardRight]}
+                    style={[styles.quickActionCard, styles.quickActionCardYellow]}
                     onPress={handleAIMealEstimator}
                     activeOpacity={0.7}
                   >
@@ -1261,12 +1274,30 @@ export default function AddFoodScreen() {
                       <IconSymbol
                         ios_icon_name="sparkles"
                         android_material_icon_name="auto_awesome"
-                        size={32}
+                        size={28}
                         color="#F59E0B"
                       />
                     </View>
                     <Text style={styles.quickActionTitle}>
                       AI Meal Estimator
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.quickActionCard, styles.quickActionCardPurple]}
+                    onPress={handleBarcodeScanner}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.quickActionIconContainer}>
+                      <IconSymbol
+                        ios_icon_name="barcode.viewfinder"
+                        android_material_icon_name="qr_code_scanner"
+                        size={28}
+                        color="#8B5CF6"
+                      />
+                    </View>
+                    <Text style={styles.quickActionTitle}>
+                      Barcode Scan
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1468,33 +1499,38 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
   },
-  quickActionsRow: {
+  quickActionsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
   quickActionCard: {
-    flex: 1,
+    width: '48.5%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.lg + spacing.md,
+    paddingVertical: spacing.lg + spacing.sm,
     borderRadius: borderRadius.lg,
     boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
     elevation: 1,
   },
-  quickActionCardLeft: {
+  quickActionCardGreen: {
     backgroundColor: '#D1FAE5',
   },
-  quickActionCardRight: {
+  quickActionCardYellow: {
     backgroundColor: '#FEF3C7',
+  },
+  quickActionCardPurple: {
+    backgroundColor: '#EDE9FE',
   },
   quickActionIconContainer: {
     marginBottom: spacing.sm,
   },
   quickActionTitle: {
     ...typography.bodyBold,
-    fontSize: 15,
+    fontSize: 14,
     color: '#1F2937',
+    textAlign: 'center',
   },
   foodCard: {
     flexDirection: 'row',
