@@ -21,14 +21,14 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [syncLoading, setSyncLoading] = useState(false);
 
-  const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription, syncSubscription } = useSubscription();
+  const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription } = useSubscription();
 
   useFocusEffect(
     useCallback(() => {
       console.log('[Profile] Screen focused, loading data');
       loadUserData();
+      refreshSubscription(); // Refresh subscription when screen is focused
       // Log subscription status for debugging
       logSubscriptionStatus();
     }, [])
@@ -107,21 +107,6 @@ export default function ProfileScreen() {
       Alert.alert('Error', error.message || 'Failed to open subscription management. Please try again.');
     } finally {
       setPortalLoading(false);
-    }
-  };
-
-  const handleSyncSubscription = async () => {
-    try {
-      setSyncLoading(true);
-      console.log('[Profile] 🔄 Manually syncing subscription...');
-      await syncSubscription();
-      await loadUserData(); // Reload user data to get updated user_type
-      Alert.alert('Success', 'Subscription status synced successfully!');
-    } catch (error: any) {
-      console.error('[Profile] Error syncing subscription:', error);
-      Alert.alert('Error', 'Failed to sync subscription. Please try again.');
-    } finally {
-      setSyncLoading(false);
     }
   };
 
@@ -337,30 +322,6 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </React.Fragment>
           )}
-
-          {/* Sync Button - for debugging */}
-          <TouchableOpacity
-            style={[styles.syncButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background, marginTop: spacing.sm }]}
-            onPress={handleSyncSubscription}
-            disabled={syncLoading}
-            activeOpacity={0.7}
-          >
-            {syncLoading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <React.Fragment>
-                <IconSymbol
-                  ios_icon_name="arrow.clockwise"
-                  android_material_icon_name="sync"
-                  size={16}
-                  color={colors.primary}
-                />
-                <Text style={[styles.syncButtonText, { color: colors.primary }]}>
-                  Sync Subscription Status
-                </Text>
-              </React.Fragment>
-            )}
-          </TouchableOpacity>
         </View>
 
         {(user.height || user.current_weight) && (
@@ -723,17 +684,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 16,
-  },
-  syncButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    gap: spacing.xs,
-  },
-  syncButtonText: {
-    fontWeight: '600',
-    fontSize: 14,
   },
 });

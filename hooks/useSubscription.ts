@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import { AppState, AppStateStatus } from 'react-native';
 
 export type SubscriptionStatus = 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid';
 export type PlanType = 'monthly' | 'yearly' | null;
@@ -143,6 +144,24 @@ export function useSubscription(): UseSubscriptionReturn {
     };
   }, [fetchSubscription]);
 
+  // Listen for app state changes to sync when returning from background
+  useEffect(() => {
+    console.log('[useSubscription] 📱 Setting up app state listener');
+    
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('[useSubscription] 🔄 App became active, syncing subscription...');
+        // Sync subscription when app comes to foreground (e.g., after returning from Stripe checkout)
+        syncSubscription();
+      }
+    });
+
+    return () => {
+      console.log('[useSubscription] 🔌 Cleaning up app state listener');
+      subscription.remove();
+    };
+  }, [syncSubscription]);
+
   const createCheckoutSession = useCallback(async (priceId: string, planType: 'monthly' | 'yearly') => {
     try {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -185,10 +204,14 @@ export function useSubscription(): UseSubscriptionReturn {
         const result = await WebBrowser.openBrowserAsync(data.url);
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes, sync and refresh the subscription
+        // After the browser closes, sync the subscription
+        // The webhook should have already updated the database, but we sync to be sure
         if (result.type === 'cancel' || result.type === 'dismiss') {
           console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-          await syncSubscription();
+          // Wait a moment for webhook to process, then sync
+          setTimeout(() => {
+            syncSubscription();
+          }, 2000);
         }
       } else {
         console.error('[useSubscription] ❌ No checkout URL in response');
@@ -240,10 +263,12 @@ export function useSubscription(): UseSubscriptionReturn {
         const result = await WebBrowser.openBrowserAsync(data.url);
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes, sync and refresh the subscription
+        // After the browser closes, sync the subscription
         if (result.type === 'cancel' || result.type === 'dismiss') {
           console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-          await syncSubscription();
+          setTimeout(() => {
+            syncSubscription();
+          }, 1000);
         }
       } else {
         console.error('[useSubscription] ❌ No portal URL returned');
