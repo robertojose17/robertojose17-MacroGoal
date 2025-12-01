@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,13 +40,11 @@ export default function EditGoalsScreen() {
   const [customFatsPercent, setCustomFatsPercent] = useState('30');
   const [macroError, setMacroError] = useState('');
 
-  useEffect(() => {
-    loadCurrentGoals();
-  }, [loadCurrentGoals]);
-
   const loadCurrentGoals = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('[EditGoals] Loading current goals and user data...');
+      
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -67,6 +65,7 @@ export default function EditGoalsScreen() {
       if (userError) throw userError;
 
       if (userData) {
+        console.log('[EditGoals] User data loaded:', userData);
         setSex(userData.sex || 'male');
         setHeightCm(userData.height || 170);
         setWeightKg(userData.current_weight || 70);
@@ -97,6 +96,7 @@ export default function EditGoalsScreen() {
       if (goalError) throw goalError;
 
       if (goalData) {
+        console.log('[EditGoals] Goal data loaded:', goalData);
         setGoalType(goalData.goal_type);
         if (goalData.loss_rate_lbs_per_week) {
           setLossRateLbsPerWeek(goalData.loss_rate_lbs_per_week);
@@ -107,6 +107,8 @@ export default function EditGoalsScreen() {
         const proteinPercent = Math.round((goalData.protein_g * 4 / totalCals) * 100);
         const carbsPercent = Math.round((goalData.carbs_g * 4 / totalCals) * 100);
         const fatsPercent = Math.round((goalData.fats_g * 9 / totalCals) * 100);
+        
+        console.log('[EditGoals] Current macro percentages:', { proteinPercent, carbsPercent, fatsPercent });
         
         // Check if it matches a preset (with 2% tolerance)
         if (Math.abs(proteinPercent - 30) <= 2 && Math.abs(carbsPercent - 40) <= 2 && Math.abs(fatsPercent - 30) <= 2) {
@@ -131,6 +133,10 @@ export default function EditGoalsScreen() {
       setLoading(false);
     }
   }, [router]);
+
+  useEffect(() => {
+    loadCurrentGoals();
+  }, [loadCurrentGoals]);
 
   const validateMacros = (): boolean => {
     if (macroPreset !== 'custom') return true;
