@@ -922,6 +922,30 @@ export default function DashboardScreen() {
                 </Text>
               </View>
 
+              {/* Average Calories per Day with Progress Bar */}
+              <View style={styles.statRow}>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Average calories per day:
+                </Text>
+                
+                {/* Calories Bar */}
+                {caloriesGoal > 0 ? (
+                  <View style={styles.caloriesBarContainer}>
+                    <MacroBar
+                      label="Calories"
+                      current={nutritionStats.avgCalories}
+                      target={caloriesGoal}
+                      color={colors.calories}
+                      unit=" kcal"
+                    />
+                  </View>
+                ) : (
+                  <Text style={[styles.statValue, { color: colors.calories }]}>
+                    {Math.round(nutritionStats.avgCalories)} kcal
+                  </Text>
+                )}
+              </View>
+
               {/* Average Macros with Progress Bars */}
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -955,16 +979,6 @@ export default function DashboardScreen() {
                     color={colors.fiber}
                   />
                 </View>
-              </View>
-
-              {/* Average Calories */}
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Average daily calories:
-                </Text>
-                <Text style={[styles.statValue, { color: colors.calories }]}>
-                  {Math.round(nutritionStats.avgCalories)} kcal
-                </Text>
               </View>
             </React.Fragment>
           ) : (
@@ -1409,6 +1423,9 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...typography.bodyBold,
+  },
+  caloriesBarContainer: {
+    marginTop: spacing.sm,
   },
   macroBarsContainer: {
     marginTop: spacing.sm,
