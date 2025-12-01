@@ -1,401 +1,265 @@
 
-# 📋 Subscription System Setup Checklist
+# Subscription System Checklist
 
-Print this checklist and check off each item as you complete it.
+## ✅ Completed
 
----
+- [x] Updated `stripe-webhook` Edge Function to sync `users.user_type`
+- [x] Created `sync-subscription` Edge Function for manual sync
+- [x] Profile screen displays subscription status correctly
+- [x] Profile screen has "Sync Subscription Status" button
+- [x] Webhook handles `checkout.session.completed` event
+- [x] Webhook handles `customer.subscription.updated` event
+- [x] Webhook handles `customer.subscription.deleted` event
+- [x] Subscription hook has `syncSubscription()` method
+- [x] Real-time subscription updates configured
+- [x] Documentation created
 
-## ✅ Phase 1: Stripe Account Setup
+## ⚠️ Action Required
 
-- [ ] **Create Stripe Account**
-  - Go to https://stripe.com
-  - Sign up for free account
-  - Verify email address
-  - **Stay in TEST mode** (toggle in top right)
+### 1. Disable JWT Verification on Webhook (CRITICAL!)
 
-- [ ] **Access Stripe Dashboard**
-  - Log in to https://dashboard.stripe.com
-  - Confirm you're in TEST mode
-  - Familiarize yourself with the interface
+**Status:** ❌ Not Done
 
----
+**Priority:** 🔴 HIGHEST
 
-## ✅ Phase 2: Create Products & Prices
+**Steps:**
+1. Go to: https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/functions
+2. Click on `stripe-webhook`
+3. Go to Settings tab
+4. Disable "Verify JWT" toggle
+5. Save changes
 
-- [ ] **Create Product**
-  - Go to https://dashboard.stripe.com/test/products
-  - Click "+ Add product"
-  - Name: "Elite Macro Tracker Premium"
-  - Description: "Access to AI-powered meal estimation"
+**Why:** Stripe webhooks use signature-based auth, not JWT. All webhook calls are currently failing with 401 errors.
 
-- [ ] **Create Monthly Price**
-  - Click "Add pricing"
-  - Pricing model: Standard pricing
-  - Price: $9.99 USD
-  - Billing period: Monthly
-  - Click "Add price"
-  - **Copy Price ID**: `price_________________`
-
-- [ ] **Create Yearly Price**
-  - Click "Add another price"
-  - Pricing model: Standard pricing
-  - Price: $99.99 USD
-  - Billing period: Yearly
-  - Click "Add price"
-  - **Copy Price ID**: `price_________________`
+**Impact:** Without this, subscriptions will NOT update automatically after checkout.
 
 ---
 
-## ✅ Phase 3: Get API Keys
+### 2. Configure Stripe Webhook
 
-- [ ] **Get Secret Key**
-  - Go to https://dashboard.stripe.com/test/apikeys
-  - Find "Secret key" section
-  - Click "Reveal test key"
-  - **Copy Secret Key**: `sk_test_________________`
+**Status:** ⚠️ Needs Verification
 
-- [ ] **Keep Keys Secure**
-  - Don't share keys publicly
-  - Don't commit to git
-  - Store in password manager
+**Priority:** 🟡 HIGH
 
----
+**Steps:**
+1. Go to: https://dashboard.stripe.com/test/webhooks
+2. Add endpoint: `https://esgptfiofoaeguslgvcq.supabase.co/functions/v1/stripe-webhook`
+3. Select events:
+   - `checkout.session.completed`
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+4. Copy webhook signing secret
+5. Add to Supabase secrets as `STRIPE_WEBHOOK_SECRET`
 
-## ✅ Phase 4: Set Up Webhook
-
-- [ ] **Create Webhook Endpoint**
-  - Go to https://dashboard.stripe.com/test/webhooks
-  - Click "+ Add endpoint"
-  - Endpoint URL: `https://esgptfiofoaeguslgvcq.supabase.co/functions/v1/stripe-webhook`
-  - Description: "Elite Macro Tracker Subscription Webhook"
-
-- [ ] **Select Events**
-  - [ ] `customer.subscription.created`
-  - [ ] `customer.subscription.updated`
-  - [ ] `customer.subscription.deleted`
-  - [ ] `checkout.session.completed`
-  - [ ] `invoice.payment_succeeded`
-  - [ ] `invoice.payment_failed`
-
-- [ ] **Get Webhook Secret**
-  - Click "Add endpoint"
-  - Click on the webhook you just created
-  - Click "Reveal" under "Signing secret"
-  - **Copy Webhook Secret**: `whsec_________________`
+**Verify:**
+- [ ] Webhook endpoint exists in Stripe Dashboard
+- [ ] Webhook URL is correct
+- [ ] Events are selected
+- [ ] Webhook signing secret is set in Supabase
 
 ---
 
-## ✅ Phase 5: Configure Supabase
+### 3. Test the Full Flow
 
-- [ ] **Open Supabase Edge Functions Settings**
-  - Go to https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/settings/functions
+**Status:** ⏳ Pending (waiting for JWT verification to be disabled)
 
-- [ ] **Add Environment Variables**
-  Click "Add new secret" for each:
-  
-  - [ ] **STRIPE_SECRET_KEY**
-    - Value: `sk_test_________________` (from Phase 3)
-  
-  - [ ] **STRIPE_WEBHOOK_SECRET**
-    - Value: `whsec_________________` (from Phase 4)
-  
-  - [ ] **STRIPE_MONTHLY_PRICE_ID**
-    - Value: `price_________________` (from Phase 2)
-  
-  - [ ] **STRIPE_YEARLY_PRICE_ID**
-    - Value: `price_________________` (from Phase 2)
+**Priority:** 🟢 MEDIUM
 
-- [ ] **Verify All Secrets Added**
-  - Check that all 4 secrets are listed
-  - Verify no typos in names
-  - Confirm values are correct
+**Test Steps:**
 
----
+1. **Start as Free User**
+   - [ ] Open app
+   - [ ] Go to Profile
+   - [ ] Verify shows "Free" badge
 
-## ✅ Phase 6: Update App Code
+2. **Subscribe**
+   - [ ] Tap "Upgrade to Premium"
+   - [ ] Select Monthly or Yearly plan
+   - [ ] Use test card: `4242 4242 4242 4242`
+   - [ ] Complete checkout
 
-- [ ] **Open stripeConfig.ts**
-  - File location: `utils/stripeConfig.ts`
+3. **Verify Subscription**
+   - [ ] Return to app
+   - [ ] Profile shows "⭐ Premium" badge
+   - [ ] Subscription card shows "Active" status
+   - [ ] Shows correct plan type (Monthly/Yearly)
+   - [ ] Shows renewal date
 
-- [ ] **Update Monthly Price ID**
-  - Find: `MONTHLY_PRICE_ID: 'price_MONTHLY_TEST_ID_HERE'`
-  - Replace with: `MONTHLY_PRICE_ID: 'price_________________'`
-  - (Use the monthly Price ID from Phase 2)
+4. **Verify Premium Access**
+   - [ ] AI Meal Estimator works
+   - [ ] No paywall appears for premium features
 
-- [ ] **Update Yearly Price ID**
-  - Find: `YEARLY_PRICE_ID: 'price_YEARLY_TEST_ID_HERE'`
-  - Replace with: `YEARLY_PRICE_ID: 'price_________________'`
-  - (Use the yearly Price ID from Phase 2)
+5. **Verify Webhook**
+   - [ ] Check Edge Function logs
+   - [ ] Should see 200 OK responses
+   - [ ] Should see success messages in logs
 
-- [ ] **Save File**
-  - Save `utils/stripeConfig.ts`
-  - Restart the app if it's running
+6. **Test Manual Sync**
+   - [ ] Tap "Sync Subscription Status" button
+   - [ ] Should show success message
+   - [ ] Profile updates correctly
 
 ---
 
-## ✅ Phase 7: Test Subscription Purchase
+## 🔍 Verification Queries
 
-- [ ] **Open App**
-  - Launch the app on device or simulator
+### Check Subscription in Database
 
-- [ ] **Try to Access AI Feature**
-  - Navigate to Food tab
-  - Try to open "AI Meal Estimator"
-  - Should see premium feature alert
+```sql
+SELECT 
+  u.email,
+  u.user_type,
+  s.status,
+  s.plan_type,
+  s.stripe_subscription_id,
+  s.current_period_end
+FROM users u
+LEFT JOIN subscriptions s ON u.id = s.user_id
+WHERE u.email = 'your-email@example.com';
+```
 
-- [ ] **View Paywall**
-  - Click "Subscribe" in the alert
-  - Should see paywall screen
-  - Verify pricing is correct
+**Expected Result:**
+- `user_type`: `premium`
+- `status`: `active`
+- `plan_type`: `monthly` or `yearly`
+- `stripe_subscription_id`: Should have a value
+- `current_period_end`: Should be a future date
 
-- [ ] **Select Plan**
-  - [ ] Try selecting Monthly plan
-  - [ ] Try selecting Yearly plan
-  - Verify savings badge shows on yearly
+### Check Webhook Logs
 
-- [ ] **Start Checkout**
-  - Click "Subscribe Now"
-  - Should open Stripe Checkout in browser
-  - Verify correct plan and price shown
+**Location:** Supabase Dashboard → Functions → stripe-webhook → Logs
 
-- [ ] **Complete Payment**
-  - Use test card: `4242 4242 4242 4242`
-  - Expiry: Any future date (e.g., `12/34`)
-  - CVC: Any 3 digits (e.g., `123`)
-  - ZIP: Any 5 digits (e.g., `12345`)
-  - Click "Subscribe"
+**Look for:**
+```
+[Webhook] ✅ Checkout completed
+[Webhook] ✅ Subscription upserted successfully
+[Webhook] ✅ User type updated to: premium
+```
 
-- [ ] **Verify Redirect**
-  - Should redirect back to app
-  - Wait 5-10 seconds for webhook
-
-- [ ] **Check Subscription Status**
-  - Go to Profile tab
-  - Should see "Active" subscription badge
-  - Should show correct plan type
-  - Should show renewal date
+**Should NOT see:**
+```
+POST | 401 | stripe-webhook
+```
 
 ---
 
-## ✅ Phase 8: Test AI Feature Access
+## 📊 Current Status
 
-- [ ] **Access AI Meal Estimator**
-  - Navigate to Food tab
-  - Click "AI Meal Estimator"
-  - Should now have access (no paywall)
+### What's Working ✅
 
-- [ ] **Test AI Functionality**
-  - Describe a meal
-  - Send message
-  - Verify AI responds with estimate
-  - Verify ingredient breakdown shows
-  - Try adjusting quantities
-  - Try logging the meal
+- Stripe checkout session creation
+- Payment processing
+- Test card payments
+- Paywall UI
+- Profile screen display
+- Manual sync button
+- Edge Functions deployed
 
-- [ ] **Verify Meal Logged**
-  - Go back to Food tab
-  - Check that meal was added
-  - Verify calories and macros are correct
+### What's NOT Working ❌
 
----
+- Automatic webhook processing (401 errors)
+- Automatic subscription status updates
+- Automatic user_type updates
 
-## ✅ Phase 9: Test Subscription Management
+### Root Cause 🔍
 
-- [ ] **Open Profile**
-  - Go to Profile tab
-  - Verify subscription card shows
+JWT verification is enabled on the webhook, causing all Stripe webhook calls to fail with 401 Unauthorized.
 
-- [ ] **Open Customer Portal**
-  - Click "Manage Subscription"
-  - Should open Stripe Customer Portal in browser
-  - Verify subscription details shown
+### Solution 🔧
 
-- [ ] **Test Portal Features**
-  - [ ] View billing history
-  - [ ] View invoices
-  - [ ] Try updating payment method
-  - [ ] Try canceling subscription
-
-- [ ] **Cancel Subscription**
-  - Click "Cancel subscription"
-  - Select reason
-  - Confirm cancellation
-  - Should show "Cancels on [date]"
-
-- [ ] **Verify Cancellation in App**
-  - Go back to app
-  - Pull down to refresh Profile
-  - Should show cancellation notice
-  - Should still have access until period end
+Disable JWT verification on the `stripe-webhook` Edge Function in Supabase Dashboard.
 
 ---
 
-## ✅ Phase 10: Test Webhook Sync
+## 🎯 Next Steps
 
-- [ ] **Check Webhook Deliveries**
-  - Go to https://dashboard.stripe.com/test/webhooks
-  - Click on your webhook
-  - Click "Recent deliveries"
-  - Verify events were delivered successfully
+1. **Immediate (Do Now):**
+   - [ ] Disable JWT verification on webhook
+   - [ ] Test with a subscription
+   - [ ] Verify Profile shows Premium
 
-- [ ] **Check Supabase Logs**
-  - Go to https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/logs/edge-functions
-  - Select `stripe-webhook` function
-  - Verify webhook events were processed
-  - Check for any errors
+2. **Short Term (Today):**
+   - [ ] Verify webhook is configured in Stripe
+   - [ ] Test on both mobile and web
+   - [ ] Check all premium features work
 
-- [ ] **Verify Database**
-  - Go to https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/editor
-  - Open `subscriptions` table
-  - Verify your subscription record exists
-  - Check that status is correct
+3. **Before Production:**
+   - [ ] Set up live mode webhook
+   - [ ] Test with real payment methods
+   - [ ] Set up monitoring/alerts
+   - [ ] Document for team
 
 ---
 
-## ✅ Phase 11: Test on Multiple Platforms
+## 🚨 Known Issues
 
-- [ ] **Test on iOS**
-  - [ ] Subscription purchase
-  - [ ] AI feature access
-  - [ ] Subscription management
-  - [ ] Checkout redirect
-  - [ ] Portal redirect
+### Issue: Webhook Returns 401
 
-- [ ] **Test on Android**
-  - [ ] Subscription purchase
-  - [ ] AI feature access
-  - [ ] Subscription management
-  - [ ] Checkout redirect
-  - [ ] Portal redirect
+**Cause:** JWT verification enabled
 
-- [ ] **Test on Web** (if applicable)
-  - [ ] Subscription purchase
-  - [ ] AI feature access
-  - [ ] Subscription management
-  - [ ] Checkout redirect
-  - [ ] Portal redirect
+**Status:** Known, documented
+
+**Fix:** Disable JWT verification (see Action #1)
+
+**Workaround:** Use "Sync Subscription Status" button
 
 ---
 
-## ✅ Phase 12: Final Verification
+### Issue: Profile Shows Free After Payment
 
-- [ ] **Configuration Check**
-  - [ ] All Stripe Price IDs updated in app
-  - [ ] All Supabase secrets set correctly
-  - [ ] Webhook endpoint created and active
-  - [ ] No placeholder values remaining
+**Cause:** Webhook not processing events
 
-- [ ] **Functionality Check**
-  - [ ] Paywall shows for non-subscribers
-  - [ ] Subscription purchase works
-  - [ ] AI features unlock after subscribing
-  - [ ] Subscription management works
-  - [ ] Cancellation works
-  - [ ] Webhook sync works
+**Status:** Will be fixed when JWT verification is disabled
 
-- [ ] **UI/UX Check**
-  - [ ] Paywall looks professional
-  - [ ] Pricing is clear
-  - [ ] Loading states work
-  - [ ] Error messages are helpful
-  - [ ] Dark mode works
+**Fix:** Disable JWT verification
 
-- [ ] **Security Check**
-  - [ ] No API keys in client code
-  - [ ] Webhook signatures verified
-  - [ ] RLS policies active
-  - [ ] HTTPS connections only
+**Workaround:** Use "Sync Subscription Status" button
 
 ---
 
-## ✅ Phase 13: Documentation Review
+## 📝 Notes
 
-- [ ] **Read Documentation**
-  - [ ] QUICK_START_SUBSCRIPTION.md
-  - [ ] STRIPE_SETUP_GUIDE.md
-  - [ ] SUBSCRIPTION_IMPLEMENTATION_SUMMARY.md
-
-- [ ] **Understand Architecture**
-  - [ ] How webhooks work
-  - [ ] How access control works
-  - [ ] How subscription sync works
-
-- [ ] **Know Troubleshooting Steps**
-  - [ ] Where to check logs
-  - [ ] How to verify configuration
-  - [ ] Common issues and solutions
+- The webhook code is correct and ready to go
+- The sync function works and can be used as a workaround
+- The Profile screen correctly displays subscription status
+- All database tables and columns are set up correctly
+- The only blocker is JWT verification on the webhook
 
 ---
 
-## ✅ Phase 14: Production Preparation (When Ready)
+## 🎉 Success Criteria
 
-- [ ] **Switch to Live Mode**
-  - [ ] Create LIVE products in Stripe
-  - [ ] Get LIVE API keys
-  - [ ] Create LIVE webhook
-  - [ ] Update Supabase secrets with LIVE keys
-  - [ ] Update app config with LIVE Price IDs
+The subscription system will be fully working when:
 
-- [ ] **Test with Real Payment**
-  - [ ] Use real credit card
-  - [ ] Verify charge appears in Stripe
-  - [ ] Verify subscription activates
-  - [ ] Test full flow end-to-end
-
-- [ ] **Monitor Production**
-  - [ ] Set up Stripe email notifications
-  - [ ] Monitor webhook deliveries
-  - [ ] Check Supabase logs regularly
-  - [ ] Monitor subscription metrics
+- [ ] Webhook returns 200 OK (not 401)
+- [ ] After checkout, Profile automatically shows Premium
+- [ ] `users.user_type` is automatically set to `premium`
+- [ ] `subscriptions` table is automatically updated
+- [ ] Premium features are automatically unlocked
+- [ ] No manual sync needed
 
 ---
 
-## 🎉 Completion
+## 📚 Documentation
 
-- [ ] **All Phases Complete**
-  - All checkboxes above are checked
-  - Subscription system fully tested
-  - Ready for production use
-
-- [ ] **Launch Checklist**
-  - [ ] Tested on all platforms
-  - [ ] Documentation reviewed
-  - [ ] Team trained (if applicable)
-  - [ ] Support process defined
-  - [ ] Monitoring set up
+- **SUBSCRIPTION_FIX_IMPLEMENTATION.md** - Technical details
+- **QUICK_FIX_SUBSCRIPTION.md** - Quick reference
+- **STRIPE_WEBHOOK_SETUP.md** - Webhook setup guide
+- **README_SUBSCRIPTION_FIX.md** - Overview
+- **SUBSCRIPTION_CHECKLIST.md** - This file
 
 ---
 
-## 📊 Quick Reference
+## 🔗 Quick Links
 
-### Test Card Numbers
-- **Success**: `4242 4242 4242 4242`
-- **Requires Auth**: `4000 0025 0000 3155`
-- **Declined**: `4000 0000 0000 9995`
-
-### Important URLs
-- **Stripe Dashboard**: https://dashboard.stripe.com/test
-- **Supabase Dashboard**: https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq
-- **Webhook Endpoint**: https://esgptfiofoaeguslgvcq.supabase.co/functions/v1/stripe-webhook
-
-### Support
-- **Stripe Docs**: https://stripe.com/docs
-- **Supabase Docs**: https://supabase.com/docs
+- [Supabase Functions](https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/functions)
+- [Stripe Webhooks](https://dashboard.stripe.com/test/webhooks)
+- [Edge Function Logs](https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/functions/stripe-webhook/logs)
+- [Database Editor](https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/editor)
 
 ---
 
-**Status**: [ ] Complete [ ] In Progress [ ] Not Started
+**Last Updated:** 2025-01-31
 
-**Date Started**: _______________
-
-**Date Completed**: _______________
-
-**Notes**:
-_____________________________________________
-_____________________________________________
-_____________________________________________
-_____________________________________________
-
----
-
-*Print this checklist and check off items as you complete them!*
+**Status:** Ready for testing after JWT verification is disabled

@@ -60,6 +60,11 @@ Deno.serve(async (req) => {
           break;
         }
 
+        console.log("[Webhook] 👤 User ID:", userId);
+        console.log("[Webhook] 📋 Plan Type:", planType);
+        console.log("[Webhook] 💳 Customer ID:", customerId);
+        console.log("[Webhook] 🔑 Subscription ID:", subscriptionId);
+
         // Fetch subscription details from Stripe
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const priceId = subscription.items.data[0].price.id;
@@ -70,10 +75,11 @@ Deno.serve(async (req) => {
           subscriptionId,
           priceId,
           planType,
+          status: subscription.status,
         });
 
         // Upsert subscription in database
-        const { error } = await supabase
+        const { error: subError } = await supabase
           .from("subscriptions")
           .upsert(
             {
@@ -92,11 +98,32 @@ Deno.serve(async (req) => {
             { onConflict: "user_id" }
           );
 
-        if (error) {
-          console.error("[Webhook] ❌ Error upserting subscription:", error);
+        if (subError) {
+          console.error("[Webhook] ❌ Error upserting subscription:", subError);
         } else {
           console.log("[Webhook] ✅ Subscription upserted successfully");
         }
+
+        // Update user_type to premium if subscription is active or trialing
+        const isPremium = subscription.status === 'active' || subscription.status === 'trialing';
+        const newUserType = isPremium ? 'premium' : 'free';
+
+        console.log("[Webhook] 🔄 Updating user_type to:", newUserType);
+
+        const { error: userError } = await supabase
+          .from("users")
+          .update({
+            user_type: newUserType,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+
+        if (userError) {
+          console.error("[Webhook] ❌ Error updating user_type:", userError);
+        } else {
+          console.log("[Webhook] ✅ User type updated to:", newUserType);
+        }
+
         break;
       }
 
@@ -112,7 +139,10 @@ Deno.serve(async (req) => {
           break;
         }
 
-        const { error } = await supabase
+        console.log("[Webhook] 👤 User ID:", userId);
+        console.log("[Webhook] 📊 New status:", subscription.status);
+
+        const { error: subError } = await supabase
           .from("subscriptions")
           .update({
             stripe_price_id: priceId,
@@ -125,11 +155,32 @@ Deno.serve(async (req) => {
           })
           .eq("user_id", userId);
 
-        if (error) {
-          console.error("[Webhook] ❌ Error updating subscription:", error);
+        if (subError) {
+          console.error("[Webhook] ❌ Error updating subscription:", subError);
         } else {
           console.log("[Webhook] ✅ Subscription updated successfully");
         }
+
+        // Update user_type based on subscription status
+        const isPremium = subscription.status === 'active' || subscription.status === 'trialing';
+        const newUserType = isPremium ? 'premium' : 'free';
+
+        console.log("[Webhook] 🔄 Updating user_type to:", newUserType);
+
+        const { error: userError } = await supabase
+          .from("users")
+          .update({
+            user_type: newUserType,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+
+        if (userError) {
+          console.error("[Webhook] ❌ Error updating user_type:", userError);
+        } else {
+          console.log("[Webhook] ✅ User type updated to:", newUserType);
+        }
+
         break;
       }
 
@@ -144,7 +195,9 @@ Deno.serve(async (req) => {
           break;
         }
 
-        const { error } = await supabase
+        console.log("[Webhook] 👤 User ID:", userId);
+
+        const { error: subError } = await supabase
           .from("subscriptions")
           .update({
             status: "canceled",
@@ -152,11 +205,29 @@ Deno.serve(async (req) => {
           })
           .eq("user_id", userId);
 
-        if (error) {
-          console.error("[Webhook] ❌ Error canceling subscription:", error);
+        if (subError) {
+          console.error("[Webhook] ❌ Error canceling subscription:", subError);
         } else {
           console.log("[Webhook] ✅ Subscription canceled successfully");
         }
+
+        // Update user_type to free when subscription is canceled
+        console.log("[Webhook] 🔄 Updating user_type to: free");
+
+        const { error: userError } = await supabase
+          .from("users")
+          .update({
+            user_type: "free",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+
+        if (userError) {
+          console.error("[Webhook] ❌ Error updating user_type:", userError);
+        } else {
+          console.log("[Webhook] ✅ User type updated to: free");
+        }
+
         break;
       }
 
