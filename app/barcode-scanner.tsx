@@ -1,12 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+
+// Toggle between API versions
+const USE_API_V2 = false; // Set to true to use v2 API
 
 export default function BarcodeScannerScreen() {
   const router = useRouter();
@@ -27,6 +30,19 @@ export default function BarcodeScannerScreen() {
     console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
     console.log('[BarcodeScanner] Params:', { mode, mealType, date, myMealId });
   }, []);
+
+  // Reset state when screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[BarcodeScanner] Screen focused → reset scan state');
+      setScanned(false);
+      setLoading(false);
+
+      return () => {
+        console.log('[BarcodeScanner] Screen unfocused');
+      };
+    }, [])
+  );
 
   // Handle permission request
   useEffect(() => {
@@ -52,16 +68,43 @@ export default function BarcodeScannerScreen() {
     }
 
     console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
-    console.log('[BarcodeScanner] Type:', type);
-    console.log('[BarcodeScanner] Barcode:', data);
+    console.log('[SCAN] type:', type);
+    console.log('[SCAN] raw data:', JSON.stringify(data));
+
+    // Clean the barcode
+    const cleanBarcode = data.trim();
+    console.log('[SCAN] cleanBarcode:', cleanBarcode);
+
+    // Validate barcode
+    if (!cleanBarcode || cleanBarcode.length === 0) {
+      console.log('[BarcodeScanner] ❌ Empty barcode after cleaning');
+      Alert.alert(
+        'Invalid Barcode',
+        'The scanned barcode appears to be empty. Please try again.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setScanned(false);
+              setLoading(false);
+            },
+          },
+        ]
+      );
+      return;
+    }
 
     setScanned(true);
     setLoading(true);
 
     try {
-      // Fetch product from Open Food Facts API
+      // Construct URL based on API version
+      const url = USE_API_V2
+        ? `https://world.openfoodfacts.net/api/v2/product/${cleanBarcode}`
+        : `https://world.openfoodfacts.org/api/v0/product/${cleanBarcode}.json`;
+
+      console.log('[BarcodeScanner] API version:', USE_API_V2 ? 'v2' : 'v0');
       console.log('[BarcodeScanner] Calling OpenFoodFacts API...');
-      const url = `https://world.openfoodfacts.org/api/v0/product/${data}.json`;
       console.log('[BarcodeScanner] URL:', url);
 
       const response = await fetch(url, {
@@ -79,16 +122,19 @@ export default function BarcodeScannerScreen() {
       }
 
       const result = await response.json();
-      console.log('[BarcodeScanner] Response received');
-      console.log('[BarcodeScanner] Status:', result.status);
+      console.log('[BarcodeScanner] Full result:', JSON.stringify(result).slice(0, 500));
+
+      // Force status to number
+      const status = Number(result.status);
+      console.log('[BarcodeScanner] Status (as number):', status);
       console.log('[BarcodeScanner] Has product:', !!result.product);
 
-      // Check if product was found (status === 1)
-      if (result.status === 1 && result.product) {
+      // Robust check: status === 1 OR (status === 0 AND product exists)
+      if ((status === 1 || status === 0) && result.product) {
         console.log('[BarcodeScanner] ✅ PRODUCT FOUND');
         console.log('[BarcodeScanner] Product name:', result.product.product_name || 'Unknown');
         console.log('[BarcodeScanner] Brand:', result.product.brands || 'Unknown');
-        console.log('[BarcodeScanner] Barcode:', result.product.code || data);
+        console.log('[BarcodeScanner] Barcode:', result.product.code || cleanBarcode);
 
         // Log nutriments availability
         const nutriments = result.product.nutriments || {};
@@ -98,6 +144,10 @@ export default function BarcodeScannerScreen() {
           carbs: nutriments['carbohydrates_100g'] !== undefined,
           fat: nutriments['fat_100g'] !== undefined,
         });
+
+        // IMPORTANT: Set loading to false and scanned to true BEFORE navigation
+        setLoading(false);
+        setScanned(true);
 
         // Navigate to food details screen with the product data
         console.log('[BarcodeScanner] Navigating to food-details...');
@@ -116,28 +166,33 @@ export default function BarcodeScannerScreen() {
 
         console.log('[BarcodeScanner] Navigation initiated');
       } else {
-        // Product not found (status === 0)
+        // Product not found
         console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
-        console.log('[BarcodeScanner] Status code:', result.status);
+        console.log('[BarcodeScanner] Status code:', status);
+        console.log('[BarcodeScanner] Result keys:', Object.keys(result));
         
         setLoading(false);
+        setScanned(false);
         
         // Show "not found" dialog with options
         Alert.alert(
           'Product Not Found',
-          'This barcode was not found in OpenFoodFacts.',
+          `This barcode (${cleanBarcode}) was not found in OpenFoodFacts.`,
           [
             {
               text: 'Scan Again',
               onPress: () => {
                 console.log('[BarcodeScanner] User chose to scan again');
                 setScanned(false);
+                setLoading(false);
               },
             },
             {
               text: 'Add Manually',
               onPress: () => {
                 console.log('[BarcodeScanner] User chose to add manually');
+                setScanned(false);
+                setLoading(false);
                 router.replace({
                   pathname: '/quick-add',
                   params: {
@@ -145,7 +200,7 @@ export default function BarcodeScannerScreen() {
                     date: date,
                     mode: mode,
                     mealId: myMealId,
-                    barcode: data,
+                    barcode: cleanBarcode,
                   },
                 });
               },
@@ -155,6 +210,8 @@ export default function BarcodeScannerScreen() {
               style: 'cancel',
               onPress: () => {
                 console.log('[BarcodeScanner] User cancelled');
+                setScanned(false);
+                setLoading(false);
                 router.back();
               },
             },
@@ -166,6 +223,7 @@ export default function BarcodeScannerScreen() {
       console.error('[BarcodeScanner] Error details:', error);
       
       setLoading(false);
+      setScanned(false);
       
       // Show error dialog with retry option
       Alert.alert(
@@ -177,12 +235,15 @@ export default function BarcodeScannerScreen() {
             onPress: () => {
               console.log('[BarcodeScanner] User chose to retry');
               setScanned(false);
+              setLoading(false);
             },
           },
           {
             text: 'Add Manually',
             onPress: () => {
               console.log('[BarcodeScanner] User chose to add manually after error');
+              setScanned(false);
+              setLoading(false);
               router.replace({
                 pathname: '/quick-add',
                 params: {
@@ -199,6 +260,8 @@ export default function BarcodeScannerScreen() {
             style: 'cancel',
             onPress: () => {
               console.log('[BarcodeScanner] User cancelled after error');
+              setScanned(false);
+              setLoading(false);
               router.back();
             },
           },
@@ -291,7 +354,12 @@ export default function BarcodeScannerScreen() {
           <View style={styles.overlayTop}>
             <TouchableOpacity
               style={styles.closeButton}
-              onPress={() => router.back()}
+              onPress={() => {
+                console.log('[BarcodeScanner] Close button pressed');
+                setScanned(false);
+                setLoading(false);
+                router.back();
+              }}
             >
               <IconSymbol
                 ios_icon_name="xmark"
