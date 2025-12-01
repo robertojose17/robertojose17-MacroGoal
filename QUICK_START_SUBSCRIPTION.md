@@ -46,10 +46,10 @@ Get your Stripe subscription system up and running in 15 minutes.
 1. Go to https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/settings/functions
 2. Click "Add new secret" for each:
    ```
-   STRIPE_SECRET_KEY = sk_test_YOUR_KEY_HERE
-   STRIPE_WEBHOOK_SECRET = whsec_YOUR_SECRET_HERE
-   STRIPE_MONTHLY_PRICE_ID = price_YOUR_MONTHLY_ID_HERE
-   STRIPE_YEARLY_PRICE_ID = price_YOUR_YEARLY_ID_HERE
+   STRIPE_SECRET_KEY = sk_test_51SZKI8DsUf4JA97FbnAgMt2BoptuxgUdbOv2VWI2VuReriU61bZ8B516kRSSh4V3HbuYocCC1QOL7FrxkTcLZDO200Fhn6p1BJ
+   STRIPE_WEBHOOK_SECRET = whsec_EuaTsQ3bDtr9GEel10BLGb0JDqoOvIQ7
+   STRIPE_MONTHLY_PRICE_ID = prod_TWVql2YFPhAszU
+   STRIPE_YEARLY_PRICE_ID = prod_TWVpf5UQoEF0jw
    ```
 
 #### B. Update App Code

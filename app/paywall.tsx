@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/hooks/useSubscription';
 import { STRIPE_CONFIG } from '@/utils/stripeConfig';
+import { logStripeConfig, logSubscriptionAttempt, validateStripeConfig } from '@/utils/stripeDebug';
 
 export default function PaywallScreen() {
   const router = useRouter();
@@ -27,21 +28,54 @@ export default function PaywallScreen() {
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
+  useEffect(() => {
+    // Log configuration on mount
+    logStripeConfig();
+  }, []);
+
   const handleSubscribe = async () => {
     try {
       setCheckoutLoading(true);
-      console.log('[Paywall] Starting checkout for plan:', selectedPlan);
+
+      // Validate configuration before attempting
+      const validation = validateStripeConfig();
+      if (!validation.isValid) {
+        console.error('[Paywall] Invalid Stripe configuration:', validation.errors);
+        Alert.alert(
+          'Configuration Error',
+          'Stripe is not configured correctly. Please check the console for details.\n\n' +
+          validation.errors.join('\n'),
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
       const priceId = selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID;
+
+      console.log('[Paywall] Starting checkout for plan:', selectedPlan);
+      logSubscriptionAttempt(priceId, selectedPlan);
 
       await createCheckoutSession(priceId, selectedPlan);
 
       console.log('[Paywall] Checkout session created successfully');
     } catch (error: any) {
       console.error('[Paywall] Error creating checkout session:', error);
+      
+      let errorMessage = 'Failed to start checkout. Please try again.';
+      
+      // Provide more specific error messages
+      if (error.message?.includes('No such price')) {
+        errorMessage = 'Invalid Price ID. Please check your Stripe configuration.\n\n' +
+          'Make sure you are using PRICE IDs (starting with "price_") and not PRODUCT IDs (starting with "prod_").';
+      } else if (error.message?.includes('Unauthorized')) {
+        errorMessage = 'You must be logged in to subscribe.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       Alert.alert(
-        'Error',
-        error.message || 'Failed to start checkout. Please try again.',
+        'Subscription Error',
+        errorMessage,
         [{ text: 'OK' }]
       );
     } finally {
