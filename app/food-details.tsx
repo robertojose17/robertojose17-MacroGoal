@@ -33,103 +33,126 @@ export default function FoodDetailsScreen() {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
-    console.log('[FoodDetails] Component mounted');
-    console.log('[FoodDetails] All params:', params);
+    console.log('[FoodDetails] ========== COMPONENT MOUNTED ==========');
+    console.log('[FoodDetails] Mode:', mode);
+    console.log('[FoodDetails] Meal:', mealType);
+    console.log('[FoodDetails] Date:', date);
     console.log('[FoodDetails] offDataString length:', offDataString?.length || 0);
-    console.log('[FoodDetails] Parsing OpenFoodFacts data...');
     
-    if (offDataString) {
-      try {
-        console.log('[FoodDetails] Attempting to parse offData...');
-        const parsed = JSON.parse(offDataString);
-        console.log('[FoodDetails] OpenFoodFacts product parsed successfully');
-        console.log('[FoodDetails] Product name:', parsed.product_name);
-        console.log('[FoodDetails] Product code:', parsed.code);
-        console.log('[FoodDetails] Has nutriments:', !!parsed.nutriments);
-        
-        // Apply defaults for missing fields - NEVER block the UI
-        const productWithDefaults: OpenFoodFactsProduct = {
-          code: parsed.code || '',
-          product_name: parsed.product_name || 'Unknown Product',
-          brands: parsed.brands || 'Unknown Brand',
-          serving_size: parsed.serving_size || '100 g',
-          nutriments: {
-            'energy-kcal_100g': parsed.nutriments?.['energy-kcal_100g'] || 0,
-            'proteins_100g': parsed.nutriments?.['proteins_100g'] || 0,
-            'carbohydrates_100g': parsed.nutriments?.['carbohydrates_100g'] || 0,
-            'fat_100g': parsed.nutriments?.['fat_100g'] || 0,
-            'fiber_100g': parsed.nutriments?.['fiber_100g'] || 0,
-            'sugars_100g': parsed.nutriments?.['sugars_100g'] || 0,
-          },
-        };
-        
-        console.log('[FoodDetails] Product with defaults:', productWithDefaults);
-        setProduct(productWithDefaults);
-        
-        // Extract serving size information from OpenFoodFacts
-        // This function NEVER throws and always returns a valid ServingSizeInfo
-        const serving = extractServingSize(productWithDefaults);
-        console.log('[FoodDetails] Extracted serving info:', serving);
-        
-        setServingInfo(serving);
-        setGrams(serving.grams.toString());
-        
-        // Extract nutrition information
-        const nutritionData = extractNutrition(productWithDefaults);
-        console.log('[FoodDetails] Extracted nutrition:', nutritionData);
-        setNutrition(nutritionData);
-        
-        // Mark as ready immediately - never block the UI
-        setIsReady(true);
-        console.log('[FoodDetails] Screen ready to display');
-
-        // Check if this food is favorited
-        checkFavoriteStatus(productWithDefaults);
-      } catch (error) {
-        console.error('[FoodDetails] Error parsing OpenFoodFacts data:', error);
-        
-        // Even on error, show something to the user with defaults
-        console.log('[FoodDetails] Using complete defaults due to parse error');
-        setProduct({
-          code: '',
-          product_name: 'Unknown Product',
-          brands: 'Unknown Brand',
-          serving_size: '100 g',
-          nutriments: {
-            'energy-kcal_100g': 0,
-            'proteins_100g': 0,
-            'carbohydrates_100g': 0,
-            'fat_100g': 0,
-            'fiber_100g': 0,
-            'sugars_100g': 0,
-          },
-        } as OpenFoodFactsProduct);
-        setServingInfo({
-          description: '100 g',
-          grams: 100,
-          displayText: '100 g',
-          hasValidGrams: false,
-          isEstimated: false,
-        });
-        setNutrition({
-          calories: 0,
-          protein: 0,
-          carbs: 0,
-          fat: 0,
-          fiber: 0,
-          sugars: 0,
-        });
-        setGrams('100');
-        setIsReady(true);
-      }
-    } else {
-      console.error('[FoodDetails] No OpenFoodFacts data provided');
+    if (!offDataString) {
+      console.error('[FoodDetails] ❌ No offData provided');
       Alert.alert('Error', 'No product data available', [
         {
           text: 'OK',
           onPress: () => router.back(),
         },
       ]);
+      return;
+    }
+
+    try {
+      console.log('[FoodDetails] Parsing OpenFoodFacts data...');
+      const parsed = JSON.parse(offDataString);
+      
+      console.log('[FoodDetails] ✅ Parsed successfully');
+      console.log('[FoodDetails] Product name:', parsed.product_name || 'Unknown');
+      console.log('[FoodDetails] Brand:', parsed.brands || 'Unknown');
+      console.log('[FoodDetails] Code:', parsed.code || 'N/A');
+      console.log('[FoodDetails] Has nutriments:', !!parsed.nutriments);
+      
+      // Apply defaults for missing fields - NEVER block the UI
+      const productWithDefaults: OpenFoodFactsProduct = {
+        code: parsed.code || '',
+        product_name: parsed.product_name || 'Unknown Product',
+        brands: parsed.brands || '',
+        serving_size: parsed.serving_size || '100 g',
+        nutriments: {
+          'energy-kcal_100g': parsed.nutriments?.['energy-kcal_100g'] || 0,
+          'proteins_100g': parsed.nutriments?.['proteins_100g'] || 0,
+          'carbohydrates_100g': parsed.nutriments?.['carbohydrates_100g'] || 0,
+          'fat_100g': parsed.nutriments?.['fat_100g'] || 0,
+          'fiber_100g': parsed.nutriments?.['fiber_100g'] || 0,
+          'sugars_100g': parsed.nutriments?.['sugars_100g'] || 0,
+        },
+      };
+      
+      console.log('[FoodDetails] Product with defaults applied');
+      setProduct(productWithDefaults);
+      
+      // Extract serving size information from OpenFoodFacts
+      console.log('[FoodDetails] Extracting serving size...');
+      const serving = extractServingSize(productWithDefaults);
+      console.log('[FoodDetails] Serving info:', {
+        description: serving.description,
+        grams: serving.grams,
+        displayText: serving.displayText,
+        hasValidGrams: serving.hasValidGrams,
+        isEstimated: serving.isEstimated,
+      });
+      
+      setServingInfo(serving);
+      setGrams(serving.grams.toString());
+      
+      // Extract nutrition information
+      console.log('[FoodDetails] Extracting nutrition...');
+      const nutritionData = extractNutrition(productWithDefaults);
+      console.log('[FoodDetails] Nutrition (per 100g):', {
+        calories: nutritionData.calories,
+        protein: nutritionData.protein,
+        carbs: nutritionData.carbs,
+        fat: nutritionData.fat,
+        fiber: nutritionData.fiber,
+      });
+      setNutrition(nutritionData);
+      
+      // Mark as ready immediately - never block the UI
+      setIsReady(true);
+      console.log('[FoodDetails] ✅ Screen ready to display');
+
+      // Check if this food is favorited
+      checkFavoriteStatus(productWithDefaults);
+    } catch (error) {
+      console.error('[FoodDetails] ❌ Error parsing OpenFoodFacts data:', error);
+      
+      // Even on error, show something to the user with defaults
+      console.log('[FoodDetails] Using complete defaults due to parse error');
+      setProduct({
+        code: '',
+        product_name: 'Unknown Product',
+        brands: '',
+        serving_size: '100 g',
+        nutriments: {
+          'energy-kcal_100g': 0,
+          'proteins_100g': 0,
+          'carbohydrates_100g': 0,
+          'fat_100g': 0,
+          'fiber_100g': 0,
+          'sugars_100g': 0,
+        },
+      } as OpenFoodFactsProduct);
+      setServingInfo({
+        description: '100 g',
+        grams: 100,
+        displayText: '100 g',
+        hasValidGrams: false,
+        isEstimated: false,
+      });
+      setNutrition({
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0,
+        sugars: 0,
+      });
+      setGrams('100');
+      setIsReady(true);
+      
+      Alert.alert(
+        'Warning',
+        'There was an issue loading product data. Some information may be missing.',
+        [{ text: 'OK' }]
+      );
     }
   }, [offDataString, router]);
 
@@ -282,6 +305,11 @@ export default function FoodDetailsScreen() {
       return;
     }
 
+    console.log('[FoodDetails] ========== SAVING FOOD ==========');
+    console.log('[FoodDetails] Mode:', mode);
+    console.log('[FoodDetails] Meal:', mealType);
+    console.log('[FoodDetails] Grams:', grams);
+
     setSaving(true);
 
     try {
@@ -292,13 +320,13 @@ export default function FoodDetailsScreen() {
         return;
       }
 
-      console.log('[FoodDetails] Mode:', mode);
-      console.log('[FoodDetails] Starting save process for meal:', mealType, 'date:', date);
+      console.log('[FoodDetails] User ID:', user.id);
 
       // Check if this food already exists in our database (by barcode)
       let foodId: string | null = null;
 
       if (product.code) {
+        console.log('[FoodDetails] Checking for existing food with barcode:', product.code);
         const { data: existingFood } = await supabase
           .from('foods')
           .select('id')
@@ -307,12 +335,13 @@ export default function FoodDetailsScreen() {
 
         if (existingFood) {
           foodId = existingFood.id;
-          console.log('[FoodDetails] Using existing food:', foodId);
+          console.log('[FoodDetails] ✅ Using existing food:', foodId);
         }
       }
 
       // If food doesn't exist, create it
       if (!foodId) {
+        console.log('[FoodDetails] Creating new food in database...');
         const { data: newFood, error: foodError } = await supabase
           .from('foods')
           .insert({
@@ -332,26 +361,33 @@ export default function FoodDetailsScreen() {
           .single();
 
         if (foodError) {
-          console.error('[FoodDetails] Error creating food:', foodError);
+          console.error('[FoodDetails] ❌ Error creating food:', foodError);
           Alert.alert('Error', 'Failed to save food');
           setSaving(false);
           return;
         }
 
         foodId = newFood.id;
-        console.log('[FoodDetails] Created new food:', foodId);
+        console.log('[FoodDetails] ✅ Created new food:', foodId);
       }
 
       // Generate the serving description for storage
       const finalServingDescription = getServingDescription();
       const finalGrams = parseFloat(grams);
 
-      console.log('[FoodDetails] Saving with serving description:', finalServingDescription);
-      console.log('[FoodDetails] Grams:', finalGrams);
+      console.log('[FoodDetails] Serving description:', finalServingDescription);
+      console.log('[FoodDetails] Final grams:', finalGrams);
+      console.log('[FoodDetails] Calculated nutrition:', {
+        calories: calculatedCalories,
+        protein: calculatedProtein,
+        carbs: calculatedCarbs,
+        fats: calculatedFats,
+        fiber: calculatedFiber,
+      });
 
       // If mode is "mymeal", return to builder instead of logging to diary
       if (mode === 'mymeal') {
-        console.log('[FoodDetails] Mode is mymeal, returning to builder with food item');
+        console.log('[FoodDetails] Mode is mymeal, returning to builder');
 
         // Get the full food data for the builder
         const { data: foodData } = await supabase
@@ -389,6 +425,8 @@ export default function FoodDetailsScreen() {
       }
 
       // Normal diary mode - log to diary
+      console.log('[FoodDetails] Logging to diary...');
+      
       // Find or create meal for the date and meal type
       const { data: existingMeal } = await supabase
         .from('meals')
@@ -413,20 +451,20 @@ export default function FoodDetailsScreen() {
           .single();
 
         if (mealError) {
-          console.error('[FoodDetails] Error creating meal:', mealError);
+          console.error('[FoodDetails] ❌ Error creating meal:', mealError);
           Alert.alert('Error', 'Failed to create meal');
           setSaving(false);
           return;
         }
 
         mealId = newMeal.id;
-        console.log('[FoodDetails] Created new meal:', mealId);
+        console.log('[FoodDetails] ✅ Created new meal:', mealId);
       } else {
-        console.log('[FoodDetails] Using existing meal:', mealId);
+        console.log('[FoodDetails] ✅ Using existing meal:', mealId);
       }
 
       // ALWAYS INSERT a new meal item (never update existing ones)
-      console.log('[FoodDetails] Inserting NEW meal item (not replacing)');
+      console.log('[FoodDetails] Inserting NEW meal item');
       const { error: mealItemError } = await supabase
         .from('meal_items')
         .insert({
@@ -443,19 +481,19 @@ export default function FoodDetailsScreen() {
         });
 
       if (mealItemError) {
-        console.error('[FoodDetails] Error creating meal item:', mealItemError);
+        console.error('[FoodDetails] ❌ Error creating meal item:', mealItemError);
         Alert.alert('Error', 'Failed to add food to meal');
         setSaving(false);
         return;
       }
 
-      console.log('[FoodDetails] Food added successfully!');
-      console.log('[FoodDetails] Now navigating back to diary (dismissing all intermediate screens)');
+      console.log('[FoodDetails] ✅ Food added successfully!');
+      console.log('[FoodDetails] Navigating back to diary');
       
       // Navigate back to the home/diary screen
       router.dismissTo('/(tabs)/(home)/');
     } catch (error) {
-      console.error('[FoodDetails] Error in handleSave:', error);
+      console.error('[FoodDetails] ❌ Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');
       setSaving(false);
     }
@@ -464,7 +502,7 @@ export default function FoodDetailsScreen() {
   // Check if product has missing data
   const hasMissingData = 
     product.product_name === 'Unknown Product' || 
-    product.brands === 'Unknown Brand' ||
+    !product.brands ||
     (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
 
   return (
