@@ -30,6 +30,9 @@ export default function PaywallScreen() {
 
   useEffect(() => {
     // Log configuration on mount
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[Paywall] 🎬 Screen mounted');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logStripeConfig();
   }, []);
 
@@ -37,10 +40,14 @@ export default function PaywallScreen() {
     try {
       setCheckoutLoading(true);
 
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[Paywall] 🚀 Subscribe button pressed');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       // Validate configuration before attempting
       const validation = validateStripeConfig();
       if (!validation.isValid) {
-        console.error('[Paywall] Invalid Stripe configuration:', validation.errors);
+        console.error('[Paywall] ❌ Invalid Stripe configuration:', validation.errors);
         Alert.alert(
           'Configuration Error',
           'Stripe is not configured correctly. Please check the console for details.\n\n' +
@@ -50,25 +57,46 @@ export default function PaywallScreen() {
         return;
       }
 
+      console.log('[Paywall] ✅ Stripe configuration is valid');
+
       const priceId = selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID;
 
-      console.log('[Paywall] Starting checkout for plan:', selectedPlan);
+      console.log('[Paywall] 📋 Subscription details:');
+      console.log('[Paywall]   - Plan:', selectedPlan);
+      console.log('[Paywall]   - Price ID:', priceId);
+      console.log('[Paywall]   - Price:', selectedPlan === 'monthly' ? `$${STRIPE_CONFIG.MONTHLY_PRICE}/month` : `$${STRIPE_CONFIG.YEARLY_PRICE}/year`);
+
       logSubscriptionAttempt(priceId, selectedPlan);
 
+      console.log('[Paywall] 🔄 Calling createCheckoutSession...');
       await createCheckoutSession(priceId, selectedPlan);
 
-      console.log('[Paywall] Checkout session created successfully');
+      console.log('[Paywall] ✅ Checkout session created successfully');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (error: any) {
-      console.error('[Paywall] Error creating checkout session:', error);
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('[Paywall] ❌ Error creating checkout session');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('[Paywall] Error type:', error.constructor?.name || 'Unknown');
+      console.error('[Paywall] Error message:', error.message);
+      console.error('[Paywall] Error stack:', error.stack);
+      console.error('[Paywall] Full error:', JSON.stringify(error, null, 2));
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       let errorMessage = 'Failed to start checkout. Please try again.';
       
       // Provide more specific error messages
-      if (error.message?.includes('No such price')) {
+      if (error.message?.includes('FunctionsFetchError')) {
+        errorMessage = 'Unable to connect to the payment service. Please check your internet connection and try again.\n\n' +
+          'If the problem persists, the payment service may be temporarily unavailable.';
+      } else if (error.message?.includes('No such price')) {
         errorMessage = 'Invalid Price ID. Please check your Stripe configuration.\n\n' +
           'Make sure you are using PRICE IDs (starting with "price_") and not PRODUCT IDs (starting with "prod_").';
-      } else if (error.message?.includes('Unauthorized')) {
-        errorMessage = 'You must be logged in to subscribe.';
+      } else if (error.message?.includes('Unauthorized') || error.message?.includes('Not authenticated')) {
+        errorMessage = 'You must be logged in to subscribe. Please log in and try again.';
+      } else if (error.message?.includes('No checkout URL')) {
+        errorMessage = 'Failed to create checkout session. The payment service did not return a valid checkout URL.\n\n' +
+          'Please try again or contact support if the problem persists.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -84,6 +112,7 @@ export default function PaywallScreen() {
   };
 
   const handleRestore = () => {
+    console.log('[Paywall] ℹ️ Restore subscription button pressed');
     Alert.alert(
       'Restore Subscription',
       'If you already have an active subscription, it will be automatically detected when you log in. Please make sure you are logged in with the same account you used to subscribe.',
