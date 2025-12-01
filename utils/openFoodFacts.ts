@@ -9,6 +9,11 @@
  * - Simple endpoint with minimal payload
  * - Basic debounce with query comparison
  * - Clear error handling
+ * 
+ * ENHANCED NUTRIENT PARSING:
+ * - Handles multiple field name formats
+ * - Robust fallback logic
+ * - Never blocks UI on missing data
  */
 
 export interface OpenFoodFactsProduct {
@@ -20,17 +25,36 @@ export interface OpenFoodFactsProduct {
   serving_quantity?: string;
   serving_unit?: string;
   nutriments?: {
+    // Energy fields (multiple formats)
     'energy-kcal_100g'?: number;
+    'energy-kcal'?: number;
+    'energy_100g'?: number;
+    'energy'?: number;
     'energy-kcal_serving'?: number;
+    
+    // Protein fields
     'proteins_100g'?: number;
+    'proteins'?: number;
     'proteins_serving'?: number;
+    
+    // Carbohydrate fields
     'carbohydrates_100g'?: number;
+    'carbohydrates'?: number;
     'carbohydrates_serving'?: number;
+    
+    // Fat fields
     'fat_100g'?: number;
+    'fat'?: number;
     'fat_serving'?: number;
+    
+    // Fiber fields
     'fiber_100g'?: number;
+    'fiber'?: number;
     'fiber_serving'?: number;
+    
+    // Sugar fields
     'sugars_100g'?: number;
+    'sugars'?: number;
     'sugars_serving'?: number;
   };
 }
@@ -372,7 +396,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
 /**
  * Extract nutrition data from OpenFoodFacts product
  * Returns calories and macros per 100g
- * OPTIMIZED: Only extracts essential macros for display
+ * ENHANCED: Handles multiple field name formats with robust fallback
+ * NEVER throws errors - always returns valid numbers (0 if not found)
  */
 export function extractNutrition(product: OpenFoodFactsProduct): {
   calories: number;
@@ -384,12 +409,97 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
 } {
   const nutriments = product.nutriments || {};
 
-  const calories = nutriments['energy-kcal_100g'] || 0;
-  const protein = nutriments['proteins_100g'] || 0;
-  const carbs = nutriments['carbohydrates_100g'] || 0;
-  const fat = nutriments['fat_100g'] || 0;
-  const fiber = nutriments['fiber_100g'] || 0;
-  const sugars = nutriments['sugars_100g'] || 0;
+  console.log('[OpenFoodFacts] Extracting nutrition from nutriments:', Object.keys(nutriments));
+
+  // CALORIES: Try multiple field names
+  let calories = 0;
+  if (nutriments['energy-kcal_100g'] !== undefined && nutriments['energy-kcal_100g'] !== null) {
+    calories = Number(nutriments['energy-kcal_100g']);
+  } else if (nutriments['energy-kcal'] !== undefined && nutriments['energy-kcal'] !== null) {
+    calories = Number(nutriments['energy-kcal']);
+  } else if (nutriments['energy_100g'] !== undefined && nutriments['energy_100g'] !== null) {
+    // Convert kJ to kcal if needed (1 kcal = 4.184 kJ)
+    const energyKj = Number(nutriments['energy_100g']);
+    calories = energyKj / 4.184;
+  } else if (nutriments['energy'] !== undefined && nutriments['energy'] !== null) {
+    // Convert kJ to kcal if needed
+    const energyKj = Number(nutriments['energy']);
+    calories = energyKj / 4.184;
+  }
+  
+  // Ensure calories is a valid number
+  if (isNaN(calories) || calories < 0) {
+    calories = 0;
+  }
+
+  // PROTEIN: Try multiple field names
+  let protein = 0;
+  if (nutriments['proteins_100g'] !== undefined && nutriments['proteins_100g'] !== null) {
+    protein = Number(nutriments['proteins_100g']);
+  } else if (nutriments['proteins'] !== undefined && nutriments['proteins'] !== null) {
+    protein = Number(nutriments['proteins']);
+  }
+  
+  if (isNaN(protein) || protein < 0) {
+    protein = 0;
+  }
+
+  // CARBS: Try multiple field names
+  let carbs = 0;
+  if (nutriments['carbohydrates_100g'] !== undefined && nutriments['carbohydrates_100g'] !== null) {
+    carbs = Number(nutriments['carbohydrates_100g']);
+  } else if (nutriments['carbohydrates'] !== undefined && nutriments['carbohydrates'] !== null) {
+    carbs = Number(nutriments['carbohydrates']);
+  }
+  
+  if (isNaN(carbs) || carbs < 0) {
+    carbs = 0;
+  }
+
+  // FAT: Try multiple field names
+  let fat = 0;
+  if (nutriments['fat_100g'] !== undefined && nutriments['fat_100g'] !== null) {
+    fat = Number(nutriments['fat_100g']);
+  } else if (nutriments['fat'] !== undefined && nutriments['fat'] !== null) {
+    fat = Number(nutriments['fat']);
+  }
+  
+  if (isNaN(fat) || fat < 0) {
+    fat = 0;
+  }
+
+  // FIBER: Try multiple field names
+  let fiber = 0;
+  if (nutriments['fiber_100g'] !== undefined && nutriments['fiber_100g'] !== null) {
+    fiber = Number(nutriments['fiber_100g']);
+  } else if (nutriments['fiber'] !== undefined && nutriments['fiber'] !== null) {
+    fiber = Number(nutriments['fiber']);
+  }
+  
+  if (isNaN(fiber) || fiber < 0) {
+    fiber = 0;
+  }
+
+  // SUGARS: Try multiple field names
+  let sugars = 0;
+  if (nutriments['sugars_100g'] !== undefined && nutriments['sugars_100g'] !== null) {
+    sugars = Number(nutriments['sugars_100g']);
+  } else if (nutriments['sugars'] !== undefined && nutriments['sugars'] !== null) {
+    sugars = Number(nutriments['sugars']);
+  }
+  
+  if (isNaN(sugars) || sugars < 0) {
+    sugars = 0;
+  }
+
+  console.log('[OpenFoodFacts] Extracted nutrition (per 100g):', {
+    calories,
+    protein,
+    carbs,
+    fat,
+    fiber,
+    sugars,
+  });
 
   return { calories, protein, carbs, fat, fiber, sugars };
 }

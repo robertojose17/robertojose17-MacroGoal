@@ -94,6 +94,11 @@ export default function BarcodeScannerScreen() {
       return;
     }
 
+    // SPECIAL TEST: Log if this is the test barcode
+    if (cleanBarcode === '5059883177496') {
+      console.log('[BarcodeScanner] ⭐ TEST BARCODE DETECTED: 5059883177496');
+    }
+
     setScanned(true);
     setLoading(true);
 
@@ -122,28 +127,62 @@ export default function BarcodeScannerScreen() {
       }
 
       const result = await response.json();
-      console.log('[BarcodeScanner] Full result:', JSON.stringify(result).slice(0, 500));
+      
+      // SPECIAL TEST: Log full result for test barcode
+      if (cleanBarcode === '5059883177496') {
+        console.log('[BarcodeScanner] Test 5059883177496 result:', JSON.stringify(result).slice(0, 500));
+        console.log('[BarcodeScanner] Full nutriments:', JSON.stringify(result.product?.nutriments || {}));
+      } else {
+        console.log('[BarcodeScanner] Full result:', JSON.stringify(result).slice(0, 500));
+      }
 
       // Force status to number
       const status = Number(result.status);
       console.log('[BarcodeScanner] Status (as number):', status);
       console.log('[BarcodeScanner] Has product:', !!result.product);
 
-      // Robust check: status === 1 OR (status === 0 AND product exists)
-      if ((status === 1 || status === 0) && result.product) {
+      // Check if product exists and has basic info
+      if (status === 1 && result.product) {
         console.log('[BarcodeScanner] ✅ PRODUCT FOUND');
         console.log('[BarcodeScanner] Product name:', result.product.product_name || 'Unknown');
         console.log('[BarcodeScanner] Brand:', result.product.brands || 'Unknown');
         console.log('[BarcodeScanner] Barcode:', result.product.code || cleanBarcode);
 
-        // Log nutriments availability
+        // Log nutriments availability with multiple possible field names
         const nutriments = result.product.nutriments || {};
+        console.log('[BarcodeScanner] Nutriments keys:', Object.keys(nutriments));
         console.log('[BarcodeScanner] Nutriments available:', {
-          calories: nutriments['energy-kcal_100g'] !== undefined,
-          protein: nutriments['proteins_100g'] !== undefined,
-          carbs: nutriments['carbohydrates_100g'] !== undefined,
-          fat: nutriments['fat_100g'] !== undefined,
+          'energy-kcal_100g': nutriments['energy-kcal_100g'],
+          'energy-kcal': nutriments['energy-kcal'],
+          'energy_100g': nutriments['energy_100g'],
+          'energy': nutriments['energy'],
+          'proteins_100g': nutriments['proteins_100g'],
+          'proteins': nutriments['proteins'],
+          'carbohydrates_100g': nutriments['carbohydrates_100g'],
+          'carbohydrates': nutriments['carbohydrates'],
+          'fat_100g': nutriments['fat_100g'],
+          'fat': nutriments['fat'],
+          'fiber_100g': nutriments['fiber_100g'],
+          'fiber': nutriments['fiber'],
         });
+
+        // Check if we have at least some nutrition data
+        const hasNutrition = 
+          nutriments['energy-kcal_100g'] !== undefined ||
+          nutriments['energy-kcal'] !== undefined ||
+          nutriments['energy_100g'] !== undefined ||
+          nutriments['proteins_100g'] !== undefined ||
+          nutriments['proteins'] !== undefined ||
+          nutriments['carbohydrates_100g'] !== undefined ||
+          nutriments['carbohydrates'] !== undefined ||
+          nutriments['fat_100g'] !== undefined ||
+          nutriments['fat'] !== undefined;
+
+        if (!hasNutrition) {
+          console.log('[BarcodeScanner] ⚠️ Product found but NO nutrition data available');
+        } else {
+          console.log('[BarcodeScanner] ✅ Product has nutrition data');
+        }
 
         // IMPORTANT: Set loading to false and scanned to true BEFORE navigation
         setLoading(false);
