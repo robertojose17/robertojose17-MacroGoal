@@ -128,7 +128,19 @@ export default function CheckInFormScreen() {
 
       // Populate form fields
       setDate(new Date(data.date));
-      setWeight(data.weight?.toString() || '');
+      
+      // Convert weight from kg (stored) to display units
+      if (data.weight) {
+        const units = user?.preferred_units || 'metric';
+        if (units === 'imperial') {
+          // Convert kg to lbs for display
+          const lbs = data.weight * 2.20462;
+          setWeight(Math.round(lbs).toString());
+        } else {
+          setWeight(Math.round(data.weight).toString());
+        }
+      }
+      
       setSteps(data.steps?.toString() || '');
       setStepsGoal(data.steps_goal?.toString() || '');
       setWentToGym(data.went_to_gym || false);
@@ -273,7 +285,21 @@ export default function CheckInFormScreen() {
       };
 
       if (checkInType === 'weight') {
-        checkInData.weight = weight ? parseFloat(weight) : null;
+        // Convert weight to kg for storage
+        const units = user?.preferred_units || 'metric';
+        let weightInKg: number;
+        
+        if (units === 'imperial') {
+          // User entered lbs, convert to kg for storage
+          weightInKg = parseFloat(weight) * 0.453592;
+          console.log('[CheckInForm] Converting weight:', weight, 'lbs to', weightInKg, 'kg');
+        } else {
+          // User entered kg, store as-is
+          weightInKg = parseFloat(weight);
+          console.log('[CheckInForm] Storing weight:', weightInKg, 'kg');
+        }
+        
+        checkInData.weight = weightInKg;
         checkInData.photo_url = finalPhotoUrl;
       } else if (checkInType === 'steps') {
         checkInData.steps = steps ? parseInt(steps, 10) : null;

@@ -486,11 +486,14 @@ export default function DashboardScreen() {
 
   const formatWeight = (weight: number | null) => {
     if (!weight) return 'N/A';
+    // Weight is stored in kg in the database
     const units = user?.preferred_units || 'metric';
     if (units === 'imperial') {
+      // Convert kg to lbs for display
       const lbs = Math.round(weight * 2.20462);
       return `${lbs} lbs`;
     }
+    // Display in kg
     return `${Math.round(weight)} kg`;
   };
 
