@@ -33,6 +33,7 @@ export default function BarcodeScanScreen() {
 
   useEffect(() => {
     console.log('[BarcodeScan] Screen mounted, meal:', mealType, 'date:', date);
+    console.log('[BarcodeScan] Mode:', mode, 'returnTo:', returnTo, 'mealId:', myMealId);
     
     // Cleanup timeout on unmount
     return () => {
@@ -40,7 +41,7 @@ export default function BarcodeScanScreen() {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [date, mealType]);
+  }, [date, mealType, mode, returnTo, myMealId]);
 
   // Request permission if not granted
   useEffect(() => {
@@ -86,9 +87,16 @@ export default function BarcodeScanScreen() {
 
       if (product) {
         console.log('[BarcodeScan] ✅ Product found:', product.product_name);
+        console.log('[BarcodeScan] Navigating to food-details with params:', {
+          meal: mealType,
+          date: date,
+          mode: mode,
+          returnTo: returnTo || '/add-food',
+          mealId: myMealId,
+        });
         
-        // Navigate directly to Food Details screen
-        router.replace({
+        // Navigate to Food Details screen with push (not replace) to maintain stack
+        router.push({
           pathname: '/food-details',
           params: {
             meal: mealType,
