@@ -293,21 +293,29 @@ export default function BarcodeScannerScreen() {
         // Navigate to food details screen with the best product data
         console.log('[BarcodeScanner] Navigating to food-details...');
         
-        // CRITICAL CHANGE: Use dismissTo to close both camera AND add-food menu
-        // This ensures only the food-details screen remains visible
-        router.dismissTo({
-          pathname: '/food-details',
-          params: {
-            offData: JSON.stringify(bestProduct),
-            meal: mealType,
-            date: date,
-            mode: mode,
-            returnTo: '/add-food',
-            mealId: myMealId,
-          },
-        });
+        // CRITICAL FIX: Use router.back() to close the scanner first,
+        // then use a timeout to push food-details after the scanner is closed.
+        // This ensures the Add Food menu is also dismissed from the stack.
+        console.log('[BarcodeScanner] Step 1: Closing scanner with router.back()');
+        router.back();
+        
+        // Use a small timeout to ensure the scanner is fully closed before pushing food-details
+        setTimeout(() => {
+          console.log('[BarcodeScanner] Step 2: Pushing food-details to navigation stack');
+          router.push({
+            pathname: '/food-details',
+            params: {
+              offData: JSON.stringify(bestProduct),
+              meal: mealType,
+              date: date,
+              mode: mode,
+              returnTo: '/add-food',
+              mealId: myMealId,
+            },
+          });
+        }, 100);
 
-        console.log('[BarcodeScanner] Navigation initiated with dismissTo');
+        console.log('[BarcodeScanner] Navigation sequence initiated');
       } else {
         // Product not found
         console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
