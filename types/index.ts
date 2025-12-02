@@ -17,6 +17,7 @@ export interface User {
   weight: number; // kg (always stored in kg)
   activity_level: ActivityLevel;
   preferred_units?: UnitSystem;
+  goal_weight?: number; // kg (always stored in kg)
   created_at: string;
 }
 
@@ -30,6 +31,8 @@ export interface Goal {
   fats_g: number;
   fiber_g: number;
   is_active: boolean;
+  loss_rate_lbs_per_week?: number;
+  start_date?: string; // ISO date string
   created_at: string;
 }
 
