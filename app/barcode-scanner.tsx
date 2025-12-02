@@ -153,6 +153,7 @@ export default function BarcodeScannerScreen() {
   }, [permission]);
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+    // CRITICAL: Only process if not already scanned and not loading
     if (scanned || loading) {
       console.log('[BarcodeScanner] Already processing a scan, ignoring');
       return;
@@ -190,8 +191,9 @@ export default function BarcodeScannerScreen() {
       console.log('[BarcodeScanner] ⭐ TEST BARCODE DETECTED: 5059883177496');
     }
 
-    setScanned(true);
+    // CRITICAL: Set states immediately to prevent re-scanning
     setLoading(true);
+    setScanned(true);
 
     try {
       // Construct URL based on API version
@@ -275,9 +277,7 @@ export default function BarcodeScannerScreen() {
           console.log('[BarcodeScanner] ✅ Product has nutrition data');
         }
 
-        // IMPORTANT: Select best product if multiple candidates exist
-        // In this case, we only have one product from the barcode lookup,
-        // but we apply the selection logic for consistency
+        // Select best product if multiple candidates exist
         const candidates = [result.product];
         const bestProduct = selectBestProduct(candidates);
 
@@ -286,42 +286,36 @@ export default function BarcodeScannerScreen() {
           throw new Error('No valid product found');
         }
 
-        // IMPORTANT: Set loading to false BEFORE navigation
+        // CRITICAL FIX: Set loading to false BEFORE navigation
+        console.log('[BarcodeScanner] ✅ Setting loading to false before navigation');
         setLoading(false);
-        setScanned(true);
+        // Keep scanned as true to prevent re-scanning during navigation
 
         // Navigate to food details screen with the best product data
         console.log('[BarcodeScanner] Navigating to food-details...');
         
-        // CRITICAL FIX: Use router.back() to close the scanner first,
-        // then use a timeout to push food-details after the scanner is closed.
-        // This ensures the Add Food menu is also dismissed from the stack.
-        console.log('[BarcodeScanner] Step 1: Closing scanner with router.back()');
-        router.back();
-        
-        // Use a small timeout to ensure the scanner is fully closed before pushing food-details
-        setTimeout(() => {
-          console.log('[BarcodeScanner] Step 2: Pushing food-details to navigation stack');
-          router.push({
-            pathname: '/food-details',
-            params: {
-              offData: JSON.stringify(bestProduct),
-              meal: mealType,
-              date: date,
-              mode: mode,
-              returnTo: '/add-food',
-              mealId: myMealId,
-            },
-          });
-        }, 100);
+        // Use router.replace to close the scanner and navigate to food-details in one step
+        // This ensures the Add Food menu is also dismissed from the stack
+        router.replace({
+          pathname: '/food-details',
+          params: {
+            offData: JSON.stringify(bestProduct),
+            meal: mealType,
+            date: date,
+            mode: mode,
+            returnTo: '/add-food',
+            mealId: myMealId,
+          },
+        });
 
-        console.log('[BarcodeScanner] Navigation sequence initiated');
+        console.log('[BarcodeScanner] Navigation completed');
       } else {
         // Product not found
         console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
         console.log('[BarcodeScanner] Status code:', status);
         console.log('[BarcodeScanner] Result keys:', Object.keys(result));
         
+        // CRITICAL: Reset states before showing alert
         setLoading(false);
         setScanned(false);
         
@@ -373,6 +367,7 @@ export default function BarcodeScannerScreen() {
       console.error('[BarcodeScanner] ❌ ERROR FETCHING PRODUCT');
       console.error('[BarcodeScanner] Error details:', error);
       
+      // CRITICAL: Reset states before showing alert
       setLoading(false);
       setScanned(false);
       
@@ -496,7 +491,7 @@ export default function BarcodeScannerScreen() {
           barcodeScannerSettings={{
             barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
           }}
-          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          onBarcodeScanned={loading || scanned ? undefined : handleBarCodeScanned}
         />
 
         {/* Overlay with scanning frame */}
