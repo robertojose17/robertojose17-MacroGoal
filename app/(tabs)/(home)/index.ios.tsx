@@ -18,6 +18,14 @@ interface MealData {
   totalCalories: number;
 }
 
+// Helper function to format date consistently (local date, no timezone issues)
+const formatDateForStorage = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -51,7 +59,7 @@ export default function HomeScreen() {
         .maybeSingle();
 
       if (!error && data) {
-        setEarliestLogDate(new Date(data.date));
+        setEarliestLogDate(new Date(data.date + 'T00:00:00'));
       }
     } catch (error) {
       console.error('[Home iOS] Error loading earliest log date:', error);
@@ -94,13 +102,16 @@ export default function HomeScreen() {
         });
       }
 
-      // Load meals for selected date
-      const dateString = selectedDate.toISOString().split('T')[0];
+      // FIXED: Use consistent date formatting (local date, no timezone conversion)
+      const dateString = formatDateForStorage(selectedDate);
+      console.log('[Home iOS] Loading meals for date:', dateString);
+      
       const { data: mealsData, error: mealsError } = await supabase
         .from('meals')
         .select(`
           id,
           meal_type,
+          date,
           meal_items (
             id,
             quantity,
@@ -127,7 +138,7 @@ export default function HomeScreen() {
       if (mealsError) {
         console.error('[Home iOS] Error loading meals:', mealsError);
       } else {
-        console.log('[Home iOS] Meals loaded:', mealsData);
+        console.log('[Home iOS] Meals loaded for', dateString, ':', mealsData?.length || 0, 'meals');
         
         // Organize meals by type
         const mealsByType: Record<MealType, any[]> = {
@@ -213,13 +224,16 @@ export default function HomeScreen() {
 
   const handleAddFood = (mealType: MealType) => {
     console.log('[Home iOS] Opening add food for meal:', mealType);
-    const dateString = selectedDate.toISOString().split('T')[0];
+    // FIXED: Use consistent date formatting
+    const dateString = formatDateForStorage(selectedDate);
+    console.log('[Home iOS] Passing date to add-food:', dateString);
     router.push(`/add-food?meal=${mealType}&date=${dateString}`);
   };
 
   const handleEditFood = (item: any) => {
     console.log('[Home iOS] Opening edit food:', item.id);
-    const dateString = selectedDate.toISOString().split('T')[0];
+    // FIXED: Use consistent date formatting
+    const dateString = formatDateForStorage(selectedDate);
     router.push({
       pathname: '/edit-food',
       params: {
