@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -84,6 +84,9 @@ export default function BarcodeScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // CRITICAL FIX: Use a ref to track if navigation has already been triggered
+  const hasNavigatedRef = useRef(false);
 
   useEffect(() => {
     console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
@@ -96,6 +99,7 @@ export default function BarcodeScannerScreen() {
       console.log('[BarcodeScanner] Screen focused → reset scan state');
       setScanned(false);
       setLoading(false);
+      hasNavigatedRef.current = false; // CRITICAL: Reset navigation flag
 
       return () => {
         console.log('[BarcodeScanner] Screen unfocused');
@@ -120,10 +124,60 @@ export default function BarcodeScannerScreen() {
     }
   }, [permission]);
 
+  /**
+   * SINGLE NAVIGATION FUNCTION
+   * This is the ONLY place where navigation to food-details happens
+   * Prevents duplicate navigation by checking hasNavigatedRef
+   */
+  const navigateToFoodDetails = (product: any) => {
+    // CRITICAL: Check if we've already navigated
+    if (hasNavigatedRef.current) {
+      console.log('[BarcodeScanner] ⚠️ Navigation already triggered, ignoring duplicate call');
+      return;
+    }
+
+    console.log('[BarcodeScanner] ========== NAVIGATING TO FOOD DETAILS ==========');
+    console.log('[BarcodeScanner] Product:', product.product_name || 'Unknown');
+    console.log('[BarcodeScanner] This is the ONLY navigation call');
+
+    // CRITICAL: Mark that we've navigated
+    hasNavigatedRef.current = true;
+
+    // CRITICAL: Set loading to false BEFORE navigation
+    setLoading(false);
+
+    // Dismiss all screens back to home
+    router.dismissTo('/(tabs)/(home)/');
+
+    // Navigate to food details
+    // Use a small delay to ensure dismissTo completes
+    setTimeout(() => {
+      console.log('[BarcodeScanner] Pushing Food Details screen');
+      router.push({
+        pathname: '/food-details',
+        params: {
+          offData: JSON.stringify(product),
+          meal: mealType,
+          date: date,
+          mode: mode,
+          returnTo: '/(tabs)/(home)/',
+          mealId: myMealId,
+        },
+      });
+      console.log('[BarcodeScanner] ✅ Navigation completed - EXACTLY ONE Food Details screen');
+    }, 100);
+  };
+
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
     // CRITICAL: Only process if not already scanned and not loading
     if (scanned || loading) {
       console.log('[BarcodeScanner] Already processing a scan, ignoring');
+      return;
+    }
+
+    // CRITICAL: Check if we've already navigated (extra safety)
+    if (hasNavigatedRef.current) {
+      console.log('[BarcodeScanner] Already navigated, ignoring scan');
       return;
     }
 
@@ -254,35 +308,10 @@ export default function BarcodeScannerScreen() {
           throw new Error('No valid product found');
         }
 
-        // CRITICAL FIX: Set loading to false BEFORE navigation
-        console.log('[BarcodeScanner] ✅ Setting loading to false before navigation');
-        setLoading(false);
-        // Keep scanned as true to prevent re-scanning during navigation
-
-        // CRITICAL FIX: Navigate ONLY ONCE using the best product
-        console.log('[BarcodeScanner] Dismissing to home and navigating to food-details...');
-        console.log('[BarcodeScanner] ⚠️ NAVIGATION WILL HAPPEN EXACTLY ONCE');
-        
-        // First, dismiss all screens back to home
-        router.dismissTo('/(tabs)/(home)/');
-        
-        // Then immediately push Food Details with the BEST product
-        // Use a small delay to ensure the dismiss completes first
-        setTimeout(() => {
-          console.log('[BarcodeScanner] Pushing Food Details with best product');
-          router.push({
-            pathname: '/food-details',
-            params: {
-              offData: JSON.stringify(bestProduct),
-              meal: mealType,
-              date: date,
-              mode: mode,
-              returnTo: '/(tabs)/(home)/',
-              mealId: myMealId,
-            },
-          });
-          console.log('[BarcodeScanner] ✅ Navigation completed - EXACTLY ONE Food Details screen');
-        }, 100);
+        // CRITICAL FIX: Call the SINGLE navigation function
+        // This is the ONLY place where navigation happens
+        console.log('[BarcodeScanner] ⚠️ Calling navigateToFoodDetails (ONLY ONCE)');
+        navigateToFoodDetails(bestProduct);
 
       } else {
         // Product not found
@@ -489,6 +518,7 @@ export default function BarcodeScannerScreen() {
                 console.log('[BarcodeScanner] Close button pressed');
                 setScanned(false);
                 setLoading(false);
+                hasNavigatedRef.current = false;
                 router.back();
               }}
             >
