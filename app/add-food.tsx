@@ -274,18 +274,21 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a search result
+   * FIXED: Use router.replace to close Add Food and show Food Details on top
    */
   const handleOpenSearchResultDetails = (product: OpenFoodFactsProduct) => {
-    console.log('[AddFood] Opening search result details:', product.product_name);
+    console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
+    console.log('[AddFood] Product:', product.product_name);
+    console.log('[AddFood] Using router.replace to close Add Food and show Food Details');
 
-    router.push({
+    router.replace({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(product),
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: '/add-food',
+        returnTo: '/(tabs)/(home)/',
         mealId: myMealId,
       },
     });
@@ -360,9 +363,12 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a recent food
+   * FIXED: Use router.replace to close Add Food and show Food Details on top
    */
   const handleOpenRecentFoodDetails = async (food: Food) => {
-    console.log('[AddFood] Opening recent food details:', food.name);
+    console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
+    console.log('[AddFood] Food:', food.name);
+    console.log('[AddFood] Using router.replace to close Add Food and show Food Details');
 
     try {
       // Fetch the full food data from database to get per-100g values
@@ -396,14 +402,14 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with OFF data');
 
-      router.push({
+      router.replace({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: '/add-food',
+          returnTo: '/(tabs)/(home)/',
           mealId: myMealId,
         },
       });
@@ -555,8 +561,14 @@ export default function AddFoodScreen() {
     }
   };
 
+  /**
+   * Open food details for a favorite
+   * FIXED: Use router.replace to close Add Food and show Food Details on top
+   */
   const handleOpenFavoriteDetails = async (favorite: Favorite) => {
-    console.log('[AddFood] Opening favorite food details:', favorite.food_name);
+    console.log('[AddFood] ========== OPENING FAVORITE DETAILS ==========');
+    console.log('[AddFood] Favorite:', favorite.food_name);
+    console.log('[AddFood] Using router.replace to close Add Food and show Food Details');
 
     try {
       // Convert favorite to OpenFoodFacts format for the food-details screen
@@ -577,14 +589,14 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with favorite data');
 
-      router.push({
+      router.replace({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: '/add-food',
+          returnTo: '/(tabs)/(home)/',
           mealId: myMealId,
         },
       });

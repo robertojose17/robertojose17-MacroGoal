@@ -291,22 +291,28 @@ export default function BarcodeScannerScreen() {
         setLoading(false);
         // Keep scanned as true to prevent re-scanning during navigation
 
-        // Navigate to food details screen with the best product data
-        console.log('[BarcodeScanner] Navigating to food-details...');
+        // FIXED: Use router.dismissTo to close BOTH the scanner AND the Add Food screen
+        // This ensures Food Details is the only visible screen
+        console.log('[BarcodeScanner] Dismissing to home and navigating to food-details...');
         
-        // Use router.replace to close the scanner and navigate to food-details in one step
-        // This ensures the Add Food menu is also dismissed from the stack
-        router.replace({
-          pathname: '/food-details',
-          params: {
-            offData: JSON.stringify(bestProduct),
-            meal: mealType,
-            date: date,
-            mode: mode,
-            returnTo: '/add-food',
-            mealId: myMealId,
-          },
-        });
+        // First, dismiss all screens back to home
+        router.dismissTo('/(tabs)/(home)/');
+        
+        // Then immediately push Food Details
+        // Use a small delay to ensure the dismiss completes first
+        setTimeout(() => {
+          router.push({
+            pathname: '/food-details',
+            params: {
+              offData: JSON.stringify(bestProduct),
+              meal: mealType,
+              date: date,
+              mode: mode,
+              returnTo: '/(tabs)/(home)/',
+              mealId: myMealId,
+            },
+          });
+        }, 100);
 
         console.log('[BarcodeScanner] Navigation completed');
       } else {
@@ -338,16 +344,21 @@ export default function BarcodeScannerScreen() {
                 console.log('[BarcodeScanner] User chose to add manually');
                 setScanned(false);
                 setLoading(false);
-                router.replace({
-                  pathname: '/quick-add',
-                  params: {
-                    meal: mealType,
-                    date: date,
-                    mode: mode,
-                    mealId: myMealId,
-                    barcode: cleanBarcode,
-                  },
-                });
+                
+                // Dismiss scanner and Add Food, then push quick-add
+                router.dismissTo('/(tabs)/(home)/');
+                setTimeout(() => {
+                  router.push({
+                    pathname: '/quick-add',
+                    params: {
+                      meal: mealType,
+                      date: date,
+                      mode: mode,
+                      mealId: myMealId,
+                      barcode: cleanBarcode,
+                    },
+                  });
+                }, 100);
               },
             },
             {
@@ -390,15 +401,20 @@ export default function BarcodeScannerScreen() {
               console.log('[BarcodeScanner] User chose to add manually after error');
               setScanned(false);
               setLoading(false);
-              router.replace({
-                pathname: '/quick-add',
-                params: {
-                  meal: mealType,
-                  date: date,
-                  mode: mode,
-                  mealId: myMealId,
-                },
-              });
+              
+              // Dismiss scanner and Add Food, then push quick-add
+              router.dismissTo('/(tabs)/(home)/');
+              setTimeout(() => {
+                router.push({
+                  pathname: '/quick-add',
+                  params: {
+                    meal: mealType,
+                    date: date,
+                    mode: mode,
+                    mealId: myMealId,
+                  },
+                });
+              }, 100);
             },
           },
           {
