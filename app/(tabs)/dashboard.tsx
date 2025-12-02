@@ -21,6 +21,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
 import { supabase } from '@/app/integrations/supabase/client';
+import { calculateBMR, calculateTDEE, calculateAge } from '@/utils/calculations';
 
 type TimeRange = '7days' | '30days' | 'custom';
 
@@ -50,7 +51,15 @@ interface CustomDateRange {
 interface WeightDataPoint {
   date: string;
   actualWeight: number | null;
-  projectedWeight: number;
+  plannedWeight: number | null;
+  dynamicWeight: number | null;
+}
+
+interface ProjectionInfo {
+  plannedGoalDate: string | null;
+  dynamicGoalDate: string | null;
+  hasEnoughData: boolean;
+  dynamicMovingTowardGoal: boolean;
 }
 
 export default function DashboardScreen() {
@@ -82,6 +91,12 @@ export default function DashboardScreen() {
   
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [weightData, setWeightData] = useState<WeightDataPoint[]>([]);
+  const [projectionInfo, setProjectionInfo] = useState<ProjectionInfo>({
+    plannedGoalDate: null,
+    dynamicGoalDate: null,
+    hasEnoughData: false,
+    dynamicMovingTowardGoal: false,
+  });
   const [showCheckInModal, setShowCheckInModal] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -149,8 +164,8 @@ export default function DashboardScreen() {
       // Load nutrition trends based on selected range
       await loadNutritionTrends(authUser.id);
 
-      // Load weight progress data
-      await loadWeightProgress(authUser.id, userData?.preferred_units || 'metric', goalData);
+      // Load weight progress data with projections
+      await loadWeightProgress(authUser.id, userData?.preferred_units || 'metric', goalData, userData);
 
     } catch (error) {
       console.error('[Dashboard] Error loading data:', error);
@@ -172,7 +187,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (user && goal) {
       console.log('[Dashboard] Progress range changed, reloading weight data');
-      loadWeightProgress(user.id, user.preferred_units || 'metric', goal);
+      loadWeightProgress(user.id, user.preferred_units || 'metric', goal, user);
     }
   }, [progressRange, progressCustomRange]);
 
@@ -344,7 +359,7 @@ export default function DashboardScreen() {
     return currentStreak;
   };
 
-  const loadWeightProgress = async (userId: string, units: string, goalData: any) => {
+  const loadWeightProgress = async (userId: string, units: string, goalData: any, userData: any) => {
     try {
       const endDate = new Date();
       const startDate = new Date();
@@ -360,7 +375,7 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Loading weight progress from', startDate.toISOString().split('T')[0], 'to', endDate.toISOString().split('T')[0]);
 
-      // Load ALL weight check-ins (not just in range) to find the first one
+      // Load ALL weight check-ins to find the latest one
       const { data: allCheckInsData } = await supabase
         .from('check_ins')
         .select('date, weight')
@@ -374,20 +389,32 @@ export default function DashboardScreen() {
         return;
       }
 
-      // Get the first weight check-in as the starting point
-      const firstCheckIn = allCheckInsData[0];
-      const startWeight = firstCheckIn.weight;
-      const firstCheckInDate = new Date(firstCheckIn.date);
+      // Get the latest weight check-in as current weight
+      const latestCheckIn = allCheckInsData[allCheckInsData.length - 1];
+      const currentWeight = latestCheckIn.weight; // in kg
+      const latestCheckInDate = new Date(latestCheckIn.date);
 
-      console.log('[Dashboard] First check-in:', firstCheckIn);
+      console.log('[Dashboard] Latest check-in:', latestCheckIn);
 
-      // Filter check-ins within the selected range
-      const checkInsInRange = allCheckInsData.filter((ci: any) => {
-        const ciDate = new Date(ci.date);
-        return ciDate >= startDate && ciDate <= endDate;
-      });
+      // Get goal weight and start date
+      const goalWeight = userData?.goal_weight || null;
+      const startDateStr = goalData?.start_date || allCheckInsData[0].date;
+      const journeyStartDate = new Date(startDateStr);
 
-      // Load meals data for calorie calculations (from first check-in date to end date)
+      console.log('[Dashboard] Goal weight:', goalWeight, 'Start date:', startDateStr);
+
+      // Calculate maintenance calories (TDEE)
+      let maintenanceCalories = 2000; // default
+      if (userData?.height && userData?.current_weight && userData?.date_of_birth && userData?.sex && userData?.activity_level) {
+        const age = calculateAge(userData.date_of_birth);
+        const bmr = calculateBMR(userData.current_weight, userData.height, age, userData.sex);
+        maintenanceCalories = calculateTDEE(bmr, userData.activity_level);
+        console.log('[Dashboard] Calculated maintenance calories:', maintenanceCalories);
+      }
+
+      const dailyCalorieTarget = goalData?.daily_calories || 2000;
+
+      // Load meals data for calorie calculations (from start date to end date)
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -397,7 +424,7 @@ export default function DashboardScreen() {
           )
         `)
         .eq('user_id', userId)
-        .gte('date', firstCheckIn.date)
+        .gte('date', journeyStartDate.toISOString().split('T')[0])
         .lte('date', endDate.toISOString().split('T')[0])
         .order('date', { ascending: true });
 
@@ -418,47 +445,138 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Daily calories:', Object.keys(dailyCalories).length, 'days');
 
-      // Calculate projected weight for each day
+      // Calculate planned projection
+      const plannedDailyDeficit = maintenanceCalories - dailyCalorieTarget;
       const calsPerUnit = units === 'imperial' ? 3500 : 7700; // kcal per lb or kg
-      const dailyGoal = goalData?.daily_calories || 2000;
+      const plannedChangePerDay = plannedDailyDeficit / calsPerUnit;
 
-      let cumulativeBalance = 0;
-      const weightDataPoints: WeightDataPoint[] = [];
+      console.log('[Dashboard] Planned daily deficit:', plannedDailyDeficit, 'kcal');
+      console.log('[Dashboard] Planned change per day:', plannedChangePerDay, units === 'imperial' ? 'lbs' : 'kg');
 
-      // Generate all dates from first check-in to end date
-      const currentDate = new Date(firstCheckInDate);
-      const endDateTime = endDate.getTime();
+      // Calculate dynamic projection (based on actual intake)
+      // Use last 7 days of data after start date
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const dynamicStartDate = sevenDaysAgo > journeyStartDate ? sevenDaysAgo : journeyStartDate;
 
-      while (currentDate.getTime() <= endDateTime) {
+      const validDeficits: number[] = [];
+      const currentDate = new Date(dynamicStartDate);
+      const today = new Date();
+
+      while (currentDate <= today) {
         const dateStr = currentDate.toISOString().split('T')[0];
-        
-        // Calculate daily balance
-        const dailyEaten = dailyCalories[dateStr] || 0;
-        const dailyBalance = dailyEaten - dailyGoal;
-        cumulativeBalance += dailyBalance;
+        if (dailyCalories[dateStr]) {
+          const dailyDeficit = maintenanceCalories - dailyCalories[dateStr];
+          validDeficits.push(dailyDeficit);
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
 
-        // Calculate projected weight change
-        const projectedWeightChange = cumulativeBalance / calsPerUnit;
-        const projectedWeight = startWeight + projectedWeightChange;
+      let avgDailyDeficit = 0;
+      let dynamicChangePerDay = 0;
+      const hasEnoughData = validDeficits.length >= 3;
+
+      if (hasEnoughData) {
+        avgDailyDeficit = validDeficits.reduce((sum, d) => sum + d, 0) / validDeficits.length;
+        dynamicChangePerDay = avgDailyDeficit / calsPerUnit;
+        console.log('[Dashboard] Average daily deficit:', avgDailyDeficit, 'kcal');
+        console.log('[Dashboard] Dynamic change per day:', dynamicChangePerDay, units === 'imperial' ? 'lbs' : 'kg');
+      } else {
+        console.log('[Dashboard] Not enough data for dynamic projection');
+      }
+
+      // Filter check-ins within the selected range
+      const checkInsInRange = allCheckInsData.filter((ci: any) => {
+        const ciDate = new Date(ci.date);
+        return ciDate >= startDate && ciDate <= endDate;
+      });
+
+      // Generate weight data points for the chart
+      const weightDataPoints: WeightDataPoint[] = [];
+      const chartStartDate = new Date(startDate);
+      const chartEndDate = new Date(endDate);
+
+      // Add future projection (next 12 weeks)
+      const futureEndDate = new Date(endDate);
+      futureEndDate.setDate(futureEndDate.getDate() + 84); // 12 weeks
+
+      const currentChartDate = new Date(chartStartDate);
+      while (currentChartDate <= futureEndDate) {
+        const dateStr = currentChartDate.toISOString().split('T')[0];
+        
+        // Calculate days from latest check-in
+        const daysFromLatest = Math.floor((currentChartDate.getTime() - latestCheckInDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        // Calculate planned weight
+        const plannedWeight = currentWeight - (plannedChangePerDay * daysFromLatest);
+
+        // Calculate dynamic weight
+        let dynamicWeight = null;
+        if (hasEnoughData) {
+          dynamicWeight = currentWeight - (dynamicChangePerDay * daysFromLatest);
+        }
 
         // Find actual weight for this date
         const actualCheckIn = allCheckInsData.find((ci: any) => ci.date === dateStr);
 
-        // Only add data points within the selected range
-        if (currentDate >= startDate) {
+        // Only add data points within the display range (past + future)
+        if (currentChartDate >= chartStartDate) {
           weightDataPoints.push({
             date: dateStr,
             actualWeight: actualCheckIn?.weight || null,
-            projectedWeight,
+            plannedWeight,
+            dynamicWeight,
           });
         }
 
         // Move to next day
-        currentDate.setDate(currentDate.getDate() + 1);
+        currentChartDate.setDate(currentChartDate.getDate() + 1);
       }
 
       console.log('[Dashboard] Weight data points:', weightDataPoints.length);
       setWeightData(weightDataPoints);
+
+      // Calculate goal dates
+      let plannedGoalDate: string | null = null;
+      let dynamicGoalDate: string | null = null;
+      let dynamicMovingTowardGoal = false;
+
+      if (goalWeight) {
+        const delta = currentWeight - goalWeight;
+        console.log('[Dashboard] Delta to goal:', delta, units === 'imperial' ? 'lbs' : 'kg');
+
+        // Planned goal date
+        if (Math.abs(plannedChangePerDay) > 0.001) {
+          const isMovingTowardGoal = (delta > 0 && plannedChangePerDay > 0) || (delta < 0 && plannedChangePerDay < 0);
+          if (isMovingTowardGoal) {
+            const daysToGoal = Math.abs(delta / plannedChangePerDay);
+            const goalDate = new Date(latestCheckInDate);
+            goalDate.setDate(goalDate.getDate() + Math.round(daysToGoal));
+            plannedGoalDate = goalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            console.log('[Dashboard] Planned goal date:', plannedGoalDate);
+          }
+        }
+
+        // Dynamic goal date
+        if (hasEnoughData && Math.abs(dynamicChangePerDay) > 0.001) {
+          dynamicMovingTowardGoal = (delta > 0 && dynamicChangePerDay > 0) || (delta < 0 && dynamicChangePerDay < 0);
+          if (dynamicMovingTowardGoal) {
+            const daysToGoal = Math.abs(delta / dynamicChangePerDay);
+            const goalDate = new Date(latestCheckInDate);
+            goalDate.setDate(goalDate.getDate() + Math.round(daysToGoal));
+            dynamicGoalDate = goalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            console.log('[Dashboard] Dynamic goal date:', dynamicGoalDate);
+          }
+        }
+      }
+
+      setProjectionInfo({
+        plannedGoalDate,
+        dynamicGoalDate,
+        hasEnoughData,
+        dynamicMovingTowardGoal,
+      });
+
     } catch (error) {
       console.error('[Dashboard] Error loading weight progress:', error);
       setWeightData([]);
@@ -641,51 +759,84 @@ export default function DashboardScreen() {
     const units = user?.preferred_units || 'metric';
     const conversionFactor = units === 'imperial' ? 2.20462 : 1;
 
-    // Get labels (dates)
-    const labels = weightData.map(point => {
-      const date = new Date(point.date);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // Get labels (dates) - show every few days to avoid crowding
+    const labelInterval = Math.max(1, Math.floor(weightData.length / 10));
+    const labels = weightData.map((point, index) => {
+      if (index % labelInterval === 0) {
+        const date = new Date(point.date);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      return '';
     });
-
-    // Get projected weights
-    const projectedWeights = weightData.map(point => 
-      point.projectedWeight * conversionFactor
-    );
 
     // Get actual weights (only where available)
     const actualWeights = weightData.map(point => 
       point.actualWeight ? point.actualWeight * conversionFactor : null
     );
 
+    // Get planned weights
+    const plannedWeights = weightData.map(point => 
+      point.plannedWeight ? point.plannedWeight * conversionFactor : null
+    );
+
+    // Get dynamic weights
+    const dynamicWeights = weightData.map(point => 
+      point.dynamicWeight ? point.dynamicWeight * conversionFactor : null
+    );
+
     // Find min and max for Y-axis
     const allWeights = [
-      ...projectedWeights,
-      ...actualWeights.filter((w): w is number => w !== null)
+      ...actualWeights.filter((w): w is number => w !== null),
+      ...plannedWeights.filter((w): w is number => w !== null),
+      ...dynamicWeights.filter((w): w is number => w !== null),
     ];
+
+    if (allWeights.length === 0) return null;
+
     const minWeight = Math.min(...allWeights);
     const maxWeight = Math.max(...allWeights);
     const padding = (maxWeight - minWeight) * 0.1 || 5;
 
+    const datasets = [];
+
+    // Actual weight line (with dots)
+    datasets.push({
+      data: actualWeights.map(w => w || 0), // Replace null with 0 for chart
+      color: () => colors.primary,
+      strokeWidth: 3,
+      withDots: true,
+    });
+
+    // Planned projection line (dashed)
+    datasets.push({
+      data: plannedWeights.map(w => w || 0),
+      color: () => colors.success,
+      strokeWidth: 2,
+      withDots: false,
+      strokeDasharray: [5, 5],
+    });
+
+    // Dynamic projection line (dashed) - only if we have enough data
+    if (projectionInfo.hasEnoughData) {
+      datasets.push({
+        data: dynamicWeights.map(w => w || 0),
+        color: () => colors.warning,
+        strokeWidth: 2,
+        withDots: false,
+        strokeDasharray: [5, 5],
+      });
+    }
+
     return {
       labels,
-      datasets: [
-        {
-          data: projectedWeights,
-          color: () => colors.info,
-          strokeWidth: 2,
-        },
-        {
-          data: actualWeights.map(w => w || 0), // Replace null with 0 for chart
-          color: () => colors.primary,
-          strokeWidth: 2,
-          withDots: true,
-        },
-      ],
-      legend: ['Projected', 'Actual'],
+      datasets,
+      legend: projectionInfo.hasEnoughData 
+        ? ['Actual', 'Planned', 'Based on your intake']
+        : ['Actual', 'Planned'],
       minValue: minWeight - padding,
       maxValue: maxWeight + padding,
     };
-  }, [weightData, user?.preferred_units]);
+  }, [weightData, user?.preferred_units, projectionInfo.hasEnoughData]);
 
   if (loading) {
     return (
@@ -1053,15 +1204,23 @@ export default function DashboardScreen() {
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
                   <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Actual Weight
+                    Actual
                   </Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.info }]} />
+                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
                   <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Projected Weight
+                    Planned
                   </Text>
                 </View>
+                {projectionInfo.hasEnoughData && (
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+                    <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+                      Based on your intake
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Line Chart */}
@@ -1105,6 +1264,64 @@ export default function DashboardScreen() {
               <Text style={[styles.chartLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Weight in {user?.preferred_units === 'imperial' ? 'lbs' : 'kg'}
               </Text>
+
+              {/* Goal Date Projections */}
+              {(projectionInfo.plannedGoalDate || projectionInfo.dynamicGoalDate || !projectionInfo.hasEnoughData) && (
+                <View style={styles.projectionInfoContainer}>
+                  {projectionInfo.plannedGoalDate && (
+                    <View style={styles.projectionRow}>
+                      <IconSymbol
+                        ios_icon_name="calendar"
+                        android_material_icon_name="calendar_today"
+                        size={16}
+                        color={colors.success}
+                      />
+                      <Text style={[styles.projectionText, { color: isDark ? colors.textDark : colors.text }]}>
+                        <Text style={{ fontWeight: '600' }}>Planned:</Text> reach goal by {projectionInfo.plannedGoalDate}
+                      </Text>
+                    </View>
+                  )}
+                  {projectionInfo.hasEnoughData && projectionInfo.dynamicGoalDate && (
+                    <View style={styles.projectionRow}>
+                      <IconSymbol
+                        ios_icon_name="calendar"
+                        android_material_icon_name="calendar_today"
+                        size={16}
+                        color={colors.warning}
+                      />
+                      <Text style={[styles.projectionText, { color: isDark ? colors.textDark : colors.text }]}>
+                        <Text style={{ fontWeight: '600' }}>Based on your intake:</Text> {projectionInfo.dynamicGoalDate}
+                      </Text>
+                    </View>
+                  )}
+                  {projectionInfo.hasEnoughData && !projectionInfo.dynamicMovingTowardGoal && !projectionInfo.dynamicGoalDate && (
+                    <View style={styles.projectionRow}>
+                      <IconSymbol
+                        ios_icon_name="exclamationmark.triangle"
+                        android_material_icon_name="warning"
+                        size={16}
+                        color={colors.error}
+                      />
+                      <Text style={[styles.projectionText, { color: colors.error }]}>
+                        No clear projection based on current intake
+                      </Text>
+                    </View>
+                  )}
+                  {!projectionInfo.hasEnoughData && (
+                    <View style={styles.projectionRow}>
+                      <IconSymbol
+                        ios_icon_name="info.circle"
+                        android_material_icon_name="info"
+                        size={16}
+                        color={colors.info}
+                      />
+                      <Text style={[styles.projectionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        Log more meals to see dynamic projection
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           ) : (
             <View style={styles.noDataContainer}>
@@ -1448,6 +1665,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.lg,
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
   },
   legendItem: {
     flexDirection: 'row',
@@ -1470,6 +1688,23 @@ const styles = StyleSheet.create({
     ...typography.caption,
     textAlign: 'center',
     marginTop: spacing.xs,
+  },
+  projectionInfoContainer: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  projectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  projectionText: {
+    ...typography.body,
+    fontSize: 13,
+    flex: 1,
   },
   noDataContainer: {
     alignItems: 'center',
