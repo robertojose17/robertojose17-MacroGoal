@@ -503,7 +503,7 @@ export default function DashboardScreen() {
       let chartEndDate = new Date(today);
       chartEndDate.setDate(chartEndDate.getDate() + maxFutureDays);
 
-      // Calculate projected goal date
+      // Calculate projected goal date (full calculation, not clamped)
       let projectedGoalDate: string | null = null;
       let movingTowardGoal = false;
 
@@ -520,14 +520,11 @@ export default function DashboardScreen() {
             goalDate.setDate(goalDate.getDate() + Math.round(daysToGoal));
             projectedGoalDate = goalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             console.log('[Dashboard] Projected goal date:', projectedGoalDate);
-            
-            // Don't extend chart beyond max future weeks
-            // Goal date is computed but chart display is clamped
           }
         }
       }
 
-      // Build future segment (dashed) - clamped to maxFutureDays
+      // Build future segment (dashed) - clamped to maxFutureDays for display
       const hybridPlannedFuture: { date: Date; weight: number }[] = [];
       const futureDate = new Date(today);
       futureDate.setDate(futureDate.getDate() + 1);
@@ -748,7 +745,7 @@ export default function DashboardScreen() {
     return `${start} - ${end}`;
   };
 
-  // Prepare chart data
+  // Prepare chart data with responsive width and compressed x-axis
   const chartData = useMemo(() => {
     if (weightData.length === 0) return null;
 
@@ -759,11 +756,10 @@ export default function DashboardScreen() {
     const targetTicks = 5;
     const labelInterval = Math.max(1, Math.floor(weightData.length / targetTicks));
     
-    // Get labels (dates) - abbreviated format
+    // Get labels (dates) - abbreviated format "Jan 3"
     const labels = weightData.map((point, index) => {
       if (index % labelInterval === 0 || index === weightData.length - 1) {
         const date = new Date(point.date);
-        // Use abbreviated format: "Jan 3"
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       }
       return '';
@@ -1163,7 +1159,7 @@ export default function DashboardScreen() {
                   datasets: chartData.datasets,
                   legend: chartData.legend,
                 }}
-                width={screenWidth - 40}
+                width={screenWidth - 60}
                 height={220}
                 chartConfig={{
                   backgroundColor: isDark ? colors.cardDark : colors.card,
