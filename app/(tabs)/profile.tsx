@@ -36,6 +36,9 @@ export default function ProfileScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
+  // Goal weight prompt state
+  const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
+
   const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription } = useSubscription();
 
   useFocusEffect(
@@ -70,6 +73,12 @@ export default function ProfileScreen() {
       } else if (userData) {
         console.log('[Profile] User data loaded:', userData);
         setUser({ ...authUser, ...userData });
+        
+        // Check if goal weight is missing and user has completed onboarding
+        if (userData.onboarding_completed && !userData.goal_weight) {
+          console.log('[Profile] Goal weight is missing, showing prompt');
+          setShowGoalWeightPrompt(true);
+        }
       } else {
         console.log('[Profile] No user data found in database');
         setUser(authUser);
@@ -339,6 +348,8 @@ export default function ProfileScreen() {
             }
           }
           updateData.goal_weight = goalWeightKg;
+          // Close the prompt if it was open
+          setShowGoalWeightPrompt(false);
           break;
 
         case 'age':
@@ -453,6 +464,19 @@ export default function ProfileScreen() {
       setSelectedDate(new Date());
     }
     setShowDatePicker(true);
+  };
+
+  const handleGoalWeightPromptSave = async () => {
+    if (!editValue) {
+      Alert.alert('Required', 'Please enter your goal weight');
+      return;
+    }
+    await saveEditedField();
+  };
+
+  const handleGoalWeightPromptSkip = () => {
+    setShowGoalWeightPrompt(false);
+    closeEditModal();
   };
 
   if (loading) {
@@ -640,9 +664,10 @@ export default function ProfileScreen() {
               )}
               <EditableSettingItem
                 label="Goal Weight"
-                value={user.goal_weight ? formatWeight(user.goal_weight, units) : 'Not set'}
+                value={user.goal_weight ? formatWeight(user.goal_weight, units) : 'Tap to set your goal weight'}
                 onPress={() => openEditModal('goalWeight')}
                 isDark={isDark}
+                highlight={!user.goal_weight}
               />
               {age && (
                 <EditableSettingItem
@@ -891,6 +916,74 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Goal Weight Prompt Modal */}
+      <Modal
+        visible={showGoalWeightPrompt}
+        transparent
+        animationType="fade"
+        onRequestClose={handleGoalWeightPromptSkip}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={handleGoalWeightPromptSkip}
+        >
+          <TouchableOpacity 
+            style={[styles.modalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+            activeOpacity={1}
+          >
+            <View style={styles.promptHeader}>
+              <IconSymbol
+                ios_icon_name="target"
+                android_material_icon_name="flag"
+                size={48}
+                color={colors.primary}
+              />
+              <Text style={[styles.promptTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                What is your goal weight?
+              </Text>
+              <Text style={[styles.promptSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Setting a goal weight helps track your progress
+              </Text>
+            </View>
+
+            <TextInput
+              style={[styles.input, { backgroundColor: isDark ? colors.backgroundDark : colors.background, color: isDark ? colors.textDark : colors.text }]}
+              value={editValue}
+              onChangeText={setEditValue}
+              keyboardType="decimal-pad"
+              placeholder={units === 'imperial' ? 'lbs' : 'kg'}
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              autoFocus
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                onPress={handleGoalWeightPromptSkip}
+              >
+                <Text style={[styles.modalButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                  Skip for now
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={handleGoalWeightPromptSave}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>
+                    Save
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Date Picker */}
       {showDatePicker && (
         Platform.OS === 'ios' ? (
@@ -953,15 +1046,25 @@ export default function ProfileScreen() {
   );
 }
 
-function EditableSettingItem({ label, value, onPress, isDark }: any) {
+function EditableSettingItem({ label, value, onPress, isDark, highlight }: any) {
   return (
-    <TouchableOpacity style={styles.settingItem} onPress={onPress}>
+    <TouchableOpacity 
+      style={[
+        styles.settingItem,
+        highlight && { backgroundColor: colors.primary + '10', borderLeftWidth: 3, borderLeftColor: colors.primary }
+      ]} 
+      onPress={onPress}
+    >
       <View style={styles.settingItemContent}>
         <Text style={[styles.settingItemLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
           {label}
         </Text>
         <View style={styles.settingItemValueRow}>
-          <Text style={[styles.settingItemValue, { color: isDark ? colors.textDark : colors.text }]}>
+          <Text style={[
+            styles.settingItemValue, 
+            { color: highlight ? colors.primary : (isDark ? colors.textDark : colors.text) },
+            highlight && { fontWeight: '600' }
+          ]}>
             {value}
           </Text>
           <IconSymbol
@@ -1270,6 +1373,20 @@ const styles = StyleSheet.create({
   modalTitle: {
     ...typography.h3,
     textAlign: 'center',
+  },
+  promptHeader: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  promptTitle: {
+    ...typography.h3,
+    textAlign: 'center',
+  },
+  promptSubtitle: {
+    ...typography.body,
+    textAlign: 'center',
+    fontSize: 14,
   },
   input: {
     borderRadius: borderRadius.md,
