@@ -26,11 +26,24 @@ export default function FoodDetailsScreen() {
   const [product, setProduct] = useState<OpenFoodFactsProduct | null>(null);
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
   const [nutrition, setNutrition] = useState<any>(null);
+  
+  // NEW: Separate state for servings and grams
+  const [servings, setServings] = useState('1');
   const [grams, setGrams] = useState('100');
+  
   const [saving, setSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  // NEW: Per-serving macros (derived from per-100g data)
+  const [perServingMacros, setPerServingMacros] = useState({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    fiber: 0,
+  });
 
   useEffect(() => {
     console.log('[FoodDetails] ========== COMPONENT MOUNTED ==========');
@@ -91,9 +104,12 @@ export default function FoodDetailsScreen() {
       });
       
       setServingInfo(serving);
+      
+      // NEW: Initialize servings to 1.0 and grams to base serving size
+      setServings('1');
       setGrams(serving.grams.toString());
       
-      // Extract nutrition information
+      // Extract nutrition information (per 100g)
       console.log('[FoodDetails] Extracting nutrition...');
       const nutritionData = extractNutrition(productWithDefaults);
       console.log('[FoodDetails] Nutrition (per 100g):', {
@@ -104,6 +120,18 @@ export default function FoodDetailsScreen() {
         fiber: nutritionData.fiber,
       });
       setNutrition(nutritionData);
+      
+      // NEW: Calculate per-serving macros
+      const servingMultiplier = serving.grams / 100;
+      const perServing = {
+        calories: nutritionData.calories * servingMultiplier,
+        protein: nutritionData.protein * servingMultiplier,
+        carbs: nutritionData.carbs * servingMultiplier,
+        fat: nutritionData.fat * servingMultiplier,
+        fiber: nutritionData.fiber * servingMultiplier,
+      };
+      console.log('[FoodDetails] Per-serving macros:', perServing);
+      setPerServingMacros(perServing);
       
       // Mark as ready immediately - never block the UI
       setIsReady(true);
@@ -145,6 +173,14 @@ export default function FoodDetailsScreen() {
         fiber: 0,
         sugars: 0,
       });
+      setPerServingMacros({
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0,
+      });
+      setServings('1');
       setGrams('100');
       setIsReady(true);
       
@@ -234,6 +270,38 @@ export default function FoodDetailsScreen() {
     }
   };
 
+  // NEW: Handle servings change
+  const handleServingsChange = (newServings: string) => {
+    console.log('[FoodDetails] Servings changed to:', newServings);
+    setServings(newServings);
+    
+    if (!servingInfo) return;
+    
+    const servingsNum = parseFloat(newServings);
+    if (!isNaN(servingsNum) && servingsNum > 0) {
+      // Update grams based on servings
+      const newGrams = servingInfo.grams * servingsNum;
+      console.log('[FoodDetails] Updating grams to:', newGrams);
+      setGrams(newGrams.toFixed(1));
+    }
+  };
+
+  // NEW: Handle grams change
+  const handleGramsChange = (newGrams: string) => {
+    console.log('[FoodDetails] Grams changed to:', newGrams);
+    setGrams(newGrams);
+    
+    if (!servingInfo) return;
+    
+    const gramsNum = parseFloat(newGrams);
+    if (!isNaN(gramsNum) && gramsNum > 0 && servingInfo.grams > 0) {
+      // Update servings based on grams
+      const newServings = gramsNum / servingInfo.grams;
+      console.log('[FoodDetails] Updating servings to:', newServings);
+      setServings(newServings.toFixed(2));
+    }
+  };
+
   // Show loading only briefly while parsing
   if (!isReady || !product || !servingInfo || !nutrition) {
     return (
@@ -248,22 +316,24 @@ export default function FoodDetailsScreen() {
     );
   }
 
-  // Calculate nutrition for the specified grams
+  // Calculate nutrition for the specified servings/grams
+  const servingsNum = parseFloat(servings) || 1;
   const gramsNum = parseFloat(grams) || servingInfo.grams;
-  const multiplier = gramsNum / 100;
   
-  const calculatedCalories = nutrition.calories * multiplier;
-  const calculatedProtein = nutrition.protein * multiplier;
-  const calculatedCarbs = nutrition.carbs * multiplier;
-  const calculatedFats = nutrition.fat * multiplier;
-  const calculatedFiber = nutrition.fiber * multiplier;
+  // Calculate macros based on servings (more accurate)
+  const calculatedCalories = perServingMacros.calories * servingsNum;
+  const calculatedProtein = perServingMacros.protein * servingsNum;
+  const calculatedCarbs = perServingMacros.carbs * servingsNum;
+  const calculatedFats = perServingMacros.fat * servingsNum;
+  const calculatedFiber = perServingMacros.fiber * servingsNum;
 
   // Generate serving description for display
   const getServingDescription = (): string => {
     const currentGrams = parseFloat(grams) || servingInfo.grams;
+    const currentServings = parseFloat(servings) || 1;
     
-    // If user hasn't changed the grams, use the original serving description
-    if (Math.abs(currentGrams - servingInfo.grams) < 0.1) {
+    // If exactly 1 serving, use the original serving description
+    if (Math.abs(currentServings - 1) < 0.01) {
       return servingInfo.displayText;
     }
     
@@ -274,8 +344,7 @@ export default function FoodDetailsScreen() {
       if (match) {
         const originalCount = parseFloat(match[1]);
         const unit = match[2];
-        const gramsPerUnit = servingInfo.grams / originalCount;
-        const newCount = currentGrams / gramsPerUnit;
+        const newCount = originalCount * currentServings;
         
         // If it's close to a whole number, use that
         if (Math.abs(newCount - Math.round(newCount)) < 0.1) {
@@ -300,15 +369,19 @@ export default function FoodDetailsScreen() {
   };
 
   const handleSave = async () => {
-    if (!grams || parseFloat(grams) <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount in grams');
+    const finalServings = parseFloat(servings);
+    const finalGrams = parseFloat(grams);
+    
+    if (!finalServings || finalServings <= 0 || !finalGrams || finalGrams <= 0) {
+      Alert.alert('Error', 'Please enter valid servings and grams');
       return;
     }
 
     console.log('[FoodDetails] ========== SAVING FOOD ==========');
     console.log('[FoodDetails] Mode:', mode);
     console.log('[FoodDetails] Meal:', mealType);
-    console.log('[FoodDetails] Grams:', grams);
+    console.log('[FoodDetails] Servings:', finalServings);
+    console.log('[FoodDetails] Grams:', finalGrams);
 
     setSaving(true);
 
@@ -373,9 +446,9 @@ export default function FoodDetailsScreen() {
 
       // Generate the serving description for storage
       const finalServingDescription = getServingDescription();
-      const finalGrams = parseFloat(grams);
 
       console.log('[FoodDetails] Serving description:', finalServingDescription);
+      console.log('[FoodDetails] Final servings:', finalServings);
       console.log('[FoodDetails] Final grams:', finalGrams);
       console.log('[FoodDetails] Calculated nutrition:', {
         calories: calculatedCalories,
@@ -399,7 +472,7 @@ export default function FoodDetailsScreen() {
         const newFoodItem = {
           food_id: foodId,
           food: foodData,
-          quantity: multiplier,
+          quantity: finalServings, // Store servings as quantity
           calories: calculatedCalories,
           protein: calculatedProtein,
           carbs: calculatedCarbs,
@@ -470,7 +543,7 @@ export default function FoodDetailsScreen() {
         .insert({
           meal_id: mealId,
           food_id: foodId,
-          quantity: multiplier, // Store as multiplier (e.g., 1.5 for 150g)
+          quantity: finalServings, // Store servings as quantity
           calories: calculatedCalories,
           protein: calculatedProtein,
           carbs: calculatedCarbs,
@@ -608,7 +681,7 @@ export default function FoodDetailsScreen() {
               Your Portion
             </Text>
             <Text style={[styles.servingInfoText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Adjust the amount in grams
+              Adjust servings or grams - both are synchronized
             </Text>
             
             <View style={styles.servingPreview}>
@@ -620,6 +693,25 @@ export default function FoodDetailsScreen() {
               </Text>
             </View>
 
+            {/* NEW: Servings input */}
+            <View style={styles.servingInput}>
+              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+                Servings:
+              </Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
+                  placeholder="1"
+                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                  keyboardType="decimal-pad"
+                  value={servings}
+                  onChangeText={handleServingsChange}
+                />
+                <Text style={[styles.unitLabel, { color: isDark ? colors.textDark : colors.text }]}>servings</Text>
+              </View>
+            </View>
+
+            {/* Existing grams input */}
             <View style={styles.servingInput}>
               <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
                 Grams:
@@ -631,7 +723,7 @@ export default function FoodDetailsScreen() {
                   placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
                   keyboardType="decimal-pad"
                   value={grams}
-                  onChangeText={setGrams}
+                  onChangeText={handleGramsChange}
                 />
                 <Text style={[styles.unitLabel, { color: isDark ? colors.textDark : colors.text }]}>g</Text>
               </View>
@@ -640,25 +732,25 @@ export default function FoodDetailsScreen() {
             <View style={styles.quickButtons}>
               <TouchableOpacity
                 style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => setGrams((servingInfo.grams * 0.5).toString())}
+                onPress={() => handleServingsChange('0.5')}
               >
                 <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>½</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => setGrams(servingInfo.grams.toString())}
+                onPress={() => handleServingsChange('1')}
               >
                 <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>1x</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => setGrams((servingInfo.grams * 1.5).toString())}
+                onPress={() => handleServingsChange('1.5')}
               >
                 <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>1.5x</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => setGrams((servingInfo.grams * 2).toString())}
+                onPress={() => handleServingsChange('2')}
               >
                 <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>2x</Text>
               </TouchableOpacity>
@@ -670,7 +762,7 @@ export default function FoodDetailsScreen() {
               Nutrition Facts
             </Text>
             <Text style={[styles.nutritionNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              For {Math.round(gramsNum)}g
+              For {servingsNum.toFixed(2)} servings ({Math.round(gramsNum)}g)
             </Text>
 
             {nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0 ? (
@@ -737,6 +829,15 @@ export default function FoodDetailsScreen() {
                   </Text>
                   <Text style={[styles.per100gText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     {Math.round(nutrition.calories)} kcal • P: {nutrition.protein.toFixed(1)}g • C: {nutrition.carbs.toFixed(1)}g • F: {nutrition.fat.toFixed(1)}g
+                  </Text>
+                </View>
+
+                <View style={styles.perServingInfo}>
+                  <Text style={[styles.perServingTitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Per serving ({servingInfo.displayText}):
+                  </Text>
+                  <Text style={[styles.perServingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {Math.round(perServingMacros.calories)} kcal • P: {perServingMacros.protein.toFixed(1)}g • C: {perServingMacros.carbs.toFixed(1)}g • F: {perServingMacros.fat.toFixed(1)}g
                   </Text>
                 </View>
               </React.Fragment>
@@ -980,6 +1081,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   per100gText: {
+    ...typography.caption,
+  },
+  perServingInfo: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  perServingTitle: {
+    ...typography.caption,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  perServingText: {
     ...typography.caption,
   },
   saveButton: {
