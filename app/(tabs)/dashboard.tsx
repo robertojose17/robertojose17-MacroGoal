@@ -495,9 +495,13 @@ export default function DashboardScreen() {
 
       const projectionChangePerDay = avgEffectiveDeficit / calsPerUnit;
 
+      // CLAMP FUTURE PROJECTION TO 8-10 WEEKS MAX FOR DISPLAY
+      const maxFutureWeeks = 10;
+      const maxFutureDays = maxFutureWeeks * 7;
+      
       // Determine chart end date
       let chartEndDate = new Date(today);
-      chartEndDate.setDate(chartEndDate.getDate() + 84); // Default: today + 12 weeks
+      chartEndDate.setDate(chartEndDate.getDate() + maxFutureDays);
 
       // Calculate projected goal date
       let projectedGoalDate: string | null = null;
@@ -517,17 +521,13 @@ export default function DashboardScreen() {
             projectedGoalDate = goalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             console.log('[Dashboard] Projected goal date:', projectedGoalDate);
             
-            // Adjust chart end date to include goal date + padding
-            const goalDatePlusPadding = new Date(goalDate);
-            goalDatePlusPadding.setDate(goalDatePlusPadding.getDate() + 14);
-            if (goalDatePlusPadding < chartEndDate) {
-              chartEndDate = goalDatePlusPadding;
-            }
+            // Don't extend chart beyond max future weeks
+            // Goal date is computed but chart display is clamped
           }
         }
       }
 
-      // Build future segment (dashed)
+      // Build future segment (dashed) - clamped to maxFutureDays
       const hybridPlannedFuture: { date: Date; weight: number }[] = [];
       const futureDate = new Date(today);
       futureDate.setDate(futureDate.getDate() + 1);
@@ -755,11 +755,15 @@ export default function DashboardScreen() {
     const units = user?.preferred_units || 'metric';
     const conversionFactor = units === 'imperial' ? 2.20462 : 1;
 
-    // Get labels (dates) - show every few days to avoid crowding
-    const labelInterval = Math.max(1, Math.floor(weightData.length / 8));
+    // Calculate optimal label interval to show 4-6 ticks
+    const targetTicks = 5;
+    const labelInterval = Math.max(1, Math.floor(weightData.length / targetTicks));
+    
+    // Get labels (dates) - abbreviated format
     const labels = weightData.map((point, index) => {
       if (index % labelInterval === 0 || index === weightData.length - 1) {
         const date = new Date(point.date);
+        // Use abbreviated format: "Jan 3"
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       }
       return '';
@@ -849,7 +853,6 @@ export default function DashboardScreen() {
   const caloriesProgress = Math.min((caloriesEaten / caloriesGoal) * 100, 100);
 
   const screenWidth = Dimensions.get('window').width;
-  const chartWidth = screenWidth - (spacing.md * 2);
 
   return (
     <SafeAreaView
@@ -1153,42 +1156,40 @@ export default function DashboardScreen() {
                 </View>
               </View>
 
-              {/* Line Chart */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-                <LineChart
-                  data={{
-                    labels: chartData.labels,
-                    datasets: chartData.datasets,
-                    legend: chartData.legend,
-                  }}
-                  width={Math.max(chartWidth, weightData.length * 15)}
-                  height={220}
-                  chartConfig={{
-                    backgroundColor: isDark ? colors.cardDark : colors.card,
-                    backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
-                    backgroundGradientTo: isDark ? colors.cardDark : colors.card,
-                    decimalPlaces: 0,
-                    color: (opacity = 1) => isDark ? `rgba(241, 245, 249, ${opacity})` : `rgba(30, 41, 59, ${opacity})`,
-                    labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity})` : `rgba(100, 116, 139, ${opacity})`,
-                    style: {
-                      borderRadius: borderRadius.md,
-                    },
-                    propsForDots: {
-                      r: '4',
-                      strokeWidth: '2',
-                    },
-                    propsForBackgroundLines: {
-                      strokeDasharray: '',
-                      stroke: isDark ? colors.borderDark : colors.border,
-                      strokeWidth: 1,
-                    },
-                  }}
-                  bezier
-                  style={styles.chart}
-                  fromZero={false}
-                  segments={5}
-                />
-              </ScrollView>
+              {/* Line Chart - RESPONSIVE WIDTH, NO HORIZONTAL SCROLL */}
+              <LineChart
+                data={{
+                  labels: chartData.labels,
+                  datasets: chartData.datasets,
+                  legend: chartData.legend,
+                }}
+                width={screenWidth - 40}
+                height={220}
+                chartConfig={{
+                  backgroundColor: isDark ? colors.cardDark : colors.card,
+                  backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
+                  backgroundGradientTo: isDark ? colors.cardDark : colors.card,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => isDark ? `rgba(241, 245, 249, ${opacity})` : `rgba(30, 41, 59, ${opacity})`,
+                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity})` : `rgba(100, 116, 139, ${opacity})`,
+                  style: {
+                    borderRadius: borderRadius.md,
+                  },
+                  propsForDots: {
+                    r: '4',
+                    strokeWidth: '2',
+                  },
+                  propsForBackgroundLines: {
+                    strokeDasharray: '',
+                    stroke: isDark ? colors.borderDark : colors.border,
+                    strokeWidth: 1,
+                  },
+                }}
+                bezier
+                style={styles.chart}
+                fromZero={false}
+                segments={5}
+              />
 
               {/* Weight Unit Label */}
               <Text style={[styles.chartLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
