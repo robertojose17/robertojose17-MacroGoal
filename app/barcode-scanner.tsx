@@ -12,93 +12,61 @@ import { IconSymbol } from '@/components/IconSymbol';
 const USE_API_V2 = false; // Set to true to use v2 API
 
 /**
+ * Score a product based on the number of non-zero nutriments
+ * This is the EXACT scoring function requested by the user
+ */
+function scoreProduct(p: any): number {
+  if (!p || !p.nutriments) return 0;
+  const n = p.nutriments;
+  const values = [
+    n['energy-kcal_100g'] ?? n['energy-kcal_serving'],
+    n['proteins_100g'] ?? n['proteins_serving'],
+    n['carbohydrates_100g'] ?? n['carbohydrates_serving'],
+    n['fat_100g'] ?? n['fat_serving'],
+    n['fiber_100g'] ?? n['fiber_serving'],
+  ];
+  return values.filter(v => typeof v === 'number' && v > 0).length;
+}
+
+/**
  * Select the best product from multiple candidates based on nutrient completeness
  * Returns the product with the most non-zero nutrient values
+ * Uses the EXACT logic requested by the user
  */
-function selectBestProduct(products: any[]): any {
-  if (!products || products.length === 0) {
+function selectBestProduct(products: any): any {
+  console.log('[BarcodeScanner] ========== SELECTING BEST PRODUCT ==========');
+  
+  // Convert to array if needed
+  const candidates = Array.isArray(products) ? products : [products].filter(Boolean);
+  
+  console.log('[BarcodeScanner] Number of candidates:', candidates.length);
+  
+  if (candidates.length === 0) {
+    console.log('[BarcodeScanner] No candidates available');
     return null;
   }
-
-  if (products.length === 1) {
-    return products[0];
+  
+  // Sort by score (highest first)
+  const sorted = candidates
+    .filter(p => !!p)
+    .sort((a, b) => scoreProduct(b) - scoreProduct(a));
+  
+  // Log scores for debugging
+  sorted.forEach((p, index) => {
+    const score = scoreProduct(p);
+    console.log(`[BarcodeScanner] Candidate ${index + 1}: score=${score}, name="${p.product_name || 'Unknown'}"`);
+  });
+  
+  // Select best product
+  const bestProduct = sorted[0] ?? candidates[0] ?? null;
+  
+  if (bestProduct) {
+    console.log('[BarcodeScanner] ✅ Best product selected:', bestProduct.product_name || 'Unknown');
+    console.log('[BarcodeScanner] Best product score:', scoreProduct(bestProduct));
+  } else {
+    console.log('[BarcodeScanner] ❌ No valid product found');
   }
-
-  console.log('[BarcodeScanner] ========== SELECTING BEST PRODUCT ==========');
-  console.log('[BarcodeScanner] Evaluating', products.length, 'candidates');
-
-  let bestProduct = products[0];
-  let bestScore = 0;
-
-  for (let i = 0; i < products.length; i++) {
-    const product = products[i];
-    const nutriments = product.nutriments || {};
-
-    // Calculate nutrient completeness score
-    let score = 0;
-
-    // Check calories (multiple field names)
-    if (
-      (nutriments['energy-kcal_100g'] && nutriments['energy-kcal_100g'] > 0) ||
-      (nutriments['energy-kcal'] && nutriments['energy-kcal'] > 0) ||
-      (nutriments['energy_100g'] && nutriments['energy_100g'] > 0) ||
-      (nutriments['energy'] && nutriments['energy'] > 0)
-    ) {
-      score++;
-    }
-
-    // Check protein
-    if (
-      (nutriments['proteins_100g'] && nutriments['proteins_100g'] > 0) ||
-      (nutriments['proteins'] && nutriments['proteins'] > 0)
-    ) {
-      score++;
-    }
-
-    // Check carbs
-    if (
-      (nutriments['carbohydrates_100g'] && nutriments['carbohydrates_100g'] > 0) ||
-      (nutriments['carbohydrates'] && nutriments['carbohydrates'] > 0)
-    ) {
-      score++;
-    }
-
-    // Check fats
-    if (
-      (nutriments['fat_100g'] && nutriments['fat_100g'] > 0) ||
-      (nutriments['fat'] && nutriments['fat'] > 0)
-    ) {
-      score++;
-    }
-
-    // Check fiber
-    if (
-      (nutriments['fiber_100g'] && nutriments['fiber_100g'] > 0) ||
-      (nutriments['fiber'] && nutriments['fiber'] > 0)
-    ) {
-      score++;
-    }
-
-    console.log('[BarcodeScanner] Product', i + 1, 'score:', score, '-', product.product_name || 'Unknown');
-
-    // Update best product if this one has a higher score
-    if (score > bestScore) {
-      bestScore = score;
-      bestProduct = product;
-    } else if (score === bestScore) {
-      // Tie-breaker: prefer product with higher calories
-      const currentCalories = nutriments['energy-kcal_100g'] || nutriments['energy-kcal'] || 0;
-      const bestCalories = bestProduct.nutriments?.['energy-kcal_100g'] || bestProduct.nutriments?.['energy-kcal'] || 0;
-      
-      if (currentCalories > bestCalories) {
-        bestProduct = product;
-      }
-    }
-  }
-
-  console.log('[BarcodeScanner] ✅ Best product selected with score:', bestScore);
-  console.log('[BarcodeScanner] Best product name:', bestProduct.product_name || 'Unknown');
-
+  
   return bestProduct;
 }
 
@@ -277,9 +245,9 @@ export default function BarcodeScannerScreen() {
           console.log('[BarcodeScanner] ✅ Product has nutrition data');
         }
 
-        // Select best product if multiple candidates exist
-        const candidates = [result.product];
-        const bestProduct = selectBestProduct(candidates);
+        // CRITICAL FIX: Select best product using the exact scoring function
+        // This ensures only ONE product is chosen, even if the API returns multiple
+        const bestProduct = selectBestProduct(result.product);
 
         if (!bestProduct) {
           console.log('[BarcodeScanner] ❌ No valid product after selection');
@@ -291,16 +259,17 @@ export default function BarcodeScannerScreen() {
         setLoading(false);
         // Keep scanned as true to prevent re-scanning during navigation
 
-        // FIXED: Use router.dismissTo to close BOTH the scanner AND the Add Food screen
-        // This ensures Food Details is the only visible screen
+        // CRITICAL FIX: Navigate ONLY ONCE using the best product
         console.log('[BarcodeScanner] Dismissing to home and navigating to food-details...');
+        console.log('[BarcodeScanner] ⚠️ NAVIGATION WILL HAPPEN EXACTLY ONCE');
         
         // First, dismiss all screens back to home
         router.dismissTo('/(tabs)/(home)/');
         
-        // Then immediately push Food Details
+        // Then immediately push Food Details with the BEST product
         // Use a small delay to ensure the dismiss completes first
         setTimeout(() => {
+          console.log('[BarcodeScanner] Pushing Food Details with best product');
           router.push({
             pathname: '/food-details',
             params: {
@@ -312,9 +281,9 @@ export default function BarcodeScannerScreen() {
               mealId: myMealId,
             },
           });
+          console.log('[BarcodeScanner] ✅ Navigation completed - EXACTLY ONE Food Details screen');
         }, 100);
 
-        console.log('[BarcodeScanner] Navigation completed');
       } else {
         // Product not found
         console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
