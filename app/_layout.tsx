@@ -245,9 +245,9 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="auto" animated />
+      <StatusBar style="dark" animated />
       <ThemeProvider
-        value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
+        value={CustomDefaultTheme}
       >
         <WidgetProvider>
           <GestureHandlerRootView>
@@ -316,7 +316,7 @@ export default function RootLayout() {
                 }}
               />
             </Stack>
-            <SystemBars style={"auto"} />
+            <SystemBars style={"dark"} />
           </GestureHandlerRootView>
         </WidgetProvider>
       </ThemeProvider>
