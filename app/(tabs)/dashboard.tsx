@@ -495,9 +495,8 @@ export default function DashboardScreen() {
 
       const projectionChangePerDay = avgEffectiveDeficit / calsPerUnit;
 
-      // CLAMP FUTURE PROJECTION TO 8-10 WEEKS MAX FOR DISPLAY
-      const maxFutureWeeks = 10;
-      const maxFutureDays = maxFutureWeeks * 7;
+      // COMPACT DISPLAY: Limit future projection to 30-45 days for display
+      const maxFutureDays = 45;
       
       // Determine chart end date
       let chartEndDate = new Date(today);
@@ -540,28 +539,38 @@ export default function DashboardScreen() {
       }
 
       console.log('[Dashboard] Hybrid planned future points:', hybridPlannedFuture.length);
-      console.log('[Dashboard] Chart range:', journeyStartDate.toISOString().split('T')[0], 'to', chartEndDate.toISOString().split('T')[0]);
 
-      // Generate weight data points for the chart
+      // COMPACT DISPLAY: Limit visible range to last 90 days or from startDate (whichever is shorter)
+      const ninetyDaysAgo = new Date(today);
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      
+      const displayStartDate = journeyStartDate > ninetyDaysAgo ? journeyStartDate : ninetyDaysAgo;
+      
+      console.log('[Dashboard] Chart display range:', displayStartDate.toISOString().split('T')[0], 'to', chartEndDate.toISOString().split('T')[0]);
+
+      // Generate weight data points for the chart (filtered to display range)
       const weightDataPoints: WeightDataPoint[] = [];
       const allPlannedPoints = [...hybridPlannedPast, ...hybridPlannedFuture];
 
       allPlannedPoints.forEach((point) => {
-        const dateStr = point.date.toISOString().split('T')[0];
-        const isFuture = point.date > today;
-        
-        // Find actual weight for this date
-        const actualCheckIn = allCheckInsData.find((ci: any) => ci.date === dateStr);
+        // Only include points within the display range
+        if (point.date >= displayStartDate && point.date <= chartEndDate) {
+          const dateStr = point.date.toISOString().split('T')[0];
+          const isFuture = point.date > today;
+          
+          // Find actual weight for this date
+          const actualCheckIn = allCheckInsData.find((ci: any) => ci.date === dateStr);
 
-        weightDataPoints.push({
-          date: dateStr,
-          actualWeight: actualCheckIn?.weight || null,
-          plannedWeight: point.weight,
-          isDashedPlanned: isFuture,
-        });
+          weightDataPoints.push({
+            date: dateStr,
+            actualWeight: actualCheckIn?.weight || null,
+            plannedWeight: point.weight,
+            isDashedPlanned: isFuture,
+          });
+        }
       });
 
-      console.log('[Dashboard] Total weight data points:', weightDataPoints.length);
+      console.log('[Dashboard] Total weight data points (filtered for display):', weightDataPoints.length);
       setWeightData(weightDataPoints);
 
       setProjectionInfo({
@@ -751,16 +760,19 @@ export default function DashboardScreen() {
 
     const units = user?.preferred_units || 'metric';
     const conversionFactor = units === 'imperial' ? 2.20462 : 1;
+    const goalWeight = user?.goal_weight || null;
 
     // Calculate optimal label interval to show 4-6 ticks
     const targetTicks = 5;
     const labelInterval = Math.max(1, Math.floor(weightData.length / targetTicks));
     
-    // Get labels (dates) - abbreviated format "Jan 3"
+    // Get labels (dates) - abbreviated format "MM/DD"
     const labels = weightData.map((point, index) => {
       if (index % labelInterval === 0 || index === weightData.length - 1) {
         const date = new Date(point.date);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${month}/${day}`;
       }
       return '';
     });
@@ -788,9 +800,14 @@ export default function DashboardScreen() {
 
     if (allWeights.length === 0) return null;
 
-    const minWeight = Math.min(...allWeights);
     const maxWeight = Math.max(...allWeights);
-    const padding = (maxWeight - minWeight) * 0.1 || 5;
+    
+    // Y-axis minimum should be the goal weight (converted to display units)
+    let minWeight = goalWeight ? goalWeight * conversionFactor : Math.min(...allWeights);
+    
+    // Add padding to the top only
+    const range = maxWeight - minWeight;
+    const topPadding = range * 0.1 || 5;
 
     const datasets = [];
 
@@ -823,10 +840,10 @@ export default function DashboardScreen() {
       labels,
       datasets,
       legend: ['Actual', 'Planned'],
-      minValue: minWeight - padding,
-      maxValue: maxWeight + padding,
+      minValue: minWeight,
+      maxValue: maxWeight + topPadding,
     };
-  }, [weightData, user?.preferred_units]);
+  }, [weightData, user?.preferred_units, user?.goal_weight]);
 
   if (loading) {
     return (
@@ -1152,15 +1169,17 @@ export default function DashboardScreen() {
                 </View>
               </View>
 
-              {/* Line Chart - RESPONSIVE WIDTH, NO HORIZONTAL SCROLL */}
+              {/* Line Chart - COMPACT, NO HORIZONTAL SCROLL */}
               <LineChart
                 data={{
                   labels: chartData.labels,
                   datasets: chartData.datasets,
                   legend: chartData.legend,
                 }}
-                width={screenWidth - 60}
-                height={220}
+                width={screenWidth - 32}
+                height={200}
+                yAxisSuffix=""
+                yAxisInterval={1}
                 chartConfig={{
                   backgroundColor: isDark ? colors.cardDark : colors.card,
                   backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
@@ -1184,7 +1203,9 @@ export default function DashboardScreen() {
                 bezier
                 style={styles.chart}
                 fromZero={false}
-                segments={5}
+                segments={4}
+                yLabelsOffset={10}
+                formatYLabel={(value) => Math.round(Number(value)).toString()}
               />
 
               {/* Weight Unit Label */}
