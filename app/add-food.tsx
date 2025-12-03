@@ -1258,59 +1258,55 @@ export default function AddFoodScreen() {
                 <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Quick Actions
                 </Text>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.quickActionsRow}
-                >
+                <View style={styles.quickActionsRowCompact}>
                   <TouchableOpacity
-                    style={[styles.quickActionButton, styles.quickActionButtonYellow]}
+                    style={[styles.quickActionButtonCompact, styles.quickActionButtonYellow]}
                     onPress={handleAIMealEstimator}
                     activeOpacity={0.7}
                   >
                     <IconSymbol
                       ios_icon_name="sparkles"
                       android_material_icon_name="auto_awesome"
-                      size={24}
+                      size={20}
                       color="#F59E0B"
                     />
-                    <Text style={styles.quickActionButtonText}>
-                      AI Meal Estimator
+                    <Text style={styles.quickActionButtonTextCompact}>
+                      AI Meal{'\n'}Estimator
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.quickActionButton, styles.quickActionButtonPurple]}
+                    style={[styles.quickActionButtonCompact, styles.quickActionButtonPurple]}
                     onPress={handleBarcodeScanner}
                     activeOpacity={0.7}
                   >
                     <IconSymbol
                       ios_icon_name="barcode.viewfinder"
                       android_material_icon_name="qr_code_scanner"
-                      size={24}
+                      size={20}
                       color="#8B5CF6"
                     />
-                    <Text style={styles.quickActionButtonText}>
-                      Barcode Scan
+                    <Text style={styles.quickActionButtonTextCompact}>
+                      Barcode{'\n'}Scan
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.quickActionButton, styles.quickActionButtonGreen]}
+                    style={[styles.quickActionButtonCompact, styles.quickActionButtonGreen]}
                     onPress={handleCopyFromPrevious}
                     activeOpacity={0.7}
                   >
                     <IconSymbol
                       ios_icon_name="calendar"
                       android_material_icon_name="event"
-                      size={24}
+                      size={20}
                       color="#10B981"
                     />
-                    <Text style={styles.quickActionButtonText}>
-                      Copy from Previous Days
+                    <Text style={styles.quickActionButtonTextCompact}>
+                      Copy from{'\n'}Previous
                     </Text>
                   </TouchableOpacity>
-                </ScrollView>
+                </View>
               </React.Fragment>
             )}
 
@@ -1509,6 +1505,43 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
   },
+  quickActionsRowCompact: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  quickActionButtonCompact: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.md,
+    gap: spacing.xs,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
+    elevation: 1,
+    minHeight: 70,
+  },
+  quickActionButtonYellow: {
+    backgroundColor: '#FEF3C7',
+  },
+  quickActionButtonPurple: {
+    backgroundColor: '#EDE9FE',
+  },
+  quickActionButtonGreen: {
+    backgroundColor: '#D1FAE5',
+  },
+  quickActionButtonTextCompact: {
+    ...typography.bodyBold,
+    fontSize: 11,
+    color: '#1F2937',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
   quickActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1525,15 +1558,6 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
     elevation: 1,
     minWidth: 160,
-  },
-  quickActionButtonYellow: {
-    backgroundColor: '#FEF3C7',
-  },
-  quickActionButtonPurple: {
-    backgroundColor: '#EDE9FE',
-  },
-  quickActionButtonGreen: {
-    backgroundColor: '#D1FAE5',
   },
   quickActionButtonText: {
     ...typography.bodyBold,
