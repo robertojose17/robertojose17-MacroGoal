@@ -6,8 +6,8 @@ export const colors = {
   // 1. General Background (behind cards)
   primaryBackground: '#F7F8FC',      // Blanco de Fondo - light off-white for screens
   
-  // 2. Cards / Containers
-  card: '#FFFFFF',                   // Pure white cards
+  // 2. Cards / Containers - UPDATED for better contrast
+  card: '#F0F2F7',                   // Slightly darker than pure white for better separation
   cardDark: '#252740',               // Dark mode cards (unchanged)
   
   // 3. Primary Text (titles, numbers, dates)
