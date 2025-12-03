@@ -2,49 +2,47 @@
 import { StyleSheet } from 'react-native';
 
 export const colors = {
-  // REFINED CLEAN & CALM PALETTE
-  // Ultra-light, clean background for maximum clarity
-  primaryBackground: '#FAFBFC',      // Even lighter off-white for screens, cards, white spaces
+  // NEW COLOR SYSTEM - Clean, Minimalistic, High-Contrast
+  // 1. General Background (behind cards)
+  primaryBackground: '#F7F8FC',      // Blanco de Fondo - light off-white for screens
   
-  // Strong, readable text with excellent contrast
-  primaryText: '#1A1C2E',            // Very dark gray-blue for main text, titles, body text (improved contrast)
+  // 2. Cards / Containers
+  card: '#FFFFFF',                   // Pure white cards
+  cardDark: '#252740',               // Dark mode cards (unchanged)
   
-  // Success / Goal Met / Health
-  success: '#4CAF6E',                // Fresh, vibrant green for success states, goal met, positive status
+  // 3. Primary Text (titles, numbers, dates)
+  primaryText: '#2B2D42',            // Dark Gray - strong contrast for readability
+  text: '#2B2D42',                   // Alias for primaryText
+  textDark: '#F1F5F9',               // Light text for dark mode (unchanged)
+  textSecondary: '#6B7280',          // Muted text
+  textSecondaryDark: '#A0A2B8',      // Muted text for dark mode (unchanged)
   
-  // Primary Progress / Accent / Data
-  accent: '#4A90A4',                 // Calm, confident blue for primary action buttons, progress accents
+  // 4. Progress Lines (rings, general progress bars - NOT macro bars)
+  accent: '#5B9AA8',                 // Light Blue - for progress accents, primary actions
+  primary: '#5B9AA8',                // Alias for accent
+  primaryDark: '#4A8A98',            // Darker version of accent
   
-  // Warning / Over Target / Attention
-  warning: '#FF7043',                // Warm, energetic orange for warnings, over target highlights
+  // 5. Success / Brand Color (positive actions, buttons, check marks)
+  success: '#5CB97B',                // Emerald Green - for success states, goal met
+  secondary: '#5CB97B',              // Alias for success
   
-  // OLD COLORS (kept for compatibility and specific use cases)
-  primary: '#4A90A4',                // Using accent color as primary
-  primaryDark: '#3A7A8C',            // Darker version of accent
-  secondary: '#4CAF6E',              // Using success color as secondary
+  // 6. Warning / Attention
+  warning: '#FF8A5B',                // Copper Orange - for warnings, over target highlights
   
   // Backgrounds
-  background: '#FAFBFC',             // Using primaryBackground
-  backgroundDark: '#1A1C2E',         // Darker version for dark mode
-  card: '#FFFFFF',                   // Pure white cards on light background for maximum clarity
-  cardDark: '#252740',               // Dark mode cards
+  background: '#F7F8FC',             // Using primaryBackground
+  backgroundDark: '#1A1C2E',         // Dark background (unchanged)
   
-  // Text
-  text: '#1A1C2E',                   // Using primaryText
-  textDark: '#F1F5F9',               // Light text for dark mode
-  textSecondary: '#6B7280',          // Muted text (slightly darker for better readability)
-  textSecondaryDark: '#A0A2B8',      // Muted text for dark mode
-  
-  // Status colors (keeping error, updating success and warning)
+  // Status colors
   error: '#EF4444',                  // Keep existing error color
-  info: '#4A90A4',                   // Using accent color
+  info: '#5B9AA8',                   // Using accent color
   
   // UI elements
   border: '#E5E7EB',                 // Light border to match new background
-  borderDark: '#3A3C52',             // Dark mode border
+  borderDark: '#3A3C52',             // Dark mode border (unchanged)
   disabled: '#CBD5E1',               // Keep existing disabled color
   
-  // MACRO COLORS - DO NOT CHANGE THESE!
+  // ⚠️ MACRO COLORS - DO NOT CHANGE THESE! ⚠️
   // These colors are used for macro bars and must remain exactly as they are
   protein: '#EF4444',                // Red - DO NOT CHANGE
   carbs: '#3B82F6',                  // Blue - DO NOT CHANGE
