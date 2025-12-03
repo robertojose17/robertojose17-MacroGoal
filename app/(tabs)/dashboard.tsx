@@ -53,6 +53,8 @@ interface WeightDataPoint {
   actualWeight: number | null;
   plannedWeight: number | null;
   isDashedPlanned: boolean; // true for future projection
+  actualTrend: number | null; // trend line for actual when no data
+  isDashedActual: boolean; // true for actual trend
 }
 
 interface ProjectionInfo {
@@ -548,6 +550,30 @@ export default function DashboardScreen() {
       
       console.log('[Dashboard] Chart display range:', displayStartDate.toISOString().split('T')[0], 'to', chartEndDate.toISOString().split('T')[0]);
 
+      // Find the last actual weight check-in
+      const lastActualCheckIn = allCheckInsData[allCheckInsData.length - 1];
+      const lastActualDate = new Date(lastActualCheckIn.date);
+      const lastActualWeight = lastActualCheckIn.weight;
+
+      // Calculate actual trend line (extrapolate from last known weight using same projection logic)
+      const actualTrendPoints: { date: Date; weight: number }[] = [];
+      if (lastActualDate < chartEndDate) {
+        const trendDate = new Date(lastActualDate);
+        trendDate.setDate(trendDate.getDate() + 1);
+        let trendWeight = lastActualWeight;
+
+        while (trendDate <= chartEndDate) {
+          trendWeight -= projectionChangePerDay;
+          actualTrendPoints.push({
+            date: new Date(trendDate),
+            weight: trendWeight,
+          });
+          trendDate.setDate(trendDate.getDate() + 1);
+        }
+      }
+
+      console.log('[Dashboard] Actual trend points:', actualTrendPoints.length);
+
       // Generate weight data points for the chart (filtered to display range)
       const weightDataPoints: WeightDataPoint[] = [];
       const allPlannedPoints = [...hybridPlannedPast, ...hybridPlannedFuture];
@@ -561,11 +587,16 @@ export default function DashboardScreen() {
           // Find actual weight for this date
           const actualCheckIn = allCheckInsData.find((ci: any) => ci.date === dateStr);
 
+          // Find actual trend for this date
+          const actualTrend = actualTrendPoints.find((tp) => tp.date.toISOString().split('T')[0] === dateStr);
+
           weightDataPoints.push({
             date: dateStr,
             actualWeight: actualCheckIn?.weight || null,
             plannedWeight: point.weight,
             isDashedPlanned: isFuture,
+            actualTrend: actualTrend?.weight || null,
+            isDashedActual: actualTrend !== undefined,
           });
         }
       });
@@ -777,9 +808,14 @@ export default function DashboardScreen() {
       return '';
     });
 
-    // Get actual weights (only where available)
-    const actualWeights = weightData.map(point => 
-      point.actualWeight ? point.actualWeight * conversionFactor : null
+    // Get actual weights (solid - only where available)
+    const actualWeightsSolid = weightData.map(point => 
+      point.actualWeight && !point.isDashedActual ? point.actualWeight * conversionFactor : null
+    );
+
+    // Get actual trend (dashed - continuation when no data)
+    const actualWeightsDashed = weightData.map(point => 
+      point.isDashedActual && point.actualTrend ? point.actualTrend * conversionFactor : null
     );
 
     // Split planned weights into solid (past) and dashed (future)
@@ -793,7 +829,8 @@ export default function DashboardScreen() {
 
     // Find min and max for Y-axis
     const allWeights = [
-      ...actualWeights.filter((w): w is number => w !== null),
+      ...actualWeightsSolid.filter((w): w is number => w !== null),
+      ...actualWeightsDashed.filter((w): w is number => w !== null),
       ...plannedWeightsSolid.filter((w): w is number => w !== null),
       ...plannedWeightsDashed.filter((w): w is number => w !== null),
     ];
@@ -811,12 +848,21 @@ export default function DashboardScreen() {
 
     const datasets = [];
 
-    // Actual weight line (with dots)
+    // Actual weight line - solid (with dots)
     datasets.push({
-      data: actualWeights.map(w => w || 0), // Replace null with 0 for chart
+      data: actualWeightsSolid.map(w => w || 0), // Replace null with 0 for chart
       color: () => colors.primary,
       strokeWidth: 3,
       withDots: true,
+    });
+
+    // Actual weight line - dashed trend (no dots)
+    datasets.push({
+      data: actualWeightsDashed.map(w => w || 0),
+      color: (opacity = 1) => `rgba(15, 76, 129, ${opacity * 0.6})`, // Same color, lighter opacity
+      strokeWidth: 2,
+      withDots: false,
+      strokeDasharray: [8, 4],
     });
 
     // Planned line - solid (past)
@@ -839,7 +885,6 @@ export default function DashboardScreen() {
     return {
       labels,
       datasets,
-      legend: ['Actual', 'Planned'],
       minValue: minWeight,
       maxValue: maxWeight + topPadding,
     };
@@ -1147,57 +1192,60 @@ export default function DashboardScreen() {
 
         {/* Progress (Weight vs Projected) */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Progress
-          </Text>
+          <View style={styles.progressHeader}>
+            <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Progress
+            </Text>
+            {/* Legend in header - clean and minimal */}
+            <View style={styles.headerLegend}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
+                <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+                  Actual
+                </Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+                  Planned
+                </Text>
+              </View>
+            </View>
+          </View>
 
           {chartData && weightData.length > 0 ? (
             <View style={styles.chartContainer}>
-              {/* Legend */}
-              <View style={styles.legendRow}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
-                  <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Actual
-                  </Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                  <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Planned
-                  </Text>
-                </View>
-              </View>
-
-              {/* Line Chart - COMPACT, NO HORIZONTAL SCROLL */}
+              {/* Line Chart - PREMIUM CLEAN STYLING */}
               <LineChart
                 data={{
                   labels: chartData.labels,
                   datasets: chartData.datasets,
-                  legend: chartData.legend,
                 }}
-                width={screenWidth - 32}
-                height={200}
+                width={screenWidth - 64}
+                height={220}
                 yAxisSuffix=""
                 yAxisInterval={1}
                 chartConfig={{
-                  backgroundColor: isDark ? colors.cardDark : colors.card,
+                  backgroundColor: 'transparent',
                   backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
                   backgroundGradientTo: isDark ? colors.cardDark : colors.card,
                   decimalPlaces: 0,
-                  color: (opacity = 1) => isDark ? `rgba(241, 245, 249, ${opacity})` : `rgba(30, 41, 59, ${opacity})`,
-                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity})` : `rgba(100, 116, 139, ${opacity})`,
+                  color: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.3})` : `rgba(100, 116, 139, ${opacity * 0.3})`,
+                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.7})` : `rgba(100, 116, 139, ${opacity * 0.7})`,
                   style: {
                     borderRadius: borderRadius.md,
                   },
                   propsForDots: {
-                    r: '4',
-                    strokeWidth: '2',
+                    r: '3',
+                    strokeWidth: '1.5',
                   },
                   propsForBackgroundLines: {
                     strokeDasharray: '',
-                    stroke: isDark ? colors.borderDark : colors.border,
-                    strokeWidth: 1,
+                    stroke: isDark ? `rgba(148, 163, 184, 0.1)` : `rgba(100, 116, 139, 0.1)`,
+                    strokeWidth: 0.5,
+                  },
+                  propsForLabels: {
+                    fontSize: 11,
                   },
                 }}
                 bezier
@@ -1205,7 +1253,16 @@ export default function DashboardScreen() {
                 fromZero={false}
                 segments={4}
                 yLabelsOffset={10}
+                xLabelsOffset={-5}
                 formatYLabel={(value) => Math.round(Number(value)).toString()}
+                withInnerLines={true}
+                withOuterLines={false}
+                withVerticalLines={false}
+                withHorizontalLines={true}
+                withVerticalLabels={true}
+                withHorizontalLabels={true}
+                withShadow={false}
+                transparent={true}
               />
 
               {/* Weight Unit Label */}
@@ -1592,15 +1649,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  chartContainer: {
-    marginTop: spacing.md,
-  },
-  legendRow: {
+  progressHeader: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.lg,
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.md,
-    flexWrap: 'wrap',
+  },
+  headerLegend: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  chartContainer: {
+    marginTop: spacing.sm,
+    alignItems: 'center',
   },
   legendItem: {
     flexDirection: 'row',
@@ -1608,12 +1669,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   legendText: {
     ...typography.caption,
+    fontSize: 12,
   },
   chart: {
     marginVertical: spacing.sm,
@@ -1623,6 +1685,7 @@ const styles = StyleSheet.create({
     ...typography.caption,
     textAlign: 'center',
     marginTop: spacing.xs,
+    fontSize: 11,
   },
   projectionInfoContainer: {
     marginTop: spacing.md,
@@ -1630,6 +1693,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.sm,
+    width: '100%',
   },
   projectionRow: {
     flexDirection: 'row',
