@@ -832,7 +832,7 @@ export default function AddFoodScreen() {
         <View 
           style={[
             styles.foodCard,
-            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            { backgroundColor: isDark ? colors.cardDark : colors.card }
           ]}
         >
           <Pressable
@@ -888,7 +888,7 @@ export default function AddFoodScreen() {
         <View 
           style={[
             styles.foodCard,
-            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            { backgroundColor: isDark ? colors.cardDark : colors.card }
           ]}
         >
           <Pressable
@@ -937,7 +937,7 @@ export default function AddFoodScreen() {
         <View 
           style={[
             styles.foodCard,
-            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            { backgroundColor: isDark ? colors.cardDark : colors.card }
           ]}
         >
           <Pressable
@@ -995,7 +995,7 @@ export default function AddFoodScreen() {
         <TouchableOpacity
           style={[
             styles.mealCard,
-            { backgroundColor: isDark ? colors.cardDark : '#FFFFFF' }
+            { backgroundColor: isDark ? colors.cardDark : colors.card }
           ]}
           onPress={() => handleOpenMyMeal(meal)}
           activeOpacity={0.7}
@@ -1115,7 +1115,7 @@ export default function AddFoodScreen() {
 
   return (
     <SafeAreaView 
-      style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]} 
+      style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} 
       edges={['top']}
     >
       <View style={styles.header}>
@@ -1133,12 +1133,12 @@ export default function AddFoodScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={[styles.searchContainer, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]}>
+      <View style={[styles.searchContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
         <View 
           style={[
             styles.searchBar,
             { 
-              backgroundColor: isDark ? colors.cardDark : '#FFFFFF',
+              backgroundColor: isDark ? colors.cardDark : colors.card,
               borderColor: isDark ? colors.borderDark : colors.border,
             }
           ]}
@@ -1180,7 +1180,7 @@ export default function AddFoodScreen() {
       </View>
 
       {searchQuery.trim().length === 0 && (
-        <View style={[styles.tabContainer, { backgroundColor: isDark ? colors.backgroundDark : '#F5F5F5' }]}>
+        <View style={[styles.tabContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
           <TouchableOpacity
             style={styles.tab}
             onPress={() => setActiveTab('all')}
