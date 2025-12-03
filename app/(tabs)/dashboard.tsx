@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -64,6 +64,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const chartScrollViewRef = useRef<ScrollView>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -644,8 +645,14 @@ export default function DashboardScreen() {
     const units = user?.preferred_units || 'metric';
     const conversionFactor = units === 'imperial' ? 2.20462 : 1;
 
+    // Calculate chart width based on number of days
+    // Use a minimum spacing per day to ensure the chart is not compressed
+    const minPixelsPerDay = 15; // Adjust this value for more/less spacing
+    const screenWidth = Dimensions.get('window').width;
+    const calculatedWidth = Math.max(screenWidth - 64, weightData.length * minPixelsPerDay);
+
     // Determine tick interval for clean labels
-    const targetTicks = 5;
+    const targetTicks = Math.max(5, Math.floor(calculatedWidth / 80));
     const labelInterval = Math.max(1, Math.floor(weightData.length / targetTicks));
     
     const labels = weightData.map((point, index) => {
@@ -708,6 +715,23 @@ export default function DashboardScreen() {
       latestActualWeight = actualLine[lastActualIndex];
     }
 
+    // Find today's index for initial scroll position
+    const today = new Date().toISOString().split('T')[0];
+    let todayIndex = weightData.findIndex(point => point.date === today);
+    if (todayIndex === -1) {
+      // If today is not in the data, find the closest date
+      const todayTime = new Date(today).getTime();
+      let closestDiff = Infinity;
+      weightData.forEach((point, index) => {
+        const pointTime = new Date(point.date).getTime();
+        const diff = Math.abs(todayTime - pointTime);
+        if (diff < closestDiff) {
+          closestDiff = diff;
+          todayIndex = index;
+        }
+      });
+    }
+
     const datasets = [];
 
     // Projected line (smooth, dominant) - ALWAYS shown
@@ -736,8 +760,23 @@ export default function DashboardScreen() {
       maxValue: maxWeight + topPadding,
       lastActualIndex,
       latestActualWeight,
+      chartWidth: calculatedWidth,
+      todayIndex,
     };
   }, [weightData, user?.preferred_units]);
+
+  // Scroll to today's position when chart data changes
+  useEffect(() => {
+    if (chartData && chartData.todayIndex >= 0 && chartScrollViewRef.current) {
+      // Calculate scroll position to center today
+      const scrollPosition = Math.max(0, (chartData.todayIndex / weightData.length) * chartData.chartWidth - (Dimensions.get('window').width - 64) / 2);
+      
+      // Delay scroll to ensure the chart is rendered
+      setTimeout(() => {
+        chartScrollViewRef.current?.scrollTo({ x: scrollPosition, animated: false });
+      }, 100);
+    }
+  }, [chartData, weightData.length]);
 
   if (loading) {
     return (
@@ -770,6 +809,7 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        scrollEventThrottle={16}
       >
         <View style={styles.header}>
           <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
@@ -1050,58 +1090,67 @@ export default function DashboardScreen() {
                 )}
               </View>
 
-              <LineChart
-                data={{
-                  labels: chartData.labels,
-                  datasets: chartData.datasets,
-                }}
-                width={screenWidth - 64}
-                height={200}
-                yAxisSuffix=""
-                yAxisInterval={1}
-                chartConfig={{
-                  backgroundColor: 'transparent',
-                  backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
-                  backgroundGradientTo: isDark ? colors.cardDark : colors.card,
-                  decimalPlaces: 0,
-                  color: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.15})` : `rgba(100, 116, 139, ${opacity * 0.15})`,
-                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.5})` : `rgba(100, 116, 139, ${opacity * 0.5})`,
-                  style: {
-                    borderRadius: borderRadius.md,
-                  },
-                  propsForDots: {
-                    r: '0',
-                    strokeWidth: '0',
-                  },
-                  propsForBackgroundLines: {
-                    strokeDasharray: '',
-                    stroke: isDark ? `rgba(148, 163, 184, 0.06)` : `rgba(100, 116, 139, 0.06)`,
-                    strokeWidth: 0.5,
-                  },
-                  propsForLabels: {
-                    fontSize: 10,
-                  },
-                }}
-                bezier
-                style={styles.chart}
-                fromZero={false}
-                segments={4}
-                yLabelsOffset={10}
-                xLabelsOffset={-5}
-                formatYLabel={(value) => Math.round(Number(value)).toString()}
-                withInnerLines={true}
-                withOuterLines={false}
-                withVerticalLines={false}
-                withHorizontalLines={true}
-                withVerticalLabels={true}
-                withHorizontalLabels={true}
-                withShadow={false}
-                transparent={true}
-              />
+              <ScrollView
+                ref={chartScrollViewRef}
+                horizontal
+                showsHorizontalScrollIndicator={true}
+                scrollEventThrottle={16}
+                style={styles.chartScrollView}
+                contentContainerStyle={styles.chartScrollContent}
+              >
+                <LineChart
+                  data={{
+                    labels: chartData.labels,
+                    datasets: chartData.datasets,
+                  }}
+                  width={chartData.chartWidth}
+                  height={200}
+                  yAxisSuffix=""
+                  yAxisInterval={1}
+                  chartConfig={{
+                    backgroundColor: 'transparent',
+                    backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
+                    backgroundGradientTo: isDark ? colors.cardDark : colors.card,
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.15})` : `rgba(100, 116, 139, ${opacity * 0.15})`,
+                    labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.5})` : `rgba(100, 116, 139, ${opacity * 0.5})`,
+                    style: {
+                      borderRadius: borderRadius.md,
+                    },
+                    propsForDots: {
+                      r: '0',
+                      strokeWidth: '0',
+                    },
+                    propsForBackgroundLines: {
+                      strokeDasharray: '',
+                      stroke: isDark ? `rgba(148, 163, 184, 0.06)` : `rgba(100, 116, 139, 0.06)`,
+                      strokeWidth: 0.5,
+                    },
+                    propsForLabels: {
+                      fontSize: 10,
+                    },
+                  }}
+                  bezier
+                  style={styles.chart}
+                  fromZero={false}
+                  segments={4}
+                  yLabelsOffset={10}
+                  xLabelsOffset={-5}
+                  formatYLabel={(value) => Math.round(Number(value)).toString()}
+                  withInnerLines={true}
+                  withOuterLines={false}
+                  withVerticalLines={false}
+                  withHorizontalLines={true}
+                  withVerticalLabels={true}
+                  withHorizontalLabels={true}
+                  withShadow={false}
+                  transparent={true}
+                />
+              </ScrollView>
 
               {chartData.latestActualWeight !== null && chartData.lastActualIndex >= 0 && (
                 <View style={[styles.weightLabel, { 
-                  left: 32 + ((chartData.lastActualIndex / (weightData.length - 1)) * (screenWidth - 96)),
+                  left: 32 + ((chartData.lastActualIndex / (weightData.length - 1)) * Math.min(chartData.chartWidth, screenWidth - 96)),
                   top: 20,
                 }]}>
                   <Text style={[styles.weightLabelText, { color: colors.primary }]}>
@@ -1140,6 +1189,9 @@ export default function DashboardScreen() {
                       <Text style={{ fontWeight: '600' }}>Target date:</Text> {projectionInfo.targetDate}
                     </Text>
                   </View>
+                  <Text style={[styles.scrollHintText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Swipe left/right to see full timeline
+                  </Text>
                 </View>
               )}
             </View>
@@ -1474,7 +1526,6 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     marginTop: spacing.sm,
-    alignItems: 'center',
     position: 'relative',
   },
   legendContainer: {
@@ -1496,6 +1547,12 @@ const styles = StyleSheet.create({
   legendText: {
     ...typography.caption,
     fontSize: 12,
+  },
+  chartScrollView: {
+    width: '100%',
+  },
+  chartScrollContent: {
+    paddingRight: spacing.md,
   },
   chart: {
     marginVertical: spacing.sm,
@@ -1546,6 +1603,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 13,
     flex: 1,
+  },
+  scrollHintText: {
+    ...typography.caption,
+    fontSize: 11,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   noDataContainer: {
     alignItems: 'center',
