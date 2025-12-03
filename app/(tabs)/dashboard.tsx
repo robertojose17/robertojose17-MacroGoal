@@ -254,15 +254,9 @@ export default function DashboardScreen() {
 
       const streak = calculateStreak(Array.from(daysWithData).sort());
 
-      const currentYear = new Date().getFullYear();
-      const isLeapYear = (currentYear % 4 === 0 && currentYear % 100 !== 0) || (currentYear % 400 === 0);
-      const daysInYear = isLeapYear ? 366 : 365;
-
       console.log('[Dashboard] Nutrition stats:', { daysCount, avgCals, streak });
 
       setNutritionStats({
-        daysTracked: daysCount,
-        daysInYear,
         streak,
         avgCalories: avgCals,
         avgProtein: avgP,
@@ -643,12 +637,9 @@ export default function DashboardScreen() {
 
           {nutritionStats ? (
             <React.Fragment>
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Days with logged food:
-                </Text>
-                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
-                  Tracked: {nutritionStats.daysTracked} / {nutritionStats.daysInYear} days, {nutritionStats.streak}-day streak
+              <View style={styles.streakContainer}>
+                <Text style={[styles.streakText, { color: isDark ? colors.textDark : colors.text }]}>
+                  {nutritionStats.streak}-day streak
                 </Text>
               </View>
 
@@ -998,6 +989,17 @@ const styles = StyleSheet.create({
   rangeButtonText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  streakContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  streakText: {
+    ...typography.h3,
+    fontSize: 18,
   },
   statRow: {
     marginBottom: spacing.md,
