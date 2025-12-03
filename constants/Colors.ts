@@ -1,4 +1,5 @@
-const tintColorLight = "#0a7ea4";
+
+const tintColorLight = "#5B9AA8";  // Updated to new accent color
 const tintColorDark = "#fff";
 
 export const zincColors = {
@@ -15,26 +16,27 @@ export const zincColors = {
   950: "#09090b",
 };
 
-export const appleBlue = "#007AFF";
+export const appleBlue = "#5B9AA8";  // Updated to new accent color
 export const appleRed = "#FF3B30";
 
-export const borderColor = "#A1A1AA80";
-export const appleGreen = "#34C759";
+export const borderColor = "#E2E4F0";  // Updated to match new theme
+export const appleGreen = "#5CB97B";   // Updated to new success color
+
 export const Colors = {
   light: {
-    text: "#11181C",
-    background: "#fff",
+    text: "#2B2D42",           // New primary text color
+    background: "#F7F8FC",     // New primary background color
     tint: tintColorLight,
-    icon: "#687076",
-    tabIconDefault: "#687076",
+    icon: "#6B6D7F",           // Updated to match new text secondary
+    tabIconDefault: "#6B6D7F",
     tabIconSelected: tintColorLight,
   },
   dark: {
-    text: "#ECEDEE",
-    background: "#151718",
+    text: "#F1F5F9",           // Light text for dark mode
+    background: "#1A1C2E",     // Dark background
     tint: tintColorDark,
-    icon: "#9BA1A6",
-    tabIconDefault: "#9BA1A6",
+    icon: "#A0A2B8",           // Muted icon color for dark mode
+    tabIconDefault: "#A0A2B8",
     tabIconSelected: tintColorDark,
   },
 };

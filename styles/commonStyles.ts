@@ -2,41 +2,55 @@
 import { StyleSheet } from 'react-native';
 
 export const colors = {
-  // Primary colors - Deep Blue/Emerald theme
-  primary: '#0F4C81',      // Deep Blue
-  primaryDark: '#0A3A5F',  // Darker Blue
-  secondary: '#047857',    // Emerald
-  accent: '#D4AF37',       // Gold
+  // NEW NUTRI-FLOW PALETTE
+  // Primary Canvas / Background
+  primaryBackground: '#F7F8FC',      // Light off-white for screens, cards, white spaces
+  
+  // Primary Text
+  primaryText: '#2B2D42',            // Dark gray for main text, titles, body text
+  
+  // Success / Goal Met
+  success: '#5CB97B',                // Emerald green for success states, goal met, positive status
+  
+  // Primary Progress / Accent
+  accent: '#5B9AA8',                 // Light blue for secondary/primary action buttons, progress accents
+  
+  // Warning / Carbs highlight
+  warning: '#FF8A5B',                // Copper orange for warnings, over target highlights
+  
+  // OLD COLORS (kept for compatibility and specific use cases)
+  primary: '#5B9AA8',                // Using accent color as primary
+  primaryDark: '#4A7F8C',            // Darker version of accent
+  secondary: '#5CB97B',              // Using success color as secondary
   
   // Backgrounds
-  background: '#FFFFFF',
-  backgroundDark: '#0A1929',
-  card: '#F8FAFC',
-  cardDark: '#1E293B',
+  background: '#F7F8FC',             // Using primaryBackground
+  backgroundDark: '#1A1C2E',         // Darker version for dark mode
+  card: '#FFFFFF',                   // White cards on light background
+  cardDark: '#252740',               // Dark mode cards
   
   // Text
-  text: '#1E293B',
-  textDark: '#F1F5F9',
-  textSecondary: '#64748B',
-  textSecondaryDark: '#94A3B8',
+  text: '#2B2D42',                   // Using primaryText
+  textDark: '#F1F5F9',               // Light text for dark mode
+  textSecondary: '#6B6D7F',          // Muted text
+  textSecondaryDark: '#A0A2B8',      // Muted text for dark mode
   
-  // Status colors
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  info: '#3B82F6',
+  // Status colors (keeping error, updating success and warning)
+  error: '#EF4444',                  // Keep existing error color
+  info: '#5B9AA8',                   // Using accent color
   
   // UI elements
-  border: '#E2E8F0',
-  borderDark: '#334155',
-  disabled: '#CBD5E1',
+  border: '#E2E4F0',                 // Lighter border to match new background
+  borderDark: '#3A3C52',             // Dark mode border
+  disabled: '#CBD5E1',               // Keep existing disabled color
   
-  // Macro colors
-  protein: '#EF4444',
-  carbs: '#3B82F6',
-  fats: '#F59E0B',
-  fiber: '#10B981',
-  calories: '#8B5CF6',
+  // MACRO COLORS - DO NOT CHANGE THESE!
+  // These colors are used for macro bars and must remain exactly as they are
+  protein: '#EF4444',                // Red - DO NOT CHANGE
+  carbs: '#3B82F6',                  // Blue - DO NOT CHANGE
+  fats: '#F59E0B',                   // Orange/Amber - DO NOT CHANGE
+  fiber: '#10B981',                  // Green - DO NOT CHANGE
+  calories: '#8B5CF6',               // Purple - DO NOT CHANGE
 };
 
 export const spacing = {
@@ -97,7 +111,7 @@ export const typography = {
 export const commonStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.primaryBackground,
   },
   containerDark: {
     flex: 1,
@@ -118,7 +132,7 @@ export const commonStyles = StyleSheet.create({
     elevation: 2,
   },
   button: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     borderRadius: borderRadius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -138,7 +152,7 @@ export const commonStyles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     fontSize: 16,
-    color: colors.text,
+    color: colors.primaryText,
   },
   inputDark: {
     backgroundColor: colors.cardDark,
