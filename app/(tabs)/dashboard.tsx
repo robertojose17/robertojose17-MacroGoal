@@ -339,7 +339,7 @@ export default function DashboardScreen() {
 
   const loadWeightProgress = async (userId: string, units: string, goalData: any, userData: any) => {
     try {
-      console.log('[Dashboard] Loading weight progress with MyNetDiary-style projection...');
+      console.log('[Dashboard] Loading weight progress - ALWAYS show projection from profile data');
 
       // Get all weight check-ins
       const { data: allCheckInsData } = await supabase
@@ -349,16 +349,48 @@ export default function DashboardScreen() {
         .not('weight', 'is', null)
         .order('date', { ascending: true });
 
-      const goalWeight = userData?.goal_weight || null;
-      const targetDateStr = goalData?.target_date || null;
+      console.log('[Dashboard] Found', allCheckInsData?.length || 0, 'weight check-ins');
 
-      console.log('[Dashboard] Goal weight:', goalWeight, 'kg, Target date:', targetDateStr);
-
-      // Determine start date (journey start or first logged weight)
-      const startDateStr = goalData?.start_date || (allCheckInsData && allCheckInsData.length > 0 ? allCheckInsData[0].date : null);
+      // STEP 1: Extract profile data (REQUIRED for projection)
+      const currentWeight = userData?.current_weight || null;
+      const goalWeight = userData?.goal_weight || goalData?.target_weight || null;
       
-      if (!startDateStr || !goalWeight || !targetDateStr) {
-        console.log('[Dashboard] Missing required data for projection');
+      // Determine start date
+      let startDateStr = goalData?.start_date;
+      if (!startDateStr) {
+        // If no start_date in goals, use first check-in date or today
+        if (allCheckInsData && allCheckInsData.length > 0) {
+          startDateStr = allCheckInsData[0].date;
+        } else {
+          startDateStr = new Date().toISOString().split('T')[0];
+        }
+      }
+
+      // Calculate target date from weight loss rate
+      let targetDateStr: string | null = null;
+      const weightLossRate = goalData?.loss_rate_lbs_per_week || goalData?.goal_intensity || 1.0; // Default to 1 lb/week
+      
+      if (currentWeight && goalWeight && currentWeight !== goalWeight) {
+        const weightDeltaKg = Math.abs(currentWeight - goalWeight);
+        const weightDeltaLbs = weightDeltaKg * 2.20462; // Convert kg to lbs
+        const weeksToGoal = weightDeltaLbs / weightLossRate;
+        const daysToGoal = Math.ceil(weeksToGoal * 7);
+        
+        const targetDate = new Date(startDateStr);
+        targetDate.setDate(targetDate.getDate() + daysToGoal);
+        targetDateStr = targetDate.toISOString().split('T')[0];
+        
+        console.log('[Dashboard] Calculated target date:', targetDateStr, 'from weight loss rate:', weightLossRate, 'lbs/week');
+      }
+
+      // STEP 2: Validate we have minimum required data
+      if (!currentWeight || !goalWeight || !startDateStr || !targetDateStr) {
+        console.log('[Dashboard] Missing required profile data:', {
+          currentWeight,
+          goalWeight,
+          startDateStr,
+          targetDateStr,
+        });
         setWeightData([]);
         setProjectionInfo({
           currentWeight: null,
@@ -372,31 +404,28 @@ export default function DashboardScreen() {
       const targetDate = new Date(targetDateStr);
       const today = new Date();
 
-      // Get current weight (most recent logged weight or starting weight)
-      let currentWeight: number;
-      let currentWeightDate: Date;
+      console.log('[Dashboard] Profile data:', {
+        currentWeight: currentWeight + ' kg',
+        goalWeight: goalWeight + ' kg',
+        startDate: startDateStr,
+        targetDate: targetDateStr,
+      });
 
-      if (allCheckInsData && allCheckInsData.length > 0) {
-        const latestCheckIn = allCheckInsData[allCheckInsData.length - 1];
-        currentWeight = latestCheckIn.weight;
-        currentWeightDate = new Date(latestCheckIn.date);
-      } else {
-        currentWeight = userData?.current_weight || goalWeight;
-        currentWeightDate = new Date(journeyStartDate);
-      }
-
-      console.log('[Dashboard] Current weight:', currentWeight, 'kg at', currentWeightDate.toISOString().split('T')[0]);
-
-      // Calculate projected weight loss/gain
+      // STEP 3: Build PLANNED projection curve (from profile data ONLY)
+      // This is the baseline projection that ALWAYS exists
       const weightDelta = currentWeight - goalWeight;
-      const daysToGoal = Math.max(1, Math.floor((targetDate.getTime() - currentWeightDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const dailyWeightChange = weightDelta / daysToGoal;
+      const totalDays = Math.max(1, Math.floor((targetDate.getTime() - journeyStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const dailyWeightChange = weightDelta / totalDays;
 
-      console.log('[Dashboard] Weight delta:', weightDelta, 'kg, Days to goal:', daysToGoal, 'Daily change:', dailyWeightChange, 'kg/day');
+      console.log('[Dashboard] Projection params:', {
+        weightDelta: weightDelta + ' kg',
+        totalDays,
+        dailyWeightChange: dailyWeightChange + ' kg/day',
+      });
 
-      // Build projection from current date to target date
+      // Build projection points from start to target
       const projectionPoints: { date: Date; weight: number }[] = [];
-      const projectionDate = new Date(currentWeightDate);
+      const projectionDate = new Date(journeyStartDate);
       let projectedWeight = currentWeight;
 
       while (projectionDate <= targetDate) {
@@ -413,19 +442,19 @@ export default function DashboardScreen() {
         projectionPoints[projectionPoints.length - 1].weight = goalWeight;
       }
 
-      console.log('[Dashboard] Projection points:', projectionPoints.length);
+      console.log('[Dashboard] Generated', projectionPoints.length, 'projection points');
 
-      // Build data points for chart (from start date to target date)
+      // STEP 4: Build chart data points (combine projection + actual)
       const weightDataPoints: WeightDataPoint[] = [];
       const chartDate = new Date(journeyStartDate);
 
       while (chartDate <= targetDate) {
         const dateStr = chartDate.toISOString().split('T')[0];
         
-        // Find actual weight for this date
+        // Find actual weight for this date (if exists)
         const actualCheckIn = allCheckInsData?.find((ci: any) => ci.date === dateStr);
         
-        // Find projected weight for this date
+        // Find projected weight for this date (should always exist)
         const projectionPoint = projectionPoints.find((p) => p.date.toISOString().split('T')[0] === dateStr);
 
         weightDataPoints.push({
@@ -437,7 +466,10 @@ export default function DashboardScreen() {
         chartDate.setDate(chartDate.getDate() + 1);
       }
 
-      console.log('[Dashboard] Total weight data points:', weightDataPoints.length);
+      console.log('[Dashboard] Total chart data points:', weightDataPoints.length);
+      console.log('[Dashboard] Points with actual data:', weightDataPoints.filter(p => p.actualWeight !== null).length);
+      console.log('[Dashboard] Points with projected data:', weightDataPoints.filter(p => p.projectedWeight !== null).length);
+
       setWeightData(weightDataPoints);
 
       setProjectionInfo({
@@ -625,7 +657,7 @@ export default function DashboardScreen() {
       return '';
     });
 
-    // Build projected line (smooth curve)
+    // Build projected line (smooth curve) - ALWAYS exists
     const projectedLine: (number | null)[] = weightData.map((point) => 
       point.projectedWeight !== null ? point.projectedWeight * conversionFactor : null
     );
@@ -663,7 +695,7 @@ export default function DashboardScreen() {
 
     const datasets = [];
 
-    // Projected line (thicker, smooth, dominant)
+    // Projected line (thicker, smooth, dominant) - ALWAYS shown
     datasets.push({
       data: projectedLine.map(w => w || 0),
       color: () => colors.success,
@@ -671,13 +703,15 @@ export default function DashboardScreen() {
       withDots: false,
     });
 
-    // Actual line (thin line with circular markers)
-    datasets.push({
-      data: actualLine.map(w => w || 0),
-      color: () => colors.primary,
-      strokeWidth: 2,
-      withDots: true,
-    });
+    // Actual line (thin line with circular markers) - only if we have data
+    if (latestActualIndex >= 0) {
+      datasets.push({
+        data: actualLine.map(w => w || 0),
+        color: () => colors.primary,
+        strokeWidth: 2,
+        withDots: true,
+      });
+    }
 
     return {
       labels,
@@ -983,6 +1017,23 @@ export default function DashboardScreen() {
 
           {chartData && weightData.length > 0 ? (
             <View style={styles.chartContainer}>
+              <View style={styles.legendContainer}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                  <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+                    Planned
+                  </Text>
+                </View>
+                {chartData.latestActualIndex >= 0 && (
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+                      Actual
+                    </Text>
+                  </View>
+                )}
+              </View>
+
               <LineChart
                 data={{
                   labels: chartData.labels,
@@ -1090,7 +1141,7 @@ export default function DashboardScreen() {
                 Not enough data yet
               </Text>
               <Text style={[styles.noDataSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Set your goal weight and target date in Profile, then log your weight to see progress
+                Set your goal weight in Profile to see your projected weight loss curve
               </Text>
             </View>
           )}
@@ -1411,6 +1462,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     alignItems: 'center',
     position: 'relative',
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    ...typography.caption,
+    fontSize: 12,
   },
   chart: {
     marginVertical: spacing.sm,
