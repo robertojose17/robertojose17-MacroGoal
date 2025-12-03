@@ -13,11 +13,11 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
+import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type TimeRange = '7days' | '30days' | 'custom';
@@ -61,10 +61,7 @@ export default function DashboardScreen() {
   
   const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
   
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerStep, setDatePickerStep] = useState<'start' | 'end'>('start');
-  const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
-  const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
@@ -320,99 +317,30 @@ export default function DashboardScreen() {
   };
 
   const handleCustomRangeSelect = () => {
-    console.log('[Dashboard] Opening custom date picker for nutrition');
-    setDatePickerStep('start');
-    
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 7);
-    
-    setTempStartDate(start);
-    setTempEndDate(end);
-    setShowDatePicker(true);
+    console.log('[Dashboard] Opening calendar date range picker for nutrition');
+    setShowCalendarPicker(true);
   };
 
-  const handleDatePickerChange = (event: any, selectedDate?: Date) => {
-    console.log('[Dashboard] Date picker change:', event.type, selectedDate);
+  const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
+    console.log('[Dashboard] Date range selected:', startDate, 'to', endDate);
     
-    if (event.type === 'dismissed' || event.type === 'neutralButtonPressed') {
-      setShowDatePicker(false);
-      if (nutritionRange === 'custom' && !nutritionCustomRange) {
-        setNutritionRange('7days');
-      }
-      return;
-    }
-
-    if (!selectedDate) {
-      return;
-    }
-
-    if (datePickerStep === 'start') {
-      setTempStartDate(selectedDate);
-      
-      if (Platform.OS === 'android') {
-        setShowDatePicker(false);
-        setDatePickerStep('end');
-        setTimeout(() => {
-          setShowDatePicker(true);
-        }, 300);
-      } else {
-        setDatePickerStep('end');
-      }
-    } else {
-      setTempEndDate(selectedDate);
-      
-      if (selectedDate < tempStartDate) {
-        Alert.alert('Invalid Range', 'End date must be after start date');
-        setShowDatePicker(false);
-        if (nutritionRange === 'custom' && !nutritionCustomRange) {
-          setNutritionRange('7days');
-        }
-        return;
-      }
-
-      const customRange: CustomDateRange = { 
-        startDate: tempStartDate, 
-        endDate: selectedDate 
-      };
-      
-      console.log('[Dashboard] Applying custom range:', customRange);
-      
-      setNutritionCustomRange(customRange);
-      setNutritionRange('custom');
-
-      setShowDatePicker(false);
-    }
-  };
-
-  const handleDatePickerCancel = () => {
-    console.log('[Dashboard] Date picker cancelled');
-    setShowDatePicker(false);
-    
-    if (nutritionRange === 'custom' && !nutritionCustomRange) {
-      setNutritionRange('7days');
-    }
-  };
-
-  const handleDatePickerConfirm = () => {
-    console.log('[Dashboard] Date picker confirmed');
-    
-    if (tempEndDate < tempStartDate) {
-      Alert.alert('Invalid Range', 'End date must be after start date');
-      return;
-    }
-
     const customRange: CustomDateRange = { 
-      startDate: tempStartDate, 
-      endDate: tempEndDate 
+      startDate, 
+      endDate 
     };
-    
-    console.log('[Dashboard] Applying custom range:', customRange);
     
     setNutritionCustomRange(customRange);
     setNutritionRange('custom');
+  };
 
-    setShowDatePicker(false);
+  const handleCalendarClose = () => {
+    console.log('[Dashboard] Calendar picker closed');
+    setShowCalendarPicker(false);
+    
+    // If user cancelled and no custom range was set, revert to 7 days
+    if (nutritionRange === 'custom' && !nutritionCustomRange) {
+      setNutritionRange('7days');
+    }
   };
 
   const getCustomRangeLabel = (range: CustomDateRange | null) => {
@@ -777,93 +705,19 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {showDatePicker && Platform.OS === 'android' && (
-        <DateTimePicker
-          value={datePickerStep === 'start' ? tempStartDate : tempEndDate}
-          mode="date"
-          display="default"
-          onChange={handleDatePickerChange}
-          maximumDate={new Date()}
-        />
-      )}
-
-      {showDatePicker && Platform.OS === 'ios' && (
-        <Modal
-          visible={showDatePicker}
-          transparent
-          animationType="slide"
-          onRequestClose={handleDatePickerCancel}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={handleDatePickerCancel}
-          >
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={(e) => e.stopPropagation()}
-            >
-              <View style={[styles.datePickerContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-                <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                  Select Date Range
-                </Text>
-                
-                <View style={styles.datePickerSection}>
-                  <Text style={[styles.datePickerLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                    Start Date
-                  </Text>
-                  <DateTimePicker
-                    value={tempStartDate}
-                    mode="date"
-                    display="spinner"
-                    onChange={(event, date) => {
-                      if (date) setTempStartDate(date);
-                    }}
-                    maximumDate={new Date()}
-                    style={styles.datePicker}
-                  />
-                </View>
-
-                <View style={styles.datePickerSection}>
-                  <Text style={[styles.datePickerLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                    End Date
-                  </Text>
-                  <DateTimePicker
-                    value={tempEndDate}
-                    mode="date"
-                    display="spinner"
-                    onChange={(event, date) => {
-                      if (date) setTempEndDate(date);
-                    }}
-                    maximumDate={new Date()}
-                    minimumDate={tempStartDate}
-                    style={styles.datePicker}
-                  />
-                </View>
-
-                <View style={styles.datePickerButtons}>
-                  <TouchableOpacity
-                    style={[styles.datePickerButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                    onPress={handleDatePickerCancel}
-                  >
-                    <Text style={[styles.datePickerButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.datePickerButton, { backgroundColor: colors.primary }]}
-                    onPress={handleDatePickerConfirm}
-                  >
-                    <Text style={[styles.datePickerButtonText, { color: '#FFFFFF' }]}>
-                      Confirm
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-      )}
+      <CalendarDateRangePicker
+        visible={showCalendarPicker}
+        onClose={handleCalendarClose}
+        onSelectRange={handleDateRangeSelect}
+        initialStartDate={nutritionCustomRange?.startDate || (() => {
+          const date = new Date();
+          date.setDate(date.getDate() - 7);
+          return date;
+        })()}
+        initialEndDate={nutritionCustomRange?.endDate || new Date()}
+        maxDate={new Date()}
+        title="Select Date Range"
+      />
     </SafeAreaView>
   );
 }
@@ -1065,38 +919,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   modalCancelText: {
-    ...typography.bodyBold,
-  },
-  datePickerContent: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
-    elevation: 5,
-  },
-  datePickerSection: {
-    marginBottom: spacing.md,
-  },
-  datePickerLabel: {
-    ...typography.bodyBold,
-    marginBottom: spacing.xs,
-  },
-  datePicker: {
-    width: '100%',
-  },
-  datePickerButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  datePickerButton: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-  },
-  datePickerButtonText: {
     ...typography.bodyBold,
   },
 });
