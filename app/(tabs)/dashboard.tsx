@@ -10,18 +10,15 @@ import {
   RefreshControl,
   Alert,
   Modal,
-  Dimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { LineChart } from 'react-native-chart-kit';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
 import { supabase } from '@/app/integrations/supabase/client';
-import { calculateBMR, calculateTDEE, calculateAge } from '@/utils/calculations';
 
 type TimeRange = '7days' | '30days' | 'custom';
 
@@ -48,43 +45,6 @@ interface CustomDateRange {
   endDate: Date;
 }
 
-interface WeeklyWeightData {
-  weekLabel: string;
-  weekStartDate: Date;
-  plannedWeight: number | null;
-  actualWeight: number | null;
-  isFuture: boolean;
-}
-
-interface ProjectionInfo {
-  currentWeight: number | null;
-  goalWeight: number | null;
-  targetDate: string | null;
-}
-
-// Helper function to get ISO week number
-function getISOWeek(date: Date): number {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return weekNo;
-}
-
-// Helper function to get Monday of the ISO week
-function getMonday(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
-}
-
-// Helper function to format week label
-function formatWeekLabel(weekStartDate: Date): string {
-  return weekStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 export default function DashboardScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -98,24 +58,15 @@ export default function DashboardScreen() {
   const [todaySummary, setTodaySummary] = useState<DailySummary | null>(null);
   
   const [nutritionRange, setNutritionRange] = useState<TimeRange>('7days');
-  const [progressRange, setProgressRange] = useState<TimeRange>('30days');
   
   const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
-  const [progressCustomRange, setProgressCustomRange] = useState<CustomDateRange | null>(null);
   
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerMode, setDatePickerMode] = useState<'nutrition' | 'progress'>('nutrition');
   const [datePickerStep, setDatePickerStep] = useState<'start' | 'end'>('start');
   const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
   const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
   
   const [nutritionStats, setNutritionStats] = useState<any>(null);
-  const [weeklyWeightData, setWeeklyWeightData] = useState<WeeklyWeightData[]>([]);
-  const [projectionInfo, setProjectionInfo] = useState<ProjectionInfo>({
-    currentWeight: null,
-    goalWeight: null,
-    targetDate: null,
-  });
   const [showCheckInModal, setShowCheckInModal] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -175,7 +126,6 @@ export default function DashboardScreen() {
 
       await loadTodaySummary(authUser.id, today);
       await loadNutritionTrends(authUser.id);
-      await loadWeeklyWeightProgress(authUser.id, userData?.preferred_units || 'metric', goalData, userData);
 
     } catch (error) {
       console.error('[Dashboard] Error loading data:', error);
@@ -191,13 +141,6 @@ export default function DashboardScreen() {
       loadNutritionTrends(user.id);
     }
   }, [nutritionRange, nutritionCustomRange]);
-
-  useEffect(() => {
-    if (user && goal) {
-      console.log('[Dashboard] Progress range changed, reloading weight data');
-      loadWeeklyWeightProgress(user.id, user.preferred_units || 'metric', goal, user);
-    }
-  }, [progressRange, progressCustomRange]);
 
   const loadTodaySummary = async (userId: string, date: string) => {
     try {
@@ -362,168 +305,6 @@ export default function DashboardScreen() {
     return currentStreak;
   };
 
-  const loadWeeklyWeightProgress = async (userId: string, units: string, goalData: any, userData: any) => {
-    try {
-      console.log('[Dashboard] Loading WEEKLY weight progress');
-
-      // STEP 1: Get all REAL weight check-ins
-      const { data: allCheckInsData } = await supabase
-        .from('check_ins')
-        .select('date, weight')
-        .eq('user_id', userId)
-        .not('weight', 'is', null)
-        .order('date', { ascending: true });
-
-      const validCheckIns = (allCheckInsData || []).filter((ci: any) => 
-        ci.weight && ci.weight > 0 && !isNaN(ci.weight)
-      );
-
-      console.log('[Dashboard] Found', validCheckIns.length, 'valid weight check-ins');
-
-      // STEP 2: Extract profile data
-      const currentWeight = userData?.current_weight || userData?.starting_weight || null;
-      const goalWeight = userData?.goal_weight || goalData?.target_weight || null;
-      
-      let startDateStr = goalData?.start_date;
-      if (!startDateStr) {
-        if (validCheckIns.length > 0) {
-          startDateStr = validCheckIns[0].date;
-        } else {
-          startDateStr = new Date().toISOString().split('T')[0];
-        }
-      }
-
-      // Calculate target date from weight loss rate
-      let targetDateStr: string | null = null;
-      const weightLossRate = goalData?.loss_rate_lbs_per_week || goalData?.goal_intensity || 1.0;
-      
-      if (currentWeight && goalWeight && currentWeight !== goalWeight) {
-        const weightDeltaKg = Math.abs(currentWeight - goalWeight);
-        const weightDeltaLbs = weightDeltaKg * 2.20462;
-        const weeksToGoal = weightDeltaLbs / weightLossRate;
-        const daysToGoal = Math.ceil(weeksToGoal * 7);
-        
-        const targetDate = new Date(startDateStr);
-        targetDate.setDate(targetDate.getDate() + daysToGoal);
-        targetDateStr = targetDate.toISOString().split('T')[0];
-        
-        console.log('[Dashboard] Calculated target date:', targetDateStr, 'from weight loss rate:', weightLossRate, 'lbs/week');
-      }
-
-      // STEP 3: Validate minimum required data
-      if (!currentWeight || !goalWeight || !startDateStr || !targetDateStr) {
-        console.log('[Dashboard] Missing required profile data');
-        setWeeklyWeightData([]);
-        setProjectionInfo({
-          currentWeight: null,
-          goalWeight: null,
-          targetDate: null,
-        });
-        return;
-      }
-
-      const journeyStartDate = new Date(startDateStr);
-      const targetDate = new Date(targetDateStr);
-      const today = new Date();
-
-      console.log('[Dashboard] Profile data:', {
-        currentWeight: currentWeight + ' kg',
-        goalWeight: goalWeight + ' kg',
-        startDate: startDateStr,
-        targetDate: targetDateStr,
-      });
-
-      // STEP 4: Group check-ins by ISO week
-      const weeklyCheckIns = new Map<string, number[]>();
-      
-      validCheckIns.forEach((checkIn: any) => {
-        const checkInDate = new Date(checkIn.date);
-        const weekMonday = getMonday(checkInDate);
-        const weekKey = weekMonday.toISOString().split('T')[0];
-        
-        if (!weeklyCheckIns.has(weekKey)) {
-          weeklyCheckIns.set(weekKey, []);
-        }
-        weeklyCheckIns.get(weekKey)!.push(checkIn.weight);
-      });
-
-      console.log('[Dashboard] Grouped check-ins into', weeklyCheckIns.size, 'weeks');
-
-      // STEP 5: Calculate weekly averages (ONLY for weeks with data)
-      const weeklyAverages = new Map<string, number>();
-      weeklyCheckIns.forEach((weights, weekKey) => {
-        const avg = weights.reduce((sum, w) => sum + w, 0) / weights.length;
-        weeklyAverages.set(weekKey, avg);
-        console.log('[Dashboard] Week', weekKey, 'avg weight:', avg.toFixed(2), 'kg');
-      });
-
-      // STEP 6: Build weekly data points
-      const weeklyData: WeeklyWeightData[] = [];
-      
-      // Get start week (Monday of the week containing startDate)
-      const startWeekMonday = getMonday(journeyStartDate);
-      
-      // Get end week (Monday of the week containing targetDate)
-      const endWeekMonday = getMonday(targetDate);
-      
-      // Calculate planned weight change per week
-      const weightDelta = currentWeight - goalWeight;
-      const totalWeeks = Math.max(1, Math.ceil((endWeekMonday.getTime() - startWeekMonday.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-      const weeklyWeightChange = weightDelta / totalWeeks;
-
-      console.log('[Dashboard] Projection params:', {
-        weightDelta: weightDelta + ' kg',
-        totalWeeks,
-        weeklyWeightChange: weeklyWeightChange + ' kg/week',
-      });
-
-      // Iterate through weeks from start to end
-      let currentWeekMonday = new Date(startWeekMonday);
-      let weekIndex = 0;
-
-      while (currentWeekMonday <= endWeekMonday) {
-        const weekKey = currentWeekMonday.toISOString().split('T')[0];
-        const weekLabel = formatWeekLabel(currentWeekMonday);
-        
-        // Calculate planned weight for this week
-        const plannedWeight = currentWeight - (weeklyWeightChange * weekIndex);
-        
-        // Get actual weight average for this week (ONLY if it exists)
-        const actualWeight = weeklyAverages.get(weekKey) || null;
-        
-        // Determine if this week is in the future
-        const isFuture = currentWeekMonday > today;
-        
-        weeklyData.push({
-          weekLabel,
-          weekStartDate: new Date(currentWeekMonday),
-          plannedWeight,
-          actualWeight: isFuture ? null : actualWeight,
-          isFuture,
-        });
-
-        // Move to next week
-        currentWeekMonday.setDate(currentWeekMonday.getDate() + 7);
-        weekIndex++;
-      }
-
-      console.log('[Dashboard] Generated', weeklyData.length, 'weekly data points');
-      console.log('[Dashboard] Weeks with actual data:', weeklyData.filter(w => w.actualWeight !== null).length);
-
-      setWeeklyWeightData(weeklyData);
-
-      setProjectionInfo({
-        currentWeight,
-        goalWeight,
-        targetDate: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      });
-
-    } catch (error) {
-      console.error('[Dashboard] Error loading weekly weight progress:', error);
-      setWeeklyWeightData([]);
-    }
-  };
-
   useFocusEffect(
     useCallback(() => {
       console.log('[Dashboard] Screen focused, loading data');
@@ -544,19 +325,8 @@ export default function DashboardScreen() {
     });
   };
 
-  const formatWeight = (weight: number | null) => {
-    if (!weight) return 'N/A';
-    const units = user?.preferred_units || 'metric';
-    if (units === 'imperial') {
-      const lbs = Math.round(weight * 2.20462);
-      return `${lbs} lbs`;
-    }
-    return `${Math.round(weight)} kg`;
-  };
-
-  const handleCustomRangeSelect = (mode: 'nutrition' | 'progress') => {
-    console.log('[Dashboard] Opening custom date picker for', mode);
-    setDatePickerMode(mode);
+  const handleCustomRangeSelect = () => {
+    console.log('[Dashboard] Opening custom date picker for nutrition');
     setDatePickerStep('start');
     
     const end = new Date();
@@ -573,10 +343,8 @@ export default function DashboardScreen() {
     
     if (event.type === 'dismissed' || event.type === 'neutralButtonPressed') {
       setShowDatePicker(false);
-      if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
+      if (nutritionRange === 'custom' && !nutritionCustomRange) {
         setNutritionRange('7days');
-      } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
-        setProgressRange('30days');
       }
       return;
     }
@@ -603,10 +371,8 @@ export default function DashboardScreen() {
       if (selectedDate < tempStartDate) {
         Alert.alert('Invalid Range', 'End date must be after start date');
         setShowDatePicker(false);
-        if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
+        if (nutritionRange === 'custom' && !nutritionCustomRange) {
           setNutritionRange('7days');
-        } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
-          setProgressRange('30days');
         }
         return;
       }
@@ -618,13 +384,8 @@ export default function DashboardScreen() {
       
       console.log('[Dashboard] Applying custom range:', customRange);
       
-      if (datePickerMode === 'nutrition') {
-        setNutritionCustomRange(customRange);
-        setNutritionRange('custom');
-      } else {
-        setProgressCustomRange(customRange);
-        setProgressRange('custom');
-      }
+      setNutritionCustomRange(customRange);
+      setNutritionRange('custom');
 
       setShowDatePicker(false);
     }
@@ -634,10 +395,8 @@ export default function DashboardScreen() {
     console.log('[Dashboard] Date picker cancelled');
     setShowDatePicker(false);
     
-    if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
+    if (nutritionRange === 'custom' && !nutritionCustomRange) {
       setNutritionRange('7days');
-    } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
-      setProgressRange('30days');
     }
   };
 
@@ -656,13 +415,8 @@ export default function DashboardScreen() {
     
     console.log('[Dashboard] Applying custom range:', customRange);
     
-    if (datePickerMode === 'nutrition') {
-      setNutritionCustomRange(customRange);
-      setNutritionRange('custom');
-    } else {
-      setProgressCustomRange(customRange);
-      setProgressRange('custom');
-    }
+    setNutritionCustomRange(customRange);
+    setNutritionRange('custom');
 
     setShowDatePicker(false);
   };
@@ -673,106 +427,6 @@ export default function DashboardScreen() {
     const end = range.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     return `${start} - ${end}`;
   };
-
-  const chartData = useMemo(() => {
-    if (weeklyWeightData.length === 0) return null;
-
-    const units = user?.preferred_units || 'metric';
-    const conversionFactor = units === 'imperial' ? 2.20462 : 1;
-
-    // Build labels for X-axis
-    const labels = weeklyWeightData.map((week) => week.weekLabel);
-
-    // Build planned line (always exists for all weeks)
-    const plannedLine: number[] = weeklyWeightData.map((week) => 
-      week.plannedWeight !== null ? week.plannedWeight * conversionFactor : 0
-    );
-
-    // Build actual line - CRITICAL FIX: Only include weeks with REAL data
-    // Filter to get only weeks that have actual weight data
-    const weeksWithActualData = weeklyWeightData
-      .map((week, index) => ({ week, index }))
-      .filter(({ week }) => week.actualWeight !== null && !week.isFuture);
-
-    console.log('[Dashboard] Building chart with', weeksWithActualData.length, 'actual data points');
-
-    // Create actual line array with NaN for weeks without data
-    // react-native-chart-kit treats NaN as "no data" and won't draw a line there
-    const actualLine: number[] = weeklyWeightData.map((week) => {
-      if (week.actualWeight !== null && !week.isFuture) {
-        return week.actualWeight * conversionFactor;
-      }
-      return NaN; // Use NaN instead of 0 or null - chart library will skip these points
-    });
-
-    // Find last actual weight index
-    let lastActualIndex = -1;
-    for (let i = weeklyWeightData.length - 1; i >= 0; i--) {
-      if (!isNaN(actualLine[i])) {
-        lastActualIndex = i;
-        break;
-      }
-    }
-
-    console.log('[Dashboard] Last actual weight at week index:', lastActualIndex);
-
-    // Find min and max for Y-axis - ONLY from real weights (not NaN)
-    const validPlannedWeights = plannedLine.filter((w) => !isNaN(w) && w > 0);
-    const validActualWeights = actualLine.filter((w) => !isNaN(w) && w > 0);
-    
-    const allWeights = [...validPlannedWeights, ...validActualWeights];
-
-    if (allWeights.length === 0) return null;
-
-    const maxWeight = Math.max(...allWeights);
-    const minWeight = Math.min(...allWeights);
-    
-    const range = maxWeight - minWeight;
-    const topPadding = range * 0.1 || 5;
-    const bottomPadding = range * 0.05 || 2;
-
-    // Calculate Y-axis domain - ensure it doesn't include 0 unless weights are near 0
-    const yMin = Math.max(0, minWeight - bottomPadding);
-    const yMax = maxWeight + topPadding;
-
-    console.log('[Dashboard] Y-axis range:', yMin.toFixed(1), 'to', yMax.toFixed(1), units === 'imperial' ? 'lbs' : 'kg');
-
-    // Find latest actual weight for label
-    let latestActualWeight: number | null = null;
-    if (lastActualIndex >= 0 && !isNaN(actualLine[lastActualIndex])) {
-      latestActualWeight = actualLine[lastActualIndex];
-    }
-
-    const datasets = [];
-
-    // Planned line (smooth, dominant) - ALWAYS shown
-    datasets.push({
-      data: plannedLine,
-      color: () => colors.success,
-      strokeWidth: 2.5,
-      withDots: false,
-    });
-
-    // Actual line (thin, clean) - only if we have data
-    if (lastActualIndex >= 0) {
-      datasets.push({
-        data: actualLine,
-        color: () => colors.primary,
-        strokeWidth: 2,
-        withDots: true,
-        strokeDashArray: [],
-      });
-    }
-
-    return {
-      labels,
-      datasets,
-      minValue: yMin,
-      maxValue: yMax,
-      lastActualIndex,
-      latestActualWeight,
-    };
-  }, [weeklyWeightData, user?.preferred_units]);
 
   if (loading) {
     return (
@@ -793,8 +447,6 @@ export default function DashboardScreen() {
   const caloriesEaten = todaySummary?.total_calories || 0;
   const caloriesRemaining = caloriesGoal - caloriesEaten;
   const caloriesProgress = Math.min((caloriesEaten / caloriesGoal) * 100, 100);
-
-  const screenWidth = Dimensions.get('window').width;
 
   return (
     <SafeAreaView
@@ -976,7 +628,7 @@ export default function DashboardScreen() {
                 styles.rangeButton,
                 nutritionRange === 'custom' && { backgroundColor: colors.primary },
               ]}
-              onPress={() => handleCustomRangeSelect('nutrition')}
+              onPress={handleCustomRangeSelect}
             >
               <Text
                 style={[
@@ -1059,127 +711,6 @@ export default function DashboardScreen() {
             <Text style={[styles.noDataText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               No nutrition data available for this period.
             </Text>
-          )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Progress
-          </Text>
-
-          {chartData && weeklyWeightData.length > 0 ? (
-            <View style={styles.chartContainer}>
-              <View style={styles.legendContainer}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                  <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Planned
-                  </Text>
-                </View>
-                {chartData.lastActualIndex >= 0 && (
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
-                    <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-                      Actual weekly avg
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              <LineChart
-                data={{
-                  labels: chartData.labels,
-                  datasets: chartData.datasets,
-                }}
-                width={screenWidth - 64}
-                height={220}
-                yAxisSuffix=""
-                yAxisInterval={1}
-                chartConfig={{
-                  backgroundColor: 'transparent',
-                  backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
-                  backgroundGradientTo: isDark ? colors.cardDark : colors.card,
-                  decimalPlaces: 0,
-                  color: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.15})` : `rgba(100, 116, 139, ${opacity * 0.15})`,
-                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.6})` : `rgba(100, 116, 139, ${opacity * 0.6})`,
-                  style: {
-                    borderRadius: borderRadius.md,
-                  },
-                  propsForDots: {
-                    r: '3',
-                    strokeWidth: '1',
-                    stroke: colors.primary,
-                  },
-                  propsForBackgroundLines: {
-                    strokeDasharray: '',
-                    stroke: isDark ? `rgba(148, 163, 184, 0.08)` : `rgba(100, 116, 139, 0.08)`,
-                    strokeWidth: 0.5,
-                  },
-                  propsForLabels: {
-                    fontSize: 10,
-                  },
-                }}
-                bezier
-                style={styles.chart}
-                fromZero={false}
-                segments={4}
-                yLabelsOffset={10}
-                xLabelsOffset={-5}
-                formatYLabel={(value) => Math.round(Number(value)).toString()}
-                withInnerLines={true}
-                withOuterLines={false}
-                withVerticalLines={false}
-                withHorizontalLines={true}
-                withVerticalLabels={true}
-                withHorizontalLabels={true}
-                withShadow={false}
-                transparent={true}
-              />
-
-              {projectionInfo.targetDate && (
-                <View style={styles.projectionInfoContainer}>
-                  <View style={styles.projectionRow}>
-                    <IconSymbol
-                      ios_icon_name="calendar"
-                      android_material_icon_name="calendar_today"
-                      size={16}
-                      color={colors.success}
-                    />
-                    <Text style={[styles.projectionText, { color: isDark ? colors.textDark : colors.text }]}>
-                      <Text style={{ fontWeight: '600' }}>Target:</Text> {formatWeight(projectionInfo.goalWeight)} by {projectionInfo.targetDate}
-                    </Text>
-                  </View>
-                  {chartData.latestActualWeight !== null && (
-                    <View style={styles.projectionRow}>
-                      <IconSymbol
-                        ios_icon_name="scalemass.fill"
-                        android_material_icon_name="monitor_weight"
-                        size={16}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.projectionText, { color: isDark ? colors.textDark : colors.text }]}>
-                        <Text style={{ fontWeight: '600' }}>Latest:</Text> {formatWeight(chartData.latestActualWeight / (user?.preferred_units === 'imperial' ? 2.20462 : 1))}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          ) : (
-            <View style={styles.noDataContainer}>
-              <IconSymbol
-                ios_icon_name="chart.line.uptrend.xyaxis"
-                android_material_icon_name="show_chart"
-                size={48}
-                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              />
-              <Text style={[styles.noDataText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Not enough data yet
-              </Text>
-              <Text style={[styles.noDataSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Set your goal weight in Profile to see your projected weight loss curve
-              </Text>
-            </View>
           )}
         </View>
 
@@ -1488,61 +1019,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     textAlign: 'center',
     marginTop: spacing.md,
-  },
-  noDataSubtext: {
-    ...typography.caption,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  chartContainer: {
-    marginTop: spacing.sm,
-    position: 'relative',
-  },
-  legendContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  legendText: {
-    ...typography.caption,
-    fontSize: 12,
-  },
-  chart: {
-    marginVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-  },
-  projectionInfoContainer: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: spacing.sm,
-    width: '100%',
-  },
-  projectionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  projectionText: {
-    ...typography.body,
-    fontSize: 13,
-    flex: 1,
-  },
-  noDataContainer: {
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
   },
   bottomSpacer: {
     height: 40,
