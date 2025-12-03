@@ -1,5 +1,5 @@
 
-const tintColorLight = "#5B9AA8";  // Updated to new accent color
+const tintColorLight = "#4A90A4";  // Updated to new calm blue accent
 const tintColorDark = "#fff";
 
 export const zincColors = {
@@ -16,19 +16,19 @@ export const zincColors = {
   950: "#09090b",
 };
 
-export const appleBlue = "#5B9AA8";  // Updated to new accent color
+export const appleBlue = "#4A90A4";  // Updated to new calm blue accent
 export const appleRed = "#FF3B30";
 
-export const borderColor = "#E2E4F0";  // Updated to match new theme
-export const appleGreen = "#5CB97B";   // Updated to new success color
+export const borderColor = "#E5E7EB";  // Updated to match new theme
+export const appleGreen = "#4CAF6E";   // Updated to new fresh green
 
 export const Colors = {
   light: {
-    text: "#2B2D42",           // New primary text color
-    background: "#F7F8FC",     // New primary background color
+    text: "#1A1C2E",           // New primary text color (stronger contrast)
+    background: "#FAFBFC",     // New ultra-light primary background
     tint: tintColorLight,
-    icon: "#6B6D7F",           // Updated to match new text secondary
-    tabIconDefault: "#6B6D7F",
+    icon: "#6B7280",           // Updated to match new text secondary
+    tabIconDefault: "#6B7280",
     tabIconSelected: tintColorLight,
   },
   dark: {
