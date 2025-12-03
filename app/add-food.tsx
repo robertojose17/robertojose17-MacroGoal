@@ -1258,61 +1258,59 @@ export default function AddFoodScreen() {
                 <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Quick Actions
                 </Text>
-                <View style={styles.quickActionsGrid}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quickActionsRow}
+                >
                   <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardGreen]}
-                    onPress={handleCopyFromPrevious}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.quickActionIconContainer}>
-                      <IconSymbol
-                        ios_icon_name="calendar"
-                        android_material_icon_name="event"
-                        size={28}
-                        color="#10B981"
-                      />
-                    </View>
-                    <Text style={styles.quickActionTitle}>
-                      Copy from Previous
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardYellow]}
+                    style={[styles.quickActionButton, styles.quickActionButtonYellow]}
                     onPress={handleAIMealEstimator}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.quickActionIconContainer}>
-                      <IconSymbol
-                        ios_icon_name="sparkles"
-                        android_material_icon_name="auto_awesome"
-                        size={28}
-                        color="#F59E0B"
-                      />
-                    </View>
-                    <Text style={styles.quickActionTitle}>
+                    <IconSymbol
+                      ios_icon_name="sparkles"
+                      android_material_icon_name="auto_awesome"
+                      size={24}
+                      color="#F59E0B"
+                    />
+                    <Text style={styles.quickActionButtonText}>
                       AI Meal Estimator
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.quickActionCard, styles.quickActionCardPurple]}
+                    style={[styles.quickActionButton, styles.quickActionButtonPurple]}
                     onPress={handleBarcodeScanner}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.quickActionIconContainer}>
-                      <IconSymbol
-                        ios_icon_name="barcode.viewfinder"
-                        android_material_icon_name="qr_code_scanner"
-                        size={28}
-                        color="#8B5CF6"
-                      />
-                    </View>
-                    <Text style={styles.quickActionTitle}>
+                    <IconSymbol
+                      ios_icon_name="barcode.viewfinder"
+                      android_material_icon_name="qr_code_scanner"
+                      size={24}
+                      color="#8B5CF6"
+                    />
+                    <Text style={styles.quickActionButtonText}>
                       Barcode Scan
                     </Text>
                   </TouchableOpacity>
-                </View>
+
+                  <TouchableOpacity
+                    style={[styles.quickActionButton, styles.quickActionButtonGreen]}
+                    onPress={handleCopyFromPrevious}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name="calendar"
+                      android_material_icon_name="event"
+                      size={24}
+                      color="#10B981"
+                    />
+                    <Text style={styles.quickActionButtonText}>
+                      Copy from Previous Days
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
               </React.Fragment>
             )}
 
@@ -1510,6 +1508,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  quickActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
+    gap: spacing.xs,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
+    elevation: 1,
+    minWidth: 160,
+  },
+  quickActionButtonYellow: {
+    backgroundColor: '#FEF3C7',
+  },
+  quickActionButtonPurple: {
+    backgroundColor: '#EDE9FE',
+  },
+  quickActionButtonGreen: {
+    backgroundColor: '#D1FAE5',
+  },
+  quickActionButtonText: {
+    ...typography.bodyBold,
+    fontSize: 13,
+    color: '#1F2937',
+    flexShrink: 1,
   },
   quickActionsGrid: {
     flexDirection: 'row',
