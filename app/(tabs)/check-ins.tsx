@@ -348,121 +348,42 @@ export default function CheckInsScreen() {
           <View style={styles.checkInsList}>
             {filteredCheckIns.map((checkIn, index) => (
               <React.Fragment key={checkIn.id}>
-                <View style={[styles.checkInCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                <TouchableOpacity
+                  style={styles.checkInRow}
+                  onPress={() => handleViewCheckIn(checkIn)}
+                  activeOpacity={0.6}
+                >
+                  <View style={styles.checkInRowContent}>
+                    <Text style={[styles.checkInRowDate, { color: isDark ? colors.textDark : colors.text }]}>
+                      {formatDate(checkIn.date)}
+                    </Text>
+                    <Text style={[styles.checkInRowSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      —
+                    </Text>
+                    <Text style={[styles.checkInRowValue, { color: isDark ? colors.textDark : colors.text }]}>
+                      {selectedType === 'weight' && checkIn.weight && formatWeight(checkIn.weight)}
+                      {selectedType === 'steps' && checkIn.steps !== null && `${checkIn.steps.toLocaleString()} steps`}
+                      {selectedType === 'gym' && checkIn.went_to_gym && 'Workout: Yes'}
+                    </Text>
+                  </View>
                   <TouchableOpacity
-                    style={styles.checkInContent}
-                    onPress={() => handleViewCheckIn(checkIn)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.checkInHeader}>
-                      <View style={styles.checkInDateContainer}>
-                        <IconSymbol
-                          ios_icon_name="calendar"
-                          android_material_icon_name="calendar_today"
-                          size={20}
-                          color={colors.primary}
-                        />
-                        <Text style={[styles.checkInDate, { color: isDark ? colors.textDark : colors.text }]}>
-                          {formatDate(checkIn.date)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.checkInStats}>
-                      {/* Weight */}
-                      {selectedType === 'weight' && checkIn.weight && (
-                        <View style={styles.statItem}>
-                          <IconSymbol
-                            ios_icon_name="scalemass"
-                            android_material_icon_name="monitor_weight"
-                            size={24}
-                            color={colors.primary}
-                          />
-                          <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
-                            {formatWeight(checkIn.weight)}
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Steps */}
-                      {selectedType === 'steps' && checkIn.steps !== null && (
-                        <View style={styles.statItem}>
-                          <IconSymbol
-                            ios_icon_name="figure.walk"
-                            android_material_icon_name="directions_walk"
-                            size={24}
-                            color={colors.primary}
-                          />
-                          <View>
-                            <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
-                              {checkIn.steps.toLocaleString()} steps
-                            </Text>
-                            {checkIn.steps_goal && (
-                              <Text style={[styles.statSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                                Goal: {checkIn.steps_goal.toLocaleString()}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                      )}
-
-                      {/* Gym */}
-                      {selectedType === 'gym' && checkIn.went_to_gym && (
-                        <View style={styles.statItem}>
-                          <IconSymbol
-                            ios_icon_name="dumbbell.fill"
-                            android_material_icon_name="fitness_center"
-                            size={24}
-                            color={colors.success}
-                          />
-                          <Text style={[styles.statValue, { color: colors.success }]}>
-                            Workout Completed
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Photo indicator */}
-                      {selectedType === 'weight' && checkIn.photo_url && (
-                        <View style={styles.photoIndicator}>
-                          <IconSymbol
-                            ios_icon_name="photo"
-                            android_material_icon_name="photo"
-                            size={18}
-                            color={colors.info}
-                          />
-                          <Text style={[styles.photoIndicatorText, { color: colors.info }]}>
-                            Has photo
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Notes indicator */}
-                      {checkIn.notes && (
-                        <View style={styles.notesIndicator}>
-                          <IconSymbol
-                            ios_icon_name="note.text"
-                            android_material_icon_name="note"
-                            size={18}
-                            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                          />
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Delete Button */}
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteCheckIn(checkIn)}
+                    style={styles.deleteButtonMinimal}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDeleteCheckIn(checkIn);
+                    }}
                   >
                     <IconSymbol
                       ios_icon_name="trash"
                       android_material_icon_name="delete"
-                      size={20}
-                      color={colors.error}
+                      size={18}
+                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
                     />
                   </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
+                {index < filteredCheckIns.length - 1 && (
+                  <View style={[styles.divider, { backgroundColor: isDark ? colors.textSecondaryDark : colors.textSecondary, opacity: 0.1 }]} />
+                )}
               </React.Fragment>
             ))}
           </View>
@@ -563,66 +484,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   checkInsList: {
-    gap: spacing.md,
+    paddingVertical: spacing.xs,
   },
-  checkInCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
+  checkInRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  checkInContent: {
-    flex: 1,
-  },
-  checkInHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
-  checkInDateContainer: {
+  checkInRowContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
     gap: spacing.sm,
   },
-  checkInDate: {
-    ...typography.h3,
-    fontSize: 18,
-  },
-  checkInStats: {
-    gap: spacing.sm,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  statValue: {
-    ...typography.bodyBold,
-    fontSize: 16,
-  },
-  statSubtext: {
-    ...typography.caption,
-    fontSize: 12,
-  },
-  photoIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  photoIndicatorText: {
-    fontSize: 12,
+  checkInRowDate: {
+    fontSize: 15,
     fontWeight: '500',
   },
-  notesIndicator: {
-    marginTop: spacing.xs,
+  checkInRowSeparator: {
+    fontSize: 15,
+    fontWeight: '400',
   },
-  deleteButton: {
-    padding: spacing.sm,
+  checkInRowValue: {
+    fontSize: 15,
+    fontWeight: '400',
+    flex: 1,
+  },
+  deleteButtonMinimal: {
+    padding: spacing.xs,
     marginLeft: spacing.sm,
+  },
+  divider: {
+    height: 1,
+    marginLeft: spacing.xs,
   },
   bottomSpacer: {
     height: 40,
