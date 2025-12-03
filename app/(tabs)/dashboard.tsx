@@ -190,20 +190,45 @@ export default function DashboardScreen() {
 
   const loadNutritionTrends = async (userId: string) => {
     try {
-      const endDate = new Date();
-      const startDate = new Date();
+      let startDate: Date;
+      let endDate: Date;
       
       if (nutritionRange === '7days') {
-        startDate.setDate(startDate.getDate() - 7);
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 6); // 7 days inclusive (today + 6 previous)
+        startDate.setHours(0, 0, 0, 0);
       } else if (nutritionRange === '30days') {
-        startDate.setDate(startDate.getDate() - 30);
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 29); // 30 days inclusive (today + 29 previous)
+        startDate.setHours(0, 0, 0, 0);
       } else if (nutritionRange === 'custom' && nutritionCustomRange) {
-        startDate.setTime(nutritionCustomRange.startDate.getTime());
-        endDate.setTime(nutritionCustomRange.endDate.getTime());
+        // Use the exact dates from the custom range
+        startDate = new Date(nutritionCustomRange.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(nutritionCustomRange.endDate);
+        endDate.setHours(23, 59, 59, 999);
+      } else {
+        // Fallback to 7 days
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
       }
 
-      console.log('[Dashboard] Loading nutrition trends from', startDate.toISOString().split('T')[0], 'to', endDate.toISOString().split('T')[0]);
+      // Format dates as YYYY-MM-DD for database query
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
 
+      console.log('[Dashboard] Loading nutrition trends from', startDateStr, 'to', endDateStr);
+      console.log('[Dashboard] Start date object:', startDate.toISOString());
+      console.log('[Dashboard] End date object:', endDate.toISOString());
+
+      // Query with inclusive date range (gte and lte)
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -217,8 +242,10 @@ export default function DashboardScreen() {
           )
         `)
         .eq('user_id', userId)
-        .gte('date', startDate.toISOString().split('T')[0])
-        .lte('date', endDate.toISOString().split('T')[0]);
+        .gte('date', startDateStr)
+        .lte('date', endDateStr);
+
+      console.log('[Dashboard] Meals data returned:', mealsData?.length || 0, 'meals');
 
       const daysWithData = new Set<string>();
       let totalCals = 0;
@@ -251,7 +278,7 @@ export default function DashboardScreen() {
 
       const streak = calculateStreak(Array.from(daysWithData).sort());
 
-      console.log('[Dashboard] Nutrition stats:', { daysCount, avgCals, streak });
+      console.log('[Dashboard] Nutrition stats:', { daysCount, avgCals, streak, uniqueDays: Array.from(daysWithData) });
 
       setNutritionStats({
         streak,
@@ -322,8 +349,9 @@ export default function DashboardScreen() {
   };
 
   const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
-    console.log('[Dashboard] Date range selected:', startDate, 'to', endDate);
+    console.log('[Dashboard] Date range selected:', startDate.toISOString(), 'to', endDate.toISOString());
     
+    // Store the dates exactly as received from the calendar picker
     const customRange: CustomDateRange = { 
       startDate, 
       endDate 

@@ -7,7 +7,6 @@ import {
   Modal,
   TouchableOpacity,
   Platform,
-  Alert,
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -43,37 +42,52 @@ export default function CalendarDateRangePicker({
   const [endDate, setEndDate] = useState<string | null>(
     initialEndDate.toISOString().split('T')[0]
   );
-  const [selectingStart, setSelectingStart] = useState(true);
+  const [tapCount, setTapCount] = useState<number>(2); // Start at 2 since we have initial dates
 
   const handleDayPress = (day: DateData) => {
-    console.log('[CalendarDateRangePicker] Day pressed:', day.dateString, 'selectingStart:', selectingStart);
+    console.log('[CalendarDateRangePicker] Day pressed:', day.dateString, 'tapCount:', tapCount);
     
-    if (selectingStart) {
+    if (tapCount === 0 || tapCount === 2) {
+      // First tap or third tap (reset): Set start date only
+      console.log('[CalendarDateRangePicker] Setting start date:', day.dateString);
       setStartDate(day.dateString);
       setEndDate(null);
-      setSelectingStart(false);
-    } else {
-      if (startDate && day.dateString < startDate) {
-        Alert.alert('Invalid Range', 'End date must be after start date');
-        return;
+      setTapCount(1);
+    } else if (tapCount === 1) {
+      // Second tap: Set end date (or swap if necessary)
+      console.log('[CalendarDateRangePicker] Setting end date:', day.dateString);
+      
+      if (startDate) {
+        // Compare dates and swap if necessary
+        if (day.dateString < startDate) {
+          console.log('[CalendarDateRangePicker] Swapping dates - end is before start');
+          setStartDate(day.dateString);
+          setEndDate(startDate);
+        } else {
+          setEndDate(day.dateString);
+        }
+        setTapCount(2);
       }
-      setEndDate(day.dateString);
     }
   };
 
   const handleConfirm = () => {
     if (!startDate || !endDate) {
-      Alert.alert('Incomplete Selection', 'Please select both start and end dates');
+      console.log('[CalendarDateRangePicker] Cannot confirm - missing dates');
       return;
     }
 
     console.log('[CalendarDateRangePicker] Confirming range:', startDate, 'to', endDate);
     
+    // Parse dates at midnight in local timezone to ensure inclusivity
     const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
     
-    const start = new Date(startYear, startMonth - 1, startDay);
-    const end = new Date(endYear, endMonth - 1, endDay);
+    // Create dates at midnight local time (no timezone offset issues)
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+    
+    console.log('[CalendarDateRangePicker] Parsed dates:', start.toISOString(), 'to', end.toISOString());
     
     onSelectRange(start, end);
     onClose();
@@ -88,29 +102,34 @@ export default function CalendarDateRangePicker({
     console.log('[CalendarDateRangePicker] Reset selection');
     setStartDate(null);
     setEndDate(null);
-    setSelectingStart(true);
+    setTapCount(0);
   };
 
   const getMarkedDates = () => {
     const marked: any = {};
 
-    if (startDate) {
+    if (startDate && !endDate) {
+      // Only start date selected
+      marked[startDate] = {
+        selected: true,
+        color: colors.primary,
+        textColor: '#FFFFFF',
+      };
+    } else if (startDate && endDate) {
+      // Both dates selected - show range
       marked[startDate] = {
         startingDay: true,
         color: colors.primary,
         textColor: '#FFFFFF',
       };
-    }
 
-    if (endDate) {
       marked[endDate] = {
         endingDay: true,
         color: colors.primary,
         textColor: '#FFFFFF',
       };
-    }
 
-    if (startDate && endDate) {
+      // Fill in the dates between start and end
       const start = new Date(startDate);
       const end = new Date(endDate);
       const current = new Date(start);
@@ -127,6 +146,16 @@ export default function CalendarDateRangePicker({
     }
 
     return marked;
+  };
+
+  const getInstructionText = () => {
+    if (tapCount === 0) {
+      return 'Tap to select start date';
+    } else if (tapCount === 1) {
+      return 'Tap to select end date';
+    } else {
+      return 'Tap any date to start a new selection';
+    }
   };
 
   const calendarTheme = {
@@ -192,11 +221,7 @@ export default function CalendarDateRangePicker({
                   { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
                 ]}
               >
-                {selectingStart
-                  ? 'Tap to select start date'
-                  : startDate && !endDate
-                  ? 'Tap to select end date'
-                  : 'Range selected'}
+                {getInstructionText()}
               </Text>
               {startDate && endDate && (
                 <TouchableOpacity onPress={handleReset}>
@@ -224,7 +249,7 @@ export default function CalendarDateRangePicker({
                       { color: isDark ? colors.textDark : colors.text },
                     ]}
                   >
-                    {new Date(startDate).toLocaleDateString('en-US', {
+                    {new Date(startDate + 'T00:00:00').toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
@@ -247,7 +272,7 @@ export default function CalendarDateRangePicker({
                         { color: isDark ? colors.textDark : colors.text },
                       ]}
                     >
-                      {new Date(endDate).toLocaleDateString('en-US', {
+                      {new Date(endDate + 'T00:00:00').toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
