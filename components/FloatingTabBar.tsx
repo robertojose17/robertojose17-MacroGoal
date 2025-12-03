@@ -117,29 +117,17 @@ export default function FloatingTabBar({
     };
   });
 
-  // Dynamic styles based on theme - FIXED TO USE CENTRALIZED THEME COLORS
+  // FIXED: Use centralized theme colors consistently across all platforms
   const dynamicStyles = {
     blurContainer: {
       ...styles.blurContainer,
       borderWidth: 1.2,
       borderColor: theme.dark ? colors.borderDark : colors.border,
-      ...Platform.select({
-        ios: {
-          backgroundColor: theme.dark
-            ? `${colors.cardDark}CC` // 80% opacity
-            : `${colors.card}E6`, // 90% opacity
-        },
-        android: {
-          backgroundColor: theme.dark
-            ? `${colors.cardDark}F2` // 95% opacity
-            : `${colors.card}F2`, // 95% opacity
-        },
-        web: {
-          backgroundColor: theme.dark
-            ? `${colors.cardDark}F2` // 95% opacity
-            : `${colors.card}F2`, // 95% opacity
-          backdropFilter: 'blur(10px)',
-        },
+      backgroundColor: theme.dark
+        ? `${colors.cardDark}F2` // 95% opacity for dark mode
+        : `${colors.card}F2`, // 95% opacity for light mode
+      ...(Platform.OS === 'web' && {
+        backdropFilter: 'blur(10px)',
       }),
     },
     background: {
