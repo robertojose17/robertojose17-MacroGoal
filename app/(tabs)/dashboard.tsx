@@ -449,11 +449,12 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Grouped check-ins into', weeklyCheckIns.size, 'weeks');
 
-      // STEP 5: Calculate weekly averages
+      // STEP 5: Calculate weekly averages (ONLY for weeks with data)
       const weeklyAverages = new Map<string, number>();
       weeklyCheckIns.forEach((weights, weekKey) => {
         const avg = weights.reduce((sum, w) => sum + w, 0) / weights.length;
         weeklyAverages.set(weekKey, avg);
+        console.log('[Dashboard] Week', weekKey, 'avg weight:', avg.toFixed(2), 'kg');
       });
 
       // STEP 6: Build weekly data points
@@ -487,7 +488,7 @@ export default function DashboardScreen() {
         // Calculate planned weight for this week
         const plannedWeight = currentWeight - (weeklyWeightChange * weekIndex);
         
-        // Get actual weight average for this week (if exists)
+        // Get actual weight average for this week (ONLY if it exists)
         const actualWeight = weeklyAverages.get(weekKey) || null;
         
         // Determine if this week is in the future
@@ -497,7 +498,7 @@ export default function DashboardScreen() {
           weekLabel,
           weekStartDate: new Date(currentWeekMonday),
           plannedWeight,
-          actualWeight: isFuture ? null : actualWeight, // Don't show actual for future weeks
+          actualWeight: isFuture ? null : actualWeight,
           isFuture,
         });
 
@@ -683,19 +684,31 @@ export default function DashboardScreen() {
     const labels = weeklyWeightData.map((week) => week.weekLabel);
 
     // Build planned line (always exists for all weeks)
-    const plannedLine: (number | null)[] = weeklyWeightData.map((week) => 
-      week.plannedWeight !== null ? week.plannedWeight * conversionFactor : null
+    const plannedLine: number[] = weeklyWeightData.map((week) => 
+      week.plannedWeight !== null ? week.plannedWeight * conversionFactor : 0
     );
 
-    // Build actual line (only where we have real data, no future values)
-    const actualLine: (number | null)[] = weeklyWeightData.map((week) => 
-      week.actualWeight !== null && !week.isFuture ? week.actualWeight * conversionFactor : null
-    );
+    // Build actual line - CRITICAL FIX: Only include weeks with REAL data
+    // Filter to get only weeks that have actual weight data
+    const weeksWithActualData = weeklyWeightData
+      .map((week, index) => ({ week, index }))
+      .filter(({ week }) => week.actualWeight !== null && !week.isFuture);
+
+    console.log('[Dashboard] Building chart with', weeksWithActualData.length, 'actual data points');
+
+    // Create actual line array with NaN for weeks without data
+    // react-native-chart-kit treats NaN as "no data" and won't draw a line there
+    const actualLine: number[] = weeklyWeightData.map((week) => {
+      if (week.actualWeight !== null && !week.isFuture) {
+        return week.actualWeight * conversionFactor;
+      }
+      return NaN; // Use NaN instead of 0 or null - chart library will skip these points
+    });
 
     // Find last actual weight index
     let lastActualIndex = -1;
     for (let i = weeklyWeightData.length - 1; i >= 0; i--) {
-      if (actualLine[i] !== null) {
+      if (!isNaN(actualLine[i])) {
         lastActualIndex = i;
         break;
       }
@@ -703,11 +716,11 @@ export default function DashboardScreen() {
 
     console.log('[Dashboard] Last actual weight at week index:', lastActualIndex);
 
-    // Find min and max for Y-axis
-    const allWeights = [
-      ...plannedLine.filter((w): w is number => w !== null),
-      ...actualLine.filter((w): w is number => w !== null),
-    ];
+    // Find min and max for Y-axis - ONLY from real weights (not NaN)
+    const validPlannedWeights = plannedLine.filter((w) => !isNaN(w) && w > 0);
+    const validActualWeights = actualLine.filter((w) => !isNaN(w) && w > 0);
+    
+    const allWeights = [...validPlannedWeights, ...validActualWeights];
 
     if (allWeights.length === 0) return null;
 
@@ -718,9 +731,15 @@ export default function DashboardScreen() {
     const topPadding = range * 0.1 || 5;
     const bottomPadding = range * 0.05 || 2;
 
+    // Calculate Y-axis domain - ensure it doesn't include 0 unless weights are near 0
+    const yMin = Math.max(0, minWeight - bottomPadding);
+    const yMax = maxWeight + topPadding;
+
+    console.log('[Dashboard] Y-axis range:', yMin.toFixed(1), 'to', yMax.toFixed(1), units === 'imperial' ? 'lbs' : 'kg');
+
     // Find latest actual weight for label
     let latestActualWeight: number | null = null;
-    if (lastActualIndex >= 0 && actualLine[lastActualIndex] !== null) {
+    if (lastActualIndex >= 0 && !isNaN(actualLine[lastActualIndex])) {
       latestActualWeight = actualLine[lastActualIndex];
     }
 
@@ -728,7 +747,7 @@ export default function DashboardScreen() {
 
     // Planned line (smooth, dominant) - ALWAYS shown
     datasets.push({
-      data: plannedLine.map(w => w !== null ? w : 0),
+      data: plannedLine,
       color: () => colors.success,
       strokeWidth: 2.5,
       withDots: false,
@@ -737,7 +756,7 @@ export default function DashboardScreen() {
     // Actual line (thin, clean) - only if we have data
     if (lastActualIndex >= 0) {
       datasets.push({
-        data: actualLine.map(w => w !== null ? w : 0),
+        data: actualLine,
         color: () => colors.primary,
         strokeWidth: 2,
         withDots: true,
@@ -748,8 +767,8 @@ export default function DashboardScreen() {
     return {
       labels,
       datasets,
-      minValue: minWeight - bottomPadding,
-      maxValue: maxWeight + topPadding,
+      minValue: yMin,
+      maxValue: yMax,
       lastActualIndex,
       latestActualWeight,
     };
