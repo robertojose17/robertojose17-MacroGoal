@@ -10,6 +10,7 @@ export type ChatMessage = {
 
 export type ChatbotParams = {
   messages: ChatMessage[];
+  images?: string[]; // Array of base64 data URLs
   model?: string;
   temperature?: number;
   max_tokens?: number;
@@ -53,10 +54,14 @@ export function useChatbot() {
       abortRef.current = controller;
 
       console.log('[useChatbot] Sending message to chatbot function');
+      if (params.images && params.images.length > 0) {
+        console.log('[useChatbot] Including', params.images.length, 'images');
+      }
 
       const { data, error } = await supabase.functions.invoke('chatbot', {
         body: {
           messages: params.messages,
+          images: params.images || [],
           model: params.model,
           temperature: params.temperature,
           max_tokens: params.max_tokens,

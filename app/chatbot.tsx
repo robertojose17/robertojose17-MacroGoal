@@ -11,9 +11,11 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -85,11 +87,12 @@ export default function ChatbotScreen() {
     {
       id: generateMessageId(),
       role: 'assistant',
-      content: 'Describe the meal you want me to estimate. The more details you include the more accurate your calories and macros will be.',
+      content: 'Describe your meal or take a photo! You can use text, a photo, or both for the most accurate estimate.',
       timestamp: Date.now(),
     },
   ]);
   const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null); // Base64 data URL
   const [latestEstimate, setLatestEstimate] = useState<AIEstimate | null>(null);
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
@@ -155,6 +158,123 @@ export default function ChatbotScreen() {
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
+
+  // Request camera permissions
+  const requestCameraPermission = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      return false;
+    }
+    return true;
+  };
+
+  // Request media library permissions
+  const requestMediaLibraryPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Media library permission is required to select photos.');
+      return false;
+    }
+    return true;
+  };
+
+  // Convert image URI to base64 data URL
+  const convertImageToBase64 = async (uri: string): Promise<string> => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('[Chatbot] Error converting image to base64:', error);
+      throw error;
+    }
+  };
+
+  // Handle photo selection
+  const handleAddPhoto = () => {
+    Alert.alert(
+      'Add Photo',
+      'Choose how to add a photo of your meal',
+      [
+        {
+          text: 'Take Photo',
+          onPress: handleTakePhoto,
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: handleChooseFromGallery,
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  // Take a photo with camera
+  const handleTakePhoto = async () => {
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const imageUri = result.assets[0].uri;
+        console.log('[Chatbot] Photo taken:', imageUri);
+        const base64 = await convertImageToBase64(imageUri);
+        setSelectedImage(base64);
+      }
+    } catch (error) {
+      console.error('[Chatbot] Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  // Choose photo from gallery
+  const handleChooseFromGallery = async () => {
+    const hasPermission = await requestMediaLibraryPermission();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const imageUri = result.assets[0].uri;
+        console.log('[Chatbot] Photo selected:', imageUri);
+        const base64 = await convertImageToBase64(imageUri);
+        setSelectedImage(base64);
+      }
+    } catch (error) {
+      console.error('[Chatbot] Error selecting photo:', error);
+      Alert.alert('Error', 'Failed to select photo. Please try again.');
+    }
+  };
+
+  // Remove selected photo
+  const handleRemovePhoto = () => {
+    setSelectedImage(null);
+  };
 
   /**
    * Parse AI response to extract ingredient-level estimates
@@ -395,27 +515,46 @@ export default function ChatbotScreen() {
 
   const handleSend = async () => {
     const trimmedInput = inputText.trim();
-    if (!trimmedInput || loading) return;
+    
+    // Check if we have either text or image
+    if (!trimmedInput && !selectedImage) {
+      Alert.alert('Input Required', 'Please provide a description, photo, or both.');
+      return;
+    }
+    
+    if (loading) return;
+
+    // Determine the display message
+    let displayMessage = trimmedInput;
+    if (!displayMessage && selectedImage) {
+      displayMessage = '[Photo of meal]';
+    } else if (displayMessage && selectedImage) {
+      displayMessage = `${displayMessage} [with photo]`;
+    }
 
     const userMessage: MessageWithId = {
       id: generateMessageId(),
       role: 'user',
-      content: trimmedInput,
+      content: displayMessage,
       timestamp: Date.now(),
     };
 
-    setLastUserMessage(trimmedInput);
+    setLastUserMessage(trimmedInput || 'Photo of meal');
     
     if (isMountedRef.current) {
       setMessages((prev) => [...prev, userMessage]);
       setInputText('');
     }
 
+    // Store the image for this request, then clear it
+    const imageToSend = selectedImage;
+    setSelectedImage(null);
+
     try {
       // Enhanced system message requesting structured ingredient data
       const systemMessage: ChatMessage = {
         role: 'system',
-        content: `You are an AI Meal Estimator. Your job is to estimate calories and macronutrients for meals.
+        content: `You are an AI Meal Estimator. Your job is to estimate calories and macronutrients for meals based on text descriptions, photos, or both.
 
 IMPORTANT: You MUST respond with a JSON object in this exact format:
 
@@ -436,7 +575,15 @@ IMPORTANT: You MUST respond with a JSON object in this exact format:
 }
 \`\`\`
 
-Break down the meal into individual ingredients with their estimated quantities and macros. Be specific and realistic with portions. If the user doesn't specify exact amounts, use typical serving sizes.
+Break down the meal into individual ingredients with their estimated quantities and macros. Be specific and realistic with portions.
+
+When analyzing photos:
+- Identify all visible food items
+- Estimate portion sizes based on visual cues (plate size, common serving sizes)
+- Make reasonable assumptions about ingredients and preparation methods
+- If the photo quality is poor or items are unclear, make your best educated guess
+
+If the user provides both text and photo, use both sources to make the most accurate estimate possible.
 
 After the JSON, you can add a brief explanation if needed.`,
       };
@@ -444,6 +591,13 @@ After the JSON, you can add a brief explanation if needed.`,
       const validMessages = messages.filter((m) => {
         return m && typeof m === 'object' && m.role && m.content && m.role !== 'system';
       });
+
+      // Prepare the actual prompt to send to AI
+      let actualPrompt = trimmedInput;
+      if (!actualPrompt && imageToSend) {
+        // Image-only: use default prompt
+        actualPrompt = 'Estimate calories and macronutrients (protein, carbs, fats, fiber) for this meal from the photo. Make reasonable assumptions about portion sizes and ingredients.';
+      }
 
       const apiMessages: ChatMessage[] = [
         systemMessage,
@@ -453,13 +607,17 @@ After the JSON, you can add a brief explanation if needed.`,
           timestamp: m.timestamp,
         })),
         {
-          role: userMessage.role,
-          content: userMessage.content,
-          timestamp: userMessage.timestamp,
+          role: 'user',
+          content: actualPrompt,
+          timestamp: Date.now(),
         },
       ];
 
-      const result = await sendMessage({ messages: apiMessages });
+      // Send with images if available
+      const result = await sendMessage({ 
+        messages: apiMessages,
+        images: imageToSend ? [imageToSend] : [],
+      });
 
       if (!isMountedRef.current) return;
 
@@ -472,7 +630,7 @@ After the JSON, you can add a brief explanation if needed.`,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         
-        const estimate = parseAIEstimate(result.message, trimmedInput);
+        const estimate = parseAIEstimate(result.message, trimmedInput || 'Photo of meal');
         if (estimate) {
           console.log('[Chatbot] Setting latest estimate with', estimate.ingredients.length, 'ingredients');
           setLatestEstimate(estimate);
@@ -1065,37 +1223,82 @@ After the JSON, you can add a brief explanation if needed.`,
         </ScrollView>
 
         <View style={[styles.inputContainer, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                color: isDark ? colors.textDark : colors.text,
-              },
-            ]}
-            placeholder="Describe your meal..."
-            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={500}
-            editable={!loading}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              { backgroundColor: inputText.trim() && !loading ? colors.primary : colors.border },
-            ]}
-            onPress={handleSend}
-            disabled={!inputText.trim() || loading}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.up"
-              android_material_icon_name="send"
-              size={20}
-              color="#FFFFFF"
+          {/* Image preview */}
+          {selectedImage && (
+            <View style={styles.imagePreviewContainer}>
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imagePreview}
+                resizeMode="cover"
+              />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={handleRemovePhoto}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          <View style={styles.inputRow}>
+            <TouchableOpacity
+              style={[
+                styles.photoButton,
+                { backgroundColor: isDark ? colors.backgroundDark : colors.background },
+              ]}
+              onPress={handleAddPhoto}
+              disabled={loading}
+            >
+              <IconSymbol
+                ios_icon_name="camera.fill"
+                android_material_icon_name="photo_camera"
+                size={24}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+            
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                  color: isDark ? colors.textDark : colors.text,
+                },
+              ]}
+              placeholder="Describe your meal (optional with photo)..."
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={500}
+              editable={!loading}
             />
-          </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                { 
+                  backgroundColor: (inputText.trim() || selectedImage) && !loading 
+                    ? colors.primary 
+                    : colors.border 
+                },
+              ]}
+              onPress={handleSend}
+              disabled={(!inputText.trim() && !selectedImage) || loading}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.up"
+                android_material_icon_name="send"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1188,9 +1391,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  loadingText: {
-    ...typography.body,
   },
   estimateContainer: {
     marginTop: spacing.md,
@@ -1302,12 +1502,38 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
     padding: spacing.md,
-    gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    marginBottom: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  imagePreview: {
+    width: 80,
+    height: 80,
+    borderRadius: borderRadius.md,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: colors.error,
+    borderRadius: 12,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  photoButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
     flex: 1,

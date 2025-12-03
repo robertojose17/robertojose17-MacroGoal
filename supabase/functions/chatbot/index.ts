@@ -7,7 +7,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-// Default model - you can change this to any OpenRouter supported model
+// Use a vision-capable model for multimodal support
 const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
     // Parse request body
     const body = await req.json();
     const messages = body.messages || [];
+    const images = body.images || []; // Array of base64 data URLs
     const model = body.model || DEFAULT_MODEL;
     const temperature = body.temperature ?? 0.7;
     const max_tokens = body.max_tokens ?? 1500;
@@ -82,7 +83,40 @@ Deno.serve(async (req) => {
     }
 
     console.log("[Chatbot] Calling OpenRouter with model:", model);
+    console.log("[Chatbot] Images provided:", images.length);
     const started = performance.now();
+
+    // Build messages array with multimodal support
+    // Convert messages to OpenRouter format, adding images to the last user message
+    const apiMessages = messages.map((msg: any, index: number) => {
+      // If this is the last user message and we have images, make it multimodal
+      if (msg.role === "user" && index === messages.length - 1 && images.length > 0) {
+        const content: any[] = [
+          { type: "text", text: msg.content }
+        ];
+        
+        // Add all images
+        images.forEach((imageUrl: string) => {
+          content.push({
+            type: "image_url",
+            image_url: {
+              url: imageUrl
+            }
+          });
+        });
+        
+        return {
+          role: msg.role,
+          content: content
+        };
+      }
+      
+      // Regular text message
+      return {
+        role: msg.role,
+        content: msg.content
+      };
+    });
 
     // Call OpenRouter API
     const chatRes = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
@@ -95,7 +129,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: apiMessages,
         temperature,
         max_tokens
       })
