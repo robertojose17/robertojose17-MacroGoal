@@ -339,9 +339,9 @@ export default function DashboardScreen() {
 
   const loadWeightProgress = async (userId: string, units: string, goalData: any, userData: any) => {
     try {
-      console.log('[Dashboard] Loading weight progress - ALWAYS show projection from profile data');
+      console.log('[Dashboard] Loading weight progress - Building clean projection from profile data');
 
-      // Get all weight check-ins
+      // STEP 1: Get all REAL weight check-ins (filter out invalid data)
       const { data: allCheckInsData } = await supabase
         .from('check_ins')
         .select('date, weight')
@@ -349,18 +349,23 @@ export default function DashboardScreen() {
         .not('weight', 'is', null)
         .order('date', { ascending: true });
 
-      console.log('[Dashboard] Found', allCheckInsData?.length || 0, 'weight check-ins');
+      // Filter out any check-ins with weight <= 0 or invalid values
+      const validCheckIns = (allCheckInsData || []).filter((ci: any) => 
+        ci.weight && ci.weight > 0 && !isNaN(ci.weight)
+      );
 
-      // STEP 1: Extract profile data (REQUIRED for projection)
-      const currentWeight = userData?.current_weight || null;
+      console.log('[Dashboard] Found', validCheckIns.length, 'valid weight check-ins');
+
+      // STEP 2: Extract profile data (REQUIRED for projection)
+      const currentWeight = userData?.current_weight || userData?.starting_weight || null;
       const goalWeight = userData?.goal_weight || goalData?.target_weight || null;
       
       // Determine start date
       let startDateStr = goalData?.start_date;
       if (!startDateStr) {
         // If no start_date in goals, use first check-in date or today
-        if (allCheckInsData && allCheckInsData.length > 0) {
-          startDateStr = allCheckInsData[0].date;
+        if (validCheckIns.length > 0) {
+          startDateStr = validCheckIns[0].date;
         } else {
           startDateStr = new Date().toISOString().split('T')[0];
         }
@@ -383,7 +388,7 @@ export default function DashboardScreen() {
         console.log('[Dashboard] Calculated target date:', targetDateStr, 'from weight loss rate:', weightLossRate, 'lbs/week');
       }
 
-      // STEP 2: Validate we have minimum required data
+      // STEP 3: Validate we have minimum required data
       if (!currentWeight || !goalWeight || !startDateStr || !targetDateStr) {
         console.log('[Dashboard] Missing required profile data:', {
           currentWeight,
@@ -402,7 +407,6 @@ export default function DashboardScreen() {
 
       const journeyStartDate = new Date(startDateStr);
       const targetDate = new Date(targetDateStr);
-      const today = new Date();
 
       console.log('[Dashboard] Profile data:', {
         currentWeight: currentWeight + ' kg',
@@ -411,8 +415,8 @@ export default function DashboardScreen() {
         targetDate: targetDateStr,
       });
 
-      // STEP 3: Build PLANNED projection curve (from profile data ONLY)
-      // This is the baseline projection that ALWAYS exists
+      // STEP 4: Build PLANNED projection curve (from profile data ONLY)
+      // This is a smooth linear interpolation from start to target
       const weightDelta = currentWeight - goalWeight;
       const totalDays = Math.max(1, Math.floor((targetDate.getTime() - journeyStartDate.getTime()) / (1000 * 60 * 60 * 24)));
       const dailyWeightChange = weightDelta / totalDays;
@@ -444,17 +448,17 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Generated', projectionPoints.length, 'projection points');
 
-      // STEP 4: Build chart data points (combine projection + actual)
+      // STEP 5: Build chart data points (combine projection + actual)
       const weightDataPoints: WeightDataPoint[] = [];
       const chartDate = new Date(journeyStartDate);
 
       while (chartDate <= targetDate) {
         const dateStr = chartDate.toISOString().split('T')[0];
         
-        // Find actual weight for this date (if exists)
-        const actualCheckIn = allCheckInsData?.find((ci: any) => ci.date === dateStr);
+        // Find actual weight for this date (if exists and is valid)
+        const actualCheckIn = validCheckIns.find((ci: any) => ci.date === dateStr);
         
-        // Find projected weight for this date (should always exist)
+        // Find projected weight for this date
         const projectionPoint = projectionPoints.find((p) => p.date.toISOString().split('T')[0] === dateStr);
 
         weightDataPoints.push({
@@ -662,10 +666,26 @@ export default function DashboardScreen() {
       point.projectedWeight !== null ? point.projectedWeight * conversionFactor : null
     );
 
-    // Build actual line (only where we have real data)
-    const actualLine: (number | null)[] = weightData.map((point) => 
-      point.actualWeight !== null ? point.actualWeight * conversionFactor : null
-    );
+    // Build actual line - ONLY where we have REAL data, NO future extension
+    // Find the last valid actual weight index
+    let lastActualIndex = -1;
+    for (let i = weightData.length - 1; i >= 0; i--) {
+      if (weightData[i].actualWeight !== null && weightData[i].actualWeight! > 0) {
+        lastActualIndex = i;
+        break;
+      }
+    }
+
+    console.log('[Dashboard] Last actual weight at index:', lastActualIndex);
+
+    // Build actual line: only up to the last real check-in
+    const actualLine: (number | null)[] = weightData.map((point, index) => {
+      // Only include actual weights up to the last valid check-in
+      if (index <= lastActualIndex && point.actualWeight !== null && point.actualWeight > 0) {
+        return point.actualWeight * conversionFactor;
+      }
+      return null;
+    });
 
     // Find min and max for Y-axis
     const allWeights = [
@@ -683,33 +703,29 @@ export default function DashboardScreen() {
     const bottomPadding = range * 0.05 || 2;
 
     // Find latest actual weight for label
-    let latestActualIndex = -1;
     let latestActualWeight: number | null = null;
-    for (let i = actualLine.length - 1; i >= 0; i--) {
-      if (actualLine[i] !== null) {
-        latestActualIndex = i;
-        latestActualWeight = actualLine[i];
-        break;
-      }
+    if (lastActualIndex >= 0 && actualLine[lastActualIndex] !== null) {
+      latestActualWeight = actualLine[lastActualIndex];
     }
 
     const datasets = [];
 
-    // Projected line (thicker, smooth, dominant) - ALWAYS shown
+    // Projected line (smooth, dominant) - ALWAYS shown
     datasets.push({
-      data: projectedLine.map(w => w || 0),
+      data: projectedLine.map(w => w !== null ? w : 0),
       color: () => colors.success,
-      strokeWidth: 3.5,
+      strokeWidth: 3,
       withDots: false,
     });
 
-    // Actual line (thin line with circular markers) - only if we have data
-    if (latestActualIndex >= 0) {
+    // Actual line (thin, subtle) - only if we have data
+    // IMPORTANT: Hide markers, use thin line
+    if (lastActualIndex >= 0) {
       datasets.push({
-        data: actualLine.map(w => w || 0),
+        data: actualLine.map(w => w !== null ? w : 0),
         color: () => colors.primary,
-        strokeWidth: 2,
-        withDots: true,
+        strokeWidth: 1.5,
+        withDots: false, // NO markers for clean look
       });
     }
 
@@ -718,7 +734,7 @@ export default function DashboardScreen() {
       datasets,
       minValue: minWeight - bottomPadding,
       maxValue: maxWeight + topPadding,
-      latestActualIndex,
+      lastActualIndex,
       latestActualWeight,
     };
   }, [weightData, user?.preferred_units]);
@@ -1024,7 +1040,7 @@ export default function DashboardScreen() {
                     Planned
                   </Text>
                 </View>
-                {chartData.latestActualIndex >= 0 && (
+                {chartData.lastActualIndex >= 0 && (
                   <View style={styles.legendItem}>
                     <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
                     <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
@@ -1054,10 +1070,8 @@ export default function DashboardScreen() {
                     borderRadius: borderRadius.md,
                   },
                   propsForDots: {
-                    r: '4',
-                    strokeWidth: '2',
-                    stroke: colors.primary,
-                    fill: isDark ? colors.cardDark : colors.card,
+                    r: '0',
+                    strokeWidth: '0',
                   },
                   propsForBackgroundLines: {
                     strokeDasharray: '',
@@ -1085,9 +1099,9 @@ export default function DashboardScreen() {
                 transparent={true}
               />
 
-              {chartData.latestActualWeight !== null && (
+              {chartData.latestActualWeight !== null && chartData.lastActualIndex >= 0 && (
                 <View style={[styles.weightLabel, { 
-                  left: 32 + ((chartData.latestActualIndex / (weightData.length - 1)) * (screenWidth - 96)),
+                  left: 32 + ((chartData.lastActualIndex / (weightData.length - 1)) * (screenWidth - 96)),
                   top: 20,
                 }]}>
                   <Text style={[styles.weightLabelText, { color: colors.primary }]}>
