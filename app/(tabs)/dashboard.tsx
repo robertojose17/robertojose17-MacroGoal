@@ -52,9 +52,9 @@ interface WeightDataPoint {
   date: string;
   actualWeight: number | null;
   plannedWeight: number | null;
-  isDashedPlanned: boolean; // true for future projection
-  actualTrend: number | null; // trend line for actual when no data
-  isDashedActual: boolean; // true for actual trend
+  isDashedPlanned: boolean;
+  actualTrend: number | null;
+  isDashedActual: boolean;
 }
 
 interface ProjectionInfo {
@@ -75,15 +75,12 @@ export default function DashboardScreen() {
   const [todayCheckIn, setTodayCheckIn] = useState<CheckIn | null>(null);
   const [todaySummary, setTodaySummary] = useState<DailySummary | null>(null);
   
-  // Separate time ranges for nutrition and progress
   const [nutritionRange, setNutritionRange] = useState<TimeRange>('7days');
   const [progressRange, setProgressRange] = useState<TimeRange>('30days');
   
-  // Custom date ranges
   const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
   const [progressCustomRange, setProgressCustomRange] = useState<CustomDateRange | null>(null);
   
-  // Date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState<'nutrition' | 'progress'>('nutrition');
   const [datePickerStep, setDatePickerStep] = useState<'start' | 'end'>('start');
@@ -111,7 +108,6 @@ export default function DashboardScreen() {
 
       setUser(authUser);
 
-      // Load user profile
       const { data: userData } = await supabase
         .from('users')
         .select('*')
@@ -122,7 +118,6 @@ export default function DashboardScreen() {
         setUser({ ...authUser, ...userData });
       }
 
-      // Load active goal
       const { data: goalData } = await supabase
         .from('goals')
         .select('*')
@@ -142,7 +137,6 @@ export default function DashboardScreen() {
         });
       }
 
-      // Load today's check-ins
       const today = new Date().toISOString().split('T')[0];
       const { data: checkInsData } = await supabase
         .from('check_ins')
@@ -151,20 +145,14 @@ export default function DashboardScreen() {
         .eq('date', today)
         .order('created_at', { ascending: false });
 
-      // Get the latest check-in for today
       if (checkInsData && checkInsData.length > 0) {
         setTodayCheckIn(checkInsData[0]);
       } else {
         setTodayCheckIn(null);
       }
 
-      // Load today's food diary summary
       await loadTodaySummary(authUser.id, today);
-
-      // Load nutrition trends based on selected range
       await loadNutritionTrends(authUser.id);
-
-      // Load weight progress data with hybrid planned projection
       await loadWeightProgress(authUser.id, userData?.preferred_units || 'metric', goalData, userData);
 
     } catch (error) {
@@ -175,7 +163,6 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  // Reload nutrition trends when range changes
   useEffect(() => {
     if (user) {
       console.log('[Dashboard] Nutrition range changed, reloading trends');
@@ -183,7 +170,6 @@ export default function DashboardScreen() {
     }
   }, [nutritionRange, nutritionCustomRange]);
 
-  // Reload weight progress when range changes
   useEffect(() => {
     if (user && goal) {
       console.log('[Dashboard] Progress range changed, reloading weight data');
@@ -272,7 +258,6 @@ export default function DashboardScreen() {
         .gte('date', startDate.toISOString().split('T')[0])
         .lte('date', endDate.toISOString().split('T')[0]);
 
-      // Calculate stats
       const daysWithData = new Set<string>();
       let totalCals = 0;
       let totalP = 0;
@@ -302,10 +287,8 @@ export default function DashboardScreen() {
       const avgF = daysCount > 0 ? totalF / daysCount : 0;
       const avgFib = daysCount > 0 ? totalFib / daysCount : 0;
 
-      // Calculate streak
       const streak = calculateStreak(Array.from(daysWithData).sort());
 
-      // Calculate days in year
       const currentYear = new Date().getFullYear();
       const isLeapYear = (currentYear % 4 === 0 && currentYear % 100 !== 0) || (currentYear % 400 === 0);
       const daysInYear = isLeapYear ? 366 : 365;
@@ -333,17 +316,15 @@ export default function DashboardScreen() {
     let currentStreak = 1;
     const today = new Date().toISOString().split('T')[0];
     
-    // Check if today or yesterday is in the list
     const lastDate = sortedDates[sortedDates.length - 1];
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
     
     if (lastDate !== today && lastDate !== yesterdayStr) {
-      return 0; // Streak broken
+      return 0;
     }
 
-    // Count consecutive days backwards
     for (let i = sortedDates.length - 2; i >= 0; i--) {
       const currentDate = new Date(sortedDates[i + 1]);
       const prevDate = new Date(sortedDates[i]);
@@ -363,7 +344,6 @@ export default function DashboardScreen() {
     try {
       console.log('[Dashboard] Loading weight progress with hybrid planned line...');
 
-      // Load ALL weight check-ins
       const { data: allCheckInsData } = await supabase
         .from('check_ins')
         .select('date, weight')
@@ -377,23 +357,19 @@ export default function DashboardScreen() {
         return;
       }
 
-      // Get start date from goal or first check-in
       const startDateStr = goalData?.start_date || allCheckInsData[0].date;
       const journeyStartDate = new Date(startDateStr);
       
-      // Get the first check-in on or after start date as initial weight
       const firstCheckIn = allCheckInsData.find((ci: any) => new Date(ci.date) >= journeyStartDate) || allCheckInsData[0];
-      const initialWeight = firstCheckIn.weight; // in kg
+      const initialWeight = firstCheckIn.weight;
       const initialWeightDate = new Date(firstCheckIn.date);
 
       console.log('[Dashboard] Journey start:', startDateStr, 'Initial weight:', initialWeight, 'kg');
 
-      // Get goal weight
       const goalWeight = userData?.goal_weight || null;
       console.log('[Dashboard] Goal weight:', goalWeight, 'kg');
 
-      // Calculate maintenance calories (TDEE)
-      let maintenanceCalories = 2000; // default
+      let maintenanceCalories = 2000;
       if (userData?.height && userData?.current_weight && userData?.date_of_birth && userData?.sex && userData?.activity_level) {
         const age = calculateAge(userData.date_of_birth);
         const bmr = calculateBMR(userData.current_weight, userData.height, age, userData.sex);
@@ -404,7 +380,6 @@ export default function DashboardScreen() {
       const dailyCalorieTarget = goalData?.daily_calories || 2000;
       const plannedDailyDeficit = maintenanceCalories - dailyCalorieTarget;
 
-      // Load meals data for calorie calculations (from start date to today)
       const today = new Date();
       const { data: mealsData } = await supabase
         .from('meals')
@@ -419,7 +394,6 @@ export default function DashboardScreen() {
         .lte('date', today.toISOString().split('T')[0])
         .order('date', { ascending: true });
 
-      // Calculate daily calories eaten
       const dailyCalories: Record<string, number> = {};
       if (mealsData && mealsData.length > 0) {
         mealsData.forEach((meal: any) => {
@@ -437,25 +411,20 @@ export default function DashboardScreen() {
       console.log('[Dashboard] Daily calories:', Object.keys(dailyCalories).length, 'days with data');
       console.log('[Dashboard] Planned daily deficit:', plannedDailyDeficit, 'kcal');
 
-      const calsPerUnit = units === 'imperial' ? 3500 : 7700; // kcal per lb or kg
+      const calsPerUnit = units === 'imperial' ? 3500 : 7700;
 
-      // Build hybrid PLANNED line (past: solid, using day-by-day effectiveDeficit)
       const hybridPlannedPast: { date: Date; weight: number }[] = [];
       let cumulativePlannedWeight = initialWeight;
       const currentDate = new Date(journeyStartDate);
       
-      // Build past segment (from startDate to today)
       while (currentDate <= today) {
         const dateStr = currentDate.toISOString().split('T')[0];
         
-        // Calculate effective deficit for this day
         let effectiveDeficit = plannedDailyDeficit;
         if (dailyCalories[dateStr] !== undefined) {
-          // We have logged calories for this day
           effectiveDeficit = maintenanceCalories - dailyCalories[dateStr];
         }
         
-        // Convert deficit to weight change
         const changePerDay = effectiveDeficit / calsPerUnit;
         cumulativePlannedWeight -= changePerDay;
         
@@ -469,7 +438,6 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Hybrid planned past points:', hybridPlannedPast.length);
 
-      // Calculate average effective deficit from recent days for future projection
       const recentDays = 14;
       const recentDeficits: number[] = [];
       const checkDate = new Date(today);
@@ -497,14 +465,11 @@ export default function DashboardScreen() {
 
       const projectionChangePerDay = avgEffectiveDeficit / calsPerUnit;
 
-      // COMPACT DISPLAY: Limit future projection to 30-45 days for display
       const maxFutureDays = 45;
       
-      // Determine chart end date
       let chartEndDate = new Date(today);
       chartEndDate.setDate(chartEndDate.getDate() + maxFutureDays);
 
-      // Calculate projected goal date (full calculation, not clamped)
       let projectedGoalDate: string | null = null;
       let movingTowardGoal = false;
 
@@ -525,7 +490,6 @@ export default function DashboardScreen() {
         }
       }
 
-      // Build future segment (dashed) - clamped to maxFutureDays for display
       const hybridPlannedFuture: { date: Date; weight: number }[] = [];
       const futureDate = new Date(today);
       futureDate.setDate(futureDate.getDate() + 1);
@@ -542,7 +506,6 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Hybrid planned future points:', hybridPlannedFuture.length);
 
-      // COMPACT DISPLAY: Limit visible range to last 90 days or from startDate (whichever is shorter)
       const ninetyDaysAgo = new Date(today);
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
       
@@ -550,12 +513,10 @@ export default function DashboardScreen() {
       
       console.log('[Dashboard] Chart display range:', displayStartDate.toISOString().split('T')[0], 'to', chartEndDate.toISOString().split('T')[0]);
 
-      // Find the last actual weight check-in
       const lastActualCheckIn = allCheckInsData[allCheckInsData.length - 1];
       const lastActualDate = new Date(lastActualCheckIn.date);
       const lastActualWeight = lastActualCheckIn.weight;
 
-      // Calculate actual trend line (extrapolate from last known weight using same projection logic)
       const actualTrendPoints: { date: Date; weight: number }[] = [];
       if (lastActualDate < chartEndDate) {
         const trendDate = new Date(lastActualDate);
@@ -574,20 +535,15 @@ export default function DashboardScreen() {
 
       console.log('[Dashboard] Actual trend points:', actualTrendPoints.length);
 
-      // Generate weight data points for the chart (filtered to display range)
       const weightDataPoints: WeightDataPoint[] = [];
       const allPlannedPoints = [...hybridPlannedPast, ...hybridPlannedFuture];
 
       allPlannedPoints.forEach((point) => {
-        // Only include points within the display range
         if (point.date >= displayStartDate && point.date <= chartEndDate) {
           const dateStr = point.date.toISOString().split('T')[0];
           const isFuture = point.date > today;
           
-          // Find actual weight for this date
           const actualCheckIn = allCheckInsData.find((ci: any) => ci.date === dateStr);
-
-          // Find actual trend for this date
           const actualTrend = actualTrendPoints.find((tp) => tp.date.toISOString().split('T')[0] === dateStr);
 
           weightDataPoints.push({
@@ -638,24 +594,19 @@ export default function DashboardScreen() {
 
   const formatWeight = (weight: number | null) => {
     if (!weight) return 'N/A';
-    // Weight is stored in kg in the database
     const units = user?.preferred_units || 'metric';
     if (units === 'imperial') {
-      // Convert kg to lbs for display
       const lbs = Math.round(weight * 2.20462);
       return `${lbs} lbs`;
     }
-    // Display in kg
     return `${Math.round(weight)} kg`;
   };
 
-  // Handle custom date range selection
   const handleCustomRangeSelect = (mode: 'nutrition' | 'progress') => {
     console.log('[Dashboard] Opening custom date picker for', mode);
     setDatePickerMode(mode);
     setDatePickerStep('start');
     
-    // Initialize with reasonable defaults
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 7);
@@ -668,10 +619,8 @@ export default function DashboardScreen() {
   const handleDatePickerChange = (event: any, selectedDate?: Date) => {
     console.log('[Dashboard] Date picker change:', event.type, selectedDate);
     
-    // Handle dismissal/cancellation
     if (event.type === 'dismissed' || event.type === 'neutralButtonPressed') {
       setShowDatePicker(false);
-      // Revert to previous selection if no custom range was set
       if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
         setNutritionRange('7days');
       } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
@@ -685,30 +634,23 @@ export default function DashboardScreen() {
     }
 
     if (datePickerStep === 'start') {
-      // User selected start date
       setTempStartDate(selectedDate);
       
       if (Platform.OS === 'android') {
-        // On Android, close this picker and open the next one
         setShowDatePicker(false);
         setDatePickerStep('end');
-        // Small delay to ensure smooth transition
         setTimeout(() => {
           setShowDatePicker(true);
         }, 300);
       } else {
-        // On iOS, just move to the next step (modal stays open)
         setDatePickerStep('end');
       }
     } else {
-      // User selected end date
       setTempEndDate(selectedDate);
       
-      // Validate date range
       if (selectedDate < tempStartDate) {
         Alert.alert('Invalid Range', 'End date must be after start date');
         setShowDatePicker(false);
-        // Revert selection
         if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
           setNutritionRange('7days');
         } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
@@ -717,7 +659,6 @@ export default function DashboardScreen() {
         return;
       }
 
-      // Apply the custom range
       const customRange: CustomDateRange = { 
         startDate: tempStartDate, 
         endDate: selectedDate 
@@ -733,7 +674,6 @@ export default function DashboardScreen() {
         setProgressRange('custom');
       }
 
-      // Close the picker
       setShowDatePicker(false);
     }
   };
@@ -742,7 +682,6 @@ export default function DashboardScreen() {
     console.log('[Dashboard] Date picker cancelled');
     setShowDatePicker(false);
     
-    // Revert to previous selection if no custom range was set
     if (datePickerMode === 'nutrition' && nutritionRange === 'custom' && !nutritionCustomRange) {
       setNutritionRange('7days');
     } else if (datePickerMode === 'progress' && progressRange === 'custom' && !progressCustomRange) {
@@ -753,13 +692,11 @@ export default function DashboardScreen() {
   const handleDatePickerConfirm = () => {
     console.log('[Dashboard] Date picker confirmed');
     
-    // Validate date range
     if (tempEndDate < tempStartDate) {
       Alert.alert('Invalid Range', 'End date must be after start date');
       return;
     }
 
-    // Apply the custom range
     const customRange: CustomDateRange = { 
       startDate: tempStartDate, 
       endDate: tempEndDate 
@@ -785,7 +722,6 @@ export default function DashboardScreen() {
     return `${start} - ${end}`;
   };
 
-  // Prepare chart data with responsive width and compressed x-axis
   const chartData = useMemo(() => {
     if (weightData.length === 0) return null;
 
@@ -793,11 +729,9 @@ export default function DashboardScreen() {
     const conversionFactor = units === 'imperial' ? 2.20462 : 1;
     const goalWeight = user?.goal_weight || null;
 
-    // Calculate optimal label interval to show 4-6 ticks
     const targetTicks = 5;
     const labelInterval = Math.max(1, Math.floor(weightData.length / targetTicks));
     
-    // Get labels (dates) - abbreviated format "MM/DD"
     const labels = weightData.map((point, index) => {
       if (index % labelInterval === 0 || index === weightData.length - 1) {
         const date = new Date(point.date);
@@ -808,76 +742,133 @@ export default function DashboardScreen() {
       return '';
     });
 
-    // Get actual weights (solid - only where available)
-    const actualWeightsSolid = weightData.map(point => 
-      point.actualWeight && !point.isDashedActual ? point.actualWeight * conversionFactor : null
-    );
+    // Build continuous arrays for actual line (solid + dashed)
+    const actualLineData: (number | null)[] = [];
+    const actualLineSolid: (number | null)[] = [];
+    const actualLineDashed: (number | null)[] = [];
+    
+    let lastRealWeight: number | null = null;
+    let lastRealIndex = -1;
+    
+    // First pass: identify where real data ends
+    for (let i = 0; i < weightData.length; i++) {
+      if (weightData[i].actualWeight !== null) {
+        lastRealWeight = weightData[i].actualWeight;
+        lastRealIndex = i;
+      }
+    }
+    
+    // Second pass: build the arrays
+    for (let i = 0; i < weightData.length; i++) {
+      const point = weightData[i];
+      
+      if (point.actualWeight !== null) {
+        // Real data point - solid line
+        actualLineSolid.push(point.actualWeight * conversionFactor);
+        actualLineDashed.push(null);
+      } else if (point.actualTrend !== null && i > lastRealIndex) {
+        // Trend projection - dashed line
+        actualLineSolid.push(null);
+        actualLineDashed.push(point.actualTrend * conversionFactor);
+      } else {
+        // No data
+        actualLineSolid.push(null);
+        actualLineDashed.push(null);
+      }
+    }
+    
+    // Connect solid to dashed at transition point
+    if (lastRealIndex >= 0 && lastRealIndex < weightData.length - 1) {
+      if (actualLineDashed[lastRealIndex + 1] !== null) {
+        actualLineDashed[lastRealIndex] = lastRealWeight! * conversionFactor;
+      }
+    }
 
-    // Get actual trend (dashed - continuation when no data)
-    const actualWeightsDashed = weightData.map(point => 
-      point.isDashedActual && point.actualTrend ? point.actualTrend * conversionFactor : null
-    );
-
-    // Split planned weights into solid (past) and dashed (future)
-    const plannedWeightsSolid = weightData.map(point => 
-      !point.isDashedPlanned && point.plannedWeight ? point.plannedWeight * conversionFactor : null
-    );
-
-    const plannedWeightsDashed = weightData.map(point => 
-      point.isDashedPlanned && point.plannedWeight ? point.plannedWeight * conversionFactor : null
-    );
+    // Build continuous arrays for planned line (solid + dashed)
+    const plannedLineSolid: (number | null)[] = [];
+    const plannedLineDashed: (number | null)[] = [];
+    
+    let lastSolidPlannedIndex = -1;
+    
+    // Find transition point
+    for (let i = 0; i < weightData.length; i++) {
+      if (!weightData[i].isDashedPlanned) {
+        lastSolidPlannedIndex = i;
+      }
+    }
+    
+    for (let i = 0; i < weightData.length; i++) {
+      const point = weightData[i];
+      
+      if (!point.isDashedPlanned && point.plannedWeight !== null) {
+        plannedLineSolid.push(point.plannedWeight * conversionFactor);
+        plannedLineDashed.push(null);
+      } else if (point.isDashedPlanned && point.plannedWeight !== null) {
+        plannedLineSolid.push(null);
+        plannedLineDashed.push(point.plannedWeight * conversionFactor);
+      } else {
+        plannedLineSolid.push(null);
+        plannedLineDashed.push(null);
+      }
+    }
+    
+    // Connect solid to dashed at transition point
+    if (lastSolidPlannedIndex >= 0 && lastSolidPlannedIndex < weightData.length - 1) {
+      const transitionWeight = weightData[lastSolidPlannedIndex].plannedWeight;
+      if (transitionWeight !== null && plannedLineDashed[lastSolidPlannedIndex + 1] !== null) {
+        plannedLineDashed[lastSolidPlannedIndex] = transitionWeight * conversionFactor;
+      }
+    }
 
     // Find min and max for Y-axis
     const allWeights = [
-      ...actualWeightsSolid.filter((w): w is number => w !== null),
-      ...actualWeightsDashed.filter((w): w is number => w !== null),
-      ...plannedWeightsSolid.filter((w): w is number => w !== null),
-      ...plannedWeightsDashed.filter((w): w is number => w !== null),
+      ...actualLineSolid.filter((w): w is number => w !== null),
+      ...actualLineDashed.filter((w): w is number => w !== null),
+      ...plannedLineSolid.filter((w): w is number => w !== null),
+      ...plannedLineDashed.filter((w): w is number => w !== null),
     ];
 
     if (allWeights.length === 0) return null;
 
     const maxWeight = Math.max(...allWeights);
     
-    // Y-axis minimum should be the goal weight (converted to display units)
     let minWeight = goalWeight ? goalWeight * conversionFactor : Math.min(...allWeights);
     
-    // Add padding to the top only
     const range = maxWeight - minWeight;
     const topPadding = range * 0.1 || 5;
 
     const datasets = [];
 
-    // Actual weight line - solid (with dots)
+    // Actual weight - solid segment (with small dots)
     datasets.push({
-      data: actualWeightsSolid.map(w => w || 0), // Replace null with 0 for chart
+      data: actualLineSolid.map(w => w || 0),
       color: () => colors.primary,
       strokeWidth: 3,
       withDots: true,
     });
 
-    // Actual weight line - dashed trend (no dots)
+    // Actual weight - dashed segment (no dots, lighter)
     datasets.push({
-      data: actualWeightsDashed.map(w => w || 0),
-      color: (opacity = 1) => `rgba(15, 76, 129, ${opacity * 0.6})`, // Same color, lighter opacity
-      strokeWidth: 2,
+      data: actualLineDashed.map(w => w || 0),
+      color: (opacity = 1) => `rgba(15, 76, 129, ${opacity * 0.5})`,
+      strokeWidth: 2.5,
       withDots: false,
-      strokeDasharray: [8, 4],
+      strokeDasharray: [6, 4],
     });
 
-    // Planned line - solid (past)
+    // Planned - solid segment (no dots)
     datasets.push({
-      data: plannedWeightsSolid.map(w => w || 0),
+      data: plannedLineSolid.map(w => w || 0),
       color: () => colors.success,
-      strokeWidth: 2,
+      strokeWidth: 2.5,
       withDots: false,
     });
 
-    // Planned line - dashed (future)
+    // Planned - dashed segment (no dots)
     datasets.push({
-      data: plannedWeightsDashed.map(w => w || 0),
+      data: plannedLineDashed.map(w => w || 0),
       color: () => colors.success,
-      strokeWidth: 2,
+      strokeWidth: 2.5,
       withDots: false,
       strokeDasharray: [5, 5],
     });
@@ -922,14 +913,12 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
             Dashboard
           </Text>
         </View>
 
-        {/* Daily Summary Card */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
@@ -948,7 +937,6 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Calories */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -978,7 +966,6 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Progress Bar */}
           <View style={[styles.progressBarContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
             <View 
               style={[
@@ -991,7 +978,6 @@ export default function DashboardScreen() {
             />
           </View>
 
-          {/* Macros - Single Horizontal Row */}
           <View style={styles.macrosRow}>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.protein }]}>
@@ -1027,7 +1013,6 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Workout & Steps */}
           <View style={styles.activityRow}>
             <View style={styles.activityItem}>
               <IconSymbol
@@ -1054,13 +1039,11 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Nutrition Trends */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Nutrition Trends
           </Text>
 
-          {/* Time Range Selector */}
           <View style={styles.rangeSelector}>
             <TouchableOpacity
               style={[
@@ -1114,7 +1097,6 @@ export default function DashboardScreen() {
 
           {nutritionStats ? (
             <React.Fragment>
-              {/* Days Tracked */}
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Days with logged food:
@@ -1124,13 +1106,11 @@ export default function DashboardScreen() {
                 </Text>
               </View>
 
-              {/* Average Calories per Day with Progress Bar */}
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Average calories per day:
                 </Text>
                 
-                {/* Calories Bar */}
                 {caloriesGoal > 0 ? (
                   <View style={styles.caloriesBarContainer}>
                     <MacroBar
@@ -1148,13 +1128,11 @@ export default function DashboardScreen() {
                 )}
               </View>
 
-              {/* Average Macros with Progress Bars */}
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Average macros per day:
                 </Text>
                 
-                {/* Macro Bars */}
                 <View style={styles.macroBarsContainer}>
                   <MacroBar
                     label="Protein"
@@ -1190,13 +1168,11 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Progress (Weight vs Projected) */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <View style={styles.progressHeader}>
             <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Progress
             </Text>
-            {/* Legend in header - clean and minimal */}
             <View style={styles.headerLegend}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
@@ -1215,7 +1191,6 @@ export default function DashboardScreen() {
 
           {chartData && weightData.length > 0 ? (
             <View style={styles.chartContainer}>
-              {/* Line Chart - PREMIUM CLEAN STYLING */}
               <LineChart
                 data={{
                   labels: chartData.labels,
@@ -1230,22 +1205,22 @@ export default function DashboardScreen() {
                   backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
                   backgroundGradientTo: isDark ? colors.cardDark : colors.card,
                   decimalPlaces: 0,
-                  color: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.3})` : `rgba(100, 116, 139, ${opacity * 0.3})`,
-                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.7})` : `rgba(100, 116, 139, ${opacity * 0.7})`,
+                  color: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.2})` : `rgba(100, 116, 139, ${opacity * 0.2})`,
+                  labelColor: (opacity = 1) => isDark ? `rgba(148, 163, 184, ${opacity * 0.6})` : `rgba(100, 116, 139, ${opacity * 0.6})`,
                   style: {
                     borderRadius: borderRadius.md,
                   },
                   propsForDots: {
-                    r: '3',
-                    strokeWidth: '1.5',
+                    r: '2.5',
+                    strokeWidth: '1',
                   },
                   propsForBackgroundLines: {
                     strokeDasharray: '',
-                    stroke: isDark ? `rgba(148, 163, 184, 0.1)` : `rgba(100, 116, 139, 0.1)`,
+                    stroke: isDark ? `rgba(148, 163, 184, 0.08)` : `rgba(100, 116, 139, 0.08)`,
                     strokeWidth: 0.5,
                   },
                   propsForLabels: {
-                    fontSize: 11,
+                    fontSize: 10,
                   },
                 }}
                 bezier
@@ -1265,12 +1240,10 @@ export default function DashboardScreen() {
                 transparent={true}
               />
 
-              {/* Weight Unit Label */}
               <Text style={[styles.chartLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Weight in {user?.preferred_units === 'imperial' ? 'lbs' : 'kg'}
               </Text>
 
-              {/* Goal Date Projections */}
               {(projectionInfo.projectedGoalDate || !projectionInfo.hasEnoughData || !projectionInfo.movingTowardGoal) && (
                 <View style={styles.projectionInfoContainer}>
                   {projectionInfo.hasEnoughData && projectionInfo.projectedGoalDate && (
@@ -1336,7 +1309,6 @@ export default function DashboardScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Quick Check-In Modal */}
       <Modal
         visible={showCheckInModal}
         transparent
@@ -1406,7 +1378,6 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Date Picker Modal - Platform-specific rendering */}
       {showDatePicker && Platform.OS === 'android' && (
         <DateTimePicker
           value={datePickerStep === 'start' ? tempStartDate : tempEndDate}
@@ -1438,7 +1409,6 @@ export default function DashboardScreen() {
                   Select Date Range
                 </Text>
                 
-                {/* Start Date Picker */}
                 <View style={styles.datePickerSection}>
                   <Text style={[styles.datePickerLabel, { color: isDark ? colors.textDark : colors.text }]}>
                     Start Date
@@ -1455,7 +1425,6 @@ export default function DashboardScreen() {
                   />
                 </View>
 
-                {/* End Date Picker */}
                 <View style={styles.datePickerSection}>
                   <Text style={[styles.datePickerLabel, { color: isDark ? colors.textDark : colors.text }]}>
                     End Date
@@ -1473,7 +1442,6 @@ export default function DashboardScreen() {
                   />
                 </View>
 
-                {/* Buttons */}
                 <View style={styles.datePickerButtons}>
                   <TouchableOpacity
                     style={[styles.datePickerButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
