@@ -24,7 +24,7 @@ interface ProgressCardProps {
 
 interface CheckInData {
   date: string;
-  weight: number; // in kg from database
+  weight: number; // in lbs (converted from kg)
 }
 
 interface MealData {
@@ -80,22 +80,45 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       if (goalError) throw goalError;
 
+      console.log('[Progress] profile:', userData);
+      console.log('[Progress] goal:', goalData);
+
       if (!userData || !goalData) {
         setError('Set your profile to see progress');
         setLoading(false);
         return;
       }
 
-      // Convert weights to lbs if needed
+      // Convert weights to lbs based on weight_unit
       const weightUnit = userData.weight_unit || 'kg';
-      const startWeightLbs = weightUnit === 'kg' 
-        ? (userData.starting_weight || 0) * 2.20462 
-        : (userData.starting_weight || 0);
-      const goalWeightLbs = weightUnit === 'kg' 
-        ? (userData.goal_weight || 0) * 2.20462 
-        : (userData.goal_weight || 0);
+      let startWeightLbs: number;
+      let goalWeightLbs: number;
 
-      if (!startWeightLbs || !goalWeightLbs) {
+      if (weightUnit === 'lbs') {
+        // Already in lbs
+        startWeightLbs = userData.starting_weight || 0;
+        goalWeightLbs = userData.goal_weight || 0;
+      } else {
+        // Convert from kg to lbs
+        startWeightLbs = (userData.starting_weight || 0) * 2.20462;
+        goalWeightLbs = (userData.goal_weight || 0) * 2.20462;
+      }
+
+      console.log('[Progress] startWeightLbs:', startWeightLbs);
+      console.log('[Progress] goalWeightLbs:', goalWeightLbs);
+      console.log('[Progress] weightUnit:', weightUnit);
+
+      // Validate goal data
+      const hasValidGoal =
+        typeof goalWeightLbs === 'number' &&
+        typeof startWeightLbs === 'number' &&
+        !Number.isNaN(goalWeightLbs) &&
+        !Number.isNaN(startWeightLbs) &&
+        goalWeightLbs > 0 &&
+        startWeightLbs > 0;
+
+      if (!hasValidGoal) {
+        console.log('[Progress] Invalid goal data:', { startWeightLbs, goalWeightLbs });
         setError('Set your weight goal in Profile to see progress');
         setLoading(false);
         return;
@@ -110,7 +133,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         weightLossRatePerWeekLbs: goalData.loss_rate_lbs_per_week || 1.0,
       });
 
-      // Load check-ins (weights are stored in kg)
+      // Load check-ins (weights are ALWAYS stored in kg in the database)
       const { data: checkInsData, error: checkInsError } = await supabase
         .from('check_ins')
         .select('date, weight')
@@ -120,12 +143,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       if (checkInsError) throw checkInsError;
 
-      // Convert check-in weights to lbs
+      // Convert check-in weights from kg to lbs
       const checkInsLbs: CheckInData[] = (checkInsData || []).map((ci: any) => ({
         date: ci.date,
-        weight: ci.weight * 2.20462, // Convert kg to lbs
+        weight: ci.weight * 2.20462, // Always convert from kg to lbs
       }));
 
+      console.log('[Progress] checkIns:', checkInsLbs);
       setCheckIns(checkInsLbs);
 
       // Load meal data for calorie tracking
@@ -204,7 +228,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const planStartDate = profileData.startDate ? new Date(profileData.startDate) : startDate;
 
     // Calculate how many weeks to reach goal
-    const totalWeightToLose = startWeightLbs - goalWeightLbs;
+    const totalWeightToLose = Math.abs(startWeightLbs - goalWeightLbs);
     const weeksToGoal = totalWeightToLose / weightLossRatePerWeekLbs;
     const daysToGoal = weeksToGoal * 7;
 
@@ -224,10 +248,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         plannedWeight = startWeightLbs - (totalWeightToLose * progress);
       }
 
-      points.push({
-        date: new Date(currentDate),
-        weight: plannedWeight,
-      });
+      // Validate weight value
+      if (!Number.isNaN(plannedWeight) && plannedWeight > 0) {
+        points.push({
+          date: new Date(currentDate),
+          weight: plannedWeight,
+        });
+      }
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -244,7 +271,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       .map(ci => ({
         date: new Date(ci.date),
         weight: ci.weight,
-      }));
+      }))
+      .filter(point => !Number.isNaN(point.weight) && point.weight > 0);
   };
 
   const calculateProjectedLine = (startDate: Date, endDate: Date): { date: Date; weight: number }[] => {
@@ -281,10 +309,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     // Project forward from last actual point
     while (currentDate <= endDate) {
-      points.push({
-        date: new Date(currentDate),
-        weight: currentWeight,
-      });
+      // Validate weight value
+      if (!Number.isNaN(currentWeight) && currentWeight > 0) {
+        points.push({
+          date: new Date(currentDate),
+          weight: currentWeight,
+        });
+      }
 
       // Stop if we reach goal weight
       if (currentWeight <= profileData.goalWeightLbs) {
@@ -295,7 +326,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       currentWeight -= lbsPerDay;
     }
 
-    return points;
+    return points.filter(point => !Number.isNaN(point.weight) && point.weight > 0);
   };
 
   const prepareChartData = () => {
