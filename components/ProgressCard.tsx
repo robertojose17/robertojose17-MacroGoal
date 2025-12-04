@@ -216,22 +216,28 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     switch (timeRange) {
       case 'weekly':
-        // Show ~8-10 weeks around today
-        startDate.setDate(startDate.getDate() - 70); // 10 weeks
+        // Show ~7-10 days ending at today
+        startDate.setDate(startDate.getDate() - 9); // 10 days total
         break;
       case 'monthly':
-        // Show ~12 months
-        startDate.setMonth(startDate.getMonth() - 12);
+        // Show ~30 days ending at today
+        startDate.setDate(startDate.getDate() - 29); // 30 days total
         break;
       case '6months':
-        // Show ~6 months from startDate or today
-        startDate.setMonth(startDate.getMonth() - 6);
+        // Show ~180 days ending at today
+        startDate.setDate(startDate.getDate() - 179); // 180 days total
         break;
       case 'custom':
         if (customRange) {
-          return customRange;
+          // Ensure start < end
+          const start = new Date(customRange.startDate);
+          const end = new Date(customRange.endDate);
+          if (start > end) {
+            return { startDate: end, endDate: start };
+          }
+          return { startDate: start, endDate: end };
         }
-        startDate.setDate(startDate.getDate() - 70);
+        startDate.setDate(startDate.getDate() - 9);
         break;
     }
 
@@ -486,91 +492,131 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       planned: plannedPoints.length,
       actual: actualPoints.length,
       projected: projectedPoints.length,
+      timeRange,
     });
 
     // Calculate Y-axis range (consistent across all zoom levels)
     const yAxisRange = calculateYAxisRange(plannedPoints, actualPoints, projectedPoints);
 
-    // Sample points for display based on time range
+    // Generate a common X-axis based on the time range
+    // This ensures all series use the same dates
+    const allDates: Date[] = [];
+    const currentDate = new Date(startDate);
+    currentDate.setHours(0, 0, 0, 0);
+
+    while (currentDate <= endDate) {
+      allDates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    console.log('[Progress] Total dates in range:', allDates.length);
+
+    // Sample dates for display based on time range
     let sampleInterval = 1;
+    let labelFormat: 'MM/dd' | 'MM/yy' | 'week' = 'MM/dd';
+
     if (timeRange === 'weekly') {
-      sampleInterval = 2; // Every 2 days
+      sampleInterval = 1; // Show every day
+      labelFormat = 'MM/dd';
     } else if (timeRange === 'monthly') {
-      sampleInterval = 7; // Weekly
+      sampleInterval = 3; // Show every 3 days
+      labelFormat = 'MM/dd';
     } else if (timeRange === '6months') {
-      sampleInterval = 7; // Weekly
+      sampleInterval = 14; // Show every 2 weeks
+      labelFormat = 'MM/dd';
     } else {
       // Custom: adjust based on range
-      const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysDiff = allDates.length;
       if (daysDiff > 180) {
-        sampleInterval = 7;
+        sampleInterval = 14;
+        labelFormat = 'MM/dd';
       } else if (daysDiff > 60) {
+        sampleInterval = 7;
+        labelFormat = 'MM/dd';
+      } else if (daysDiff > 30) {
         sampleInterval = 3;
+        labelFormat = 'MM/dd';
       } else {
         sampleInterval = 1;
+        labelFormat = 'MM/dd';
       }
     }
 
-    const sampledPlanned = plannedPoints.filter((_, i) => i % sampleInterval === 0);
+    const sampledDates = allDates.filter((_, i) => i % sampleInterval === 0);
     
-    // Generate labels
-    const labels = sampledPlanned.map((p, i) => {
-      if (timeRange === 'weekly') {
-        // Show week labels
-        const weekNum = Math.floor(i / 3.5); // Approximate weeks
+    // Generate labels from sampled dates
+    const labels = sampledDates.map((date) => {
+      if (labelFormat === 'week') {
+        const weekNum = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
         return `W${weekNum}`;
-      } else if (timeRange === 'monthly') {
-        // Show month labels
-        return p.date.toLocaleDateString('en-US', { month: 'short' });
+      } else if (labelFormat === 'MM/yy') {
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const year = date.getFullYear().toString().slice(-2);
+        return `${month}/${year}`;
       } else {
-        // Show month/day
-        const month = p.date.toLocaleDateString('en-US', { month: 'short' });
-        const day = p.date.getDate();
-        return `${month} ${day}`;
+        // MM/dd
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        return `${month}/${day}`;
       }
     });
 
-    // Align all datasets to the same x-axis
-    const allDates = sampledPlanned.map(p => p.date.getTime());
-    
-    const plannedWeights = sampledPlanned.map(p => p.weight);
-    
-    // Map actual points to the sampled dates
-    const actualWeights = allDates.map(timestamp => {
-      const point = actualPoints.find(ap => {
-        const apTime = ap.date.getTime();
-        return Math.abs(apTime - timestamp) < 1000 * 60 * 60 * 24; // Within 1 day
+    console.log('[Progress] Sampled dates:', sampledDates.length, 'labels:', labels.slice(0, 5), '...');
+
+    // Map planned points to sampled dates
+    const plannedWeights = sampledDates.map(sampleDate => {
+      const point = plannedPoints.find(p => {
+        const pTime = p.date.getTime();
+        const sTime = sampleDate.getTime();
+        return Math.abs(pTime - sTime) < 1000 * 60 * 60 * 12; // Within 12 hours
       });
       return point ? point.weight : null;
     });
 
-    // Map projected points to the sampled dates
-    const projectedWeights = allDates.map(timestamp => {
-      const point = projectedPoints.find(pp => {
-        const ppTime = pp.date.getTime();
-        return Math.abs(ppTime - timestamp) < 1000 * 60 * 60 * 24; // Within 1 day
+    // Map actual points to sampled dates
+    const actualWeights = sampledDates.map(sampleDate => {
+      const point = actualPoints.find(p => {
+        const pTime = p.date.getTime();
+        const sTime = sampleDate.getTime();
+        return Math.abs(pTime - sTime) < 1000 * 60 * 60 * 12; // Within 12 hours
       });
       return point ? point.weight : null;
     });
+
+    // Map projected points to sampled dates
+    const projectedWeights = sampledDates.map(sampleDate => {
+      const point = projectedPoints.find(p => {
+        const pTime = p.date.getTime();
+        const sTime = sampleDate.getTime();
+        return Math.abs(pTime - sTime) < 1000 * 60 * 60 * 12; // Within 12 hours
+      });
+      return point ? point.weight : null;
+    });
+
+    console.log('[Progress] Planned weights sample:', plannedWeights.slice(0, 5));
+    console.log('[Progress] Actual weights sample:', actualWeights.slice(0, 5));
+    console.log('[Progress] Projected weights sample:', projectedWeights.slice(0, 5));
 
     // Filter out all-null datasets
     const datasets: any[] = [];
 
     // Always show planned
-    datasets.push({
-      data: plannedWeights,
-      color: () => '#5CB97B', // Green
-      strokeWidth: 2,
-      withDots: false,
-    });
+    const hasPlannedData = plannedWeights.some(w => w !== null && !Number.isNaN(w));
+    if (hasPlannedData) {
+      // Replace nulls with yMin to keep chart working
+      datasets.push({
+        data: plannedWeights.map(w => (w !== null && !Number.isNaN(w)) ? w : yAxisRange.min),
+        color: () => '#5CB97B', // Green
+        strokeWidth: 2,
+        withDots: false,
+      });
+    }
 
     // Show actual if we have data
-    const hasActualData = actualWeights.some(w => w !== null);
+    const hasActualData = actualWeights.some(w => w !== null && !Number.isNaN(w));
     if (hasActualData) {
-      // For actual data, we need to handle nulls properly
-      // We'll use the Y-axis min as a placeholder for null values to keep the chart working
       datasets.push({
-        data: actualWeights.map(w => w !== null ? w : yAxisRange.min),
+        data: actualWeights.map(w => (w !== null && !Number.isNaN(w)) ? w : yAxisRange.min),
         color: () => '#FFFFFF', // White
         strokeWidth: 2,
         withDots: true,
@@ -578,16 +624,18 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     }
 
     // Show projected if we have data
-    const hasProjectedData = projectedWeights.some(w => w !== null);
+    const hasProjectedData = projectedWeights.some(w => w !== null && !Number.isNaN(w));
     if (hasProjectedData) {
       datasets.push({
-        data: projectedWeights.map(w => w !== null ? w : yAxisRange.min),
+        data: projectedWeights.map(w => (w !== null && !Number.isNaN(w)) ? w : yAxisRange.min),
         color: () => '#FFD700', // Yellow
         strokeWidth: 2,
         withDots: false,
         strokeDasharray: [5, 5], // Dashed line
       });
     }
+
+    console.log('[Progress] Datasets created:', datasets.length);
 
     return {
       labels,
@@ -783,7 +831,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
           <View style={styles.chartContainer}>
             <LineChart
               data={chartData}
-              width={Math.max(screenWidth - spacing.md * 4, chartData.labels.length * 40)}
+              width={Math.max(screenWidth - spacing.md * 4, chartData.labels.length * 50)}
               height={220}
               yAxisSuffix=" lb"
               yAxisInterval={1}
@@ -819,17 +867,24 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               withVerticalLabels={true}
               withHorizontalLabels={true}
               fromZero={false}
+              yLabelsOffset={0}
               formatYLabel={(value) => {
-                // Custom Y-axis formatting to show the proper range
+                // Map the chart's internal values to our custom Y-axis range
                 const numValue = parseFloat(value);
-                if (Number.isNaN(numValue)) return value;
+                if (Number.isNaN(numValue)) return '';
                 
-                // Scale the value to our custom range
                 const { min, max } = chartData.yAxisRange;
-                const dataMin = Math.min(...chartData.datasets.flatMap(d => d.data.filter((v: number) => v > 0)));
-                const dataMax = Math.max(...chartData.datasets.flatMap(d => d.data.filter((v: number) => v > 0)));
                 
-                // Map the chart's internal scale to our desired range
+                // Get the actual data range
+                const allDataValues = chartData.datasets.flatMap((d: any) => d.data.filter((v: number) => !Number.isNaN(v) && v > 0));
+                if (allDataValues.length === 0) return '';
+                
+                const dataMin = Math.min(...allDataValues);
+                const dataMax = Math.max(...allDataValues);
+                
+                if (dataMax === dataMin) return Math.round(min).toString();
+                
+                // Map the chart's value to our desired range
                 const scaledValue = min + ((numValue - dataMin) / (dataMax - dataMin)) * (max - min);
                 
                 return Math.round(scaledValue).toString();
@@ -850,7 +905,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         onSelectRange={handleDateRangeSelect}
         initialStartDate={customRange?.startDate || (() => {
           const date = new Date();
-          date.setDate(date.getDate() - 70);
+          date.setDate(date.getDate() - 9);
           return date;
         })()}
         initialEndDate={customRange?.endDate || new Date()}
