@@ -14,7 +14,6 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { supabase } from '@/app/integrations/supabase/client';
 import CalendarDateRangePicker from './CalendarDateRangePicker';
-import { calculateBMR, calculateTDEE } from '@/utils/calculations';
 
 type TimeRange = '7days' | '30days' | 'custom';
 
@@ -29,22 +28,18 @@ interface ProgressGraphProps {
   goal: any;
 }
 
-interface WeeklyData {
-  weekLabel: string;
-  weekStartDate: Date;
-  actualWeight: number | null;
-  plannedWeight: number | null;
-  projectedWeight: number | null;
+interface DataPoint {
+  date: Date;
+  weight: number;
 }
 
 const KG_TO_LB = 2.20462;
 
 // Normalize weight - ensure no NaN or null values
 const normalize = (w: any): number | null => {
-  if (w === null || w === undefined || w === '') return null;
+  if (!w && w !== 0) return null;
   const num = Number(w);
-  if (Number.isNaN(num)) return null;
-  return num;
+  return Number.isNaN(num) ? null : num;
 };
 
 export default function ProgressGraph({ userId, userProfile, goal }: ProgressGraphProps) {
@@ -55,44 +50,14 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
   const [customRange, setCustomRange] = useState<CustomDateRange | null>(null);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([]);
+  
+  const [plannedData, setPlannedData] = useState<DataPoint[]>([]);
+  const [actualData, setActualData] = useState<DataPoint[]>([]);
+  const [projectedData, setProjectedData] = useState<DataPoint[]>([]);
 
   useEffect(() => {
     loadProgressData();
   }, [timeRange, customRange, userId]);
-
-  const calculateMaintenanceCalories = (profile: any): number => {
-    // Calculate maintenance calories from BMR and activity level
-    const weight = normalize(profile?.current_weight);
-    const height = normalize(profile?.height);
-    const dob = profile?.date_of_birth;
-    const sex = profile?.sex;
-    const activityLevel = profile?.activity_level;
-
-    if (!weight || !height || !dob || !sex || !activityLevel) {
-      console.log('[ProgressGraph] Missing data for maintenance calories calculation, using default 2500');
-      return 2500;
-    }
-
-    // Calculate age
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-
-    // Weight is stored in user's preferred unit, but BMR calculation expects kg
-    const weightUnit = profile?.weight_unit || 'kg';
-    const weightInKg = weightUnit === 'lbs' ? weight / KG_TO_LB : weight;
-
-    const bmr = calculateBMR(weightInKg, height, age, sex);
-    const tdee = calculateTDEE(bmr, activityLevel);
-
-    console.log('[ProgressGraph] Calculated maintenance calories:', tdee);
-    return tdee;
-  };
 
   const loadProgressData = async () => {
     try {
@@ -103,7 +68,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       const weightUnit = userProfile?.weight_unit || 'kg';
       console.log('[ProgressGraph] Weight unit:', weightUnit);
 
-      // Get profile data - all weights are stored in user's preferred unit
+      // Get profile data
       const currentWeight = normalize(userProfile?.current_weight);
       const targetWeight = normalize(userProfile?.goal_weight) || normalize(goal?.target_weight);
       const startingWeight = normalize(userProfile?.starting_weight);
@@ -115,15 +80,22 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         weightUnit,
       });
 
+      // Validate required data
+      if (!currentWeight || !targetWeight) {
+        console.log('[ProgressGraph] Missing required weight data');
+        setPlannedData([]);
+        setActualData([]);
+        setProjectedData([]);
+        setLoading(false);
+        return;
+      }
+
       // Get goal data
       const startDate = goal?.start_date ? new Date(goal.start_date) : new Date();
+      startDate.setHours(0, 0, 0, 0);
       
-      // Calculate or get maintenance calories
-      let maintenanceCalories = normalize(userProfile?.maintenance_calories);
-      if (!maintenanceCalories) {
-        maintenanceCalories = calculateMaintenanceCalories(userProfile);
-      }
-      
+      // Calculate maintenance calories
+      const maintenanceCalories = normalize(userProfile?.maintenance_calories) || 2500;
       const dailyCalories = normalize(goal?.daily_calories) || 2000;
 
       console.log('[ProgressGraph] Goal data:', {
@@ -131,6 +103,17 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         maintenanceCalories,
         dailyCalories,
       });
+
+      // Calculate daily deficit and weight loss per day
+      const dailyDeficit = maintenanceCalories - dailyCalories;
+      const caloriesPerUnit = weightUnit === 'lbs' ? 3500 : 7700;
+      const weightLossPerDay = dailyDeficit / caloriesPerUnit;
+
+      console.log('[ProgressGraph] Daily deficit:', dailyDeficit, 'kcal');
+      console.log('[ProgressGraph] Weight loss per day:', weightLossPerDay, weightUnit);
+
+      // Use starting weight if available, otherwise use current weight
+      let effectiveStartingWeight = startingWeight || currentWeight;
 
       // Determine date range for display
       let displayStartDate: Date;
@@ -161,9 +144,54 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         displayStartDate.setHours(0, 0, 0, 0);
       }
 
+      // Make sure display range starts at or after goal start date
+      if (displayStartDate < startDate) {
+        displayStartDate = new Date(startDate);
+      }
+
       console.log('[ProgressGraph] Display range:', displayStartDate.toISOString(), 'to', displayEndDate.toISOString());
 
-      // Load ALL check-ins since goal start date (not just display range)
+      // ===== BUILD PLANNED LINE (GREEN) =====
+      const planned: DataPoint[] = [];
+      let currentDate = new Date(displayStartDate);
+      
+      // Calculate how far into the future to project the planned line
+      const weightDiff = effectiveStartingWeight - targetWeight;
+      const daysToGoal = weightLossPerDay > 0 ? Math.ceil(weightDiff / weightLossPerDay) : 365;
+      const goalEndDate = new Date(startDate);
+      goalEndDate.setDate(goalEndDate.getDate() + daysToGoal);
+      
+      // Extend planned line to either goal end date or 30 days into future, whichever is later
+      const futureExtension = new Date();
+      futureExtension.setDate(futureExtension.getDate() + 30);
+      const plannedEndDate = goalEndDate > futureExtension ? goalEndDate : futureExtension;
+
+      while (currentDate <= plannedEndDate && currentDate <= new Date(displayEndDate.getTime() + 30 * 24 * 60 * 60 * 1000)) {
+        const daysSinceStart = Math.floor(
+          (currentDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)
+        );
+        
+        let plannedWeight = effectiveStartingWeight - (weightLossPerDay * daysSinceStart);
+        
+        // Don't go below target weight
+        if (plannedWeight < targetWeight) {
+          plannedWeight = targetWeight;
+        }
+        
+        // Only add if within or slightly beyond display range
+        if (currentDate >= displayStartDate) {
+          planned.push({
+            date: new Date(currentDate),
+            weight: plannedWeight,
+          });
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      console.log('[ProgressGraph] Built', planned.length, 'planned data points');
+
+      // ===== LOAD ACTUAL CHECK-INS (WHITE) =====
       const goalStartDateStr = startDate.toISOString().split('T')[0];
       const { data: checkIns, error } = await supabase
         .from('check_ins')
@@ -175,276 +203,158 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
 
       if (error) {
         console.error('[ProgressGraph] Error loading check-ins:', error);
-        setWeeklyData([]);
-        setLoading(false);
-        return;
       }
 
       console.log('[ProgressGraph] Loaded', checkIns?.length || 0, 'check-ins');
 
-      // Load meals data for calorie deficit calculation
-      const { data: mealsData } = await supabase
-        .from('meals')
-        .select(`
-          date,
-          meal_items (
-            calories
-          )
-        `)
-        .eq('user_id', userId)
-        .gte('date', goalStartDateStr)
-        .order('date', { ascending: true });
-
-      console.log('[ProgressGraph] Loaded', mealsData?.length || 0, 'meals');
-
-      // Calculate weekly data
-      const weekly = calculateWeeklyData(
-        displayStartDate,
-        displayEndDate,
-        startDate,
-        checkIns || [],
-        mealsData || [],
-        currentWeight,
-        targetWeight,
-        startingWeight,
-        maintenanceCalories,
-        dailyCalories,
-        weightUnit
-      );
-
-      console.log('[ProgressGraph] Calculated', weekly.length, 'weekly data points');
-      setWeeklyData(weekly);
-    } catch (error) {
-      console.error('[ProgressGraph] Error in loadProgressData:', error);
-      setWeeklyData([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateWeeklyData = (
-    displayStartDate: Date,
-    displayEndDate: Date,
-    goalStartDate: Date,
-    checkIns: any[],
-    mealsData: any[],
-    currentWeight: number | null,
-    targetWeight: number | null,
-    startingWeight: number | null,
-    maintenanceCalories: number,
-    dailyCalories: number,
-    weightUnit: 'kg' | 'lbs'
-  ): WeeklyData[] => {
-    const weeks: WeeklyData[] = [];
-    
-    // Validate required data
-    if (!currentWeight || !targetWeight) {
-      console.log('[ProgressGraph] Missing required weight data');
-      return [];
-    }
-
-    // Use starting weight if available, otherwise use first check-in or current weight
-    let effectiveStartingWeight = startingWeight;
-    if (!effectiveStartingWeight && checkIns.length > 0) {
-      // Check-ins are stored in kg, convert if needed
-      const firstCheckInWeight = normalize(checkIns[0].weight);
-      if (firstCheckInWeight !== null) {
-        effectiveStartingWeight = weightUnit === 'lbs' ? firstCheckInWeight * KG_TO_LB : firstCheckInWeight;
-      }
-    }
-    if (!effectiveStartingWeight) {
-      effectiveStartingWeight = currentWeight;
-    }
-
-    console.log('[ProgressGraph] Effective starting weight:', effectiveStartingWeight, weightUnit);
-
-    // Calculate daily deficit and pounds per day
-    const dailyDeficit = maintenanceCalories - dailyCalories;
-    console.log('[ProgressGraph] Daily deficit:', dailyDeficit, 'kcal');
-
-    // Convert deficit to weight loss per day
-    // 1 lb fat ≈ 3500 kcal, 1 kg fat ≈ 7700 kcal
-    const caloriesPerUnit = weightUnit === 'lbs' ? 3500 : 7700;
-    const weightLossPerDay = dailyDeficit / caloriesPerUnit;
-    console.log('[ProgressGraph] Weight loss per day:', weightLossPerDay, weightUnit);
-
-    // Calculate days to goal
-    const weightDiff = effectiveStartingWeight - targetWeight;
-    const daysToGoal = weightLossPerDay === 0 ? null : weightDiff / weightLossPerDay;
-    console.log('[ProgressGraph] Days to goal:', daysToGoal);
-
-    // Group check-ins by week (7-day windows starting from goal start date)
-    const checkInsByWeek = new Map<string, number[]>();
-    checkIns.forEach((checkIn) => {
-      const checkInDate = new Date(checkIn.date);
-      const weekStart = getWeekStart(checkInDate, goalStartDate);
-      const weekKey = weekStart.toISOString().split('T')[0];
-      
-      if (!checkInsByWeek.has(weekKey)) {
-        checkInsByWeek.set(weekKey, []);
-      }
-      
-      // Check-ins are stored in kg, convert to user's preferred unit
-      const weight = normalize(checkIn.weight);
-      if (weight !== null) {
-        const convertedWeight = weightUnit === 'lbs' ? weight * KG_TO_LB : weight;
-        checkInsByWeek.get(weekKey)!.push(convertedWeight);
-      }
-    });
-
-    console.log('[ProgressGraph] Check-ins grouped by week:', checkInsByWeek.size, 'weeks');
-
-    // Calculate total daily calories by date
-    const caloriesByDate = new Map<string, number>();
-    mealsData.forEach((meal: any) => {
-      const mealDate = meal.date;
-      
-      if (!caloriesByDate.has(mealDate)) {
-        caloriesByDate.set(mealDate, 0);
-      }
-      
-      if (meal.meal_items) {
-        const dayCalories = meal.meal_items.reduce((sum: number, item: any) => {
-          const itemCals = normalize(item.calories);
-          return sum + (itemCals || 0);
-        }, 0);
-        caloriesByDate.set(mealDate, caloriesByDate.get(mealDate)! + dayCalories);
-      }
-    });
-
-    console.log('[ProgressGraph] Calories logged for', caloriesByDate.size, 'days');
-
-    // Calculate average daily calories by week
-    const caloriesByWeek = new Map<string, { total: number; days: number }>();
-    caloriesByDate.forEach((calories, date) => {
-      const dateObj = new Date(date);
-      const weekStart = getWeekStart(dateObj, goalStartDate);
-      const weekKey = weekStart.toISOString().split('T')[0];
-      
-      if (!caloriesByWeek.has(weekKey)) {
-        caloriesByWeek.set(weekKey, { total: 0, days: 0 });
-      }
-      
-      const weekData = caloriesByWeek.get(weekKey)!;
-      weekData.total += calories;
-      weekData.days += 1;
-    });
-
-    // Generate weekly data points
-    let currentWeekStart = new Date(displayStartDate);
-    currentWeekStart = getWeekStart(currentWeekStart, goalStartDate);
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let lastActualWeight: number | null = null;
-    let lastActualWeekStart: Date | null = null;
-
-    while (currentWeekStart <= displayEndDate) {
-      const weekKey = currentWeekStart.toISOString().split('T')[0];
-      const weekLabel = formatWeekLabel(currentWeekStart);
-      
-      // Calculate days since goal start
-      const daysSinceStart = Math.floor(
-        (currentWeekStart.getTime() - goalStartDate.getTime()) / (24 * 60 * 60 * 1000)
-      );
-
-      // ===== PLANNED WEIGHT (GREEN LINE) =====
-      // Always calculate based on planned deficit
-      let plannedWeight: number | null = null;
-      if (daysToGoal !== null) {
-        plannedWeight = effectiveStartingWeight - (weightLossPerDay * daysSinceStart);
-        
-        // Don't go below target weight
-        if (plannedWeight < targetWeight) {
-          plannedWeight = targetWeight;
-        }
-      }
-
-      // ===== ACTUAL WEIGHT (WHITE LINE WITH DOTS) =====
-      // Only show if we have real check-in data for this week
-      let actualWeight: number | null = null;
-      const weekWeights = checkInsByWeek.get(weekKey);
-      if (weekWeights && weekWeights.length > 0 && currentWeekStart <= today) {
-        // Calculate average of all check-ins in this week
-        const sum = weekWeights.reduce((acc, w) => acc + w, 0);
-        actualWeight = sum / weekWeights.length;
-        lastActualWeight = actualWeight;
-        lastActualWeekStart = new Date(currentWeekStart);
-        
-        console.log('[ProgressGraph] Week', weekKey, '- Actual weight:', actualWeight.toFixed(2), weightUnit, '(', weekWeights.length, 'check-ins)');
-      }
-
-      // ===== PROJECTED WEIGHT (YELLOW DASHED LINE) =====
-      // Only show for future weeks after last actual data
-      let projectedWeight: number | null = null;
-      if (lastActualWeight !== null && lastActualWeekStart !== null && currentWeekStart > today) {
-        // Calculate weeks since last actual data
-        const weeksSinceLastActual = Math.floor(
-          (currentWeekStart.getTime() - lastActualWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-        );
-
-        // Determine which deficit to use
-        let effectiveDeficitPerDay = weightLossPerDay; // Default to planned
-
-        // Check if we have calorie data for the week containing last actual weight
-        const lastActualWeekKey = lastActualWeekStart.toISOString().split('T')[0];
-        const weekCalories = caloriesByWeek.get(lastActualWeekKey);
-        
-        if (weekCalories && weekCalories.days > 0) {
-          // Use real deficit based on logged calories
-          const avgDailyCalories = weekCalories.total / weekCalories.days;
-          const realDailyDeficit = maintenanceCalories - avgDailyCalories;
-          effectiveDeficitPerDay = realDailyDeficit / caloriesPerUnit;
+      // Convert check-ins to data points (check-ins are stored in kg)
+      const actual: DataPoint[] = [];
+      if (checkIns && checkIns.length > 0) {
+        checkIns.forEach((checkIn) => {
+          const checkInDate = new Date(checkIn.date);
+          checkInDate.setHours(0, 0, 0, 0);
           
-          console.log('[ProgressGraph] Using real deficit for projection:', realDailyDeficit, 'kcal/day =', effectiveDeficitPerDay, weightUnit + '/day');
-        } else {
-          console.log('[ProgressGraph] Using planned deficit for projection:', dailyDeficit, 'kcal/day =', effectiveDeficitPerDay, weightUnit + '/day');
-        }
-
-        // Project from last actual weight
-        projectedWeight = lastActualWeight - (effectiveDeficitPerDay * 7 * weeksSinceLastActual);
-        
-        // Don't project beyond target weight
-        if (projectedWeight < targetWeight) {
-          projectedWeight = targetWeight;
-        }
-      }
-
-      // Only add weeks within display range
-      if (currentWeekStart >= displayStartDate && currentWeekStart <= displayEndDate) {
-        weeks.push({
-          weekLabel,
-          weekStartDate: new Date(currentWeekStart),
-          actualWeight,
-          plannedWeight,
-          projectedWeight,
+          const weight = normalize(checkIn.weight);
+          if (weight !== null) {
+            // Convert from kg to user's preferred unit
+            const convertedWeight = weightUnit === 'lbs' ? weight * KG_TO_LB : weight;
+            
+            // Only include if within display range
+            if (checkInDate >= displayStartDate && checkInDate <= displayEndDate) {
+              actual.push({
+                date: checkInDate,
+                weight: convertedWeight,
+              });
+            }
+          }
         });
       }
 
-      // Move to next week
-      currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+      console.log('[ProgressGraph] Built', actual.length, 'actual data points');
+
+      // ===== BUILD PROJECTED LINE (YELLOW DASHED) =====
+      const projected: DataPoint[] = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Only project if we have actual data
+      if (actual.length > 0) {
+        // Get the last actual weight
+        const lastActual = actual[actual.length - 1];
+        let lastActualWeight = lastActual.weight;
+        let lastActualDate = new Date(lastActual.date);
+
+        // Load meals data to calculate real deficit
+        const { data: mealsData } = await supabase
+          .from('meals')
+          .select(`
+            date,
+            meal_items (
+              calories
+            )
+          `)
+          .eq('user_id', userId)
+          .gte('date', goalStartDateStr)
+          .order('date', { ascending: true });
+
+        console.log('[ProgressGraph] Loaded', mealsData?.length || 0, 'meals for projection');
+
+        // Calculate daily calories by date
+        const caloriesByDate = new Map<string, number>();
+        if (mealsData) {
+          mealsData.forEach((meal: any) => {
+            const mealDate = meal.date;
+            
+            if (!caloriesByDate.has(mealDate)) {
+              caloriesByDate.set(mealDate, 0);
+            }
+            
+            if (meal.meal_items) {
+              const dayCalories = meal.meal_items.reduce((sum: number, item: any) => {
+                const itemCals = normalize(item.calories);
+                return sum + (itemCals || 0);
+              }, 0);
+              caloriesByDate.set(mealDate, caloriesByDate.get(mealDate)! + dayCalories);
+            }
+          });
+        }
+
+        // Project from today forward
+        let projectionDate = new Date(today);
+        projectionDate.setDate(projectionDate.getDate() + 1); // Start from tomorrow
+        let projectedWeight = lastActualWeight;
+
+        // Project up to 60 days into the future or until target weight is reached
+        const maxProjectionDays = 60;
+        let daysProjected = 0;
+
+        while (daysProjected < maxProjectionDays && projectedWeight > targetWeight) {
+          const dateStr = projectionDate.toISOString().split('T')[0];
+          
+          // Determine which deficit to use
+          let effectiveDeficitPerDay = weightLossPerDay; // Default to planned
+          
+          // Check if we have calorie data for recent days to estimate real deficit
+          const recentDays = 7;
+          let recentCaloriesTotal = 0;
+          let recentCaloriesDays = 0;
+          
+          for (let i = 0; i < recentDays; i++) {
+            const checkDate = new Date(today);
+            checkDate.setDate(checkDate.getDate() - i);
+            const checkDateStr = checkDate.toISOString().split('T')[0];
+            
+            if (caloriesByDate.has(checkDateStr)) {
+              recentCaloriesTotal += caloriesByDate.get(checkDateStr)!;
+              recentCaloriesDays++;
+            }
+          }
+          
+          if (recentCaloriesDays > 0) {
+            // Use real deficit based on recent logged calories
+            const avgDailyCalories = recentCaloriesTotal / recentCaloriesDays;
+            const realDailyDeficit = maintenanceCalories - avgDailyCalories;
+            effectiveDeficitPerDay = realDailyDeficit / caloriesPerUnit;
+            
+            if (daysProjected === 0) {
+              console.log('[ProgressGraph] Using real deficit for projection:', realDailyDeficit, 'kcal/day =', effectiveDeficitPerDay, weightUnit + '/day');
+            }
+          }
+          
+          projectedWeight -= effectiveDeficitPerDay;
+          
+          // Don't project below target weight
+          if (projectedWeight < targetWeight) {
+            projectedWeight = targetWeight;
+          }
+          
+          // Only add if within or slightly beyond display range
+          if (projectionDate >= displayStartDate) {
+            projected.push({
+              date: new Date(projectionDate),
+              weight: projectedWeight,
+            });
+          }
+          
+          projectionDate.setDate(projectionDate.getDate() + 1);
+          daysProjected++;
+        }
+
+        console.log('[ProgressGraph] Built', projected.length, 'projected data points');
+      }
+
+      setPlannedData(planned);
+      setActualData(actual);
+      setProjectedData(projected);
+
+    } catch (error) {
+      console.error('[ProgressGraph] Error in loadProgressData:', error);
+      setPlannedData([]);
+      setActualData([]);
+      setProjectedData([]);
+    } finally {
+      setLoading(false);
     }
-
-    return weeks;
-  };
-
-  const getWeekStart = (date: Date, goalStartDate: Date): Date => {
-    // Calculate week start based on goal start date (not Sunday)
-    const daysSinceGoalStart = Math.floor(
-      (date.getTime() - goalStartDate.getTime()) / (24 * 60 * 60 * 1000)
-    );
-    const weekNumber = Math.floor(daysSinceGoalStart / 7);
-    const weekStart = new Date(goalStartDate);
-    weekStart.setDate(weekStart.getDate() + (weekNumber * 7));
-    weekStart.setHours(0, 0, 0, 0);
-    return weekStart;
-  };
-
-  const formatWeekLabel = (date: Date): string => {
-    const month = date.toLocaleDateString('en-US', { month: 'short' });
-    const day = date.getDate();
-    return `${month} ${day}`;
   };
 
   const handleCustomRangeSelect = () => {
@@ -492,7 +402,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       );
     }
 
-    if (weeklyData.length === 0) {
+    if (plannedData.length === 0 && actualData.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -508,19 +418,60 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     // Get weight unit for display
     const weightUnit = userProfile?.weight_unit || 'kg';
 
-    // Prepare data for chart
-    const labels = weeklyData.map(w => w.weekLabel);
-    
+    // Combine all data points to create a unified timeline
+    const allDates = new Set<number>();
+    plannedData.forEach(p => allDates.add(p.date.getTime()));
+    actualData.forEach(a => allDates.add(a.date.getTime()));
+    projectedData.forEach(p => allDates.add(p.date.getTime()));
+
+    const sortedDates = Array.from(allDates).sort((a, b) => a - b);
+
+    if (sortedDates.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Not enough data yet
+          </Text>
+        </View>
+      );
+    }
+
+    // Create labels (show every Nth date to avoid crowding)
+    const labelInterval = Math.max(1, Math.floor(sortedDates.length / 8));
+    const labels = sortedDates.map((timestamp, index) => {
+      if (index % labelInterval === 0 || index === sortedDates.length - 1) {
+        const date = new Date(timestamp);
+        const month = date.toLocaleDateString('en-US', { month: 'short' });
+        const day = date.getDate();
+        return `${month} ${day}`;
+      }
+      return '';
+    });
+
+    // Create data arrays aligned with sortedDates
+    const plannedDataMap = new Map(plannedData.map(p => [p.date.getTime(), p.weight]));
+    const actualDataMap = new Map(actualData.map(a => [a.date.getTime(), a.weight]));
+    const projectedDataMap = new Map(projectedData.map(p => [p.date.getTime(), p.weight]));
+
+    const plannedValues = sortedDates.map(timestamp => {
+      const weight = plannedDataMap.get(timestamp);
+      return weight !== undefined ? weight : NaN;
+    });
+
+    const actualValues = sortedDates.map(timestamp => {
+      const weight = actualDataMap.get(timestamp);
+      return weight !== undefined ? weight : NaN;
+    });
+
+    const projectedValues = sortedDates.map(timestamp => {
+      const weight = projectedDataMap.get(timestamp);
+      return weight !== undefined ? weight : NaN;
+    });
+
     // Get all valid weight values to determine min/max
     const allWeights: number[] = [];
-    weeklyData.forEach(w => {
-      const planned = normalize(w.plannedWeight);
-      const actual = normalize(w.actualWeight);
-      const projected = normalize(w.projectedWeight);
-      
-      if (planned !== null) allWeights.push(planned);
-      if (actual !== null) allWeights.push(actual);
-      if (projected !== null) allWeights.push(projected);
+    [...plannedValues, ...actualValues, ...projectedValues].forEach(w => {
+      if (!Number.isNaN(w)) allWeights.push(w);
     });
 
     if (allWeights.length === 0) {
@@ -540,47 +491,30 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     // Prepare datasets
     const datasets: any[] = [];
 
-    // Planned line (green solid) - always show
-    const plannedData = weeklyData.map(w => {
-      const val = normalize(w.plannedWeight);
-      return val !== null ? val : NaN;
-    });
-    
-    if (plannedData.some(v => !Number.isNaN(v))) {
+    // Planned line (green solid)
+    if (plannedValues.some(v => !Number.isNaN(v))) {
       datasets.push({
-        data: plannedData,
+        data: plannedValues,
         color: () => '#5CB97B', // Green
         strokeWidth: 2,
         withDots: false,
       });
     }
 
-    // Actual line (white with small circles) - only show weeks with data
-    const actualData = weeklyData.map(w => {
-      const val = normalize(w.actualWeight);
-      return val !== null ? val : NaN;
-    });
-    
-    const hasActualData = actualData.some(v => !Number.isNaN(v));
-    if (hasActualData) {
+    // Actual line (white with small dots)
+    if (actualValues.some(v => !Number.isNaN(v))) {
       datasets.push({
-        data: actualData,
+        data: actualValues,
         color: () => '#FFFFFF', // White
         strokeWidth: 2,
         withDots: true,
       });
     }
 
-    // Projected line (yellow dashed) - only show future projection
-    const projectedData = weeklyData.map(w => {
-      const val = normalize(w.projectedWeight);
-      return val !== null ? val : NaN;
-    });
-    
-    const hasProjectedData = projectedData.some(v => !Number.isNaN(v));
-    if (hasProjectedData) {
+    // Projected line (yellow dashed)
+    if (projectedValues.some(v => !Number.isNaN(v))) {
       datasets.push({
-        data: projectedData,
+        data: projectedValues,
         color: () => '#FFEA70', // Yellow
         strokeWidth: 2,
         strokeDashArray: [5, 5],
@@ -589,7 +523,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     }
 
     const screenWidth = Dimensions.get('window').width - (spacing.md * 2) - (spacing.lg * 2);
-    const chartWidth = Math.max(screenWidth, labels.length * 60);
+    const minChartWidth = Math.max(screenWidth, sortedDates.length * 40);
 
     return (
       <ScrollView 
@@ -602,7 +536,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
             labels,
             datasets,
           }}
-          width={chartWidth}
+          width={minChartWidth}
           height={220}
           chartConfig={{
             backgroundColor: isDark ? colors.cardDark : colors.card,
@@ -658,7 +592,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
               { color: timeRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
             ]}
           >
-            Last 7 Days
+            7 Days
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -674,7 +608,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
               { color: timeRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
             ]}
           >
-            Last 30 Days
+            30 Days
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
