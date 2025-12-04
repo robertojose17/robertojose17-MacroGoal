@@ -132,7 +132,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     }
   };
 
-  // Compute planned line data points (UNCHANGED - same data source)
+  // Compute planned line data points
   const plannedData = useMemo(() => {
     if (!profileData) {
       return null;
@@ -194,7 +194,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return { dataPoints, goalDatePlanned };
   }, [profileData]);
 
-  // Get visible date range based on selected time range
+  // Get visible date range based on selected time range - FIXED AND COMPRESSED
   const getVisibleRange = (): { startDate: Date; endDate: Date } => {
     if (!profileData || !plannedData) {
       const today = new Date();
@@ -213,10 +213,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     switch (timeRange) {
       case '1W':
-        // Show last 4-6 weeks (28-42 days) to see actual trend
+        // Last 7 days
         endDate = new Date(today);
         startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 35); // ~5 weeks
+        startDate.setDate(startDate.getDate() - 6); // 7 days total including today
         
         // If plan started more recently, use plan start
         if (startDate < planStartDate) {
@@ -225,10 +225,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         break;
 
       case '1M':
-        // Show last 30-45 days
+        // Last 30 days
         endDate = new Date(today);
         startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 37); // ~38 days
+        startDate.setDate(startDate.getDate() - 29); // 30 days total including today
         
         // If plan started more recently, use plan start
         if (startDate < planStartDate) {
@@ -237,7 +237,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         break;
 
       case '6M':
-        // Show last 6 months (180 days)
+        // Last 6 months (180 days)
         endDate = new Date(today);
         startDate = new Date(today);
         startDate.setDate(startDate.getDate() - 179); // 180 days total including today
@@ -263,7 +263,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         // Default to 1M
         endDate = new Date(today);
         startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 37);
+        startDate.setDate(startDate.getDate() - 29);
         if (startDate < planStartDate) {
           startDate = new Date(planStartDate);
         }
@@ -272,52 +272,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return { startDate, endDate };
   };
 
-  // Helper function to aggregate data by week
-  const aggregateByWeek = (dataPoints: { date: Date; weightLbs: number }[]) => {
-    if (dataPoints.length === 0) return [];
-
-    const weeklyData: { date: Date; weightLbs: number }[] = [];
-    let currentWeekStart = new Date(dataPoints[0].date);
-    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1); // Monday
-    
-    let weekSum = 0;
-    let weekCount = 0;
-
-    for (const point of dataPoints) {
-      const pointWeekStart = new Date(point.date);
-      pointWeekStart.setDate(pointWeekStart.getDate() - pointWeekStart.getDay() + 1);
-
-      if (pointWeekStart.getTime() === currentWeekStart.getTime()) {
-        weekSum += point.weightLbs;
-        weekCount++;
-      } else {
-        // Save previous week average
-        if (weekCount > 0) {
-          weeklyData.push({
-            date: new Date(currentWeekStart),
-            weightLbs: weekSum / weekCount,
-          });
-        }
-        
-        // Start new week
-        currentWeekStart = new Date(pointWeekStart);
-        weekSum = point.weightLbs;
-        weekCount = 1;
-      }
-    }
-
-    // Add last week
-    if (weekCount > 0) {
-      weeklyData.push({
-        date: new Date(currentWeekStart),
-        weightLbs: weekSum / weekCount,
-      });
-    }
-
-    return weeklyData;
-  };
-
-  // Prepare chart data for rendering with improved X-axis
+  // Prepare chart data for rendering - COMPRESSED AND FIXED WIDTH
   const prepareChartData = () => {
     if (!profileData || !plannedData || plannedData.dataPoints.length === 0) {
       return null;
@@ -332,7 +287,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     });
 
     // Filter planned data to visible range
-    let visiblePlannedData = plannedData.dataPoints.filter(
+    const visiblePlannedData = plannedData.dataPoints.filter(
       point => point.date >= startDate && point.date <= endDate
     );
 
@@ -340,13 +295,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       return null;
     }
 
-    console.log('[Progress] Visible planned points before processing:', visiblePlannedData.length);
-
-    // For 1W view, aggregate by week to show cleaner trend
-    if (timeRange === '1W') {
-      visiblePlannedData = aggregateByWeek(visiblePlannedData);
-      console.log('[Progress] After weekly aggregation:', visiblePlannedData.length, 'weeks');
-    }
+    console.log('[Progress] Visible planned points:', visiblePlannedData.length);
 
     // Calculate Y-axis range (UNCHANGED - based on weights with padding)
     const allWeights = visiblePlannedData.map(p => p.weightLbs);
@@ -359,40 +308,32 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[Progress] Y-axis range:', { yMin, yMax });
 
-    // Determine optimal number of labels and sampling for MyFitnessPal-style
+    // Determine optimal number of labels and sampling for FITNESS APP STYLE
     let numLabels: number;
-    let labelFormat: 'MM/dd' | 'MMM' | 'MMM yy';
+    let labelFormat: 'MM/dd' | 'MM/yy' | 'MMM';
     
-    const totalPoints = visiblePlannedData.length;
+    const totalDays = visiblePlannedData.length;
     
     if (timeRange === '1W') {
-      // Weekly view: show 4-6 week labels (e.g., "Nov 25", "Dec 2", "Dec 9")
-      numLabels = Math.min(6, totalPoints);
+      // Weekly: show every 1-2 days
+      numLabels = Math.min(5, totalDays);
       labelFormat = 'MM/dd';
     } else if (timeRange === '1M') {
-      // Monthly view: show every 5-7 days (about 5-6 labels)
-      numLabels = Math.min(6, Math.max(4, Math.ceil(totalPoints / 7)));
+      // Monthly: show every 5-7 days
+      numLabels = Math.min(6, Math.ceil(totalDays / 5));
       labelFormat = 'MM/dd';
     } else if (timeRange === '6M') {
-      // 6 months: show by month (e.g., "Nov", "Dec", "Jan")
-      numLabels = Math.min(7, Math.max(4, Math.ceil(totalPoints / 30)));
-      labelFormat = 'MMM';
+      // 6 months: show every 2-4 weeks
+      numLabels = Math.min(8, Math.ceil(totalDays / 14));
+      labelFormat = 'MM/yy';
     } else {
-      // All: coarse labels, months or every few months
-      const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
-      if (totalDays > 365) {
-        // More than a year: show every 2-3 months
-        numLabels = Math.min(8, Math.max(4, Math.ceil(totalDays / 60)));
-        labelFormat = 'MMM yy';
-      } else {
-        // Less than a year: show monthly
-        numLabels = Math.min(8, Math.max(4, Math.ceil(totalDays / 30)));
-        labelFormat = 'MMM';
-      }
+      // All: 6-8 labels evenly spaced
+      numLabels = Math.min(8, Math.max(6, Math.ceil(totalDays / 30)));
+      labelFormat = 'MM/yy';
     }
 
     // Calculate sampling interval to get desired number of labels
-    const sampleInterval = Math.max(1, Math.floor(totalPoints / numLabels));
+    const sampleInterval = Math.max(1, Math.floor(totalDays / numLabels));
 
     // Create labels with proper date formatting
     const labels = visiblePlannedData.map((point, i) => {
@@ -401,16 +342,16 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
         const day = point.date.getDate().toString().padStart(2, '0');
         const year = point.date.getFullYear().toString().slice(-2);
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
         if (labelFormat === 'MM/dd') {
           return `${month}/${day}`;
-        } else if (labelFormat === 'MMM') {
-          return monthNames[point.date.getMonth()];
+        } else if (labelFormat === 'MM/yy') {
+          return `${month}/${year}`;
         } else {
-          // MMM yy format
-          return `${monthNames[point.date.getMonth()]} ${year}`;
+          // MMM format
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return monthNames[point.date.getMonth()];
         }
       }
       return '';
@@ -420,14 +361,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const plannedWeights = visiblePlannedData.map(p => p.weightLbs);
 
     console.log('[Progress] Chart data prepared:', {
-      totalPoints,
+      totalDays,
       numLabels,
       labelFormat,
       sampleInterval,
       visibleLabels: labels.filter(l => l !== '').length,
       dataPoints: plannedWeights.length,
-      firstWeight: plannedWeights[0]?.toFixed(1),
-      lastWeight: plannedWeights[plannedWeights.length - 1]?.toFixed(1),
+      firstWeight: plannedWeights[0],
+      lastWeight: plannedWeights[plannedWeights.length - 1],
     });
 
     return {
