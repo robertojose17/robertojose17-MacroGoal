@@ -42,6 +42,10 @@ export const colors = {
   borderDark: '#3A3C52',             // Dark mode border (unchanged)
   disabled: '#CBD5E1',               // Keep existing disabled color
   
+  // Card borders - NEW
+  cardBorder: '#D4D6DA',             // Subtle neutral gray for card borders (light mode)
+  cardBorderDark: '#3A3C52',         // Card border for dark mode
+  
   // ⚠️ MACRO COLORS - DO NOT CHANGE THESE! ⚠️
   // These colors are used for macro bars and must remain exactly as they are
   protein: '#EF4444',                // Red - DO NOT CHANGE
@@ -119,6 +123,8 @@ export const commonStyles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.06)',
     elevation: 2,
   },
@@ -126,6 +132,8 @@ export const commonStyles = StyleSheet.create({
     backgroundColor: colors.cardDark,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorderDark,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.3)',
     elevation: 2,
   },

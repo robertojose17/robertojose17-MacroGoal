@@ -197,22 +197,20 @@ export default function DashboardScreen() {
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
         startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6); // 7 days inclusive (today + 6 previous)
+        startDate.setDate(startDate.getDate() - 6);
         startDate.setHours(0, 0, 0, 0);
       } else if (nutritionRange === '30days') {
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
         startDate = new Date();
-        startDate.setDate(startDate.getDate() - 29); // 30 days inclusive (today + 29 previous)
+        startDate.setDate(startDate.getDate() - 29);
         startDate.setHours(0, 0, 0, 0);
       } else if (nutritionRange === 'custom' && nutritionCustomRange) {
-        // Use the exact dates from the custom range
         startDate = new Date(nutritionCustomRange.startDate);
         startDate.setHours(0, 0, 0, 0);
         endDate = new Date(nutritionCustomRange.endDate);
         endDate.setHours(23, 59, 59, 999);
       } else {
-        // Fallback to 7 days
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
         startDate = new Date();
@@ -220,7 +218,6 @@ export default function DashboardScreen() {
         startDate.setHours(0, 0, 0, 0);
       }
 
-      // Format dates as YYYY-MM-DD for database query
       const startDateStr = startDate.toISOString().split('T')[0];
       const endDateStr = endDate.toISOString().split('T')[0];
 
@@ -228,7 +225,6 @@ export default function DashboardScreen() {
       console.log('[Dashboard] Start date object:', startDate.toISOString());
       console.log('[Dashboard] End date object:', endDate.toISOString());
 
-      // Query with inclusive date range (gte and lte)
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -351,7 +347,6 @@ export default function DashboardScreen() {
   const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
     console.log('[Dashboard] Date range selected:', startDate.toISOString(), 'to', endDate.toISOString());
     
-    // Store the dates exactly as received from the calendar picker
     const customRange: CustomDateRange = { 
       startDate, 
       endDate 
@@ -365,7 +360,6 @@ export default function DashboardScreen() {
     console.log('[Dashboard] Calendar picker closed');
     setShowCalendarPicker(false);
     
-    // If user cancelled and no custom range was set, revert to 7 days
     if (nutritionRange === 'custom' && !nutritionCustomRange) {
       setNutritionRange('7days');
     }
@@ -415,7 +409,13 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+        <View style={[
+          styles.card, 
+          { 
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          }
+        ]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Daily Summary
@@ -535,7 +535,13 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+        <View style={[
+          styles.card, 
+          { 
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          }
+        ]}>
           <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Nutrition Trends
           </Text>
@@ -675,7 +681,13 @@ export default function DashboardScreen() {
           activeOpacity={1}
           onPress={() => setShowCheckInModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <View style={[
+            styles.modalContent, 
+            { 
+              backgroundColor: isDark ? colors.cardDark : colors.card,
+              borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+            }
+          ]}>
             <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Quick Check-In
             </Text>
@@ -778,6 +790,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
@@ -919,6 +932,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
+    borderWidth: 1,
     boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
     elevation: 5,
   },
