@@ -40,7 +40,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [timeRange, setTimeRange] = useState<TimeRange>('7days');
+  const [timeRange, setTimeRange] = useState<TimeRange>('30days');
   const [customRange, setCustomRange] = useState<CustomDateRange | null>(null);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,6 +54,10 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     try {
       setLoading(true);
       console.log('[ProgressGraph] Loading progress data for range:', timeRange);
+
+      // Get weight unit from profile (default to 'kg' if not set)
+      const weightUnit = userProfile?.weight_unit || 'kg';
+      console.log('[ProgressGraph] Weight unit:', weightUnit);
 
       // Determine date range
       let startDate: Date;
@@ -80,7 +84,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
         startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6);
+        startDate.setDate(startDate.getDate() - 29);
         startDate.setHours(0, 0, 0, 0);
       }
 
@@ -94,8 +98,6 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         .from('check_ins')
         .select('date, weight')
         .eq('user_id', userId)
-        .gte('date', startDateStr)
-        .lte('date', endDateStr)
         .not('weight', 'is', null)
         .order('date', { ascending: true });
 
@@ -118,8 +120,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
           )
         `)
         .eq('user_id', userId)
-        .gte('date', startDateStr)
-        .lte('date', endDateStr);
+        .order('date', { ascending: true });
 
       console.log('[ProgressGraph] Loaded', mealsData?.length || 0, 'meals');
 
@@ -130,7 +131,8 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         checkIns || [],
         mealsData || [],
         userProfile,
-        goal
+        goal,
+        weightUnit
       );
 
       console.log('[ProgressGraph] Calculated', weekly.length, 'weekly data points');
@@ -149,19 +151,48 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     checkIns: any[],
     mealsData: any[],
     userProfile: any,
-    goal: any
+    goal: any,
+    weightUnit: 'kg' | 'lbs'
   ): WeeklyData[] => {
     const weeks: WeeklyData[] = [];
     
-    // Get profile data
-    const startingWeight = userProfile?.current_weight || 70; // kg
-    const targetWeight = userProfile?.goal_weight || startingWeight - 10;
-    const lossRateLbsPerWeek = goal?.loss_rate_lbs_per_week || 1.0;
-    const goalStartDate = goal?.start_date ? new Date(goal.start_date) : startDate;
-    const dailyCalorieGoal = goal?.daily_calories || 2000;
+    // Get profile data (all weights are in the user's preferred unit)
+    const currentWeight = userProfile?.current_weight || 70;
+    const targetWeight = userProfile?.goal_weight || goal?.target_weight || currentWeight - 10;
+    
+    // Get starting weight - use starting_weight if available, otherwise use first check-in or current weight
+    let startingWeight = userProfile?.starting_weight;
+    if (!startingWeight && checkIns.length > 0) {
+      // Use the first check-in as starting weight
+      startingWeight = checkIns[0].weight;
+      console.log('[ProgressGraph] Using first check-in as starting weight:', startingWeight);
+    }
+    if (!startingWeight) {
+      startingWeight = currentWeight;
+      console.log('[ProgressGraph] Using current weight as starting weight:', startingWeight);
+    }
 
-    // Calculate planned weekly deficit (kg per week)
-    const plannedWeeklyDeficitKg = (lossRateLbsPerWeek * 0.453592); // Convert lbs to kg
+    // Get start date from goal or use a default
+    const goalStartDate = goal?.start_date ? new Date(goal.start_date) : new Date();
+    console.log('[ProgressGraph] Goal start date:', goalStartDate.toISOString());
+
+    // Calculate planned weekly deficit
+    const lossRateLbsPerWeek = goal?.loss_rate_lbs_per_week || 1.0;
+    let plannedWeeklyDeficit: number;
+    
+    if (weightUnit === 'lbs') {
+      // User uses lbs, so deficit is directly in lbs
+      plannedWeeklyDeficit = lossRateLbsPerWeek;
+    } else {
+      // User uses kg, convert lbs to kg
+      plannedWeeklyDeficit = lossRateLbsPerWeek * 0.453592;
+    }
+
+    console.log('[ProgressGraph] Starting weight:', startingWeight, weightUnit);
+    console.log('[ProgressGraph] Target weight:', targetWeight, weightUnit);
+    console.log('[ProgressGraph] Planned weekly deficit:', plannedWeeklyDeficit, weightUnit);
+
+    const dailyCalorieGoal = goal?.daily_calories || 2000;
 
     // Group check-ins by week
     const checkInsByWeek = new Map<string, number[]>();
@@ -176,11 +207,26 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       checkInsByWeek.get(weekKey)!.push(checkIn.weight);
     });
 
+    // Calculate total daily calories by date
+    const caloriesByDate = new Map<string, number>();
+    mealsData.forEach((meal: any) => {
+      const mealDate = meal.date;
+      
+      if (!caloriesByDate.has(mealDate)) {
+        caloriesByDate.set(mealDate, 0);
+      }
+      
+      if (meal.meal_items) {
+        const dayCalories = meal.meal_items.reduce((sum: number, item: any) => sum + (item.calories || 0), 0);
+        caloriesByDate.set(mealDate, caloriesByDate.get(mealDate)! + dayCalories);
+      }
+    });
+
     // Calculate average daily calories by week
     const caloriesByWeek = new Map<string, { total: number; days: number }>();
-    mealsData.forEach((meal: any) => {
-      const mealDate = new Date(meal.date);
-      const weekStart = getWeekStart(mealDate);
+    caloriesByDate.forEach((calories, date) => {
+      const dateObj = new Date(date);
+      const weekStart = getWeekStart(dateObj);
       const weekKey = weekStart.toISOString().split('T')[0];
       
       if (!caloriesByWeek.has(weekKey)) {
@@ -188,11 +234,8 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       }
       
       const weekData = caloriesByWeek.get(weekKey)!;
-      if (meal.meal_items) {
-        const dayCalories = meal.meal_items.reduce((sum: number, item: any) => sum + (item.calories || 0), 0);
-        weekData.total += dayCalories;
-        weekData.days += 1;
-      }
+      weekData.total += calories;
+      weekData.days += 1;
     });
 
     // Generate weekly data points
@@ -214,10 +257,10 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         (currentWeekStart.getTime() - goalStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000)
       );
 
-      // Planned weight (green line)
-      const plannedWeight = startingWeight - (weeksSinceStart * plannedWeeklyDeficitKg);
+      // Planned weight (green line) - always visible
+      const plannedWeight = startingWeight - (weeksSinceStart * plannedWeeklyDeficit);
 
-      // Actual weight (white line with circles) - only if we have data
+      // Actual weight (white line with circles) - only if we have data for this week
       let actualWeight: number | null = null;
       const weekWeights = checkInsByWeek.get(weekKey);
       if (weekWeights && weekWeights.length > 0) {
@@ -229,16 +272,21 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       // Projected weight (yellow dashed line) - only for future weeks after last actual data
       let projectedWeight: number | null = null;
       if (lastActualWeight !== null && lastActualWeekStart !== null && currentWeekStart > lastActualWeekStart) {
-        // Calculate actual deficit based on logged calories
+        // Calculate actual deficit based on logged calories for this week
         const weekCalories = caloriesByWeek.get(weekKey);
-        let actualDeficitPerWeek = plannedWeeklyDeficitKg; // Default to planned
+        let actualDeficitPerWeek = plannedWeeklyDeficit; // Default to planned
 
         if (weekCalories && weekCalories.days > 0) {
           const avgDailyCalories = weekCalories.total / weekCalories.days;
           const dailyDeficit = dailyCalorieGoal - avgDailyCalories;
-          // 1 kg fat ≈ 7700 kcal
-          const weeklyDeficitKg = (dailyDeficit * 7) / 7700;
-          actualDeficitPerWeek = weeklyDeficitKg;
+          
+          // Convert calorie deficit to weight deficit
+          // 1 lb fat ≈ 3500 kcal, 1 kg fat ≈ 7700 kcal
+          const caloriesPerUnit = weightUnit === 'lbs' ? 3500 : 7700;
+          const weeklyDeficitFromCalories = (dailyDeficit * 7) / caloriesPerUnit;
+          actualDeficitPerWeek = weeklyDeficitFromCalories;
+          
+          console.log('[ProgressGraph] Week', weekKey, '- Avg daily calories:', avgDailyCalories, 'Deficit:', dailyDeficit, 'Weekly deficit:', actualDeficitPerWeek, weightUnit);
         }
 
         const weeksSinceLastActual = Math.floor(
@@ -246,6 +294,13 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         );
 
         projectedWeight = lastActualWeight - (weeksSinceLastActual * actualDeficitPerWeek);
+        
+        // Don't project beyond target weight
+        if (goal?.goal_type === 'lose' && projectedWeight < targetWeight) {
+          projectedWeight = targetWeight;
+        } else if (goal?.goal_type === 'gain' && projectedWeight > targetWeight) {
+          projectedWeight = targetWeight;
+        }
       }
 
       weeks.push({
@@ -300,7 +355,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     setShowCalendarPicker(false);
     
     if (timeRange === 'custom' && !customRange) {
-      setTimeRange('7days');
+      setTimeRange('30days');
     }
   };
 
@@ -336,6 +391,9 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       );
     }
 
+    // Get weight unit for display
+    const weightUnit = userProfile?.weight_unit || 'kg';
+
     // Prepare data for chart
     const labels = weeklyData.map(w => w.weekLabel);
     
@@ -364,19 +422,20 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
     // Prepare datasets
     const datasets: any[] = [];
 
-    // Planned line (green solid)
+    // Planned line (green solid) - always show
     const plannedData = weeklyData.map(w => w.plannedWeight || 0);
     datasets.push({
       data: plannedData,
       color: () => colors.success, // Green
       strokeWidth: 2,
+      withDots: false,
     });
 
-    // Actual line (white with circles)
+    // Actual line (white with small circles) - only show weeks with data
     const actualData = weeklyData.map(w => w.actualWeight !== null ? w.actualWeight : null);
     const hasActualData = actualData.some(v => v !== null);
     if (hasActualData) {
-      // Fill gaps with NaN to avoid connecting non-consecutive points
+      // Replace null with NaN to avoid connecting non-consecutive points
       const actualDataForChart = actualData.map(v => v === null ? NaN : v);
       datasets.push({
         data: actualDataForChart,
@@ -386,7 +445,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       });
     }
 
-    // Projected line (yellow dashed)
+    // Projected line (yellow dashed) - only show future projection
     const projectedData = weeklyData.map(w => w.projectedWeight !== null ? w.projectedWeight : null);
     const hasProjectedData = projectedData.some(v => v !== null);
     if (hasProjectedData) {
@@ -396,6 +455,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         color: () => colors.warning, // Yellow
         strokeWidth: 2,
         strokeDashArray: [5, 5],
+        withDots: false,
       });
     }
 
@@ -426,9 +486,10 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
               borderRadius: borderRadius.md,
             },
             propsForDots: {
-              r: '4',
-              strokeWidth: '2',
+              r: '3',
+              strokeWidth: '1',
               stroke: '#FFFFFF',
+              fill: '#FFFFFF',
             },
             propsForBackgroundLines: {
               strokeDasharray: '',
@@ -439,7 +500,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
           bezier={false}
           style={styles.chart}
           fromZero={false}
-          yAxisSuffix=" kg"
+          yAxisSuffix={` ${weightUnit}`}
           yAxisInterval={1}
           segments={4}
         />
@@ -514,13 +575,13 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
           </Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: '#FFFFFF' }]} />
+          <View style={[styles.legendCircle, { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' }]} />
           <Text style={[styles.legendText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             Actual
           </Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: colors.warning }]} />
+          <View style={[styles.legendDashed, { backgroundColor: colors.warning }]} />
           <Text style={[styles.legendText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             Projected
           </Text>
@@ -537,7 +598,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         onSelectRange={handleDateRangeSelect}
         initialStartDate={customRange?.startDate || (() => {
           const date = new Date();
-          date.setDate(date.getDate() - 7);
+          date.setDate(date.getDate() - 30);
           return date;
         })()}
         initialEndDate={customRange?.endDate || new Date()}
@@ -594,6 +655,18 @@ const styles = StyleSheet.create({
     width: 20,
     height: 3,
     borderRadius: 2,
+  },
+  legendCircle: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  legendDashed: {
+    width: 20,
+    height: 3,
+    borderRadius: 2,
+    opacity: 0.8,
   },
   legendText: {
     ...typography.caption,

@@ -410,6 +410,7 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
+        {/* Daily Summary Card */}
         <View style={[
           styles.card, 
           { 
@@ -536,15 +537,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Progress Graph */}
-        {user && goal && (
-          <ProgressGraph
-            userId={user.id}
-            userProfile={user}
-            goal={goal}
-          />
-        )}
-
+        {/* Nutrition Trends Card */}
         <View style={[
           styles.card, 
           { 
@@ -676,6 +669,15 @@ export default function DashboardScreen() {
             </Text>
           )}
         </View>
+
+        {/* Progress Graph - Positioned BELOW Nutrition Trends */}
+        {user && goal && (
+          <ProgressGraph
+            userId={user.id}
+            userProfile={user}
+            goal={goal}
+          />
+        )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
