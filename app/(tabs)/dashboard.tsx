@@ -18,6 +18,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
+import ProgressCard from '@/components/ProgressCard';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type TimeRange = '7days' | '30days' | 'custom';
@@ -668,6 +669,9 @@ export default function DashboardScreen() {
             </Text>
           )}
         </View>
+
+        {/* Progress Card - NEW */}
+        {user && <ProgressCard userId={user.id} isDark={isDark} />}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
