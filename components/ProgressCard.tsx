@@ -403,6 +403,59 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return points;
   };
 
+  const calculateYAxisRange = (plannedPoints: { date: Date; weight: number }[], actualPoints: { date: Date; weight: number }[], projectedPoints: { date: Date; weight: number }[]) => {
+    if (!profileData) return { min: 0, max: 200 };
+
+    const { goalWeightLbs, startWeightLbs } = profileData;
+    const PADDING = 3; // 3 lbs padding on each side
+
+    // Collect all weight values
+    const allWeights: number[] = [];
+
+    // Add goal weight
+    allWeights.push(goalWeightLbs);
+
+    // Add start weight
+    allWeights.push(startWeightLbs);
+
+    // Add all actual check-in weights
+    actualPoints.forEach(point => {
+      if (point.weight > 0 && !Number.isNaN(point.weight)) {
+        allWeights.push(point.weight);
+      }
+    });
+
+    // Add planned weights (optional, for better range)
+    plannedPoints.forEach(point => {
+      if (point.weight > 0 && !Number.isNaN(point.weight)) {
+        allWeights.push(point.weight);
+      }
+    });
+
+    // Add projected weights (optional)
+    projectedPoints.forEach(point => {
+      if (point.weight > 0 && !Number.isNaN(point.weight)) {
+        allWeights.push(point.weight);
+      }
+    });
+
+    if (allWeights.length === 0) {
+      return { min: goalWeightLbs - PADDING, max: startWeightLbs + PADDING };
+    }
+
+    // Calculate min and max
+    const minWeight = Math.min(...allWeights);
+    const maxWeight = Math.max(...allWeights);
+
+    // Apply padding
+    const yMin = Math.floor(minWeight - PADDING);
+    const yMax = Math.ceil(maxWeight + PADDING);
+
+    console.log('[Progress] Y-axis range:', { yMin, yMax, minWeight, maxWeight });
+
+    return { min: yMin, max: yMax };
+  };
+
   const prepareChartData = () => {
     const { startDate, endDate } = getDateRange();
 
@@ -415,6 +468,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       actual: actualPoints.length,
       projected: projectedPoints.length,
     });
+
+    // Calculate Y-axis range
+    const yAxisRange = calculateYAxisRange(plannedPoints, actualPoints, projectedPoints);
 
     // Sample points for display based on time range
     let sampleInterval = 1;
@@ -492,8 +548,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     // Show actual if we have data
     const hasActualData = actualWeights.some(w => w !== null);
     if (hasActualData) {
+      // For actual data, we need to handle nulls properly
+      // We'll use the Y-axis min as a placeholder for null values to keep the chart working
       datasets.push({
-        data: actualWeights.map(w => w || 0), // Replace null with 0 for chart
+        data: actualWeights.map(w => w !== null ? w : yAxisRange.min),
         color: () => '#FFFFFF', // White
         strokeWidth: 2,
         withDots: true,
@@ -504,7 +562,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const hasProjectedData = projectedWeights.some(w => w !== null);
     if (hasProjectedData) {
       datasets.push({
-        data: projectedWeights.map(w => w || 0), // Replace null with 0 for chart
+        data: projectedWeights.map(w => w !== null ? w : yAxisRange.min),
         color: () => '#FFD700', // Yellow
         strokeWidth: 2,
         withDots: false,
@@ -514,6 +572,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return {
       labels,
       datasets,
+      yAxisRange,
     };
   };
 
@@ -588,6 +647,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   const chartData = prepareChartData();
   const screenWidth = Dimensions.get('window').width;
+
+  // Calculate the number of segments for the Y-axis
+  const yRange = chartData.yAxisRange.max - chartData.yAxisRange.min;
+  const segments = Math.min(Math.max(Math.ceil(yRange / 5), 4), 8); // Between 4 and 8 segments
 
   return (
     <React.Fragment>
@@ -702,6 +765,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               data={chartData}
               width={Math.max(screenWidth - spacing.md * 4, chartData.labels.length * 40)}
               height={220}
+              yAxisSuffix=" lb"
+              yAxisInterval={1}
+              segments={segments}
               chartConfig={{
                 backgroundColor: isDark ? colors.cardDark : colors.card,
                 backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
@@ -733,6 +799,21 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               withVerticalLabels={true}
               withHorizontalLabels={true}
               fromZero={false}
+              formatYLabel={(value) => {
+                // Custom Y-axis formatting to show the proper range
+                const numValue = parseFloat(value);
+                if (Number.isNaN(numValue)) return value;
+                
+                // Scale the value to our custom range
+                const { min, max } = chartData.yAxisRange;
+                const dataMin = Math.min(...chartData.datasets.flatMap(d => d.data.filter((v: number) => v > 0)));
+                const dataMax = Math.max(...chartData.datasets.flatMap(d => d.data.filter((v: number) => v > 0)));
+                
+                // Map the chart's internal scale to our desired range
+                const scaledValue = min + ((numValue - dataMin) / (dataMax - dataMin)) * (max - min);
+                
+                return Math.round(scaledValue).toString();
+              }}
             />
           </View>
         </ScrollView>
