@@ -37,7 +37,7 @@ const KG_TO_LB = 2.20462;
 
 // Normalize weight - ensure no NaN or null values
 const normalize = (w: any): number | null => {
-  if (!w && w !== 0) return null;
+  if (w === null || w === undefined || w === '') return null;
   const num = Number(w);
   return Number.isNaN(num) ? null : num;
 };
@@ -57,32 +57,46 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
 
   useEffect(() => {
     loadProgressData();
-  }, [timeRange, customRange, userId]);
+  }, [timeRange, customRange, userId, userProfile, goal]);
 
   const loadProgressData = async () => {
     try {
       setLoading(true);
       console.log('[ProgressGraph] Loading progress data for range:', timeRange);
+      console.log('[ProgressGraph] User profile:', userProfile);
+      console.log('[ProgressGraph] Goal:', goal);
 
-      // Get weight unit from profile
+      // ===== VALIDATE REQUIRED DATA =====
+      if (!userProfile) {
+        console.log('[ProgressGraph] No user profile available');
+        setPlannedData([]);
+        setActualData([]);
+        setProjectedData([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get weight unit from profile (weight_unit field)
       const weightUnit = userProfile?.weight_unit || 'kg';
-      console.log('[ProgressGraph] Weight unit:', weightUnit);
+      console.log('[ProgressGraph] Weight unit from profile:', weightUnit);
 
-      // Get profile data
+      // Get profile data - all weights in the users table are stored in the user's preferred unit
       const currentWeight = normalize(userProfile?.current_weight);
-      const targetWeight = normalize(userProfile?.goal_weight) || normalize(goal?.target_weight);
+      const targetWeight = normalize(userProfile?.goal_weight);
       const startingWeight = normalize(userProfile?.starting_weight);
+      const maintenanceCalories = normalize(userProfile?.maintenance_calories) || 2500;
       
       console.log('[ProgressGraph] Profile weights:', {
         currentWeight,
         targetWeight,
         startingWeight,
         weightUnit,
+        maintenanceCalories,
       });
 
       // Validate required data
       if (!currentWeight || !targetWeight) {
-        console.log('[ProgressGraph] Missing required weight data');
+        console.log('[ProgressGraph] Missing required weight data - showing placeholder');
         setPlannedData([]);
         setActualData([]);
         setProjectedData([]);
@@ -91,26 +105,25 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       }
 
       // Get goal data
+      const dailyCalories = normalize(goal?.daily_calories) || 2000;
       const startDate = goal?.start_date ? new Date(goal.start_date) : new Date();
       startDate.setHours(0, 0, 0, 0);
-      
-      // Calculate maintenance calories
-      const maintenanceCalories = normalize(userProfile?.maintenance_calories) || 2500;
-      const dailyCalories = normalize(goal?.daily_calories) || 2000;
 
       console.log('[ProgressGraph] Goal data:', {
         startDate: startDate.toISOString(),
-        maintenanceCalories,
         dailyCalories,
       });
 
       // Calculate daily deficit and weight loss per day
       const dailyDeficit = maintenanceCalories - dailyCalories;
-      const caloriesPerUnit = weightUnit === 'lbs' ? 3500 : 7700;
+      const caloriesPerUnit = weightUnit === 'lbs' ? 3500 : 7700; // 3500 cal per lb, 7700 cal per kg
       const weightLossPerDay = dailyDeficit / caloriesPerUnit;
 
-      console.log('[ProgressGraph] Daily deficit:', dailyDeficit, 'kcal');
-      console.log('[ProgressGraph] Weight loss per day:', weightLossPerDay, weightUnit);
+      console.log('[ProgressGraph] Calculations:', {
+        dailyDeficit: dailyDeficit + ' kcal',
+        caloriesPerUnit,
+        weightLossPerDay: weightLossPerDay + ' ' + weightUnit + '/day',
+      });
 
       // Use starting weight if available, otherwise use current weight
       let effectiveStartingWeight = startingWeight || currentWeight;
@@ -205,19 +218,27 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         console.error('[ProgressGraph] Error loading check-ins:', error);
       }
 
-      console.log('[ProgressGraph] Loaded', checkIns?.length || 0, 'check-ins');
+      console.log('[ProgressGraph] Loaded', checkIns?.length || 0, 'check-ins from database');
 
-      // Convert check-ins to data points (check-ins are stored in kg)
+      // Convert check-ins to data points
+      // IMPORTANT: Check-ins are stored in kg in the database
       const actual: DataPoint[] = [];
       if (checkIns && checkIns.length > 0) {
         checkIns.forEach((checkIn) => {
           const checkInDate = new Date(checkIn.date);
           checkInDate.setHours(0, 0, 0, 0);
           
-          const weight = normalize(checkIn.weight);
-          if (weight !== null) {
-            // Convert from kg to user's preferred unit
-            const convertedWeight = weightUnit === 'lbs' ? weight * KG_TO_LB : weight;
+          const weightInKg = normalize(checkIn.weight);
+          if (weightInKg !== null) {
+            // Convert from kg (database storage) to user's preferred unit
+            let convertedWeight: number;
+            if (weightUnit === 'lbs') {
+              convertedWeight = weightInKg * KG_TO_LB;
+            } else {
+              convertedWeight = weightInKg;
+            }
+            
+            console.log('[ProgressGraph] Check-in:', checkIn.date, 'DB:', weightInKg, 'kg', '→ Display:', convertedWeight, weightUnit);
             
             // Only include if within display range
             if (checkInDate >= displayStartDate && checkInDate <= displayEndDate) {
@@ -230,7 +251,7 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
         });
       }
 
-      console.log('[ProgressGraph] Built', actual.length, 'actual data points');
+      console.log('[ProgressGraph] Built', actual.length, 'actual data points for display');
 
       // ===== BUILD PROJECTED LINE (YELLOW DASHED) =====
       const projected: DataPoint[] = [];
@@ -406,10 +427,10 @@ export default function ProgressGraph({ userId, userProfile, goal }: ProgressGra
       return (
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Not enough data yet
+            Set your profile to see progress
           </Text>
           <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Start logging your weight in Check-Ins to see your progress.
+            Complete your profile with start date, current weight, and goal weight.
           </Text>
         </View>
       );
