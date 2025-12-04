@@ -248,10 +248,21 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       }
     });
 
-    // Map actual check-ins to dates
+    // ===== FIX: Filter check-ins to ONLY those within the current view range =====
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+    
+    const checkInsInRange = checkIns.filter(ci => {
+      return ci.date >= startDateStr && ci.date <= endDateStr;
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    console.log('[Progress] Check-ins in current view range:', checkInsInRange.length);
+    console.log('[Progress] Check-ins in range:', checkInsInRange);
+
+    // ===== FIX: Map actual check-ins to dates - ONLY real check-ins, no fake values =====
     const actualWeights: (number | null)[] = allDates.map(date => {
       const dateStr = date.toISOString().split('T')[0];
-      const checkIn = checkIns.find(ci => ci.date === dateStr);
+      const checkIn = checkInsInRange.find(ci => ci.date === dateStr);
       return checkIn ? checkIn.weight : null;
     });
 
@@ -260,8 +271,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[Progress] Planned weights (last 5):', plannedWeights.slice(-5));
     console.log('[Progress] Actual weights (last 5):', actualWeights.slice(-5));
 
-    // ===== FIX: Calculate Y-axis range based on ALL relevant weights =====
-    // Step 1: Collect all relevant weights
+    // ===== Calculate Y-axis range based on ALL relevant weights =====
     const allRelevantWeights: number[] = [];
     
     // Add start weight and goal weight
@@ -284,26 +294,23 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[Progress] All relevant weights collected:', allRelevantWeights.length);
 
-    // Step 2: Compute min and max
+    // Compute min and max
     const maxWeight = Math.max(...allRelevantWeights);
     const minWeight = Math.min(...allRelevantWeights);
 
     console.log('[Progress] Raw min/max:', minWeight, maxWeight);
 
-    // Step 3: Add padding (3-5 lbs)
+    // Add padding (3-5 lbs)
     const padding = 3;
     let yMax = maxWeight + padding;
     let yMin = minWeight - padding;
 
-    // Step 4: Clamp yMin to never go below 0
+    // Clamp yMin to never go below 0
     yMin = Math.max(0, yMin);
 
     console.log('[Progress] Y-axis range with padding:', yMin, 'to', yMax, 'lbs');
 
-    // ===== Create datasets that use the actual weight values =====
-    // We need to ensure all data points are within [yMin, yMax] range
-    // and replace nulls with a value that won't be displayed
-    
+    // ===== Create datasets =====
     const datasets: any[] = [];
 
     // Planned line (green)
@@ -332,16 +339,45 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       });
     }
 
-    // Actual line (white)
-    const hasActualData = actualWeights.some(w => w !== null && !Number.isNaN(w));
-    if (hasActualData) {
-      // For actual weights, we want to show dots only where we have data
-      // But the chart library needs continuous data, so we'll use yMin for gaps
+    // ===== FIX: Actual line - based ONLY on real check-ins =====
+    const actualCheckInsCount = checkInsInRange.length;
+    console.log('[Progress] Actual check-ins count in range:', actualCheckInsCount);
+
+    if (actualCheckInsCount === 0) {
+      // No check-ins in range - show "No data yet" message
+      console.log('[Progress] No check-ins in range, will show "No data yet" message');
+    } else if (actualCheckInsCount === 1) {
+      // Exactly 1 check-in - render a single dot
+      console.log('[Progress] Exactly 1 check-in, rendering single dot');
+      
+      // Create a dataset with the single point
+      // We need to provide data for all dates, but only the check-in date will have a dot
       const actualData = actualWeights.map(w => {
         if (w !== null && !Number.isNaN(w)) {
           return w;
         }
-        return yMin; // Use yMin for missing data (won't show dots there)
+        // Use NaN for missing data so the chart library doesn't connect lines
+        return NaN;
+      });
+
+      datasets.push({
+        data: actualData,
+        color: () => '#FFFFFF', // White
+        strokeWidth: 2,
+        withDots: true,
+      });
+    } else if (actualCheckInsCount >= 2) {
+      // 2 or more check-ins - draw a continuous line connecting them
+      console.log('[Progress] 2+ check-ins, drawing continuous line');
+      
+      // Create a dataset that connects only the actual check-in points
+      // For dates without check-ins, we use NaN so the line doesn't connect through gaps
+      const actualData = actualWeights.map(w => {
+        if (w !== null && !Number.isNaN(w)) {
+          return w;
+        }
+        // Use NaN for missing data
+        return NaN;
       });
 
       datasets.push({
@@ -354,7 +390,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[Progress] Datasets created:', datasets.length);
     console.log('[Progress] Has planned data:', hasPlannedData);
-    console.log('[Progress] Has actual data:', hasActualData);
+    console.log('[Progress] Actual check-ins in range:', actualCheckInsCount);
 
     // Sample dates for labels based on time range
     let sampleInterval = 1;
@@ -398,6 +434,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       datasets,
       yMin,
       yMax,
+      actualCheckInsCount,
     };
   };
 
@@ -526,6 +563,15 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         </View>
       </View>
 
+      {/* No data message for Actual line */}
+      {chartData.actualCheckInsCount === 0 && (
+        <View style={styles.noActualDataContainer}>
+          <Text style={[styles.noActualDataText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            No weight check-ins yet in this time range. Add check-ins to see your actual progress!
+          </Text>
+        </View>
+      )}
+
       {/* Chart */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.chartContainer}>
@@ -574,9 +620,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               const numValue = parseFloat(value);
               if (Number.isNaN(numValue)) return '';
               
-              // The chart library auto-scales based on data
-              // We just need to ensure our data is in the right range
-              // and format the labels nicely
               return Math.round(numValue).toString();
             }}
           />
@@ -657,6 +700,20 @@ const styles = StyleSheet.create({
   },
   legendText: {
     ...typography.caption,
+    fontSize: 12,
+  },
+  noActualDataContainer: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.md,
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.3)',
+  },
+  noActualDataText: {
+    ...typography.caption,
+    textAlign: 'center',
     fontSize: 12,
   },
   chartContainer: {
