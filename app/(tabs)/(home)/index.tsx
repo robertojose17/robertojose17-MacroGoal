@@ -445,7 +445,13 @@ export default function HomeScreen() {
         }
       >
         {/* Date Navigation */}
-        <View style={[styles.dateNavigation, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+        <View style={[
+          styles.dateNavigation, 
+          { 
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          }
+        ]}>
           <TouchableOpacity 
             onPress={goToPreviousDay} 
             style={styles.dateButton}
@@ -496,7 +502,13 @@ export default function HomeScreen() {
         )}
 
         {/* Calorie Summary Card */}
-        <View style={[styles.summaryCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+        <View style={[
+          styles.summaryCard, 
+          { 
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          }
+        ]}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -579,7 +591,13 @@ export default function HomeScreen() {
         {/* Meals */}
         {meals.map((meal, index) => (
           <React.Fragment key={index}>
-            <View style={[styles.mealCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <View style={[
+              styles.mealCard, 
+              { 
+                backgroundColor: isDark ? colors.cardDark : colors.card,
+                borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+              }
+            ]}>
               <View style={styles.mealHeader}>
                 <View>
                   <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
@@ -697,6 +715,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
+    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
@@ -734,6 +753,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
@@ -784,6 +804,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
