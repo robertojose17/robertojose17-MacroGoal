@@ -18,6 +18,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
+import ProgressGraph from '@/components/ProgressGraph';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type TimeRange = '7days' | '30days' | 'custom';
@@ -534,6 +535,15 @@ export default function DashboardScreen() {
             </View>
           </View>
         </View>
+
+        {/* Progress Graph */}
+        {user && goal && (
+          <ProgressGraph
+            userId={user.id}
+            userProfile={user}
+            goal={goal}
+          />
+        )}
 
         <View style={[
           styles.card, 
