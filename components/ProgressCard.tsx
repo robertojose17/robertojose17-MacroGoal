@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
-  ScrollView,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -192,12 +191,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[Progress] First point:', dataPoints[0]);
     console.log('[Progress] Last point:', dataPoints[dataPoints.length - 1]);
 
-    return dataPoints;
+    return { dataPoints, goalDatePlanned };
   }, [profileData]);
 
-  // Get visible date range based on selected time range
+  // Get visible date range based on selected time range - FIXED AND COMPRESSED
   const getVisibleRange = (): { startDate: Date; endDate: Date } => {
-    if (!profileData || !plannedData || plannedData.length === 0) {
+    if (!profileData || !plannedData) {
       const today = new Date();
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
@@ -205,44 +204,77 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     }
 
     const planStartDate = new Date(profileData.startDate);
-    const planEndDate = plannedData[plannedData.length - 1].date;
+    const goalDatePlanned = plannedData.goalDatePlanned;
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     let startDate: Date;
-    let endDate = new Date(Math.max(today.getTime(), planEndDate.getTime()));
+    let endDate: Date;
 
     switch (timeRange) {
       case '1W':
+        // Last 7 days
+        endDate = new Date(today);
         startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 6); // 7 days total
+        startDate.setDate(startDate.getDate() - 6); // 7 days total including today
+        
+        // If plan started more recently, use plan start
+        if (startDate < planStartDate) {
+          startDate = new Date(planStartDate);
+        }
         break;
+
       case '1M':
+        // Last 30 days
+        endDate = new Date(today);
         startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 29); // 30 days total
+        startDate.setDate(startDate.getDate() - 29); // 30 days total including today
+        
+        // If plan started more recently, use plan start
+        if (startDate < planStartDate) {
+          startDate = new Date(planStartDate);
+        }
         break;
+
       case '6M':
+        // Last 6 months (180 days)
+        endDate = new Date(today);
         startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 179); // 180 days total
+        startDate.setDate(startDate.getDate() - 179); // 180 days total including today
+        
+        // If plan started more recently, use plan start
+        if (startDate < planStartDate) {
+          startDate = new Date(planStartDate);
+        }
+        
+        // If plan is shorter than 6 months, extend to goal date or today
+        if (goalDatePlanned > today) {
+          endDate = new Date(goalDatePlanned);
+        }
         break;
+
       case 'All':
+        // From plan start to goal date (or today if later)
         startDate = new Date(planStartDate);
+        endDate = new Date(Math.max(today.getTime(), goalDatePlanned.getTime()));
         break;
+
       default:
+        // Default to 1M
+        endDate = new Date(today);
         startDate = new Date(today);
         startDate.setDate(startDate.getDate() - 29);
-    }
-
-    // Don't go before plan start
-    if (startDate < planStartDate) {
-      startDate = new Date(planStartDate);
+        if (startDate < planStartDate) {
+          startDate = new Date(planStartDate);
+        }
     }
 
     return { startDate, endDate };
   };
 
-  // Prepare chart data for rendering
+  // Prepare chart data for rendering - COMPRESSED AND FIXED WIDTH
   const prepareChartData = () => {
-    if (!profileData || !plannedData || plannedData.length === 0) {
+    if (!profileData || !plannedData || plannedData.dataPoints.length === 0) {
       return null;
     }
 
@@ -251,10 +283,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[Progress] Visible range:', {
       startDate: startDate.toISOString().split('T')[0],
       endDate: endDate.toISOString().split('T')[0],
+      timeRange,
     });
 
     // Filter planned data to visible range
-    const visiblePlannedData = plannedData.filter(
+    const visiblePlannedData = plannedData.dataPoints.filter(
       point => point.date >= startDate && point.date <= endDate
     );
 
@@ -264,7 +297,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[Progress] Visible planned points:', visiblePlannedData.length);
 
-    // Calculate Y-axis range
+    // Calculate Y-axis range (UNCHANGED - based on weights with padding)
     const allWeights = visiblePlannedData.map(p => p.weightLbs);
     const minWeight = Math.min(...allWeights, profileData.goalWeightLbs);
     const maxWeight = Math.max(...allWeights, profileData.startWeightLbs);
@@ -275,37 +308,51 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[Progress] Y-axis range:', { yMin, yMax });
 
-    // Determine label sampling interval
-    let sampleInterval = 1;
+    // Determine optimal number of labels and sampling for FITNESS APP STYLE
+    let numLabels: number;
+    let labelFormat: 'MM/dd' | 'MM/yy' | 'MMM';
+    
     const totalDays = visiblePlannedData.length;
     
     if (timeRange === '1W') {
-      sampleInterval = 1; // Every day
+      // Weekly: show every 1-2 days
+      numLabels = Math.min(5, totalDays);
+      labelFormat = 'MM/dd';
     } else if (timeRange === '1M') {
-      sampleInterval = 3; // Every 3 days
+      // Monthly: show every 5-7 days
+      numLabels = Math.min(6, Math.ceil(totalDays / 5));
+      labelFormat = 'MM/dd';
     } else if (timeRange === '6M') {
-      sampleInterval = 14; // Every 2 weeks
+      // 6 months: show every 2-4 weeks
+      numLabels = Math.min(8, Math.ceil(totalDays / 14));
+      labelFormat = 'MM/yy';
     } else {
-      // All: adjust based on total days
-      if (totalDays > 365) {
-        sampleInterval = 30;
-      } else if (totalDays > 180) {
-        sampleInterval = 14;
-      } else if (totalDays > 60) {
-        sampleInterval = 7;
-      } else if (totalDays > 30) {
-        sampleInterval = 3;
-      } else {
-        sampleInterval = 1;
-      }
+      // All: 6-8 labels evenly spaced
+      numLabels = Math.min(8, Math.max(6, Math.ceil(totalDays / 30)));
+      labelFormat = 'MM/yy';
     }
 
-    // Create labels
+    // Calculate sampling interval to get desired number of labels
+    const sampleInterval = Math.max(1, Math.floor(totalDays / numLabels));
+
+    // Create labels with proper date formatting
     const labels = visiblePlannedData.map((point, i) => {
+      // Show label at regular intervals and always show first and last
       if (i % sampleInterval === 0 || i === visiblePlannedData.length - 1) {
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
         const day = point.date.getDate().toString().padStart(2, '0');
-        return `${month}/${day}`;
+        const year = point.date.getFullYear().toString().slice(-2);
+        
+        if (labelFormat === 'MM/dd') {
+          return `${month}/${day}`;
+        } else if (labelFormat === 'MM/yy') {
+          return `${month}/${year}`;
+        } else {
+          // MMM format
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return monthNames[point.date.getMonth()];
+        }
       }
       return '';
     });
@@ -314,7 +361,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const plannedWeights = visiblePlannedData.map(p => p.weightLbs);
 
     console.log('[Progress] Chart data prepared:', {
-      labels: labels.filter(l => l !== '').length,
+      totalDays,
+      numLabels,
+      labelFormat,
+      sampleInterval,
+      visibleLabels: labels.filter(l => l !== '').length,
       dataPoints: plannedWeights.length,
       firstWeight: plannedWeights[0],
       lastWeight: plannedWeights[plannedWeights.length - 1],
@@ -404,8 +455,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
+  // FIXED WIDTH - always use screen width minus padding, NO SCROLLING
   const screenWidth = Dimensions.get('window').width;
-  const chartWidth = Math.max(screenWidth - spacing.md * 4, chartData.labels.length * 40);
+  const chartWidth = screenWidth - (spacing.md * 4);
 
   return (
     <View style={[
@@ -454,57 +506,55 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         </View>
       </View>
 
-      {/* Chart */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.chartContainer}>
-          <LineChart
-            data={{
-              labels: chartData.labels,
-              datasets: chartData.datasets,
-            }}
-            width={chartWidth}
-            height={220}
-            yAxisSuffix=" lb"
-            chartConfig={{
-              backgroundColor: isDark ? colors.cardDark : colors.card,
-              backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
-              backgroundGradientTo: isDark ? colors.cardDark : colors.card,
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
-              labelColor: (opacity = 1) => isDark 
-                ? `rgba(241, 245, 249, ${opacity})` 
-                : `rgba(43, 45, 66, ${opacity})`,
-              style: {
-                borderRadius: borderRadius.md,
-              },
-              propsForDots: {
-                r: '0',
-              },
-              propsForBackgroundLines: {
-                strokeDasharray: '',
-                stroke: isDark ? colors.borderDark : colors.border,
-                strokeWidth: 1,
-              },
-            }}
-            bezier
-            style={styles.chart}
-            withInnerLines={true}
-            withOuterLines={true}
-            withVerticalLines={false}
-            withHorizontalLines={true}
-            withVerticalLabels={true}
-            withHorizontalLabels={true}
-            fromZero={false}
-            segments={5}
-            yAxisInterval={1}
-            formatYLabel={(value) => {
-              const numValue = parseFloat(value);
-              if (Number.isNaN(numValue)) return '';
-              return Math.round(numValue).toString();
-            }}
-          />
-        </View>
-      </ScrollView>
+      {/* Chart - NO SCROLLVIEW, FIXED WIDTH */}
+      <View style={styles.chartContainer}>
+        <LineChart
+          data={{
+            labels: chartData.labels,
+            datasets: chartData.datasets,
+          }}
+          width={chartWidth}
+          height={220}
+          yAxisSuffix=" lb"
+          chartConfig={{
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
+            backgroundGradientTo: isDark ? colors.cardDark : colors.card,
+            decimalPlaces: 0,
+            color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
+            labelColor: (opacity = 1) => isDark 
+              ? `rgba(241, 245, 249, ${opacity})` 
+              : `rgba(43, 45, 66, ${opacity})`,
+            style: {
+              borderRadius: borderRadius.md,
+            },
+            propsForDots: {
+              r: '0',
+            },
+            propsForBackgroundLines: {
+              strokeDasharray: '',
+              stroke: isDark ? colors.borderDark : colors.border,
+              strokeWidth: 1,
+            },
+          }}
+          bezier
+          style={styles.chart}
+          withInnerLines={true}
+          withOuterLines={true}
+          withVerticalLines={false}
+          withHorizontalLines={true}
+          withVerticalLabels={true}
+          withHorizontalLabels={true}
+          fromZero={false}
+          segments={5}
+          yAxisInterval={1}
+          formatYLabel={(value) => {
+            const numValue = parseFloat(value);
+            if (Number.isNaN(numValue)) return '';
+            return Math.round(numValue).toString();
+          }}
+        />
+      </View>
 
       {/* Y-axis label */}
       <Text style={[styles.yAxisLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
