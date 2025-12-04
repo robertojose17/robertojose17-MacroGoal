@@ -260,19 +260,101 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[Progress] Planned weights (last 5):', plannedWeights.slice(-5));
     console.log('[Progress] Actual weights (last 5):', actualWeights.slice(-5));
 
-    // Calculate Y-axis range
-    const allWeights: number[] = [];
-    allWeights.push(startWeight, goalWeight);
-    plannedWeights.forEach(w => { if (w !== null && !Number.isNaN(w)) allWeights.push(w); });
-    actualWeights.forEach(w => { if (w !== null && !Number.isNaN(w)) allWeights.push(w); });
+    // ===== FIX: Calculate Y-axis range based on ALL relevant weights =====
+    // Step 1: Collect all relevant weights
+    const allRelevantWeights: number[] = [];
+    
+    // Add start weight and goal weight
+    allRelevantWeights.push(startWeight);
+    allRelevantWeights.push(goalWeight);
+    
+    // Add all planned weights in the current view
+    plannedWeights.forEach(w => { 
+      if (w !== null && !Number.isNaN(w)) {
+        allRelevantWeights.push(w);
+      }
+    });
+    
+    // Add all actual check-in weights in the current view
+    actualWeights.forEach(w => { 
+      if (w !== null && !Number.isNaN(w)) {
+        allRelevantWeights.push(w);
+      }
+    });
 
-    const minWeight = Math.min(...allWeights);
-    const maxWeight = Math.max(...allWeights);
+    console.log('[Progress] All relevant weights collected:', allRelevantWeights.length);
+
+    // Step 2: Compute min and max
+    const maxWeight = Math.max(...allRelevantWeights);
+    const minWeight = Math.min(...allRelevantWeights);
+
+    console.log('[Progress] Raw min/max:', minWeight, maxWeight);
+
+    // Step 3: Add padding (3-5 lbs)
     const padding = 3;
-    const yMin = Math.floor(minWeight - padding);
-    const yMax = Math.ceil(maxWeight + padding);
+    let yMax = maxWeight + padding;
+    let yMin = minWeight - padding;
 
-    console.log('[Progress] Y-axis range:', yMin, 'to', yMax, 'lbs');
+    // Step 4: Clamp yMin to never go below 0
+    yMin = Math.max(0, yMin);
+
+    console.log('[Progress] Y-axis range with padding:', yMin, 'to', yMax, 'lbs');
+
+    // ===== Create datasets that use the actual weight values =====
+    // We need to ensure all data points are within [yMin, yMax] range
+    // and replace nulls with a value that won't be displayed
+    
+    const datasets: any[] = [];
+
+    // Planned line (green)
+    const hasPlannedData = plannedWeights.some(w => w !== null && !Number.isNaN(w));
+    if (hasPlannedData) {
+      // For the chart library, we need continuous data
+      // Fill nulls with the nearest valid value or yMin
+      const plannedData = plannedWeights.map((w, i) => {
+        if (w !== null && !Number.isNaN(w)) {
+          return w;
+        }
+        // Find the nearest non-null value
+        for (let j = i + 1; j < plannedWeights.length; j++) {
+          if (plannedWeights[j] !== null && !Number.isNaN(plannedWeights[j]!)) {
+            return plannedWeights[j]!;
+          }
+        }
+        return yMin;
+      });
+
+      datasets.push({
+        data: plannedData,
+        color: () => '#4CAF50', // Green
+        strokeWidth: 2,
+        withDots: false,
+      });
+    }
+
+    // Actual line (white)
+    const hasActualData = actualWeights.some(w => w !== null && !Number.isNaN(w));
+    if (hasActualData) {
+      // For actual weights, we want to show dots only where we have data
+      // But the chart library needs continuous data, so we'll use yMin for gaps
+      const actualData = actualWeights.map(w => {
+        if (w !== null && !Number.isNaN(w)) {
+          return w;
+        }
+        return yMin; // Use yMin for missing data (won't show dots there)
+      });
+
+      datasets.push({
+        data: actualData,
+        color: () => '#FFFFFF', // White
+        strokeWidth: 2,
+        withDots: true,
+      });
+    }
+
+    console.log('[Progress] Datasets created:', datasets.length);
+    console.log('[Progress] Has planned data:', hasPlannedData);
+    console.log('[Progress] Has actual data:', hasActualData);
 
     // Sample dates for labels based on time range
     let sampleInterval = 1;
@@ -310,35 +392,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     });
 
     console.log('[Progress] Labels (sample):', labels.filter(l => l !== '').slice(0, 10));
-
-    // Prepare datasets
-    const datasets: any[] = [];
-
-    // Planned line (green)
-    const hasPlannedData = plannedWeights.some(w => w !== null && !Number.isNaN(w));
-    if (hasPlannedData) {
-      datasets.push({
-        data: plannedWeights.map(w => (w !== null && !Number.isNaN(w)) ? w : yMin),
-        color: () => '#4CAF50', // Green
-        strokeWidth: 2,
-        withDots: false,
-      });
-    }
-
-    // Actual line (white)
-    const hasActualData = actualWeights.some(w => w !== null && !Number.isNaN(w));
-    if (hasActualData) {
-      datasets.push({
-        data: actualWeights.map(w => (w !== null && !Number.isNaN(w)) ? w : yMin),
-        color: () => '#FFFFFF', // White
-        strokeWidth: 2,
-        withDots: true,
-      });
-    }
-
-    console.log('[Progress] Datasets created:', datasets.length);
-    console.log('[Progress] Has planned data:', hasPlannedData);
-    console.log('[Progress] Has actual data:', hasActualData);
 
     return {
       labels,
@@ -516,26 +569,15 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             withHorizontalLabels={true}
             fromZero={false}
             segments={5}
+            yAxisInterval={1}
             formatYLabel={(value) => {
               const numValue = parseFloat(value);
               if (Number.isNaN(numValue)) return '';
               
-              // Map chart's internal scale to our Y-axis range
-              const allDataValues = chartData.datasets.flatMap((d: any) => 
-                d.data.filter((v: number) => !Number.isNaN(v) && v > chartData.yMin)
-              );
-              
-              if (allDataValues.length === 0) return Math.round(chartData.yMin).toString();
-              
-              const dataMin = Math.min(...allDataValues);
-              const dataMax = Math.max(...allDataValues);
-              
-              if (dataMax === dataMin) return Math.round(chartData.yMin).toString();
-              
-              // Scale the value to our desired range
-              const scaledValue = chartData.yMin + ((numValue - dataMin) / (dataMax - dataMin)) * (chartData.yMax - chartData.yMin);
-              
-              return Math.round(scaledValue).toString();
+              // The chart library auto-scales based on data
+              // We just need to ensure our data is in the right range
+              // and format the labels nicely
+              return Math.round(numValue).toString();
             }}
           />
         </View>
