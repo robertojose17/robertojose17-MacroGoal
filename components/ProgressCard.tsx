@@ -62,7 +62,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setLoading(true);
       setError(null);
 
-      console.log('[ProgressCard] Loading data for user:', userId);
+      console.log('[Progress] Loading data for user:', userId);
 
       // Load user profile data
       const { data: userData, error: userError } = await supabase
@@ -83,8 +83,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       if (goalError) throw goalError;
 
-      console.log('[ProgressCard] userData:', userData);
-      console.log('[ProgressCard] goalData:', goalData);
+      console.log('[Progress] profile:', userData);
+      console.log('[Progress] goal:', goalData);
 
       if (!userData || !goalData) {
         setError('Set your weight goal in Profile to see progress');
@@ -92,13 +92,17 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         return;
       }
 
-      // Convert weights to lbs
+      // Get weight unit from profile
       const weightUnit = userData.weight_unit || 'kg';
+      console.log('[Progress] weight_unit from profile:', weightUnit);
+
+      // Convert weights to lbs if needed
       let startWeightLbs: number;
       let currentWeightLbs: number;
       let goalWeightLbs: number;
 
       if (weightUnit === 'lbs') {
+        // Already in lbs, use directly
         startWeightLbs = userData.starting_weight || 0;
         currentWeightLbs = userData.current_weight || 0;
         goalWeightLbs = userData.goal_weight || 0;
@@ -109,27 +113,26 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         goalWeightLbs = (userData.goal_weight || 0) * 2.20462;
       }
 
-      console.log('[ProgressCard] Weights in lbs:', { startWeightLbs, currentWeightLbs, goalWeightLbs });
+      console.log('[Progress] startWeightLbs:', startWeightLbs);
+      console.log('[Progress] currentWeightLbs:', currentWeightLbs);
+      console.log('[Progress] goalWeightLbs:', goalWeightLbs);
 
-      // Guard state: Check if we have valid goal data
-      const hasValidGoal =
-        typeof startWeightLbs === 'number' &&
-        typeof goalWeightLbs === 'number' &&
-        !Number.isNaN(startWeightLbs) &&
-        !Number.isNaN(goalWeightLbs) &&
-        startWeightLbs > 0 &&
-        goalWeightLbs > 0;
+      // Guard: Check if we have valid goal data
+      const hasGoal = typeof goalWeightLbs === 'number' && !Number.isNaN(goalWeightLbs) && goalWeightLbs > 0;
 
-      if (!hasValidGoal) {
-        console.log('[ProgressCard] Invalid goal data');
+      if (!hasGoal) {
+        console.log('[Progress] Invalid goal weight');
         setError('Set your weight goal in Profile to see progress');
         setLoading(false);
         return;
       }
 
+      // Use starting_weight as fallback if it exists
+      const effectiveStartWeight = startWeightLbs > 0 ? startWeightLbs : currentWeightLbs;
+
       setProfileData({
         startDate: goalData.start_date || new Date().toISOString().split('T')[0],
-        startWeightLbs,
+        startWeightLbs: effectiveStartWeight,
         currentWeightLbs,
         goalWeightLbs,
         plannedWeightLossRateLbsPerWeek: goalData.loss_rate_lbs_per_week,
@@ -137,7 +140,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         maintenanceCaloriesPerDay: userData.maintenance_calories || 2000,
       });
 
-      // Load check-ins (weights are stored in kg in the database)
+      // Load check-ins
+      // Note: check_ins.weight is stored in kg according to the schema
       const { data: checkInsData, error: checkInsError } = await supabase
         .from('check_ins')
         .select('date, weight')
@@ -147,13 +151,17 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       if (checkInsError) throw checkInsError;
 
-      // Convert check-in weights from kg to lbs
-      const checkInsLbs: CheckInData[] = (checkInsData || []).map((ci: any) => ({
-        date: ci.date,
-        weightLbs: ci.weight * 2.20462,
-      }));
+      // Convert check-in weights to lbs
+      const checkInsLbs: CheckInData[] = (checkInsData || []).map((ci: any) => {
+        // Check-ins are stored in kg, convert to lbs
+        const weightInLbs = ci.weight * 2.20462;
+        return {
+          date: ci.date,
+          weightLbs: weightInLbs,
+        };
+      });
 
-      console.log('[ProgressCard] Check-ins loaded:', checkInsLbs.length);
+      console.log('[Progress] Check-ins loaded:', checkInsLbs.length);
       setCheckIns(checkInsLbs);
 
       // Load food logs for calorie tracking
@@ -189,11 +197,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         totalCaloriesEaten,
       }));
 
-      console.log('[ProgressCard] Food logs loaded:', foodLogsArray.length);
+      console.log('[Progress] Food logs loaded:', foodLogsArray.length);
       setFoodLogs(foodLogsArray);
       setLoading(false);
     } catch (err: any) {
-      console.error('[ProgressCard] Error loading data:', err);
+      console.error('[Progress] Error loading data:', err);
       setError(err.message || 'Failed to load progress data');
       setLoading(false);
     }
@@ -244,7 +252,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       plannedLossPerDay = dailyDeficit / 3500;
     }
 
-    console.log('[ProgressCard] Planned loss per day:', plannedLossPerDay);
+    console.log('[Progress] Planned loss per day:', plannedLossPerDay);
 
     const points: { date: Date; weight: number }[] = [];
     const currentDate = new Date(startDate);
@@ -272,7 +280,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log('[ProgressCard] Planned line points:', points.length);
+    console.log('[Progress] Planned line points:', points.length);
     return points;
   };
 
@@ -292,7 +300,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       }))
       .filter(point => !Number.isNaN(point.weight) && point.weight > 0);
 
-    console.log('[ProgressCard] Actual line points:', actualPoints.length);
+    console.log('[Progress] Actual line points:', actualPoints.length);
     return actualPoints;
   };
 
@@ -315,7 +323,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       lastKnown = { date: new Date(profileData.startDate), weightLbs: profileData.startWeightLbs };
     }
 
-    console.log('[ProgressCard] Last known weight:', lastKnown);
+    console.log('[Progress] Last known weight:', lastKnown);
 
     // Calculate actual average deficit from food logs
     const recentDays = 14; // Look at last 14 days
@@ -333,23 +341,23 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         return sum + (maintenanceCaloriesPerDay - log.totalCaloriesEaten);
       }, 0);
       actualAverageDeficit = totalDeficit / recentFoodLogs.length;
-      console.log('[ProgressCard] Actual average deficit from', recentFoodLogs.length, 'days:', actualAverageDeficit);
+      console.log('[Progress] Actual average deficit from', recentFoodLogs.length, 'days:', actualAverageDeficit);
     } else {
       // Fallback to planned deficit
       const plannedLossPerDay = plannedWeightLossRateLbsPerWeek 
         ? plannedWeightLossRateLbsPerWeek / 7 
         : (maintenanceCaloriesPerDay - dailyCaloriesGoal) / 3500;
       actualAverageDeficit = plannedLossPerDay * 3500;
-      console.log('[ProgressCard] No food logs, using planned deficit:', actualAverageDeficit);
+      console.log('[Progress] No food logs, using planned deficit:', actualAverageDeficit);
     }
 
     const actualLossPerDay = actualAverageDeficit / 3500;
-    console.log('[ProgressCard] Actual loss per day:', actualLossPerDay);
+    console.log('[Progress] Actual loss per day:', actualLossPerDay);
 
     // Calculate projected days to goal
     const remainingWeight = lastKnown.weightLbs - goalWeightLbs;
     if (remainingWeight <= 0 || actualLossPerDay <= 0) {
-      console.log('[ProgressCard] Already at goal or no loss rate');
+      console.log('[Progress] Already at goal or no loss rate');
       return [];
     }
 
@@ -357,8 +365,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const projectedGoalDate = new Date(lastKnown.date);
     projectedGoalDate.setDate(projectedGoalDate.getDate() + projectedDaysToGoal);
 
-    console.log('[ProgressCard] Projected days to goal:', projectedDaysToGoal);
-    console.log('[ProgressCard] Projected goal date:', projectedGoalDate.toISOString().split('T')[0]);
+    console.log('[Progress] Projected days to goal:', projectedDaysToGoal);
+    console.log('[Progress] Projected goal date:', projectedGoalDate.toISOString().split('T')[0]);
 
     // Draw projected line from lastKnown to projectedGoalDate
     // Only for dates > today
@@ -391,7 +399,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log('[ProgressCard] Projected line points:', points.length);
+    console.log('[Progress] Projected line points:', points.length);
     return points;
   };
 
@@ -402,7 +410,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const actualPoints = calculateActualLine(startDate, endDate);
     const projectedPoints = calculateProjectedLine(startDate, endDate);
 
-    console.log('[ProgressCard] Chart data prepared:', {
+    console.log('[Progress] Chart data prepared:', {
       planned: plannedPoints.length,
       actual: actualPoints.length,
       projected: projectedPoints.length,
