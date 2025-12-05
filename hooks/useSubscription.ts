@@ -201,18 +201,28 @@ export function useSubscription(): UseSubscriptionReturn {
         console.log('[useSubscription] 🌐 Opening checkout URL:', data.url);
         console.log('[useSubscription] 🔗 URL length:', data.url.length);
         
-        const result = await WebBrowser.openBrowserAsync(data.url);
+        // Open the Stripe checkout in the browser
+        const result = await WebBrowser.openBrowserAsync(data.url, {
+          // Dismiss button style
+          dismissButtonStyle: 'close',
+          // Toolbar color
+          toolbarColor: '#0F4C81',
+          // Control bar color
+          controlsColor: '#FFFFFF',
+          // Show title
+          showTitle: true,
+        });
+        
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes, sync the subscription
-        // The webhook should have already updated the database, but we sync to be sure
-        if (result.type === 'cancel' || result.type === 'dismiss') {
-          console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-          // Wait a moment for webhook to process, then sync
-          setTimeout(() => {
-            syncSubscription();
-          }, 2000);
-        }
+        // After the browser closes (regardless of reason), sync the subscription
+        // The webhook should have already updated the database if payment succeeded
+        console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
+        
+        // Wait a moment for webhook to process, then sync
+        setTimeout(() => {
+          syncSubscription();
+        }, 2000);
       } else {
         console.error('[useSubscription] ❌ No checkout URL in response');
         console.error('[useSubscription] Response data:', JSON.stringify(data, null, 2));
@@ -260,16 +270,19 @@ export function useSubscription(): UseSubscriptionReturn {
 
       if (data?.url) {
         console.log('[useSubscription] 🌐 Opening portal URL:', data.url);
-        const result = await WebBrowser.openBrowserAsync(data.url);
+        const result = await WebBrowser.openBrowserAsync(data.url, {
+          dismissButtonStyle: 'close',
+          toolbarColor: '#0F4C81',
+          controlsColor: '#FFFFFF',
+          showTitle: true,
+        });
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
         // After the browser closes, sync the subscription
-        if (result.type === 'cancel' || result.type === 'dismiss') {
-          console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-          setTimeout(() => {
-            syncSubscription();
-          }, 1000);
-        }
+        console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
+        setTimeout(() => {
+          syncSubscription();
+        }, 1000);
       } else {
         console.error('[useSubscription] ❌ No portal URL returned');
         throw new Error('No portal URL returned');

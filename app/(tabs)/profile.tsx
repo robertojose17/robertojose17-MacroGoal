@@ -39,15 +39,16 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
-  const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription } = useSubscription();
+  const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription, syncSubscription } = useSubscription();
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[Profile] Screen focused, loading data');
+      console.log('[Profile] Screen focused, loading data and syncing subscription');
       loadUserData();
-      refreshSubscription();
+      // Sync subscription from Stripe when screen is focused
+      syncSubscription();
       logSubscriptionStatus();
-    }, [])
+    }, [syncSubscription])
   );
 
   const loadUserData = async () => {
@@ -110,7 +111,7 @@ export default function ProfileScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadUserData(), refreshSubscription()]);
+    await Promise.all([loadUserData(), syncSubscription()]);
   };
 
   const handleManageSubscription = async () => {

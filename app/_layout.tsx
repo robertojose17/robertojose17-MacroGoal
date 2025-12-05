@@ -6,8 +6,9 @@ import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus } from "react-native";
 import { useNetworkState } from "expo-network";
+import * as Linking from "expo-linking";
 import {
   DarkTheme,
   DefaultTheme,
@@ -113,6 +114,122 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(e => console.error('[App] Error hiding splash:', e));
     }
   };
+
+  // Handle deep links for Stripe checkout success/cancel
+  useEffect(() => {
+    console.log('[DeepLink] Setting up deep link listener');
+
+    // Handle initial URL (app opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('[DeepLink] Initial URL:', url);
+        handleDeepLink(url);
+      }
+    });
+
+    // Handle deep links while app is running
+    const subscription = Linking.addEventListener('url', (event) => {
+      console.log('[DeepLink] Received URL:', event.url);
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleDeepLink = async (url: string) => {
+    try {
+      console.log('[DeepLink] Processing URL:', url);
+      
+      const { hostname, path, queryParams } = Linking.parse(url);
+      console.log('[DeepLink] Parsed:', { hostname, path, queryParams });
+
+      // Handle checkout success
+      if (queryParams?.subscription_success === 'true') {
+        console.log('[DeepLink] ✅ Checkout success detected!');
+        console.log('[DeepLink] Session ID:', queryParams.session_id);
+        
+        // Wait a moment for webhook to process
+        setTimeout(async () => {
+          console.log('[DeepLink] Syncing subscription after checkout...');
+          
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              // Call sync-subscription Edge Function
+              const { data, error } = await supabase.functions.invoke('sync-subscription', {
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                },
+              });
+
+              if (error) {
+                console.error('[DeepLink] Error syncing subscription:', error);
+              } else {
+                console.log('[DeepLink] ✅ Subscription synced:', data);
+              }
+            }
+          } catch (error) {
+            console.error('[DeepLink] Error in sync:', error);
+          }
+
+          // Navigate to profile to show updated subscription
+          router.replace('/(tabs)/profile');
+          
+          // Show success message
+          Alert.alert(
+            '🎉 Welcome to Premium!',
+            'Your subscription is now active. Enjoy unlimited AI-powered meal estimates!',
+            [{ text: 'OK' }]
+          );
+        }, 2000);
+      }
+
+      // Handle checkout cancel
+      if (queryParams?.subscription_cancelled === 'true') {
+        console.log('[DeepLink] ❌ Checkout cancelled');
+        router.replace('/paywall');
+      }
+    } catch (error) {
+      console.error('[DeepLink] Error handling deep link:', error);
+    }
+  };
+
+  // Listen for app state changes to sync subscription when returning from background
+  useEffect(() => {
+    console.log('[AppState] Setting up app state listener');
+    
+    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('[AppState] App became active, checking for subscription updates...');
+        
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            // Sync subscription when app comes to foreground
+            const { data, error } = await supabase.functions.invoke('sync-subscription', {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (error) {
+              console.error('[AppState] Error syncing subscription:', error);
+            } else {
+              console.log('[AppState] ✅ Subscription synced:', data);
+            }
+          }
+        } catch (error) {
+          console.error('[AppState] Error in sync:', error);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isReady || initializing) {

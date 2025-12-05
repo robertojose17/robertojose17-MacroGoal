@@ -127,11 +127,11 @@ Deno.serve(async (req) => {
       console.log("[Checkout] ✅ Using existing customer:", customerId);
     }
 
-    // For mobile apps, we need to use deep links or a web URL that can redirect
-    // Using the app's deep link scheme: elitemacrotracker://
-    const appScheme = "elitemacrotracker://";
-    const successUrl = `${appScheme}profile?session_id={CHECKOUT_SESSION_ID}&subscription_success=true`;
-    const cancelUrl = `${appScheme}paywall?subscription_cancelled=true`;
+    // Use a web-based redirect URL that will then deep link back to the app
+    // This is more reliable than using deep links directly in Stripe Checkout
+    const baseUrl = SUPABASE_URL!.replace('/rest/v1', '');
+    const successUrl = `${baseUrl}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${baseUrl}/functions/v1/checkout-redirect?cancelled=true`;
 
     console.log("[Checkout] 🔗 Redirect URLs:");
     console.log("[Checkout]   - Success:", successUrl);
