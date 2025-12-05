@@ -241,13 +241,18 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Total data points:', totalPoints);
     console.log('[ProgressCard] Max X ticks:', maxXTicks);
 
-    // Add a dummy padding date after the last real date
-    // This creates visual space so the last real date is fully visible
+    // Add TWO dummy padding dates after the last real date
+    // This creates MORE visual space so the last real date is fully visible
     const lastRealDate = plannedData[plannedData.length - 1].date;
-    const paddingDate = new Date(lastRealDate);
-    paddingDate.setDate(paddingDate.getDate() + 4); // Add 4 days of padding
+    const paddingDate1 = new Date(lastRealDate);
+    paddingDate1.setDate(paddingDate1.getDate() + 5); // First padding point
+    const paddingDate2 = new Date(lastRealDate);
+    paddingDate2.setDate(paddingDate2.getDate() + 10); // Second padding point
 
-    console.log('[ProgressCard] Adding padding date:', paddingDate.toISOString().split('T')[0]);
+    console.log('[ProgressCard] Adding padding dates:', 
+      paddingDate1.toISOString().split('T')[0],
+      paddingDate2.toISOString().split('T')[0]
+    );
 
     // Determine which indices to show labels for (from the REAL data points only)
     let selectedIndices: number[];
@@ -284,7 +289,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Using label format:', labelFormat);
 
     // Create labels array - empty strings for non-selected indices
-    // Include the padding date at the end with an empty label
+    // Include TWO padding dates at the end with empty labels
     const labels = plannedData.map((point, index) => {
       if (selectedIndices.includes(index)) {
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
@@ -300,15 +305,16 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       return ''; // Empty string for non-selected indices
     });
 
-    // Add the padding label (empty string - no visible label, just spacing)
+    // Add TWO padding labels (empty strings - no visible labels, just spacing)
+    labels.push('');
     labels.push('');
 
     // Create dataset for planned line
-    // Add the last weight value again for the padding point (so the line extends to the edge)
+    // Add the last weight value TWICE for the two padding points (so the line extends smoothly)
     const lastWeight = plannedData[plannedData.length - 1].weightLbs;
     const datasets = [
       {
-        data: [...plannedData.map(p => p.weightLbs), lastWeight],
+        data: [...plannedData.map(p => p.weightLbs), lastWeight, lastWeight],
         color: () => colors.success, // Green for planned
         strokeWidth: 2,
         withDots: false,
