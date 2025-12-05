@@ -214,13 +214,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return dataPoints;
   }, [profileData]);
 
-  // Prepare chart data for rendering with optimized X-axis labels
+  // Prepare chart data for rendering with optimized X-axis labels and padding
   const chartData = useMemo(() => {
     if (!profileData || !plannedData || plannedData.length === 0) {
       return null;
     }
 
-    const { startWeightLbs, goalWeightLbs } = profileData;
+    const { startWeightLbs, goalWeightLbs, startDate } = profileData;
 
     // Calculate Y-axis range with padding
     const minWeight = Math.min(startWeightLbs, goalWeightLbs);
@@ -233,40 +233,46 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Y-axis range:', { yMin, yMax });
 
     // ========================================
-    // NEW X-AXIS LABEL LOGIC
+    // X-AXIS PADDING LOGIC
     // ========================================
     const totalPoints = plannedData.length;
-    const maxXTicks = 6; // Maximum number of labels to show
+    const totalDays = totalPoints;
 
-    console.log('[ProgressCard] Total data points:', totalPoints);
-    console.log('[ProgressCard] Max X ticks:', maxXTicks);
-
-    // Determine which indices to show labels for
-    let selectedIndices: number[];
-    
-    if (totalPoints <= maxXTicks) {
-      // If we have fewer points than max ticks, show all
-      selectedIndices = Array.from({ length: totalPoints }, (_, i) => i);
+    // Calculate padding interval based on total range
+    let paddingDays: number;
+    if (totalDays <= 30) {
+      paddingDays = 3; // 3 days for short ranges
+    } else if (totalDays <= 90) {
+      paddingDays = 5; // 5 days for medium ranges
     } else {
-      // Calculate step size to evenly distribute labels
-      const step = Math.floor(totalPoints / (maxXTicks - 1));
-      selectedIndices = [0]; // Always include first
-      
-      // Add intermediate labels
-      for (let i = 1; i < maxXTicks - 1; i++) {
-        selectedIndices.push(i * step);
-      }
-      
-      // Always include last
-      selectedIndices.push(totalPoints - 1);
+      paddingDays = 7; // 1 week for long ranges
     }
 
-    console.log('[ProgressCard] Selected label indices:', selectedIndices);
+    console.log('[ProgressCard] Total data points:', totalPoints);
+    console.log('[ProgressCard] Padding days:', paddingDays);
+
+    // Create padding dates (these won't have data points, just labels)
+    const firstDate = plannedData[0].date;
+    const lastDate = plannedData[plannedData.length - 1].date;
+
+    const paddingLeftDate = new Date(firstDate);
+    paddingLeftDate.setDate(paddingLeftDate.getDate() - paddingDays);
+
+    const paddingRightDate = new Date(lastDate);
+    paddingRightDate.setDate(paddingRightDate.getDate() + paddingDays);
+
+    console.log('[ProgressCard] Padding dates:', {
+      left: paddingLeftDate.toISOString().split('T')[0],
+      right: paddingRightDate.toISOString().split('T')[0],
+    });
+
+    // ========================================
+    // X-AXIS LABEL SELECTION WITH PADDING
+    // ========================================
+    const maxXTicks = 6; // Maximum number of labels to show
 
     // Determine date format based on total range
-    const totalDays = totalPoints;
     let labelFormat: 'MM/dd' | 'MM/yy';
-    
     if (totalDays <= 60) {
       labelFormat = 'MM/dd';
     } else {
@@ -275,26 +281,82 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[ProgressCard] Using label format:', labelFormat);
 
-    // Create labels array - empty strings for non-selected indices
-    const labels = plannedData.map((point, index) => {
-      if (selectedIndices.includes(index)) {
-        const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
-        const day = point.date.getDate().toString().padStart(2, '0');
-        const year = point.date.getFullYear().toString().slice(-2);
+    // Helper function to format date
+    const formatDate = (date: Date): string => {
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      const year = date.getFullYear().toString().slice(-2);
 
-        if (labelFormat === 'MM/dd') {
-          return `${month}/${day}`;
-        } else {
-          return `${month}/${year}`;
+      if (labelFormat === 'MM/dd') {
+        return `${month}/${day}`;
+      } else {
+        return `${month}/${year}`;
+      }
+    };
+
+    // Determine which indices to show labels for (from actual data points)
+    let selectedIndices: number[];
+    
+    if (totalPoints <= maxXTicks - 2) {
+      // If we have fewer points than max ticks (minus padding), show all
+      selectedIndices = Array.from({ length: totalPoints }, (_, i) => i);
+    } else {
+      // Calculate step size to evenly distribute labels
+      const step = Math.floor(totalPoints / (maxXTicks - 3)); // Reserve space for padding labels
+      selectedIndices = [0]; // Always include first
+      
+      // Add intermediate labels
+      for (let i = 1; i < maxXTicks - 3; i++) {
+        const index = i * step;
+        if (index < totalPoints - 1) {
+          selectedIndices.push(index);
         }
       }
-      return ''; // Empty string for non-selected indices
+      
+      // Always include last
+      selectedIndices.push(totalPoints - 1);
+    }
+
+    console.log('[ProgressCard] Selected label indices:', selectedIndices);
+
+    // ========================================
+    // BUILD LABELS ARRAY WITH PADDING
+    // ========================================
+    // We'll add padding labels at the beginning and end
+    // The data array will have null values for padding positions
+    
+    const labels: string[] = [];
+    const dataValues: (number | null)[] = [];
+
+    // Add left padding label (empty for visual spacing)
+    labels.push('');
+    dataValues.push(null);
+
+    // Add actual data labels
+    plannedData.forEach((point, index) => {
+      if (selectedIndices.includes(index)) {
+        labels.push(formatDate(point.date));
+      } else {
+        labels.push('');
+      }
+      dataValues.push(point.weightLbs);
     });
 
+    // Add right padding label (empty for visual spacing)
+    labels.push('');
+    dataValues.push(null);
+
+    console.log('[ProgressCard] Labels array length:', labels.length);
+    console.log('[ProgressCard] Data values length:', dataValues.length);
+    console.log('[ProgressCard] Visible labels:', labels.filter(l => l !== '').length);
+    console.log('[ProgressCard] First visible label:', labels.find(l => l !== ''));
+    console.log('[ProgressCard] Last visible label:', [...labels].reverse().find(l => l !== ''));
+
     // Create dataset for planned line
+    // Filter out null values for the line, but keep array length consistent
     const datasets = [
       {
-        data: plannedData.map(p => p.weightLbs),
+        data: dataValues.map(v => v === null ? yMin : v), // Use yMin for padding points (won't be visible)
         color: () => colors.success, // Green for planned
         strokeWidth: 2,
         withDots: false,
@@ -305,10 +367,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       totalDays,
       labelFormat,
       selectedIndices: selectedIndices.length,
+      totalLabels: labels.length,
       visibleLabels: labels.filter(l => l !== '').length,
       dataPoints: plannedData.length,
-      firstLabel: labels[selectedIndices[0]],
-      lastLabel: labels[selectedIndices[selectedIndices.length - 1]],
+      paddingDays,
     });
 
     return {
