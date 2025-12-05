@@ -18,33 +18,27 @@ interface ProgressCardProps {
 }
 
 interface ProfileData {
-  startDate: string;
+  startDate: Date;
   startWeightLbs: number;
   goalWeightLbs: number;
   weeklyLossLbs: number;
-}
-
-interface CheckIn {
-  date: string;
-  weight: number;
 }
 
 export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
 
   useEffect(() => {
-    loadData();
+    loadProfileData();
   }, [userId]);
 
-  const loadData = async () => {
+  const loadProfileData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log('[Progress] Loading data for user:', userId);
+      console.log('[ProgressCard] Loading profile data for user:', userId);
 
       // Load user profile data
       const { data: userData, error: userError } = await supabase
@@ -53,7 +47,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         .eq('id', userId)
         .maybeSingle();
 
-      if (userError) throw userError;
+      if (userError) {
+        console.error('[ProgressCard] Error loading user data:', userError);
+        throw userError;
+      }
 
       // Load active goal
       const { data: goalData, error: goalError } = await supabase
@@ -63,38 +60,31 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (goalError) throw goalError;
+      if (goalError) {
+        console.error('[ProgressCard] Error loading goal data:', goalError);
+        throw goalError;
+      }
 
-      // Load ALL check-ins for this user
-      const { data: checkInsData, error: checkInsError } = await supabase
-        .from('check_ins')
-        .select('date, weight')
-        .eq('user_id', userId)
-        .not('weight', 'is', null)
-        .order('date', { ascending: true });
+      console.log('[ProgressCard] userData:', userData);
+      console.log('[ProgressCard] goalData:', goalData);
 
-      if (checkInsError) throw checkInsError;
-
-      console.log('[Progress] userData:', userData);
-      console.log('[Progress] goalData:', goalData);
-      console.log('[Progress] checkInsData:', checkInsData?.length || 0, 'check-ins');
-
-      if (!userData || !goalData) {
-        setError('Set your start weight, goal weight and weekly loss in Profile to see the planned line.');
+      // Validate required data
+      if (!userData || !goalData || !goalData.start_date) {
+        console.log('[ProgressCard] Missing required profile data');
+        setError('Set your weight goal in Profile to see progress.');
         setLoading(false);
         return;
       }
 
       // Get weight unit from profile
       const weightUnit = userData.weight_unit || 'kg';
-      console.log('[Progress] weight_unit from profile:', weightUnit);
+      console.log('[ProgressCard] weight_unit from profile:', weightUnit);
 
       // Convert weights to lbs if needed
       let startWeightLbs: number;
       let goalWeightLbs: number;
 
       if (weightUnit === 'lbs') {
-        // Already in lbs, use directly
         startWeightLbs = userData.starting_weight || 0;
         goalWeightLbs = userData.goal_weight || 0;
       } else {
@@ -103,216 +93,150 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         goalWeightLbs = (userData.goal_weight || 0) * 2.20462;
       }
 
-      console.log('[Progress] startWeightLbs:', startWeightLbs);
-      console.log('[Progress] goalWeightLbs:', goalWeightLbs);
+      console.log('[ProgressCard] startWeightLbs:', startWeightLbs);
+      console.log('[ProgressCard] goalWeightLbs:', goalWeightLbs);
 
-      // Get weekly loss rate
+      // Get weekly loss rate (default to 1.0 if not set)
       const weeklyLossLbs = parseFloat(goalData.loss_rate_lbs_per_week) || 1.0;
 
-      // Validate required data
-      const hasValidData = 
-        typeof goalWeightLbs === 'number' && 
-        !Number.isNaN(goalWeightLbs) && 
+      // Validate all required fields
+      const hasValidData =
+        typeof goalWeightLbs === 'number' &&
+        !Number.isNaN(goalWeightLbs) &&
         goalWeightLbs > 0 &&
         typeof startWeightLbs === 'number' &&
         !Number.isNaN(startWeightLbs) &&
         startWeightLbs > 0 &&
         typeof weeklyLossLbs === 'number' &&
         !Number.isNaN(weeklyLossLbs) &&
-        weeklyLossLbs > 0 &&
-        goalData.start_date;
+        weeklyLossLbs > 0;
 
       if (!hasValidData) {
-        console.log('[Progress] Invalid or missing data');
-        setError('Set your start weight, goal weight and weekly loss in Profile to see the planned line.');
+        console.log('[ProgressCard] Invalid weight or loss rate data');
+        setError('Set your weight goal in Profile to see progress.');
         setLoading(false);
         return;
       }
 
+      const startDate = new Date(goalData.start_date);
+      
       setProfileData({
-        startDate: goalData.start_date,
+        startDate,
         startWeightLbs,
         goalWeightLbs,
         weeklyLossLbs,
       });
 
-      // Convert check-ins to lbs if needed
-      const checkInsInLbs: CheckIn[] = (checkInsData || []).map(ci => ({
-        date: ci.date,
-        weight: weightUnit === 'lbs' ? ci.weight : ci.weight * 2.20462,
-      }));
+      console.log('[ProgressCard] Profile data loaded successfully:', {
+        startDate: startDate.toISOString().split('T')[0],
+        startWeightLbs,
+        goalWeightLbs,
+        weeklyLossLbs,
+      });
 
-      setCheckIns(checkInsInLbs);
-
-      console.log('[Progress] Profile data loaded successfully');
       setLoading(false);
     } catch (err: any) {
-      console.error('[Progress] Error loading data:', err);
-      setError(err.message || 'Failed to load progress data');
+      console.error('[ProgressCard] Error loading profile data:', err);
+      setError('Failed to load progress data');
       setLoading(false);
     }
   };
 
-  // Compute the complete date range: from first check-in (or start date) to today
-  const dateRange = useMemo(() => {
+  // Calculate planned weight data points
+  const plannedData = useMemo(() => {
     if (!profileData) {
       return null;
     }
 
-    const planStartDate = new Date(profileData.startDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const { startDate, startWeightLbs, goalWeightLbs, weeklyLossLbs } = profileData;
 
-    let startDate: Date;
-
-    // If there are check-ins, use the earliest check-in date or plan start date, whichever is earlier
-    if (checkIns.length > 0) {
-      const firstCheckInDate = new Date(checkIns[0].date);
-      startDate = firstCheckInDate < planStartDate ? firstCheckInDate : planStartDate;
-    } else {
-      // No check-ins, use plan start date
-      startDate = planStartDate;
-    }
-
-    return { startDate, endDate: today };
-  }, [profileData, checkIns]);
-
-  // Compute planned line data points
-  const plannedData = useMemo(() => {
-    if (!profileData || !dateRange) {
-      return null;
-    }
-
-    const { startDate, endDate } = dateRange;
-    const { startWeightLbs, goalWeightLbs, weeklyLossLbs } = profileData;
-
-    console.log('[Progress] Computing planned line with:', {
+    console.log('[ProgressCard] Computing planned line with:', {
       startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
       startWeightLbs,
       goalWeightLbs,
       weeklyLossLbs,
     });
 
-    // Calculate total weight to lose (can be positive or negative)
+    // Calculate total weight to lose (can be positive for loss, negative for gain)
     const totalToLose = startWeightLbs - goalWeightLbs;
-    
-    // Calculate weeks needed
-    const weeksPlanned = Math.abs(totalToLose / weeklyLossLbs);
-    
-    // Calculate goal date
-    const planStartDate = new Date(profileData.startDate);
-    const daysToGoal = Math.round(weeksPlanned * 7);
-    const goalDatePlanned = new Date(planStartDate);
-    goalDatePlanned.setDate(goalDatePlanned.getDate() + daysToGoal);
 
-    console.log('[Progress] Planned timeline:', {
+    // Calculate weeks needed to reach goal
+    const weeksNeeded = Math.abs(totalToLose / weeklyLossLbs);
+
+    // Calculate goal date
+    const daysToGoal = Math.round(weeksNeeded * 7);
+    const goalDate = new Date(startDate);
+    goalDate.setDate(goalDate.getDate() + daysToGoal);
+
+    console.log('[ProgressCard] Planned timeline:', {
       totalToLose,
-      weeksPlanned,
+      weeksNeeded,
       daysToGoal,
-      goalDatePlanned: goalDatePlanned.toISOString().split('T')[0],
+      goalDate: goalDate.toISOString().split('T')[0],
     });
 
-    // Generate daily data points from startDate to endDate (today)
+    // Generate daily data points from startDate to goalDate
     const dataPoints: { date: Date; weightLbs: number }[] = [];
     const currentDate = new Date(startDate);
-    
-    while (currentDate <= endDate) {
+
+    while (currentDate <= goalDate) {
       const daysSinceStart = Math.floor(
-        (currentDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24)
+        (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
       );
-      
+
       // Linear interpolation
       let plannedWeight: number;
       if (daysToGoal > 0) {
         const progress = daysSinceStart / daysToGoal;
         plannedWeight = startWeightLbs + (goalWeightLbs - startWeightLbs) * progress;
-        
-        // Clamp to goal weight if we've passed the goal date
-        if (currentDate > goalDatePlanned) {
-          plannedWeight = goalWeightLbs;
-        }
       } else {
         plannedWeight = goalWeightLbs;
       }
-      
+
       dataPoints.push({
         date: new Date(currentDate),
         weightLbs: plannedWeight,
       });
-      
+
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log('[Progress] Generated', dataPoints.length, 'planned data points');
-    console.log('[Progress] First point:', dataPoints[0]);
-    console.log('[Progress] Last point:', dataPoints[dataPoints.length - 1]);
+    console.log('[ProgressCard] Generated', dataPoints.length, 'planned data points');
+    console.log('[ProgressCard] First point:', {
+      date: dataPoints[0].date.toISOString().split('T')[0],
+      weight: dataPoints[0].weightLbs.toFixed(1),
+    });
+    console.log('[ProgressCard] Last point:', {
+      date: dataPoints[dataPoints.length - 1].date.toISOString().split('T')[0],
+      weight: dataPoints[dataPoints.length - 1].weightLbs.toFixed(1),
+    });
 
     return dataPoints;
-  }, [profileData, dateRange]);
-
-  // Compute actual line data points from check-ins
-  const actualData = useMemo(() => {
-    if (!dateRange || checkIns.length === 0) {
-      return null;
-    }
-
-    const { startDate, endDate } = dateRange;
-
-    // Filter check-ins within the date range
-    const filteredCheckIns = checkIns.filter(ci => {
-      const ciDate = new Date(ci.date);
-      return ciDate >= startDate && ciDate <= endDate;
-    });
-
-    if (filteredCheckIns.length === 0) {
-      return null;
-    }
-
-    console.log('[Progress] Actual data points:', filteredCheckIns.length);
-
-    return filteredCheckIns.map(ci => ({
-      date: new Date(ci.date),
-      weightLbs: ci.weight,
-    }));
-  }, [checkIns, dateRange]);
+  }, [profileData]);
 
   // Prepare chart data for rendering
-  const prepareChartData = () => {
-    if (!profileData || !plannedData || plannedData.length === 0 || !dateRange) {
+  const chartData = useMemo(() => {
+    if (!profileData || !plannedData || plannedData.length === 0) {
       return null;
     }
 
-    const { startDate, endDate } = dateRange;
-    
-    console.log('[Progress] Visible range (complete history):', {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-    });
+    const { startWeightLbs, goalWeightLbs } = profileData;
 
-    // Calculate Y-axis range based on all weights with padding
-    const allWeights: number[] = [...plannedData.map(p => p.weightLbs)];
-    
-    if (actualData && actualData.length > 0) {
-      allWeights.push(...actualData.map(a => a.weightLbs));
-    }
-    
-    allWeights.push(profileData.goalWeightLbs, profileData.startWeightLbs);
-    
-    const minWeight = Math.min(...allWeights);
-    const maxWeight = Math.max(...allWeights);
-    
+    // Calculate Y-axis range with padding
+    const minWeight = Math.min(startWeightLbs, goalWeightLbs);
+    const maxWeight = Math.max(startWeightLbs, goalWeightLbs);
+
     const padding = 3;
     const yMin = Math.max(0, minWeight - padding);
     const yMax = maxWeight + padding;
 
-    console.log('[Progress] Y-axis range:', { yMin, yMax });
+    console.log('[ProgressCard] Y-axis range:', { yMin, yMax });
 
     // Determine optimal number of labels based on total days
     const totalDays = plannedData.length;
     let numLabels: number;
-    let labelFormat: 'MM/dd' | 'MM/yy' | 'MMM';
-    
+    let labelFormat: 'MM/dd' | 'MM/yy';
+
     if (totalDays <= 14) {
       // 2 weeks or less: show every 1-2 days
       numLabels = Math.min(7, totalDays);
@@ -341,60 +265,33 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
         const day = point.date.getDate().toString().padStart(2, '0');
         const year = point.date.getFullYear().toString().slice(-2);
-        
+
         if (labelFormat === 'MM/dd') {
           return `${month}/${day}`;
-        } else if (labelFormat === 'MM/yy') {
-          return `${month}/${year}`;
         } else {
-          // MMM format
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          return monthNames[point.date.getMonth()];
+          return `${month}/${year}`;
         }
       }
       return '';
     });
 
-    // Create datasets
-    const datasets: any[] = [
+    // Create dataset for planned line
+    const datasets = [
       {
         data: plannedData.map(p => p.weightLbs),
-        color: () => '#4CAF50', // Green for planned
+        color: () => colors.success, // Green for planned
         strokeWidth: 2,
         withDots: false,
       },
     ];
 
-    // Add actual data if available
-    if (actualData && actualData.length > 0) {
-      // Map actual data points to the same x-axis as planned data
-      const actualWeights = plannedData.map(plannedPoint => {
-        const matchingCheckIn = actualData.find(
-          a => a.date.toISOString().split('T')[0] === plannedPoint.date.toISOString().split('T')[0]
-        );
-        return matchingCheckIn ? matchingCheckIn.weightLbs : null;
-      });
-
-      // Only add actual line if there are non-null values
-      if (actualWeights.some(w => w !== null)) {
-        datasets.push({
-          data: actualWeights.map(w => w === null ? 0 : w), // Chart library needs numbers, we'll handle nulls with dots
-          color: () => '#2196F3', // Blue for actual
-          strokeWidth: 2,
-          withDots: true,
-        });
-      }
-    }
-
-    console.log('[Progress] Chart data prepared:', {
+    console.log('[ProgressCard] Chart data prepared:', {
       totalDays,
       numLabels,
       labelFormat,
       sampleInterval,
       visibleLabels: labels.filter(l => l !== '').length,
       dataPoints: plannedData.length,
-      actualPoints: actualData?.length || 0,
     });
 
     return {
@@ -403,17 +300,19 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       yMin,
       yMax,
     };
-  };
+  }, [profileData, plannedData]);
 
   if (loading) {
     return (
-      <View style={[
-        styles.card,
-        {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-        }
-      ]}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          },
+        ]}
+      >
         <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Progress
         </Text>
@@ -426,13 +325,15 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   if (error) {
     return (
-      <View style={[
-        styles.card,
-        {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-        }
-      ]}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          },
+        ]}
+      >
         <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Progress
         </Text>
@@ -443,7 +344,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             size={48}
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
-          <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+          <Text
+            style={[
+              styles.errorText,
+              { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
+            ]}
+          >
             {error}
           </Text>
         </View>
@@ -451,23 +357,28 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
-  const chartData = prepareChartData();
-
   if (!chartData) {
     return (
-      <View style={[
-        styles.card,
-        {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-        }
-      ]}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          },
+        ]}
+      >
         <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Progress
         </Text>
         <View style={styles.errorContainer}>
-          <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            No data available. Start logging your weight to see progress!
+          <Text
+            style={[
+              styles.errorText,
+              { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
+            ]}
+          >
+            Set your weight goal in Profile to see progress.
           </Text>
         </View>
       </View>
@@ -476,16 +387,18 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   // Fixed width - always use screen width minus padding
   const screenWidth = Dimensions.get('window').width;
-  const chartWidth = screenWidth - (spacing.md * 4);
+  const chartWidth = screenWidth - spacing.md * 4;
 
   return (
-    <View style={[
-      styles.card,
-      {
-        backgroundColor: isDark ? colors.cardDark : colors.card,
-        borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-      }
-    ]}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: isDark ? colors.cardDark : colors.card,
+          borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+        },
+      ]}
+    >
       <View style={styles.cardHeader}>
         <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Progress
@@ -495,19 +408,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       {/* Legend */}
       <View style={styles.legend}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: '#4CAF50' }]} />
+          <View style={[styles.legendLine, { backgroundColor: colors.success }]} />
           <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
             Planned
           </Text>
         </View>
-        {actualData && actualData.length > 0 && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: '#2196F3' }]} />
-            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-              Actual
-            </Text>
-          </View>
-        )}
       </View>
 
       {/* Chart - Fixed width, no scrolling */}
@@ -525,15 +430,16 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
             backgroundGradientTo: isDark ? colors.cardDark : colors.card,
             decimalPlaces: 0,
-            color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
-            labelColor: (opacity = 1) => isDark 
-              ? `rgba(241, 245, 249, ${opacity})` 
-              : `rgba(43, 45, 66, ${opacity})`,
+            color: (opacity = 1) => `rgba(92, 185, 123, ${opacity})`, // colors.success
+            labelColor: (opacity = 1) =>
+              isDark
+                ? `rgba(241, 245, 249, ${opacity})`
+                : `rgba(43, 45, 66, ${opacity})`,
             style: {
               borderRadius: borderRadius.md,
             },
             propsForDots: {
-              r: '3',
+              r: '0', // No dots
             },
             propsForBackgroundLines: {
               strokeDasharray: '',
@@ -561,7 +467,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       </View>
 
       {/* Y-axis label */}
-      <Text style={[styles.yAxisLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+      <Text
+        style={[
+          styles.yAxisLabel,
+          { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
+        ]}
+      >
         Weight (lbs)
       </Text>
     </View>
