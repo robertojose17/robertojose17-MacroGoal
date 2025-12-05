@@ -214,7 +214,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return dataPoints;
   }, [profileData]);
 
-  // Prepare chart data for rendering
+  // Prepare chart data for rendering with optimized X-axis labels
   const chartData = useMemo(() => {
     if (!profileData || !plannedData || plannedData.length === 0) {
       return null;
@@ -232,36 +232,52 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[ProgressCard] Y-axis range:', { yMin, yMax });
 
-    // Determine optimal number of labels based on total days
-    const totalDays = plannedData.length;
-    let numLabels: number;
-    let labelFormat: 'MM/dd' | 'MM/yy';
+    // ========================================
+    // NEW X-AXIS LABEL LOGIC
+    // ========================================
+    const totalPoints = plannedData.length;
+    const maxXTicks = 6; // Maximum number of labels to show
 
-    if (totalDays <= 14) {
-      // 2 weeks or less: show every 1-2 days
-      numLabels = Math.min(7, totalDays);
-      labelFormat = 'MM/dd';
-    } else if (totalDays <= 60) {
-      // 2 months or less: show every 5-7 days
-      numLabels = Math.min(10, Math.ceil(totalDays / 5));
-      labelFormat = 'MM/dd';
-    } else if (totalDays <= 180) {
-      // 6 months or less: show every 2-3 weeks
-      numLabels = Math.min(10, Math.ceil(totalDays / 14));
-      labelFormat = 'MM/yy';
+    console.log('[ProgressCard] Total data points:', totalPoints);
+    console.log('[ProgressCard] Max X ticks:', maxXTicks);
+
+    // Determine which indices to show labels for
+    let selectedIndices: number[];
+    
+    if (totalPoints <= maxXTicks) {
+      // If we have fewer points than max ticks, show all
+      selectedIndices = Array.from({ length: totalPoints }, (_, i) => i);
     } else {
-      // More than 6 months: 8-10 labels evenly spaced
-      numLabels = Math.min(10, Math.max(8, Math.ceil(totalDays / 30)));
+      // Calculate step size to evenly distribute labels
+      const step = Math.floor(totalPoints / (maxXTicks - 1));
+      selectedIndices = [0]; // Always include first
+      
+      // Add intermediate labels
+      for (let i = 1; i < maxXTicks - 1; i++) {
+        selectedIndices.push(i * step);
+      }
+      
+      // Always include last
+      selectedIndices.push(totalPoints - 1);
+    }
+
+    console.log('[ProgressCard] Selected label indices:', selectedIndices);
+
+    // Determine date format based on total range
+    const totalDays = totalPoints;
+    let labelFormat: 'MM/dd' | 'MM/yy';
+    
+    if (totalDays <= 60) {
+      labelFormat = 'MM/dd';
+    } else {
       labelFormat = 'MM/yy';
     }
 
-    // Calculate sampling interval to get desired number of labels
-    const sampleInterval = Math.max(1, Math.floor(totalDays / numLabels));
+    console.log('[ProgressCard] Using label format:', labelFormat);
 
-    // Create labels with proper date formatting
-    const labels = plannedData.map((point, i) => {
-      // Show label at regular intervals and always show first and last
-      if (i % sampleInterval === 0 || i === plannedData.length - 1) {
+    // Create labels array - empty strings for non-selected indices
+    const labels = plannedData.map((point, index) => {
+      if (selectedIndices.includes(index)) {
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
         const day = point.date.getDate().toString().padStart(2, '0');
         const year = point.date.getFullYear().toString().slice(-2);
@@ -272,7 +288,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
           return `${month}/${year}`;
         }
       }
-      return '';
+      return ''; // Empty string for non-selected indices
     });
 
     // Create dataset for planned line
@@ -287,11 +303,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[ProgressCard] Chart data prepared:', {
       totalDays,
-      numLabels,
       labelFormat,
-      sampleInterval,
+      selectedIndices: selectedIndices.length,
       visibleLabels: labels.filter(l => l !== '').length,
       dataPoints: plannedData.length,
+      firstLabel: labels[selectedIndices[0]],
+      lastLabel: labels[selectedIndices[selectedIndices.length - 1]],
     });
 
     return {
