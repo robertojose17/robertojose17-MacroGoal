@@ -233,7 +233,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Y-axis range:', { yMin, yMax });
 
     // ========================================
-    // X-AXIS LABEL LOGIC WITH RIGHT PADDING
+    // X-AXIS LABEL LOGIC WITH MONTH PADDING
     // ========================================
     const totalPoints = plannedData.length;
     const maxXTicks = 6; // Maximum number of labels to show
@@ -241,17 +241,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Total data points:', totalPoints);
     console.log('[ProgressCard] Max X ticks:', maxXTicks);
 
-    // Add TWO dummy padding dates after the last real date
-    // This creates MORE visual space so the last real date is fully visible
+    // Add ONE MONTH (30 days) as padding after the last real date
     const lastRealDate = plannedData[plannedData.length - 1].date;
-    const paddingDate1 = new Date(lastRealDate);
-    paddingDate1.setDate(paddingDate1.getDate() + 5); // First padding point
-    const paddingDate2 = new Date(lastRealDate);
-    paddingDate2.setDate(paddingDate2.getDate() + 10); // Second padding point
+    const paddingDate = new Date(lastRealDate);
+    paddingDate.setDate(paddingDate.getDate() + 30); // Add 30 days (1 month)
 
-    console.log('[ProgressCard] Adding padding dates:', 
-      paddingDate1.toISOString().split('T')[0],
-      paddingDate2.toISOString().split('T')[0]
+    console.log('[ProgressCard] Adding month padding date:', 
+      paddingDate.toISOString().split('T')[0]
     );
 
     // Determine which indices to show labels for (from the REAL data points only)
@@ -289,7 +285,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Using label format:', labelFormat);
 
     // Create labels array - empty strings for non-selected indices
-    // Include TWO padding dates at the end with empty labels
+    // Include ONE padding date at the end with empty label
     const labels = plannedData.map((point, index) => {
       if (selectedIndices.includes(index)) {
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
@@ -305,16 +301,17 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       return ''; // Empty string for non-selected indices
     });
 
-    // Add TWO padding labels (empty strings - no visible labels, just spacing)
-    labels.push('');
+    // Add ONE padding label (empty string - no visible label, just spacing)
     labels.push('');
 
-    // Create dataset for planned line
-    // Add the last weight value TWICE for the two padding points (so the line extends smoothly)
-    const lastWeight = plannedData[plannedData.length - 1].weightLbs;
+    // ========================================
+    // PLANNED LINE STOPS AT GOAL WEIGHT
+    // ========================================
+    // The planned line should stop at the goal date/weight intersection
+    // We add null for the padding point so the line doesn't extend
     const datasets = [
       {
-        data: [...plannedData.map(p => p.weightLbs), lastWeight, lastWeight],
+        data: [...plannedData.map(p => p.weightLbs), null as any],
         color: () => colors.success, // Green for planned
         strokeWidth: 2,
         withDots: false,
@@ -330,6 +327,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       totalLabels: labels.length,
       firstLabel: labels[selectedIndices[0]],
       lastLabel: labels[selectedIndices[selectedIndices.length - 1]],
+      lastDataPoint: plannedData[plannedData.length - 1].weightLbs,
+      paddingDataPoint: 'null (line stops)',
     });
 
     return {
