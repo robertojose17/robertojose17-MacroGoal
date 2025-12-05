@@ -103,16 +103,30 @@ Deno.serve(async (req) => {
     console.log("[Checkout]   - Plan Type:", planType);
     console.log("[Checkout]   - User ID:", user.id);
 
-    // Check if user already has a Stripe customer ID
-    const { data: existingSub } = await supabase
-      .from("subscriptions")
+    // CRITICAL FIX: Check for existing customer mapping first
+    console.log("[Checkout] 🔍 Checking for existing customer mapping...");
+    const { data: existingMapping } = await supabase
+      .from("user_stripe_customers")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    let customerId = existingSub?.stripe_customer_id;
+    let customerId = existingMapping?.stripe_customer_id;
 
-    // Create or retrieve Stripe customer
+    if (customerId) {
+      console.log("[Checkout] ✅ Found existing customer mapping:", customerId);
+      
+      // Verify customer still exists in Stripe
+      try {
+        await stripe.customers.retrieve(customerId);
+        console.log("[Checkout] ✅ Customer verified in Stripe");
+      } catch (error) {
+        console.error("[Checkout] ⚠️ Customer not found in Stripe, will create new one");
+        customerId = null;
+      }
+    }
+
+    // Create new customer if needed
     if (!customerId) {
       console.log("[Checkout] 👤 Creating new Stripe customer");
       const customer = await stripe.customers.create({
@@ -123,12 +137,42 @@ Deno.serve(async (req) => {
       });
       customerId = customer.id;
       console.log("[Checkout] ✅ Created customer:", customerId);
-    } else {
-      console.log("[Checkout] ✅ Using existing customer:", customerId);
+
+      // CRITICAL FIX: Store the mapping in our table
+      console.log("[Checkout] 💾 Storing customer mapping...");
+      const { error: mappingError } = await supabase
+        .from("user_stripe_customers")
+        .upsert({
+          user_id: user.id,
+          stripe_customer_id: customerId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+
+      if (mappingError) {
+        console.error("[Checkout] ⚠️ Error storing customer mapping:", mappingError);
+        // Continue anyway - we have the customer ID
+      } else {
+        console.log("[Checkout] ✅ Customer mapping stored");
+      }
+
+      // CRITICAL FIX: Also update subscriptions table with customer ID
+      const { error: subUpdateError } = await supabase
+        .from("subscriptions")
+        .upsert({
+          user_id: user.id,
+          stripe_customer_id: customerId,
+          status: 'inactive',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+
+      if (subUpdateError) {
+        console.error("[Checkout] ⚠️ Error updating subscriptions table:", subUpdateError);
+      } else {
+        console.log("[Checkout] ✅ Subscriptions table updated with customer ID");
+      }
     }
 
     // Use a web-based redirect URL that will then deep link back to the app
-    // This is more reliable than using deep links directly in Stripe Checkout
     const baseUrl = SUPABASE_URL!.replace('/rest/v1', '');
     const successUrl = `${baseUrl}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${baseUrl}/functions/v1/checkout-redirect?cancelled=true`;
@@ -137,7 +181,7 @@ Deno.serve(async (req) => {
     console.log("[Checkout]   - Success:", successUrl);
     console.log("[Checkout]   - Cancel:", cancelUrl);
 
-    // Create checkout session
+    // CRITICAL FIX: Create checkout session with customer and comprehensive metadata
     console.log("[Checkout] 🚀 Creating Stripe checkout session...");
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -150,10 +194,12 @@ Deno.serve(async (req) => {
       mode: "subscription",
       success_url: successUrl,
       cancel_url: cancelUrl,
+      // CRITICAL: Add user_id to session metadata
       metadata: {
         supabase_user_id: user.id,
         plan_type: planType,
       },
+      // CRITICAL: Add user_id to subscription metadata
       subscription_data: {
         metadata: {
           supabase_user_id: user.id,
@@ -164,12 +210,15 @@ Deno.serve(async (req) => {
 
     console.log("[Checkout] ✅ Session created successfully!");
     console.log("[Checkout]   - Session ID:", session.id);
+    console.log("[Checkout]   - Customer ID:", customerId);
+    console.log("[Checkout]   - User ID in metadata:", session.metadata?.supabase_user_id);
     console.log("[Checkout]   - Checkout URL:", session.url);
 
     return new Response(
       JSON.stringify({ 
         url: session.url,
-        sessionId: session.id
+        sessionId: session.id,
+        customerId: customerId,
       }),
       {
         status: 200,
@@ -181,7 +230,6 @@ Deno.serve(async (req) => {
     console.error("[Checkout] Error message:", error.message);
     console.error("[Checkout] Error stack:", error.stack);
     
-    // Provide more specific error messages
     let errorMessage = error.message || "Internal server error";
     let statusCode = 500;
 

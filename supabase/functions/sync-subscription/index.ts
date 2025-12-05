@@ -76,10 +76,100 @@ Deno.serve(async (req) => {
 
     if (!subData || !subData.stripe_subscription_id) {
       console.log("[SyncSubscription] ℹ️ No subscription found for user");
+      
+      // CRITICAL: Check if user has a customer ID but no subscription
+      // This can happen if payment succeeded but webhook failed
+      if (subData?.stripe_customer_id) {
+        console.log("[SyncSubscription] 🔍 User has customer ID, checking Stripe for subscriptions...");
+        
+        try {
+          // List all subscriptions for this customer
+          const subscriptions = await stripe.subscriptions.list({
+            customer: subData.stripe_customer_id,
+            limit: 10,
+          });
+
+          if (subscriptions.data.length > 0) {
+            console.log("[SyncSubscription] ✅ Found", subscriptions.data.length, "subscription(s) in Stripe");
+            
+            // Get the most recent active or trialing subscription
+            const activeSubscription = subscriptions.data.find(
+              sub => sub.status === 'active' || sub.status === 'trialing'
+            ) || subscriptions.data[0];
+
+            console.log("[SyncSubscription] 💾 Syncing subscription from Stripe:", activeSubscription.id);
+
+            // Determine plan type
+            const priceId = activeSubscription.items.data[0].price.id;
+            let planType = activeSubscription.metadata?.plan_type || 'monthly';
+            if (!activeSubscription.metadata?.plan_type) {
+              if (priceId.toLowerCase().includes('year') || priceId.toLowerCase().includes('annual')) {
+                planType = 'yearly';
+              }
+            }
+
+            // Update subscription in database
+            const { error: updateError } = await supabase
+              .from("subscriptions")
+              .update({
+                stripe_subscription_id: activeSubscription.id,
+                stripe_price_id: priceId,
+                status: activeSubscription.status,
+                plan_type: planType,
+                current_period_start: new Date(activeSubscription.current_period_start * 1000).toISOString(),
+                current_period_end: new Date(activeSubscription.current_period_end * 1000).toISOString(),
+                cancel_at_period_end: activeSubscription.cancel_at_period_end,
+                trial_end: activeSubscription.trial_end ? new Date(activeSubscription.trial_end * 1000).toISOString() : null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", user.id);
+
+            if (updateError) {
+              console.error("[SyncSubscription] ❌ Error updating subscription:", updateError);
+            } else {
+              console.log("[SyncSubscription] ✅ Subscription synced from Stripe");
+
+              // Update user_type
+              const isPremium = activeSubscription.status === 'active' || activeSubscription.status === 'trialing';
+              const newUserType = isPremium ? 'premium' : 'free';
+
+              await supabase
+                .from("users")
+                .update({
+                  user_type: newUserType,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", user.id);
+
+              // Fetch updated subscription
+              const { data: updatedSub } = await supabase
+                .from("subscriptions")
+                .select("*")
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+              return new Response(
+                JSON.stringify({ 
+                  message: "Subscription synced from Stripe successfully",
+                  subscription: updatedSub,
+                  isPremium: isPremium
+                }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          } else {
+            console.log("[SyncSubscription] ℹ️ No subscriptions found in Stripe for this customer");
+          }
+        } catch (error) {
+          console.error("[SyncSubscription] ⚠️ Error checking Stripe subscriptions:", error);
+        }
+      }
+
       return new Response(
         JSON.stringify({ 
           message: "No subscription found",
-          subscription: null
+          subscription: null,
+          isPremium: false
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -92,12 +182,22 @@ Deno.serve(async (req) => {
     
     console.log("[SyncSubscription] 💳 Stripe subscription status:", stripeSubscription.status);
 
+    // Determine plan type
+    const priceId = stripeSubscription.items.data[0].price.id;
+    let planType = stripeSubscription.metadata?.plan_type || subData.plan_type || 'monthly';
+    if (!stripeSubscription.metadata?.plan_type && !subData.plan_type) {
+      if (priceId.toLowerCase().includes('year') || priceId.toLowerCase().includes('annual')) {
+        planType = 'yearly';
+      }
+    }
+
     // Update subscription in database
     const { error: updateError } = await supabase
       .from("subscriptions")
       .update({
         status: stripeSubscription.status,
-        stripe_price_id: stripeSubscription.items.data[0].price.id,
+        stripe_price_id: priceId,
+        plan_type: planType,
         current_period_start: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
         current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
         cancel_at_period_end: stripeSubscription.cancel_at_period_end,
@@ -134,6 +234,18 @@ Deno.serve(async (req) => {
       console.error("[SyncSubscription] ❌ Error updating user_type:", userError);
     } else {
       console.log("[SyncSubscription] ✅ User type updated to:", newUserType);
+    }
+
+    // CRITICAL: Ensure customer mapping exists
+    if (subData.stripe_customer_id) {
+      console.log("[SyncSubscription] 💾 Ensuring customer mapping exists...");
+      await supabase
+        .from("user_stripe_customers")
+        .upsert({
+          user_id: user.id,
+          stripe_customer_id: subData.stripe_customer_id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
     }
 
     // Fetch updated subscription

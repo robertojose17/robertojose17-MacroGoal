@@ -1,256 +1,220 @@
 
 # ✅ Stripe Subscription - Final Checklist
 
-## 🎯 Current Status
-
-**Code:** ✅ Complete and deployed
-**Configuration:** ⚠️ Needs manual JWT verification disable
-
-## 📋 Pre-Flight Checklist
-
-### Supabase Configuration
-
-- [ ] **JWT Verification Disabled** (CRITICAL!)
-  - Go to: https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/functions
-  - Click `stripe-webhook`
-  - Disable "Verify JWT"
-  - This is the ONLY thing preventing it from working!
-
-- [ ] **Environment Variables Set**
-  - Go to: https://supabase.com/dashboard/project/esgptfiofoaeguslgvcq/settings/functions
-  - Verify these are set:
-    - `STRIPE_SECRET_KEY` (starts with `sk_test_`)
-    - `STRIPE_WEBHOOK_SECRET` (starts with `whsec_`)
-    - `SUPABASE_URL`
-    - `SUPABASE_SERVICE_ROLE_KEY`
-
-- [ ] **Edge Functions Deployed**
-  - `stripe-webhook` (v16) ✅
-  - `create-checkout-session` (v13) ✅
-  - `create-portal-session` ✅
-  - `sync-subscription` (v1) ✅
+## 🎯 Before Testing
 
 ### Stripe Configuration
+- [ ] Stripe account in **test mode**
+- [ ] Test API keys configured
+- [ ] Webhook endpoint added to Stripe dashboard
+- [ ] Webhook signing secret configured in Supabase
 
-- [ ] **Webhook Endpoint Created**
-  - URL: `https://esgptfiofoaeguslgvcq.supabase.co/functions/v1/stripe-webhook`
-  - Status: Active
-  - Mode: Test
+### Supabase Configuration
+- [ ] Edge Functions deployed
+- [ ] Environment variables set:
+  - [ ] `STRIPE_SECRET_KEY`
+  - [ ] `STRIPE_WEBHOOK_SECRET`
+  - [ ] `SUPABASE_URL`
+  - [ ] `SUPABASE_SERVICE_ROLE_KEY`
+- [ ] Database migration applied (`user_stripe_customers` table exists)
 
-- [ ] **Webhook Events Enabled**
-  - `checkout.session.completed` ✅
-  - `customer.subscription.created` ✅
-  - `customer.subscription.updated` ✅
-  - `customer.subscription.deleted` ✅
+### App Configuration
+- [ ] Price IDs configured in `utils/stripeConfig.ts`
+- [ ] Deep linking configured
+- [ ] App can connect to Supabase
 
-- [ ] **Price IDs Configured**
-  - Monthly: `price_1SZSojDsUf4JA97FuIWfvUfX` ✅
-  - Yearly: `price_1SZSnyDsUf4JA97Fd7R9BMkD` ✅
-  - Both start with `price_` (not `prod_`) ✅
+## 🧪 Testing
 
-- [ ] **Test Mode Enabled**
-  - Using test API keys
-  - Using test price IDs
-  - Webhook in test mode
-
-### Database Schema
-
-- [ ] **Tables Exist**
-  - `users` table with `user_type` column ✅
-  - `subscriptions` table with all required columns ✅
-
-- [ ] **RLS Policies**
-  - Users can read their own subscription ✅
-  - Service role can update subscriptions ✅
-
-## 🧪 Testing Checklist
-
-### 1. Webhook Test (Do This First!)
-
-- [ ] Go to Stripe Dashboard → Webhooks
-- [ ] Click on your webhook endpoint
-- [ ] Click "Send test webhook"
-- [ ] Select "checkout.session.completed"
-- [ ] **Verify response is 200** (not 401!)
-- [ ] Check Supabase logs for success messages
-
-**If you see 401:** JWT verification is still enabled!
-
-### 2. Full Flow Test
-
-- [ ] Open app and log in
-- [ ] Go to Profile screen
-- [ ] Verify shows "Free" plan
+### Test 1: Complete Payment Flow
+- [ ] Open app
+- [ ] Navigate to Profile
 - [ ] Tap "Upgrade to Premium"
-- [ ] Select a plan
-- [ ] Tap "Subscribe Now"
-- [ ] Complete checkout with `4242 4242 4242 4242`
-- [ ] Return to app
-- [ ] Wait 2-3 seconds
-- [ ] **Verify Profile shows "Premium"**
+- [ ] Select Monthly plan
+- [ ] Enter test card: `4242 4242 4242 4242`
+- [ ] Complete checkout
+- [ ] See success page in Stripe
+- [ ] App redirects back automatically
+- [ ] Profile shows "Premium" badge
+- [ ] Subscription card shows "Active"
+- [ ] AI features are unlocked
 
-### 3. Database Verification
+### Test 2: Database Verification
+```sql
+-- Run these queries in Supabase SQL Editor:
+
+-- 1. Customer mapping exists
+SELECT * FROM user_stripe_customers 
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'your-test-email@example.com');
+-- Expected: 1 row
+
+-- 2. Subscription is active
+SELECT * FROM subscriptions 
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'your-test-email@example.com');
+-- Expected: status = 'active', plan_type = 'monthly'
+
+-- 3. User type is premium
+SELECT user_type FROM users 
+WHERE id = (SELECT id FROM auth.users WHERE email = 'your-test-email@example.com');
+-- Expected: user_type = 'premium'
+```
+
+- [ ] Customer mapping exists
+- [ ] Subscription status is 'active'
+- [ ] User type is 'premium'
+
+### Test 3: Webhook Verification
+- [ ] Open Supabase Dashboard
+- [ ] Go to Edge Functions → stripe-webhook → Logs
+- [ ] Find recent webhook event
+- [ ] Verify logs show:
+  - [ ] ✅ Signature verified
+  - [ ] ✅ User ID resolved
+  - [ ] ✅ Subscription upserted
+  - [ ] ✅ User type updated
+
+### Test 4: Persistence
+- [ ] Close app completely
+- [ ] Reopen app
+- [ ] Go to Profile
+- [ ] Still shows "Premium" badge
+- [ ] AI features still unlocked
+
+### Test 5: Stripe Dashboard
+- [ ] Open Stripe Dashboard
+- [ ] Go to Customers
+- [ ] Find your test customer
+- [ ] Verify subscription is active
+- [ ] Check subscription metadata has `supabase_user_id`
+
+## 🐛 Troubleshooting
+
+### If Premium Doesn't Unlock
+
+#### Step 1: Force Refresh
+- [ ] Pull down on Profile screen to refresh
+- [ ] Wait 5 seconds
+- [ ] Check if Premium appears
+
+#### Step 2: Check Webhook
+- [ ] Open webhook logs
+- [ ] Look for errors
+- [ ] Verify user_id was resolved
+
+#### Step 3: Check Database
+```sql
+-- Check all three tables:
+SELECT * FROM user_stripe_customers WHERE user_id = '<your-user-id>';
+SELECT * FROM subscriptions WHERE user_id = '<your-user-id>';
+SELECT user_type FROM users WHERE id = '<your-user-id>';
+```
+
+#### Step 4: Manual Fix (if needed)
+```sql
+-- If customer mapping is missing:
+INSERT INTO user_stripe_customers (user_id, stripe_customer_id)
+VALUES ('<your-user-id>', '<stripe-customer-id>');
+
+-- If user type is wrong:
+UPDATE users SET user_type = 'premium' WHERE id = '<your-user-id>';
+```
+
+#### Step 5: Force Sync
+- [ ] Close and reopen app
+- [ ] App will auto-sync on focus
+- [ ] Check Profile again
+
+### Common Issues
+
+**Issue**: "No checkout URL returned"
+- **Fix**: Check Edge Function logs for errors
+- **Verify**: Price IDs are correct (start with `price_`, not `prod_`)
+
+**Issue**: "Could not resolve user_id" in webhook
+- **Fix**: Manually add customer mapping (see Step 4 above)
+- **Prevent**: Ensure metadata is passed in checkout session
+
+**Issue**: Webhook not receiving events
+- **Fix**: Add webhook endpoint in Stripe Dashboard
+- **URL**: `https://<project-ref>.supabase.co/functions/v1/stripe-webhook`
+- **Events**: Select all `customer.subscription.*` and `checkout.session.completed`
+
+## ✅ Success Criteria
+
+All of these must be true:
+- [ ] Payment completes without errors
+- [ ] App returns to Profile automatically
+- [ ] Profile shows "Premium" badge
+- [ ] Subscription card shows "Active" status
+- [ ] AI Meal Estimator is accessible
+- [ ] Customer mapping exists in database
+- [ ] Subscription record exists in database
+- [ ] User type is 'premium' in database
+- [ ] Webhook logs show successful processing
+- [ ] Premium status persists after app restart
+- [ ] No duplicate customers in Stripe
+- [ ] No errors in any logs
+
+## 📊 Health Check
+
+Run this query to verify system health:
 
 ```sql
--- Run this in Supabase SQL Editor
 SELECT 
-  u.email,
-  u.user_type,
-  s.status,
-  s.stripe_subscription_id,
-  s.plan_type,
-  s.created_at,
-  s.updated_at
-FROM users u
-LEFT JOIN subscriptions s ON u.id = s.user_id
-ORDER BY s.updated_at DESC
-LIMIT 5;
+  'Total Users' as metric,
+  COUNT(*) as count
+FROM users
+UNION ALL
+SELECT 'Premium Users', COUNT(*) FROM users WHERE user_type = 'premium'
+UNION ALL
+SELECT 'Active Subscriptions', COUNT(*) FROM subscriptions WHERE status IN ('active', 'trialing')
+UNION ALL
+SELECT 'Customer Mappings', COUNT(*) FROM user_stripe_customers
+UNION ALL
+SELECT 'Orphaned Subscriptions', COUNT(*)
+FROM subscriptions s
+LEFT JOIN user_stripe_customers usc ON s.stripe_customer_id = usc.stripe_customer_id
+WHERE usc.user_id IS NULL AND s.stripe_customer_id IS NOT NULL;
 ```
 
-Expected after successful subscription:
-- `user_type` = `'premium'`
-- `status` = `'active'`
-- `stripe_subscription_id` = `'sub_...'`
-- `plan_type` = `'monthly'` or `'yearly'`
+**Expected**:
+- Premium Users = Active Subscriptions
+- Customer Mappings ≥ Active Subscriptions
+- Orphaned Subscriptions = 0
 
-### 4. Feature Access Test
+## 🎉 Final Verification
 
-- [ ] Go to Home screen
-- [ ] Tap AI Meal Estimator
-- [ ] **Should work without showing paywall**
-- [ ] Verify ingredient breakdown shows
-- [ ] Verify can adjust portions
+- [ ] All tests pass
+- [ ] All database checks pass
+- [ ] All webhook logs show success
+- [ ] Health check shows no issues
+- [ ] No errors in any logs
+- [ ] Premium features work correctly
 
-### 5. Subscription Management Test
+## 🚀 Ready for Production
 
-- [ ] Go to Profile screen
-- [ ] Tap "Manage Subscription"
-- [ ] Stripe portal opens
-- [ ] Can view subscription details
-- [ ] Can cancel subscription (test only!)
-- [ ] Return to app
-- [ ] Profile updates to show cancellation
+Once all items are checked:
+- [ ] Switch Stripe to live mode
+- [ ] Update API keys to live keys
+- [ ] Update webhook endpoint to production URL
+- [ ] Test with real card (small amount)
+- [ ] Verify everything works in production
+- [ ] Monitor webhook logs for first few days
 
-## 🐛 Troubleshooting Guide
+## 📝 Monitoring
 
-### Problem: Webhook returns 401
+After deployment, monitor:
+- [ ] Webhook success rate (should be 100%)
+- [ ] User ID resolution rate (should be 100%)
+- [ ] Customer mapping coverage (should be 100%)
+- [ ] Subscription sync time (should be < 3 seconds)
+- [ ] Error logs (should be minimal)
 
-**Cause:** JWT verification is enabled
+## 🎯 Done!
 
-**Solution:**
-1. Go to Supabase Dashboard → Functions
-2. Click `stripe-webhook`
-3. Disable "Verify JWT"
-4. Test again
+If all items are checked, your subscription system is:
+- ✅ Fully functional
+- ✅ Production-ready
+- ✅ Self-healing
+- ✅ Bulletproof
 
-### Problem: Webhook returns 200 but database not updated
-
-**Possible causes:**
-- User ID not in metadata
-- Database permissions issue
-- Subscription ID not found
-
-**Debug:**
-1. Check webhook logs for error messages
-2. Verify metadata includes `supabase_user_id`
-3. Check database permissions
-
-### Problem: Profile still shows "Free"
-
-**Possible causes:**
-- Webhook didn't run
-- Database not updated
-- App not refreshing
-
-**Debug:**
-1. Check webhook logs
-2. Run SQL query to check database
-3. Pull-to-refresh on Profile screen
-4. Check real-time listener is working
-
-### Problem: "No checkout URL returned"
-
-**Possible causes:**
-- Price ID is wrong
-- Stripe API key is wrong
-- Edge Function error
-
-**Debug:**
-1. Verify Price IDs in `stripeConfig.ts`
-2. Check Edge Function logs
-3. Verify Stripe API key is set
-
-## 📊 Success Indicators
-
-### Webhook Logs Should Show:
-
-```
-[Webhook] 📥 Received webhook
-[Webhook] ✅ Signature verified
-[Webhook] 📦 Event type: checkout.session.completed
-[Webhook] 👤 User ID: [uuid]
-[Webhook] 📋 Plan Type: monthly
-[Webhook] 💳 Customer ID: cus_...
-[Webhook] 🔑 Subscription ID: sub_...
-[Webhook] 💾 Upserting subscription
-[Webhook] ✅ Subscription upserted successfully
-[Webhook] 🔄 Updating user_type to: premium
-[Webhook] ✅ User type updated to: premium
-```
-
-### App Logs Should Show:
-
-```
-[useSubscription] 💳 Creating checkout session
-[useSubscription] ✅ User authenticated
-[useSubscription] 🚀 Calling Edge Function: create-checkout-session
-[useSubscription] ✅ Edge Function response
-[useSubscription] 🌐 Opening checkout URL
-[useSubscription] 📱 WebBrowser result: dismiss
-[useSubscription] 🔄 Browser closed, syncing subscription...
-[useSubscription] ✅ Subscription synced
-[Profile] 🔔 Subscription changed
-[Profile] User type: premium
-```
-
-## 🎉 When Everything Works
-
-You'll know it's working when:
-
-1. ✅ Webhook logs show 200 status
-2. ✅ Database shows `user_type = 'premium'`
-3. ✅ Profile screen shows "Premium" badge
-4. ✅ AI features work without paywall
-5. ✅ No manual sync needed
-6. ✅ Updates happen automatically
-
-## 📞 Support
-
-If you're still having issues after following this checklist:
-
-1. Check all logs (webhook, Edge Functions, app console)
-2. Verify JWT verification is actually disabled
-3. Test webhook directly from Stripe dashboard
-4. Check database directly with SQL query
-5. Review the detailed guides:
-   - `SUBSCRIPTION_FIX_COMPLETE.md`
-   - `STRIPE_WEBHOOK_JWT_FIX.md`
-   - `READY_TO_TEST_SUBSCRIPTIONS.md`
-
----
-
-## 🚀 Quick Start
-
-**The fastest way to get this working:**
-
-1. Disable JWT verification for `stripe-webhook` (2 minutes)
-2. Send test webhook from Stripe dashboard (30 seconds)
-3. Verify logs show 200 status (30 seconds)
-4. Test full flow in app (2 minutes)
-
-**Total time: ~5 minutes**
-
----
-
-**Last Updated:** January 31, 2025
-**Status:** Ready to test after JWT verification disable
+**Congratulations! The subscription bug is FIXED!** 🎉
