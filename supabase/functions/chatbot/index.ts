@@ -48,6 +48,45 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
+/**
+ * Extract JSON from AI response and separate it from natural language
+ */
+function extractJsonAndDescription(content: string): { json: any | null; description: string } {
+  try {
+    // Try to find JSON in code block
+    const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonBlockMatch && jsonBlockMatch[1]) {
+      try {
+        const json = JSON.parse(jsonBlockMatch[1].trim());
+        // Remove the JSON block from the content to get the description
+        const description = content.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
+        return { json, description: description || 'Meal estimate complete.' };
+      } catch (e) {
+        console.log('[Chatbot] Failed to parse JSON from code block');
+      }
+    }
+    
+    // Try to find raw JSON object
+    const jsonMatch = content.match(/\{[\s\S]*"ingredients"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const json = JSON.parse(jsonMatch[0]);
+        // Remove the JSON from the content to get the description
+        const description = content.replace(/\{[\s\S]*"ingredients"[\s\S]*\}/, '').trim();
+        return { json, description: description || 'Meal estimate complete.' };
+      } catch (e) {
+        console.log('[Chatbot] Failed to parse raw JSON');
+      }
+    }
+    
+    // No JSON found, return the whole content as description
+    return { json: null, description: content };
+  } catch (error) {
+    console.error('[Chatbot] Error extracting JSON:', error);
+    return { json: null, description: content };
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -332,8 +371,8 @@ Deno.serve(async (req) => {
 
     console.log("[Chatbot] ✅ OpenRouter response parsed");
 
-    const message = json?.choices?.[0]?.message?.content ?? "";
-    if (!message) {
+    const rawMessage = json?.choices?.[0]?.message?.content ?? "";
+    if (!rawMessage) {
       console.error("[Chatbot] ❌ Empty response from OpenRouter");
       console.error("[Chatbot] Response structure:", JSON.stringify(json, null, 2));
       return new Response(JSON.stringify({
@@ -349,14 +388,23 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Extract JSON and description from the AI response
+    const { json: mealData, description } = extractJsonAndDescription(rawMessage);
+    
+    console.log("[Chatbot] 📊 Extracted data:");
+    console.log("[Chatbot]   - Has meal data:", !!mealData);
+    console.log("[Chatbot]   - Description length:", description.length);
+
     const duration_ms = Math.round(performance.now() - started);
     console.log("[Chatbot] ✅ Request completed successfully");
     console.log("[Chatbot]   - Duration:", duration_ms, "ms");
-    console.log("[Chatbot]   - Response length:", message.length, "characters");
+    console.log("[Chatbot]   - Response length:", rawMessage.length, "characters");
     console.log("[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
+    // Return both the display message and the structured data
     const response = {
-      message,
+      message: description, // Only the natural language description
+      mealData: mealData, // The structured JSON data (null if not found)
       model,
       duration_ms
     };

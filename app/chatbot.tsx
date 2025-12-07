@@ -277,238 +277,72 @@ export default function ChatbotScreen() {
   };
 
   /**
-   * Parse AI response to extract ingredient-level estimates
-   * First tries to parse JSON format, then falls back to text parsing
+   * Parse meal data from the Edge Function response
    */
-  const parseAIEstimate = useCallback((content: string, userMessage: string): AIEstimate | null => {
+  const parseMealData = useCallback((mealData: any, userMessage: string): AIEstimate | null => {
     try {
-      if (!content || typeof content !== 'string') {
-        console.log('[Chatbot] Invalid content for parsing');
+      if (!mealData || !mealData.ingredients || !Array.isArray(mealData.ingredients)) {
+        console.log('[Chatbot] No valid meal data in response');
         return null;
       }
 
-      console.log('[Chatbot] Parsing AI response for ingredient estimates');
+      console.log('[Chatbot] Parsing structured ingredient data');
       
-      // Try to extract JSON from the response
-      let jsonData = null;
-      
-      // Look for JSON block in markdown code fence
-      const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch && jsonBlockMatch[1]) {
-        try {
-          jsonData = JSON.parse(jsonBlockMatch[1].trim());
-          console.log('[Chatbot] Found JSON in code block');
-        } catch (e) {
-          console.log('[Chatbot] Failed to parse JSON from code block');
-        }
-      }
-      
-      // Try to find raw JSON object
-      if (!jsonData) {
-        const jsonMatch = content.match(/\{[\s\S]*"ingredients"[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            jsonData = JSON.parse(jsonMatch[0]);
-            console.log('[Chatbot] Found raw JSON object');
-          } catch (e) {
-            console.log('[Chatbot] Failed to parse raw JSON');
-          }
-        }
-      }
-      
-      // If we found JSON with ingredients, parse it
-      if (jsonData && jsonData.ingredients && Array.isArray(jsonData.ingredients)) {
-        console.log('[Chatbot] Parsing structured ingredient data');
-        
-        const ingredients: Ingredient[] = jsonData.ingredients.map((ing: any, index: number) => {
-          const quantity = parseFloat(ing.quantity) || 1;
-          const calories = parseFloat(ing.calories) || 0;
-          const protein = parseFloat(ing.protein) || 0;
-          const carbs = parseFloat(ing.carbs) || 0;
-          const fats = parseFloat(ing.fats) || 0;
-          const fiber = parseFloat(ing.fiber) || 0;
-          
-          return {
-            id: `ing-${Date.now()}-${index}`,
-            name: ing.name || 'Unknown ingredient',
-            quantity,
-            unit: ing.unit || 'serving',
-            calories,
-            protein,
-            carbs,
-            fats,
-            fiber,
-            included: true,
-            // Store original values for proper scaling
-            originalQuantity: quantity,
-            originalCalories: calories,
-            originalProtein: protein,
-            originalCarbs: carbs,
-            originalFats: fats,
-            originalFiber: fiber,
-          };
-        });
-        
-        // Calculate totals
-        const totals = ingredients.reduce((acc, ing) => ({
-          calories: acc.calories + ing.calories,
-          protein: acc.protein + ing.protein,
-          carbs: acc.carbs + ing.carbs,
-          fats: acc.fats + ing.fats,
-          fiber: acc.fiber + ing.fiber,
-        }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
-        
-        const mealName = userMessage && userMessage.length > 50 
-          ? userMessage.substring(0, 47) + '...' 
-          : userMessage || 'AI Estimated Meal';
-        
-        console.log('[Chatbot] Successfully parsed ingredients:', ingredients.length);
+      const ingredients: Ingredient[] = mealData.ingredients.map((ing: any, index: number) => {
+        const quantity = parseFloat(ing.quantity) || 1;
+        const calories = parseFloat(ing.calories) || 0;
+        const protein = parseFloat(ing.protein) || 0;
+        const carbs = parseFloat(ing.carbs) || 0;
+        const fats = parseFloat(ing.fats) || 0;
+        const fiber = parseFloat(ing.fiber) || 0;
         
         return {
-          name: mealName,
-          description: content,
-          ingredients,
-          totalCalories: Math.round(totals.calories),
-          totalProtein: Math.round(totals.protein * 10) / 10,
-          totalCarbs: Math.round(totals.carbs * 10) / 10,
-          totalFats: Math.round(totals.fats * 10) / 10,
-          totalFiber: Math.round(totals.fiber * 10) / 10,
-        };
-      }
-      
-      // Fallback: Try to parse text-based format for single total
-      console.log('[Chatbot] Falling back to text-based parsing');
-      
-      const caloriePatterns = [
-        /calories?[:\s]+(\d+)/i,
-        /(\d+)\s*cal/i,
-        /(\d+)\s*kcal/i,
-      ];
-      
-      const proteinPatterns = [
-        /protein[:\s]+(\d+\.?\d*)\s*g/i,
-        /(\d+\.?\d*)\s*g\s+protein/i,
-      ];
-      
-      const carbsPatterns = [
-        /carb(?:ohydrate)?s?[:\s]+(\d+\.?\d*)\s*g/i,
-        /(\d+\.?\d*)\s*g\s+carb/i,
-      ];
-      
-      const fatsPatterns = [
-        /fats?[:\s]+(\d+\.?\d*)\s*g/i,
-        /(\d+\.?\d*)\s*g\s+fat/i,
-      ];
-      
-      const fiberPatterns = [
-        /fiber[:\s]+(\d+\.?\d*)\s*g/i,
-        /(\d+\.?\d*)\s*g\s+fiber/i,
-      ];
-      
-      let calories = 0;
-      let protein = 0;
-      let carbs = 0;
-      let fats = 0;
-      let fiber = 0;
-      
-      for (const pattern of caloriePatterns) {
-        const match = content.match(pattern);
-        if (match && match[1]) {
-          const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed) && parsed > 0) {
-            calories = parsed;
-            break;
-          }
-        }
-      }
-      
-      for (const pattern of proteinPatterns) {
-        const match = content.match(pattern);
-        if (match && match[1]) {
-          const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed) && parsed >= 0) {
-            protein = parsed;
-            break;
-          }
-        }
-      }
-      
-      for (const pattern of carbsPatterns) {
-        const match = content.match(pattern);
-        if (match && match[1]) {
-          const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed) && parsed >= 0) {
-            carbs = parsed;
-            break;
-          }
-        }
-      }
-      
-      for (const pattern of fatsPatterns) {
-        const match = content.match(pattern);
-        if (match && match[1]) {
-          const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed) && parsed >= 0) {
-            fats = parsed;
-            break;
-          }
-        }
-      }
-      
-      for (const pattern of fiberPatterns) {
-        const match = content.match(pattern);
-        if (match && match[1]) {
-          const parsed = parseFloat(match[1]);
-          if (!isNaN(parsed) && parsed >= 0) {
-            fiber = parsed;
-            break;
-          }
-        }
-      }
-      
-      if (calories > 0) {
-        console.log('[Chatbot] Found single total estimate:', { calories, protein, carbs, fats, fiber });
-        
-        const mealName = userMessage && userMessage.length > 50 
-          ? userMessage.substring(0, 47) + '...' 
-          : userMessage || 'AI Estimated Meal';
-        
-        // Create a single "ingredient" representing the whole meal
-        const singleIngredient: Ingredient = {
-          id: `ing-${Date.now()}-0`,
-          name: mealName,
-          quantity: 1,
-          unit: 'serving',
+          id: `ing-${Date.now()}-${index}`,
+          name: ing.name || 'Unknown ingredient',
+          quantity,
+          unit: ing.unit || 'serving',
           calories,
           protein,
           carbs,
           fats,
           fiber,
           included: true,
-          originalQuantity: 1,
+          // Store original values for proper scaling
+          originalQuantity: quantity,
           originalCalories: calories,
           originalProtein: protein,
           originalCarbs: carbs,
           originalFats: fats,
           originalFiber: fiber,
         };
-        
-        return {
-          name: mealName,
-          description: content,
-          ingredients: [singleIngredient],
-          totalCalories: Math.round(calories),
-          totalProtein: Math.round(protein * 10) / 10,
-          totalCarbs: Math.round(carbs * 10) / 10,
-          totalFats: Math.round(fats * 10) / 10,
-          totalFiber: Math.round(fiber * 10) / 10,
-        };
-      }
+      });
       
-      console.log('[Chatbot] No valid estimate found in response');
-      return null;
+      // Calculate totals
+      const totals = ingredients.reduce((acc, ing) => ({
+        calories: acc.calories + ing.calories,
+        protein: acc.protein + ing.protein,
+        carbs: acc.carbs + ing.carbs,
+        fats: acc.fats + ing.fats,
+        fiber: acc.fiber + ing.fiber,
+      }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
+      
+      const mealName = userMessage && userMessage.length > 50 
+        ? userMessage.substring(0, 47) + '...' 
+        : userMessage || 'AI Estimated Meal';
+      
+      console.log('[Chatbot] Successfully parsed ingredients:', ingredients.length);
+      
+      return {
+        name: mealName,
+        ingredients,
+        totalCalories: Math.round(totals.calories),
+        totalProtein: Math.round(totals.protein * 10) / 10,
+        totalCarbs: Math.round(totals.carbs * 10) / 10,
+        totalFats: Math.round(totals.fats * 10) / 10,
+        totalFiber: Math.round(totals.fiber * 10) / 10,
+      };
     } catch (error) {
-      console.error('[Chatbot] Error parsing AI estimate:', error);
+      console.error('[Chatbot] Error parsing meal data:', error);
       return null;
     }
   }, []);
@@ -556,7 +390,9 @@ export default function ChatbotScreen() {
         role: 'system',
         content: `You are an AI Meal Estimator. Your job is to estimate calories and macronutrients for meals based on text descriptions, photos, or both.
 
-IMPORTANT: You MUST respond with a JSON object in this exact format:
+IMPORTANT: You MUST respond in TWO parts:
+
+1. First, provide a JSON object in a code block with this exact format:
 
 \`\`\`json
 {
@@ -575,6 +411,29 @@ IMPORTANT: You MUST respond with a JSON object in this exact format:
 }
 \`\`\`
 
+2. Then, provide a natural language explanation of the meal.
+
+Example response:
+
+\`\`\`json
+{
+  "ingredients": [
+    {
+      "name": "McFlurry (medium)",
+      "quantity": 1,
+      "unit": "serving",
+      "calories": 510,
+      "protein": 12,
+      "carbs": 70,
+      "fats": 22,
+      "fiber": 1
+    }
+  ]
+}
+\`\`\`
+
+A medium McFlurry from McDonald's contains around 510 calories, 12g protein, 70g carbs, 22g fat, and 1g fiber.
+
 Break down the meal into individual ingredients with their estimated quantities and macros. Be specific and realistic with portions.
 
 When analyzing photos:
@@ -583,9 +442,7 @@ When analyzing photos:
 - Make reasonable assumptions about ingredients and preparation methods
 - If the photo quality is poor or items are unclear, make your best educated guess
 
-If the user provides both text and photo, use both sources to make the most accurate estimate possible.
-
-After the JSON, you can add a brief explanation if needed.`,
+If the user provides both text and photo, use both sources to make the most accurate estimate possible.`,
       };
 
       const validMessages = messages.filter((m) => {
@@ -622,6 +479,7 @@ After the JSON, you can add a brief explanation if needed.`,
       if (!isMountedRef.current) return;
 
       if (result && result.message && typeof result.message === 'string') {
+        // Display only the natural language description in the chat
         const assistantMessage: MessageWithId = {
           id: generateMessageId(),
           role: 'assistant',
@@ -630,18 +488,17 @@ After the JSON, you can add a brief explanation if needed.`,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         
-        const estimate = parseAIEstimate(result.message, trimmedInput || 'Photo of meal');
-        if (estimate) {
-          console.log('[Chatbot] Setting latest estimate with', estimate.ingredients.length, 'ingredients');
-          setLatestEstimate(estimate);
+        // Parse the meal data if available
+        if (result.mealData) {
+          const estimate = parseMealData(result.mealData, trimmedInput || 'Photo of meal');
+          if (estimate) {
+            console.log('[Chatbot] Setting latest estimate with', estimate.ingredients.length, 'ingredients');
+            setLatestEstimate(estimate);
+          } else {
+            console.log('[Chatbot] Could not parse meal data');
+          }
         } else {
-          console.log('[Chatbot] Could not parse estimate from response');
-          // Show user-friendly error message
-          Alert.alert(
-            'Unable to Parse Response',
-            'The AI response could not be parsed into ingredient data. Please try rephrasing your meal description or provide more details.',
-            [{ text: 'OK' }]
-          );
+          console.log('[Chatbot] No meal data in response');
         }
       } else {
         const errorMessage: MessageWithId = {

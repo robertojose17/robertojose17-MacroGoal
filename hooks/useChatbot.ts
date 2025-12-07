@@ -18,6 +18,7 @@ export type ChatbotParams = {
 
 export type ChatbotResult = {
   message: string;
+  mealData?: any; // Structured meal data (if available)
   model: string;
   duration_ms: number;
 };
@@ -127,6 +128,7 @@ export function useChatbot() {
       const result = data as ChatbotResult;
       console.log('[useChatbot] ✅ Success, received response');
       console.log('[useChatbot] Response length:', result.message?.length || 0, 'characters');
+      console.log('[useChatbot] Has meal data:', !!result.mealData);
       console.log('[useChatbot] Duration:', result.duration_ms, 'ms');
       console.log('[useChatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
