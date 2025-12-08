@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeableListItem from '@/components/SwipeableListItem';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -245,111 +246,93 @@ export default function HomeScreen() {
 
   const handleDeleteFood = async (item: any) => {
     console.log('[Home iOS] Delete requested for item:', item.id);
+    console.log('[Home iOS] Delete confirmed, proceeding...');
     
-    Alert.alert(
-      'Delete this food entry?',
-      `Remove ${item.foods?.name || 'this food'} from your diary?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => console.log('[Home iOS] Delete cancelled'),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('[Home iOS] Delete confirmed, proceeding...');
-            
-            // Store original state for rollback
-            const originalMeals = [...meals];
-            const originalTotalCalories = totalCalories;
-            const originalTotalMacros = { ...totalMacros };
-            
-            try {
-              // Optimistic UI update - remove item immediately
-              console.log('[Home iOS] Applying optimistic update...');
-              const updatedMeals = meals.map(meal => ({
-                ...meal,
-                items: meal.items.filter(i => i.id !== item.id),
-                totalCalories: meal.items
-                  .filter(i => i.id !== item.id)
-                  .reduce((sum, i) => sum + (i.calories || 0), 0)
-              }));
-              
-              setMeals(updatedMeals);
-              
-              // Recalculate totals
-              const newTotalCals = updatedMeals.reduce((sum, meal) => sum + meal.totalCalories, 0);
-              const newTotalP = updatedMeals.reduce((sum, meal) => 
-                sum + meal.items.reduce((s, i) => s + (i.protein || 0), 0), 0);
-              const newTotalC = updatedMeals.reduce((sum, meal) => 
-                sum + meal.items.reduce((s, i) => s + (i.carbs || 0), 0), 0);
-              const newTotalF = updatedMeals.reduce((sum, meal) => 
-                sum + meal.items.reduce((s, i) => s + (i.fats || 0), 0), 0);
-              const newTotalFib = updatedMeals.reduce((sum, meal) => 
-                sum + meal.items.reduce((s, i) => s + (i.fiber || 0), 0), 0);
-              
-              setTotalCalories(newTotalCals);
-              setTotalMacros({ 
-                protein: newTotalP, 
-                carbs: newTotalC, 
-                fats: newTotalF, 
-                fiber: newTotalFib 
-              });
-              
-              console.log('[Home iOS] Optimistic update applied, now deleting from database...');
-              
-              // Get current user for verification
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) {
-                throw new Error('No authenticated user found');
-              }
-              
-              console.log('[Home iOS] Authenticated user:', user.id);
-              console.log('[Home iOS] Deleting meal_item with id:', item.id);
-              
-              // Delete from database
-              const { error, data } = await supabase
-                .from('meal_items')
-                .delete()
-                .eq('id', item.id)
-                .select();
-              
-              if (error) {
-                console.error('[Home iOS] Supabase delete error:', error);
-                console.error('[Home iOS] Error details:', JSON.stringify(error, null, 2));
-                throw error;
-              }
-              
-              console.log('[Home iOS] Delete response:', data);
-              console.log('[Home iOS] ✅ Food deleted successfully from database');
-              
-              // Success - the optimistic update is already applied
-              // No need to reload, UI is already updated
-              
-            } catch (error: any) {
-              console.error('[Home iOS] ❌ Error in handleDeleteFood:', error);
-              console.error('[Home iOS] Error message:', error?.message);
-              console.error('[Home iOS] Error details:', JSON.stringify(error, null, 2));
-              
-              // Rollback optimistic update
-              console.log('[Home iOS] Rolling back optimistic update...');
-              setMeals(originalMeals);
-              setTotalCalories(originalTotalCalories);
-              setTotalMacros(originalTotalMacros);
-              
-              // Show detailed error to user
-              Alert.alert(
-                'Delete Failed', 
-                error?.message || 'Failed to delete food entry. Please try again.',
-                [{ text: 'OK' }]
-              );
-            }
-          },
-        },
-      ]
-    );
+    // Store original state for rollback
+    const originalMeals = [...meals];
+    const originalTotalCalories = totalCalories;
+    const originalTotalMacros = { ...totalMacros };
+    
+    try {
+      // Optimistic UI update - remove item immediately
+      console.log('[Home iOS] Applying optimistic update...');
+      const updatedMeals = meals.map(meal => ({
+        ...meal,
+        items: meal.items.filter(i => i.id !== item.id),
+        totalCalories: meal.items
+          .filter(i => i.id !== item.id)
+          .reduce((sum, i) => sum + (i.calories || 0), 0)
+      }));
+      
+      setMeals(updatedMeals);
+      
+      // Recalculate totals
+      const newTotalCals = updatedMeals.reduce((sum, meal) => sum + meal.totalCalories, 0);
+      const newTotalP = updatedMeals.reduce((sum, meal) => 
+        sum + meal.items.reduce((s, i) => s + (i.protein || 0), 0), 0);
+      const newTotalC = updatedMeals.reduce((sum, meal) => 
+        sum + meal.items.reduce((s, i) => s + (i.carbs || 0), 0), 0);
+      const newTotalF = updatedMeals.reduce((sum, meal) => 
+        sum + meal.items.reduce((s, i) => s + (i.fats || 0), 0), 0);
+      const newTotalFib = updatedMeals.reduce((sum, meal) => 
+        sum + meal.items.reduce((s, i) => s + (i.fiber || 0), 0), 0);
+      
+      setTotalCalories(newTotalCals);
+      setTotalMacros({ 
+        protein: newTotalP, 
+        carbs: newTotalC, 
+        fats: newTotalF, 
+        fiber: newTotalFib 
+      });
+      
+      console.log('[Home iOS] Optimistic update applied, now deleting from database...');
+      
+      // Get current user for verification
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('No authenticated user found');
+      }
+      
+      console.log('[Home iOS] Authenticated user:', user.id);
+      console.log('[Home iOS] Deleting meal_item with id:', item.id);
+      
+      // Delete from database
+      const { error, data } = await supabase
+        .from('meal_items')
+        .delete()
+        .eq('id', item.id)
+        .select();
+      
+      if (error) {
+        console.error('[Home iOS] Supabase delete error:', error);
+        console.error('[Home iOS] Error details:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+      
+      console.log('[Home iOS] Delete response:', data);
+      console.log('[Home iOS] ✅ Food deleted successfully from database');
+      
+      // Success - the optimistic update is already applied
+      // No need to reload, UI is already updated
+      
+    } catch (error: any) {
+      console.error('[Home iOS] ❌ Error in handleDeleteFood:', error);
+      console.error('[Home iOS] Error message:', error?.message);
+      console.error('[Home iOS] Error details:', JSON.stringify(error, null, 2));
+      
+      // Rollback optimistic update
+      console.log('[Home iOS] Rolling back optimistic update...');
+      setMeals(originalMeals);
+      setTotalCalories(originalTotalCalories);
+      setTotalMacros(originalTotalMacros);
+      
+      // Show detailed error to user
+      Alert.alert(
+        'Delete Failed', 
+        error?.message || 'Failed to delete food entry. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const goToPreviousDay = () => {
@@ -584,25 +567,27 @@ export default function HomeScreen() {
                 <View style={styles.mealItems}>
                   {meal.items.map((item, itemIndex) => (
                     <React.Fragment key={itemIndex}>
-                      <TouchableOpacity 
-                        style={styles.foodItem}
-                        onPress={() => handleEditFood(item)}
-                        activeOpacity={0.7}
+                      <SwipeableListItem
+                        onDelete={() => handleDeleteFood(item)}
                       >
-                        <View style={styles.foodInfo}>
-                          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                            {item.foods?.name || 'Unknown Food'}
-                          </Text>
-                          {item.foods?.brand && (
-                            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                              {item.foods.brand}
+                        <TouchableOpacity 
+                          style={styles.foodItem}
+                          onPress={() => handleEditFood(item)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.foodInfo}>
+                            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                              {item.foods?.name || 'Unknown Food'}
                             </Text>
-                          )}
-                          <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {getServingDisplayText(item)}
-                          </Text>
-                        </View>
-                        <View style={styles.foodActions}>
+                            {item.foods?.brand && (
+                              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                                {item.foods.brand}
+                              </Text>
+                            )}
+                            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                              {getServingDisplayText(item)}
+                            </Text>
+                          </View>
                           <View style={styles.foodCalories}>
                             <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
                               {Math.round(item.calories)}
@@ -611,22 +596,8 @@ export default function HomeScreen() {
                               kcal
                             </Text>
                           </View>
-                          <TouchableOpacity
-                            style={styles.deleteButton}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleDeleteFood(item);
-                            }}
-                          >
-                            <IconSymbol
-                              ios_icon_name="trash"
-                              android_material_icon_name="delete"
-                              size={20}
-                              color={colors.error}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      </TouchableOpacity>
+                        </TouchableOpacity>
+                      </SwipeableListItem>
                     </React.Fragment>
                   ))}
                 </View>
@@ -832,11 +803,6 @@ const styles = StyleSheet.create({
   foodDetails: {
     ...typography.caption,
   },
-  foodActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
   foodCalories: {
     alignItems: 'flex-end',
   },
@@ -846,9 +812,6 @@ const styles = StyleSheet.create({
   },
   foodCaloriesLabel: {
     ...typography.caption,
-  },
-  deleteButton: {
-    padding: spacing.xs,
   },
   bottomSpacer: {
     height: 40,
