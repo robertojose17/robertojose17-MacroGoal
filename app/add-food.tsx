@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeableListItem from '@/components/SwipeableListItem';
 import { getRecentFoods } from '@/utils/foodDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
@@ -774,53 +775,35 @@ export default function AddFoodScreen() {
 
   /**
    * Remove a favorite from the list
+   * FIXED: Use swipe-left delete instead of trash icon
    */
   const handleRemoveFavorite = async (favoriteId: string) => {
     console.log('[AddFood] ========== REMOVE FAVORITE ==========');
     console.log('[AddFood] Favorite ID to remove:', favoriteId);
     
-    Alert.alert(
-      'Remove Favorite',
-      'Are you sure you want to remove this food from your favorites?',
-      [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => console.log('[AddFood] Remove canceled by user')
-        },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('[AddFood] User confirmed removal');
-            
-            // Store previous state for rollback
-            const previousFavorites = [...favorites];
-            
-            // Optimistically update UI
-            console.log('[AddFood] Optimistically removing from UI');
-            setFavorites(favorites.filter(f => f.id !== favoriteId));
-            
-            try {
-              console.log('[AddFood] Calling removeFavoriteById...');
-              const success = await removeFavoriteById(favoriteId);
-              
-              if (success) {
-                console.log('[AddFood] ✓ Favorite removed successfully from database');
-              } else {
-                console.error('[AddFood] ✗ removeFavoriteById returned false');
-                setFavorites(previousFavorites);
-                Alert.alert('Error', 'Failed to remove favorite. Please try again.');
-              }
-            } catch (error: any) {
-              console.error('[AddFood] ✗ Error removing favorite:', error);
-              setFavorites(previousFavorites);
-              Alert.alert('Error', error.message || 'Failed to remove favorite. Please try again.');
-            }
-          },
-        },
-      ]
-    );
+    // Store previous state for rollback
+    const previousFavorites = [...favorites];
+    
+    // Optimistically update UI
+    console.log('[AddFood] Optimistically removing from UI');
+    setFavorites(favorites.filter(f => f.id !== favoriteId));
+    
+    try {
+      console.log('[AddFood] Calling removeFavoriteById...');
+      const success = await removeFavoriteById(favoriteId);
+      
+      if (success) {
+        console.log('[AddFood] ✓ Favorite removed successfully from database');
+      } else {
+        console.error('[AddFood] ✗ removeFavoriteById returned false');
+        setFavorites(previousFavorites);
+        Alert.alert('Error', 'Failed to remove favorite. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('[AddFood] ✗ Error removing favorite:', error);
+      setFavorites(previousFavorites);
+      Alert.alert('Error', error.message || 'Failed to remove favorite. Please try again.');
+    }
   };
 
   const renderFoodItem = (food: Food, index: number) => {
@@ -934,31 +917,33 @@ export default function AddFoodScreen() {
 
     return (
       <React.Fragment key={favorite.id ?? `favorite-${index}`}>
-        <View 
-          style={[
-            styles.foodCard,
-            { backgroundColor: isDark ? colors.cardDark : colors.card }
-          ]}
+        <SwipeableListItem
+          onDelete={() => handleRemoveFavorite(favorite.id)}
         >
-          <Pressable
-            style={styles.foodInfoPressable}
-            onPress={() => handleOpenFavoriteDetails(favorite)}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          <View 
+            style={[
+              styles.foodCard,
+              { backgroundColor: isDark ? colors.cardDark : colors.card }
+            ]}
           >
-            <View style={styles.foodInfo}>
-              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                {favorite.food_name}
-              </Text>
-              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
-              </Text>
-              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {macrosText}
-              </Text>
-            </View>
-          </Pressable>
-          
-          <View style={styles.favoriteActions}>
+            <Pressable
+              style={styles.foodInfoPressable}
+              onPress={() => handleOpenFavoriteDetails(favorite)}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <View style={styles.foodInfo}>
+                <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                  {favorite.food_name}
+                </Text>
+                <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
+                </Text>
+                <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {macrosText}
+                </Text>
+              </View>
+            </Pressable>
+            
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => handleAddFavorite(favorite)}
@@ -971,20 +956,8 @@ export default function AddFoodScreen() {
                 color="#FFFFFF"
               />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.removeButton}
-              onPress={() => handleRemoveFavorite(favorite.id)}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="trash"
-                android_material_icon_name="delete"
-                size={18}
-                color="#FF3B30"
-              />
-            </TouchableOpacity>
           </View>
-        </View>
+        </SwipeableListItem>
       </React.Fragment>
     );
   };
@@ -1542,62 +1515,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 14,
   },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingBottom: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  quickActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.lg,
-    gap: spacing.xs,
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
-    elevation: 1,
-    minWidth: 160,
-  },
-  quickActionButtonText: {
-    ...typography.bodyBold,
-    fontSize: 13,
-    color: '#1F2937',
-    flexShrink: 1,
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  quickActionCard: {
-    width: '48.5%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.lg + spacing.sm,
-    borderRadius: borderRadius.lg,
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
-    elevation: 1,
-  },
-  quickActionCardGreen: {
-    backgroundColor: '#D1FAE5',
-  },
-  quickActionCardYellow: {
-    backgroundColor: '#FEF3C7',
-  },
-  quickActionCardPurple: {
-    backgroundColor: '#EDE9FE',
-  },
-  quickActionIconContainer: {
-    marginBottom: spacing.sm,
-  },
-  quickActionTitle: {
-    ...typography.bodyBold,
-    fontSize: 14,
-    color: '#1F2937',
-    textAlign: 'center',
-  },
   foodCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1628,11 +1545,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 12,
   },
-  favoriteActions: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    paddingRight: spacing.md,
-  },
   addButton: {
     width: 36,
     height: 36,
@@ -1646,14 +1558,6 @@ const styles = StyleSheet.create({
   chevronContainer: {
     paddingRight: spacing.md,
     paddingVertical: spacing.md,
-  },
-  removeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.sm,
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',

@@ -1,6 +1,6 @@
 
 import React, { ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -9,7 +9,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { IconSymbol } from './IconSymbol';
-import { colors, spacing, borderRadius } from '@/styles/commonStyles';
+import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface SwipeableListItemProps {
@@ -19,7 +19,7 @@ interface SwipeableListItemProps {
   deleteButtonColor?: string;
 }
 
-const SWIPE_THRESHOLD = -80;
+const SWIPE_THRESHOLD = -60; // Threshold to trigger "lock open" state
 const DELETE_BUTTON_WIDTH = 80;
 
 export default function SwipeableListItem({
@@ -32,28 +32,47 @@ export default function SwipeableListItem({
   const isDark = colorScheme === 'dark';
   
   const translateX = useSharedValue(0);
-  const isDeleting = useSharedValue(false);
+  const isOpen = useSharedValue(false); // Track if the row is locked open
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
     .onUpdate((event) => {
-      // Only allow swiping left (negative translation)
-      if (event.translationX < 0) {
+      // If row is locked open and user swipes right, allow closing
+      if (isOpen.value && event.translationX > 0) {
+        const newTranslation = -DELETE_BUTTON_WIDTH + event.translationX;
+        translateX.value = Math.min(0, newTranslation);
+      }
+      // If row is closed and user swipes left, allow opening
+      else if (!isOpen.value && event.translationX < 0) {
         translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH);
-      } else if (translateX.value < 0) {
-        // Allow swiping back to close
-        translateX.value = Math.min(0, translateX.value + event.translationX);
       }
     })
     .onEnd((event) => {
-      if (translateX.value < SWIPE_THRESHOLD) {
-        // Swipe threshold reached, show delete button
+      // If row is open and user swipes right past threshold, close it
+      if (isOpen.value && translateX.value > -DELETE_BUTTON_WIDTH / 2) {
+        translateX.value = withSpring(0, {
+          damping: 20,
+          stiffness: 90,
+        });
+        isOpen.value = false;
+      }
+      // If row is open but user didn't swipe enough to close, keep it open
+      else if (isOpen.value) {
         translateX.value = withSpring(-DELETE_BUTTON_WIDTH, {
           damping: 20,
           stiffness: 90,
         });
-      } else {
-        // Snap back to closed position
+      }
+      // If row is closed and user swiped left past threshold, lock it open
+      else if (translateX.value < SWIPE_THRESHOLD) {
+        translateX.value = withSpring(-DELETE_BUTTON_WIDTH, {
+          damping: 20,
+          stiffness: 90,
+        });
+        isOpen.value = true;
+      }
+      // If row is closed and user didn't swipe enough, snap back
+      else {
         translateX.value = withSpring(0, {
           damping: 20,
           stiffness: 90,

@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "Macro Goal",
@@ -57,5 +56,6 @@
       "router": {},
       "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW"
     }
-  }
+  },
+  "scheme": "Macro Goal"
 }
