@@ -16,6 +16,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { 
+  useAudioRecorder, 
+  RecordingPresets,
+  setAudioModeAsync,
+  requestRecordingPermissionsAsync,
+} from 'expo-audio';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -87,7 +93,7 @@ export default function ChatbotScreen() {
     {
       id: generateMessageId(),
       role: 'assistant',
-      content: 'Describe your meal or take a photo! You can use text, a photo, or both for the most accurate estimate.',
+      content: 'Describe your meal or take a photo! You can use text, a photo, or voice for the most accurate estimate.',
       timestamp: Date.now(),
     },
   ]);
@@ -96,11 +102,31 @@ export default function ChatbotScreen() {
   const [latestEstimate, setLatestEstimate] = useState<AIEstimate | null>(null);
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
   const { sendMessage, loading } = useChatbot();
 
   // Setup and cleanup
   useEffect(() => {
     isMountedRef.current = true;
+    
+    // Setup audio mode for recording
+    const setupAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+        });
+      } catch (error) {
+        console.error('[Chatbot] Error setting up audio mode:', error);
+      }
+    };
+    
+    setupAudio();
+    
     return () => {
       isMountedRef.current = false;
       if (scrollTimeoutRef.current) {
@@ -276,6 +302,120 @@ export default function ChatbotScreen() {
     setSelectedImage(null);
   };
 
+  // Handle voice recording
+  const handleVoiceInput = async () => {
+    if (isRecording) {
+      // Stop recording
+      await handleStopRecording();
+    } else {
+      // Start recording
+      await handleStartRecording();
+    }
+  };
+
+  const handleStartRecording = async () => {
+    try {
+      console.log('[Chatbot] Requesting microphone permission...');
+      const { granted } = await requestRecordingPermissionsAsync();
+      
+      if (!granted) {
+        Alert.alert(
+          'Permission Required',
+          'Microphone permission is required to use voice input.'
+        );
+        return;
+      }
+
+      console.log('[Chatbot] Starting recording...');
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setIsRecording(true);
+      console.log('[Chatbot] Recording started');
+    } catch (error) {
+      console.error('[Chatbot] Error starting recording:', error);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      console.log('[Chatbot] Stopping recording...');
+      await audioRecorder.stop();
+      setIsRecording(false);
+      
+      const uri = audioRecorder.uri;
+      if (!uri) {
+        console.error('[Chatbot] No recording URI');
+        Alert.alert('Error', 'Failed to save recording.');
+        return;
+      }
+
+      console.log('[Chatbot] Recording saved:', uri);
+      
+      // Transcribe the audio
+      await transcribeAudio(uri);
+    } catch (error) {
+      console.error('[Chatbot] Error stopping recording:', error);
+      Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      setIsRecording(false);
+    }
+  };
+
+  const transcribeAudio = async (audioUri: string) => {
+    try {
+      setIsTranscribing(true);
+      console.log('[Chatbot] Transcribing audio...');
+
+      // Read the audio file and convert to base64
+      const response = await fetch(audioUri);
+      const blob = await response.blob();
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result as string;
+          // Extract base64 data (remove data:audio/...;base64, prefix)
+          const base64 = dataUrl.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      console.log('[Chatbot] Sending audio to transcription service...');
+
+      // Call the transcription Edge Function
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: {
+          audioBase64: base64Audio,
+          mimeType: 'audio/m4a',
+        },
+      });
+
+      if (error) {
+        console.error('[Chatbot] Transcription error:', error);
+        throw error;
+      }
+
+      if (data && data.text) {
+        console.log('[Chatbot] Transcription successful:', data.text);
+        // Set the transcribed text in the input field
+        setInputText(data.text);
+        
+        // Optionally auto-send after transcription
+        // Uncomment the next line if you want to auto-send
+        // setTimeout(() => handleSend(), 500);
+      } else {
+        console.error('[Chatbot] No transcription text received');
+        Alert.alert('Error', 'Could not transcribe audio. Please try again.');
+      }
+    } catch (error) {
+      console.error('[Chatbot] Error transcribing audio:', error);
+      Alert.alert('Error', 'Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   /**
    * Parse meal data from the Edge Function response
    */
@@ -352,7 +492,7 @@ export default function ChatbotScreen() {
     
     // Check if we have either text or image
     if (!trimmedInput && !selectedImage) {
-      Alert.alert('Input Required', 'Please provide a description, photo, or both.');
+      Alert.alert('Input Required', 'Please provide a description, photo, or use voice input.');
       return;
     }
     
@@ -921,12 +1061,12 @@ If the user provides both text and photo, use both sources to make the most accu
             </View>
           )}
           
-          {loading && (
+          {(loading || isTranscribing) && (
             <View style={styles.loadingWrapper}>
               <View style={[styles.loadingBubble, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Analyzing meal...
+                  {isTranscribing ? 'Transcribing...' : 'Analyzing meal...'}
                 </Text>
               </View>
             </View>
@@ -1109,7 +1249,7 @@ If the user provides both text and photo, use both sources to make the most accu
                 { backgroundColor: isDark ? colors.backgroundDark : colors.background },
               ]}
               onPress={handleAddPhoto}
-              disabled={loading}
+              disabled={loading || isRecording || isTranscribing}
             >
               <IconSymbol
                 ios_icon_name="camera.fill"
@@ -1127,26 +1267,46 @@ If the user provides both text and photo, use both sources to make the most accu
                   color: isDark ? colors.textDark : colors.text,
                 },
               ]}
-              placeholder="Describe your meal (optional with photo)..."
+              placeholder="Describe your meal or use voice..."
               placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
               value={inputText}
               onChangeText={setInputText}
               multiline
               maxLength={500}
-              editable={!loading}
+              editable={!loading && !isRecording && !isTranscribing}
             />
+            
+            <TouchableOpacity
+              style={[
+                styles.voiceButton,
+                { 
+                  backgroundColor: isRecording 
+                    ? colors.error 
+                    : (isDark ? colors.backgroundDark : colors.background),
+                },
+              ]}
+              onPress={handleVoiceInput}
+              disabled={loading || isTranscribing}
+            >
+              <IconSymbol
+                ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
+                android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
+                size={24}
+                color={isRecording ? '#FFFFFF' : colors.primary}
+              />
+            </TouchableOpacity>
             
             <TouchableOpacity
               style={[
                 styles.sendButton,
                 { 
-                  backgroundColor: (inputText.trim() || selectedImage) && !loading 
+                  backgroundColor: (inputText.trim() || selectedImage) && !loading && !isRecording && !isTranscribing
                     ? colors.primary 
                     : colors.border 
                 },
               ]}
               onPress={handleSend}
-              disabled={(!inputText.trim() && !selectedImage) || loading}
+              disabled={(!inputText.trim() && !selectedImage) || loading || isRecording || isTranscribing}
             >
               <IconSymbol
                 ios_icon_name="arrow.up"
@@ -1399,6 +1559,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     maxHeight: 100,
     ...typography.body,
+  },
+  voiceButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sendButton: {
     width: 40,

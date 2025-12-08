@@ -29,6 +29,7 @@
     "eas": "^0.1.0",
     "eslint-import-resolver-typescript": "^4.4.4",
     "expo": "~54.0.1",
+    "expo-audio": "^1.0.16",
     "expo-blur": "^15.0.6",
     "expo-camera": "^17.0.9",
     "expo-constants": "~18.0.8",

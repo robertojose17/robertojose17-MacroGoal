@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Macro Goal",
@@ -39,6 +40,12 @@
         "expo-camera",
         {
           "cameraPermission": "Allow Elite Macro Tracker to access your camera for barcode scanning"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Elite Macro Tracker to access your microphone for voice input"
         }
       ]
     ],
