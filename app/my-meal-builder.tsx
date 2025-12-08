@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeableListItem from '@/components/SwipeableListItem';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMealItem } from '@/types';
 
@@ -434,39 +435,31 @@ export default function MyMealBuilderScreen() {
             </View>
           ) : (
             items.map((item, index) => (
-              <View 
+              <SwipeableListItem
                 key={item.id || `item-${index}`}
-                style={[
-                  styles.foodItem,
-                  { backgroundColor: isDark ? colors.cardDark : colors.card }
-                ]}
+                onDelete={() => handleRemoveItem(item.id)}
               >
-                <View style={styles.foodInfo}>
-                  <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                    {item.food?.name || 'Unknown Food'}
-                  </Text>
-                  {item.food?.brand && (
-                    <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      {item.food.brand}
-                    </Text>
-                  )}
-                  <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {getServingDisplayText(item)} • {Math.round(item.calories)} cal
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => handleRemoveItem(item.id)}
-                  activeOpacity={0.7}
+                <View 
+                  style={[
+                    styles.foodItem,
+                    { backgroundColor: isDark ? colors.cardDark : colors.card }
+                  ]}
                 >
-                  <IconSymbol
-                    ios_icon_name="trash"
-                    android_material_icon_name="delete"
-                    size={20}
-                    color={colors.error}
-                  />
-                </TouchableOpacity>
-              </View>
+                  <View style={styles.foodInfo}>
+                    <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                      {item.food?.name || 'Unknown Food'}
+                    </Text>
+                    {item.food?.brand && (
+                      <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {item.food.brand}
+                      </Text>
+                    )}
+                    <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      {getServingDisplayText(item)} • {Math.round(item.calories)} cal
+                    </Text>
+                  </View>
+                </View>
+              </SwipeableListItem>
             ))
           )}
 
@@ -599,10 +592,6 @@ const styles = StyleSheet.create({
   foodServing: {
     ...typography.caption,
     fontSize: 13,
-  },
-  removeButton: {
-    padding: spacing.xs,
-    marginLeft: spacing.sm,
   },
   addFoodButton: {
     flexDirection: 'row',

@@ -24,27 +24,27 @@ export default function AuthWelcomeScreen() {
           </View>
           
           <Text style={[styles.title, { color: isDark ? colors.textDark : '#FFFFFF' }]}>
-            Elite Macro Tracker
+            Macro Goal
           </Text>
           
           <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : 'rgba(255,255,255,0.9)' }]}>
-            Your professional fitness & nutrition companion
+            Track your macros. Hit your goals.
           </Text>
 
           <View style={styles.features}>
             <FeatureItem
+              icon="✨"
+              text="AI-powered meal estimates in seconds"
+              isDark={isDark}
+            />
+            <FeatureItem
+              icon="📝"
+              text="Log your food and macros without overthinking"
+              isDark={isDark}
+            />
+            <FeatureItem
               icon="🎯"
-              text="Calculate personalized daily macros"
-              isDark={isDark}
-            />
-            <FeatureItem
-              icon="📊"
-              text="Track food & progress effortlessly"
-              isDark={isDark}
-            />
-            <FeatureItem
-              icon="📈"
-              text="Get premium analytics & insights"
+              text="Stay consistent with daily check-ins"
               isDark={isDark}
             />
           </View>
@@ -116,6 +116,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     ...typography.body,
+    fontSize: 18,
     textAlign: 'center',
     marginBottom: spacing.xxl,
   },

@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeableListItem from '@/components/SwipeableListItem';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMeal } from '@/types';
 
@@ -71,42 +72,84 @@ export default function MyMealsListScreen() {
     });
   };
 
+  const handleDeleteMyMeal = async (meal: MyMeal) => {
+    try {
+      console.log('[MyMealsList] Deleting My Meal:', meal.id);
+
+      // Delete meal items first (foreign key constraint)
+      const { error: itemsError } = await supabase
+        .from('my_meal_items')
+        .delete()
+        .eq('my_meal_id', meal.id);
+
+      if (itemsError) {
+        console.error('[MyMealsList] Error deleting meal items:', itemsError);
+        Alert.alert('Error', 'Failed to delete meal items');
+        return;
+      }
+
+      // Delete the meal
+      const { error: mealError } = await supabase
+        .from('my_meals')
+        .delete()
+        .eq('id', meal.id);
+
+      if (mealError) {
+        console.error('[MyMealsList] Error deleting meal:', mealError);
+        Alert.alert('Error', 'Failed to delete meal');
+        return;
+      }
+
+      console.log('[MyMealsList] ✅ My Meal deleted successfully');
+      
+      // Reload the list
+      loadMyMeals();
+    } catch (error) {
+      console.error('[MyMealsList] Error in handleDeleteMyMeal:', error);
+      Alert.alert('Error', 'An error occurred while deleting');
+    }
+  };
+
   const renderMyMealCard = (meal: MyMeal, index: number) => {
     return (
-      <TouchableOpacity
+      <SwipeableListItem
         key={meal.id || `meal-${index}`}
-        style={[
-          styles.mealCard,
-          { backgroundColor: isDark ? colors.cardDark : colors.card }
-        ]}
-        onPress={() => handleOpenMyMeal(meal)}
-        activeOpacity={0.7}
+        onDelete={() => handleDeleteMyMeal(meal)}
       >
-        <View style={styles.mealInfo}>
-          <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {meal.name}
-          </Text>
-          {meal.note && (
-            <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {meal.note}
+        <TouchableOpacity
+          style={[
+            styles.mealCard,
+            { backgroundColor: isDark ? colors.cardDark : colors.card }
+          ]}
+          onPress={() => handleOpenMyMeal(meal)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.mealInfo}>
+            <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
+              {meal.name}
             </Text>
-          )}
-          <View style={styles.mealStats}>
-            <Text style={[styles.mealCalories, { color: colors.calories }]}>
-              {Math.round(meal.total_calories)} cal
-            </Text>
-            <Text style={[styles.mealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              P: {Math.round(meal.total_protein)}g • C: {Math.round(meal.total_carbs)}g • F: {Math.round(meal.total_fats)}g
-            </Text>
+            {meal.note && (
+              <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {meal.note}
+              </Text>
+            )}
+            <View style={styles.mealStats}>
+              <Text style={[styles.mealCalories, { color: colors.calories }]}>
+                {Math.round(meal.total_calories)} cal
+              </Text>
+              <Text style={[styles.mealMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                P: {Math.round(meal.total_protein)}g • C: {Math.round(meal.total_carbs)}g • F: {Math.round(meal.total_fats)}g
+              </Text>
+            </View>
           </View>
-        </View>
-        <IconSymbol
-          ios_icon_name="chevron.right"
-          android_material_icon_name="chevron_right"
-          size={20}
-          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-        />
-      </TouchableOpacity>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="chevron_right"
+            size={20}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </SwipeableListItem>
     );
   };
 

@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeableListItem from '@/components/SwipeableListItem';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
@@ -115,35 +116,23 @@ export default function CheckInsScreen() {
   };
 
   const handleDeleteCheckIn = async (checkIn: CheckIn) => {
-    Alert.alert(
-      'Delete Check-In',
-      'Are you sure you want to delete this check-in?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('check_ins')
-                .delete()
-                .eq('id', checkIn.id);
+    try {
+      const { error } = await supabase
+        .from('check_ins')
+        .delete()
+        .eq('id', checkIn.id);
 
-              if (error) {
-                console.error('[CheckIns] Error deleting check-in:', error);
-                Alert.alert('Error', 'Failed to delete check-in');
-              } else {
-                console.log('[CheckIns] Check-in deleted successfully');
-                loadCheckIns();
-              }
-            } catch (error) {
-              console.error('[CheckIns] Error in handleDeleteCheckIn:', error);
-            }
-          },
-        },
-      ]
-    );
+      if (error) {
+        console.error('[CheckIns] Error deleting check-in:', error);
+        Alert.alert('Error', 'Failed to delete check-in');
+      } else {
+        console.log('[CheckIns] Check-in deleted successfully');
+        loadCheckIns();
+      }
+    } catch (error) {
+      console.error('[CheckIns] Error in handleDeleteCheckIn:', error);
+      Alert.alert('Error', 'An error occurred while deleting');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -348,39 +337,29 @@ export default function CheckInsScreen() {
           <View style={styles.checkInsList}>
             {filteredCheckIns.map((checkIn, index) => (
               <React.Fragment key={checkIn.id}>
-                <TouchableOpacity
-                  style={styles.checkInRow}
-                  onPress={() => handleViewCheckIn(checkIn)}
-                  activeOpacity={0.6}
+                <SwipeableListItem
+                  onDelete={() => handleDeleteCheckIn(checkIn)}
                 >
-                  <View style={styles.checkInRowContent}>
-                    <Text style={[styles.checkInRowDate, { color: isDark ? colors.textDark : colors.text }]}>
-                      {formatDate(checkIn.date)}
-                    </Text>
-                    <Text style={[styles.checkInRowSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      —
-                    </Text>
-                    <Text style={[styles.checkInRowValue, { color: isDark ? colors.textDark : colors.text }]}>
-                      {selectedType === 'weight' && checkIn.weight && formatWeight(checkIn.weight)}
-                      {selectedType === 'steps' && checkIn.steps !== null && `${checkIn.steps.toLocaleString()} steps`}
-                      {selectedType === 'gym' && checkIn.went_to_gym && 'Workout: Yes'}
-                    </Text>
-                  </View>
                   <TouchableOpacity
-                    style={styles.deleteButtonMinimal}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleDeleteCheckIn(checkIn);
-                    }}
+                    style={styles.checkInRow}
+                    onPress={() => handleViewCheckIn(checkIn)}
+                    activeOpacity={0.6}
                   >
-                    <IconSymbol
-                      ios_icon_name="trash"
-                      android_material_icon_name="delete"
-                      size={18}
-                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                    />
+                    <View style={styles.checkInRowContent}>
+                      <Text style={[styles.checkInRowDate, { color: isDark ? colors.textDark : colors.text }]}>
+                        {formatDate(checkIn.date)}
+                      </Text>
+                      <Text style={[styles.checkInRowSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        —
+                      </Text>
+                      <Text style={[styles.checkInRowValue, { color: isDark ? colors.textDark : colors.text }]}>
+                        {selectedType === 'weight' && checkIn.weight && formatWeight(checkIn.weight)}
+                        {selectedType === 'steps' && checkIn.steps !== null && `${checkIn.steps.toLocaleString()} steps`}
+                        {selectedType === 'gym' && checkIn.went_to_gym && 'Workout: Yes'}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
-                </TouchableOpacity>
+                </SwipeableListItem>
                 {index < filteredCheckIns.length - 1 && (
                   <View style={[styles.divider, { backgroundColor: isDark ? colors.textSecondaryDark : colors.textSecondary, opacity: 0.1 }]} />
                 )}
@@ -511,10 +490,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
     flex: 1,
-  },
-  deleteButtonMinimal: {
-    padding: spacing.xs,
-    marginLeft: spacing.sm,
   },
   divider: {
     height: 1,
