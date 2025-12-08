@@ -6,6 +6,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
   runOnJS,
 } from 'react-native-reanimated';
 import { IconSymbol } from './IconSymbol';
@@ -19,8 +20,9 @@ interface SwipeableListItemProps {
   deleteButtonColor?: string;
 }
 
-const SWIPE_THRESHOLD = -60; // Threshold to trigger "lock open" state
-const DELETE_BUTTON_WIDTH = 80;
+const SWIPE_THRESHOLD = -80; // Threshold to trigger "lock open" state
+const DELETE_BUTTON_WIDTH = 100;
+const CLOSE_THRESHOLD = -DELETE_BUTTON_WIDTH / 2; // Threshold to close when swiping right
 
 export default function SwipeableListItem({
   children,
@@ -36,6 +38,7 @@ export default function SwipeableListItem({
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
+    .failOffsetY([-10, 10]) // Prevent conflicts with vertical scrolling
     .onUpdate((event) => {
       // If row is locked open and user swipes right, allow closing
       if (isOpen.value && event.translationX > 0) {
@@ -44,15 +47,15 @@ export default function SwipeableListItem({
       }
       // If row is closed and user swipes left, allow opening
       else if (!isOpen.value && event.translationX < 0) {
-        translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH);
+        translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH * 1.2);
       }
     })
     .onEnd((event) => {
       // If row is open and user swipes right past threshold, close it
-      if (isOpen.value && translateX.value > -DELETE_BUTTON_WIDTH / 2) {
+      if (isOpen.value && translateX.value > CLOSE_THRESHOLD) {
         translateX.value = withSpring(0, {
           damping: 20,
-          stiffness: 90,
+          stiffness: 120,
         });
         isOpen.value = false;
       }
@@ -60,14 +63,14 @@ export default function SwipeableListItem({
       else if (isOpen.value) {
         translateX.value = withSpring(-DELETE_BUTTON_WIDTH, {
           damping: 20,
-          stiffness: 90,
+          stiffness: 120,
         });
       }
       // If row is closed and user swiped left past threshold, lock it open
       else if (translateX.value < SWIPE_THRESHOLD) {
         translateX.value = withSpring(-DELETE_BUTTON_WIDTH, {
           damping: 20,
-          stiffness: 90,
+          stiffness: 120,
         });
         isOpen.value = true;
       }
@@ -75,7 +78,7 @@ export default function SwipeableListItem({
       else {
         translateX.value = withSpring(0, {
           damping: 20,
-          stiffness: 90,
+          stiffness: 120,
         });
       }
     });
@@ -89,12 +92,13 @@ export default function SwipeableListItem({
   }));
 
   const handleDelete = () => {
-    // Animate out before deleting
-    translateX.value = withSpring(-300, {
-      damping: 20,
-      stiffness: 90,
-    }, () => {
-      runOnJS(onDelete)();
+    // Animate out quickly before deleting
+    translateX.value = withTiming(-400, {
+      duration: 200,
+    }, (finished) => {
+      if (finished) {
+        runOnJS(onDelete)();
+      }
     });
   };
 
@@ -120,7 +124,12 @@ export default function SwipeableListItem({
       {/* Swipeable content */}
       <GestureDetector gesture={panGesture}>
         <Animated.View style={[styles.content, animatedStyle]}>
-          {children}
+          <View style={[
+            styles.contentInner,
+            { backgroundColor: isDark ? colors.cardDark : colors.card }
+          ]}>
+            {children}
+          </View>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -150,10 +159,13 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   content: {
     backgroundColor: 'transparent',
+  },
+  contentInner: {
+    width: '100%',
   },
 });

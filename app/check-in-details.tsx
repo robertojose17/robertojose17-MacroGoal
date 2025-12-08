@@ -101,42 +101,7 @@ export default function CheckInDetailsScreen() {
     });
   };
 
-  const handleDelete = async () => {
-    if (!checkIn) return;
-
-    Alert.alert(
-      'Delete Check-In',
-      'Are you sure you want to delete this check-in?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('check_ins')
-                .delete()
-                .eq('id', checkIn.id);
-
-              if (error) {
-                console.error('[CheckInDetails] Error deleting check-in:', error);
-                Alert.alert('Error', 'Failed to delete check-in');
-              } else {
-                console.log('[CheckInDetails] Check-in deleted successfully');
-                router.back();
-              }
-            } catch (error) {
-              console.error('[CheckInDetails] Error in handleDelete:', error);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const formatDate = (dateString: string) => {
-    // FIX: Parse date correctly from YYYY-MM-DD format
     const [year, month, day] = dateString.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     
@@ -150,17 +115,14 @@ export default function CheckInDetailsScreen() {
 
   const formatWeight = (weight: number | null) => {
     if (!weight) return 'N/A';
-    // FIX: Weight is stored in kg in the database, convert to display units
     const units = user?.preferred_units || 'metric';
     console.log('[CheckInDetails] ⚖️ Formatting weight:', weight, 'kg, units:', units);
     
     if (units === 'imperial') {
-      // Convert kg to lbs for display
       const lbs = Math.round(weight * 2.20462);
       console.log('[CheckInDetails] ⚖️ Converted to:', lbs, 'lbs');
       return `${lbs} lbs`;
     }
-    // Display in kg
     return `${Math.round(weight)} kg`;
   };
 
@@ -327,20 +289,18 @@ export default function CheckInDetailsScreen() {
           </View>
         )}
 
-        {/* Delete Button */}
-        <TouchableOpacity
-          style={[styles.deleteButton, { backgroundColor: colors.error }]}
-          onPress={handleDelete}
-          activeOpacity={0.8}
-        >
+        {/* Info message about deleting */}
+        <View style={[styles.infoCard, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.info }]}>
           <IconSymbol
-            ios_icon_name="trash"
-            android_material_icon_name="delete"
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
             size={20}
-            color="#FFFFFF"
+            color={colors.info}
           />
-          <Text style={styles.deleteButtonText}>Delete Check-In</Text>
-        </TouchableOpacity>
+          <Text style={[styles.infoText, { color: isDark ? colors.textDark : colors.text }]}>
+            To delete this check-in, swipe left on it in the Check-Ins list
+          </Text>
+        </View>
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -441,21 +401,19 @@ const styles = StyleSheet.create({
     ...typography.body,
     lineHeight: 22,
   },
-  deleteButton: {
+  infoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.md,
     borderRadius: borderRadius.lg,
+    padding: spacing.md,
     marginTop: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
-    elevation: 3,
+    borderWidth: 1,
   },
-  deleteButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+  infoText: {
+    ...typography.caption,
+    flex: 1,
+    fontSize: 13,
   },
   bottomSpacer: {
     height: 40,

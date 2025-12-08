@@ -9,7 +9,6 @@ import {
   Platform,
   RefreshControl,
   Alert,
-  Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -136,7 +135,6 @@ export default function CheckInsScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    // FIX: Parse date correctly from YYYY-MM-DD format
     const [year, month, day] = dateString.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     
@@ -164,21 +162,17 @@ export default function CheckInsScreen() {
 
   const formatWeight = (weight: number | null) => {
     if (!weight) return 'N/A';
-    // FIX: Weight is stored in kg in the database, convert to display units
     const units = user?.preferred_units || 'metric';
     console.log('[CheckIns] ⚖️ Formatting weight:', weight, 'kg, units:', units);
     
     if (units === 'imperial') {
-      // Convert kg to lbs for display
       const lbs = Math.round(weight * 2.20462);
       console.log('[CheckIns] ⚖️ Converted to:', lbs, 'lbs');
       return `${lbs} lbs`;
     }
-    // Display in kg
     return `${Math.round(weight)} kg`;
   };
 
-  // Filter check-ins based on selected type
   const getFilteredCheckIns = () => {
     return checkIns.filter(checkIn => {
       switch (selectedType) {
@@ -469,8 +463,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   checkInRowContent: {
     flexDirection: 'row',
@@ -481,6 +475,7 @@ const styles = StyleSheet.create({
   checkInRowDate: {
     fontSize: 15,
     fontWeight: '500',
+    minWidth: 80,
   },
   checkInRowSeparator: {
     fontSize: 15,
@@ -493,7 +488,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    marginLeft: spacing.xs,
+    marginLeft: spacing.sm,
   },
   bottomSpacer: {
     height: 40,

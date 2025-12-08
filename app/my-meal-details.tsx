@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeableListItem from '@/components/SwipeableListItem';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMeal, MyMealItem, MealType } from '@/types';
 
@@ -22,7 +23,6 @@ export default function MyMealDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [showMealTypeModal, setShowMealTypeModal] = useState(false);
 
-  // FIXED: Removed loadMyMeal from dependency array to prevent circular dependency
   const loadMyMeal = useCallback(async () => {
     try {
       setLoading(true);
@@ -73,11 +73,9 @@ export default function MyMealDetailsScreen() {
 
       console.log('[MyMealDetails] Loaded', itemsData?.length || 0, 'items');
       
-      // FIXED: Normalize the data structure - Supabase returns "foods" (plural) from the join,
-      // but we need "food" (singular) to match the structure of newly added items
       const normalizedItems = (itemsData || []).map(item => ({
         ...item,
-        food: (item as any).foods || item.food, // Use "foods" from DB join, fallback to "food"
+        food: (item as any).foods || item.food,
       }));
       
       setItems(normalizedItems);
@@ -105,43 +103,29 @@ export default function MyMealDetailsScreen() {
     });
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete My Meal',
-      `Are you sure you want to delete "${meal?.name}"? This will not affect any past diary entries.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('[MyMealDetails] Deleting meal:', mealId);
+  const handleDeleteItem = async (itemId: string) => {
+    try {
+      console.log('[MyMealDetails] Deleting item:', itemId);
 
-              const { error } = await supabase
-                .from('my_meals')
-                .delete()
-                .eq('id', mealId);
+      const { error } = await supabase
+        .from('my_meal_items')
+        .delete()
+        .eq('id', itemId);
 
-              if (error) {
-                console.error('[MyMealDetails] Error deleting meal:', error);
-                Alert.alert('Error', 'Failed to delete meal');
-                return;
-              }
+      if (error) {
+        console.error('[MyMealDetails] Error deleting item:', error);
+        Alert.alert('Error', 'Failed to delete item');
+        return;
+      }
 
-              console.log('[MyMealDetails] Meal deleted successfully');
-              router.dismissTo('/my-meals-list');
-            } catch (error) {
-              console.error('[MyMealDetails] Error in handleDelete:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
-            }
-          },
-        },
-      ]
-    );
+      console.log('[MyMealDetails] Item deleted successfully');
+      
+      // Reload the meal to update totals
+      loadMyMeal();
+    } catch (error) {
+      console.error('[MyMealDetails] Error in handleDeleteItem:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   const handleAddToDiary = () => {
@@ -337,35 +321,39 @@ export default function MyMealDetailsScreen() {
           </Text>
 
           {items.map((item, index) => (
-            <View 
+            <SwipeableListItem
               key={item.id || `item-${index}`}
-              style={[
-                styles.foodItem,
-                { backgroundColor: isDark ? colors.cardDark : colors.card }
-              ]}
+              onDelete={() => handleDeleteItem(item.id)}
             >
-              <View style={styles.foodInfo}>
-                <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                  {item.food?.name || 'Unknown Food'}
-                </Text>
-                {item.food?.brand && (
-                  <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {item.food.brand}
+              <View 
+                style={[
+                  styles.foodItem,
+                  { backgroundColor: isDark ? colors.cardDark : colors.card }
+                ]}
+              >
+                <View style={styles.foodInfo}>
+                  <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                    {item.food?.name || 'Unknown Food'}
                   </Text>
-                )}
-                <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {getServingDisplayText(item)}
-                </Text>
+                  {item.food?.brand && (
+                    <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      {item.food.brand}
+                    </Text>
+                  )}
+                  <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {getServingDisplayText(item)}
+                  </Text>
+                </View>
+                <View style={styles.foodCalories}>
+                  <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+                    {Math.round(item.calories)}
+                  </Text>
+                  <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    kcal
+                  </Text>
+                </View>
               </View>
-              <View style={styles.foodCalories}>
-                <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-                  {Math.round(item.calories)}
-                </Text>
-                <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  kcal
-                </Text>
-              </View>
-            </View>
+            </SwipeableListItem>
           ))}
         </View>
 
@@ -383,19 +371,18 @@ export default function MyMealDetailsScreen() {
           <Text style={styles.addToDiaryButtonText}>Add to Diary</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.deleteButton, { backgroundColor: 'rgba(255, 59, 48, 0.1)' }]}
-          onPress={handleDelete}
-          activeOpacity={0.7}
-        >
+        {/* Info message about deleting */}
+        <View style={[styles.infoCard, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.info }]}>
           <IconSymbol
-            ios_icon_name="trash"
-            android_material_icon_name="delete"
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
             size={20}
-            color={colors.error}
+            color={colors.info}
           />
-          <Text style={[styles.deleteButtonText, { color: colors.error }]}>Delete My Meal</Text>
-        </TouchableOpacity>
+          <Text style={[styles.infoText, { color: isDark ? colors.textDark : colors.text }]}>
+            Swipe left on any food item to remove it from this meal
+          </Text>
+        </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -607,17 +594,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
   },
-  deleteButton: {
+  infoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
     gap: spacing.sm,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
   },
-  deleteButtonText: {
-    ...typography.bodyBold,
-    fontSize: 16,
+  infoText: {
+    ...typography.caption,
+    flex: 1,
+    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,
