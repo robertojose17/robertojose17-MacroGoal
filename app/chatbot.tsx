@@ -25,6 +25,7 @@ import {
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AudioWaveform } from '@/components/AudioWaveform';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -400,17 +401,13 @@ export default function ChatbotScreen() {
         console.log('[Chatbot] Transcription successful:', data.text);
         // Set the transcribed text in the input field
         setInputText(data.text);
-        
-        // Optionally auto-send after transcription
-        // Uncomment the next line if you want to auto-send
-        // setTimeout(() => handleSend(), 500);
       } else {
         console.error('[Chatbot] No transcription text received');
-        Alert.alert('Error', 'Could not transcribe audio. Please try again.');
+        Alert.alert('Transcription Error', 'No se pudo transcribir el audio. Por favor, intenta de nuevo.');
       }
     } catch (error) {
       console.error('[Chatbot] Error transcribing audio:', error);
-      Alert.alert('Error', 'Failed to transcribe audio. Please try again.');
+      Alert.alert('Transcription Error', 'No se pudo transcribir el audio. Por favor, intenta de nuevo.');
     } finally {
       setIsTranscribing(false);
     }
@@ -1242,6 +1239,20 @@ If the user provides both text and photo, use both sources to make the most accu
             </View>
           )}
           
+          {/* Audio waveform indicator - shown while recording */}
+          {isRecording && (
+            <View style={styles.audioWaveformContainer}>
+              <AudioWaveform 
+                isRecording={isRecording} 
+                color={colors.primary}
+                barCount={5}
+              />
+              <Text style={[styles.recordingText, { color: colors.primary }]}>
+                Recording...
+              </Text>
+            </View>
+          )}
+          
           <View style={styles.inputRow}>
             <TouchableOpacity
               style={[
@@ -1539,6 +1550,18 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: colors.error,
     borderRadius: 12,
+  },
+  audioWaveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  recordingText: {
+    ...typography.bodyBold,
+    fontSize: 14,
   },
   inputRow: {
     flexDirection: 'row',
