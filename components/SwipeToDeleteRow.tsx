@@ -23,7 +23,6 @@ interface SwipeToDeleteRowProps {
 const DELETE_BUTTON_WIDTH = 90;
 const SWIPE_THRESHOLD = -70; // Threshold to lock open
 const FULL_SWIPE_THRESHOLD = -150; // Threshold for immediate delete
-const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function SwipeToDeleteRow({
   children,
@@ -41,19 +40,9 @@ export default function SwipeToDeleteRow({
     if (isDeleting.value) return;
     isDeleting.value = true;
     
-    // Fast slide-out animation to the left
-    translateX.value = withTiming(
-      -SCREEN_WIDTH,
-      {
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-      },
-      (finished) => {
-        if (finished) {
-          runOnJS(onDelete)();
-        }
-      }
-    );
+    // Call onDelete IMMEDIATELY - no delay
+    // The parent will remove the item from the array and this component will unmount
+    runOnJS(onDelete)();
   };
 
   const panGesture = Gesture.Pan()
@@ -64,12 +53,11 @@ export default function SwipeToDeleteRow({
       
       // Only allow left swipe (negative translation)
       if (event.translationX < 0) {
-        // Limit the swipe to not go beyond the screen width
-        translateX.value = Math.max(event.translationX, -SCREEN_WIDTH);
+        translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH * 2);
       } else if (event.translationX > 0 && translateX.value < 0) {
         // Allow swiping right to close if already open
-        const newTranslation = Math.min(0, translateX.value + event.translationX);
-        translateX.value = newTranslation;
+        const newTranslation = translateX.value + event.translationX;
+        translateX.value = Math.min(0, newTranslation);
       }
     })
     .onEnd((event) => {
@@ -87,14 +75,14 @@ export default function SwipeToDeleteRow({
       // Partial swipe past threshold: lock open
       if (translation < SWIPE_THRESHOLD) {
         translateX.value = withTiming(-DELETE_BUTTON_WIDTH, {
-          duration: 200,
-          easing: Easing.out(Easing.ease),
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
         });
       } else {
         // Not past threshold: close
         translateX.value = withTiming(0, {
-          duration: 200,
-          easing: Easing.out(Easing.ease),
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
         });
       }
     });

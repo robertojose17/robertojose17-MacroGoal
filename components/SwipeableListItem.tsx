@@ -1,5 +1,5 @@
 
-import React, { ReactNode, useRef } from 'react';
+import React, { ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -8,6 +8,7 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
+  Easing,
 } from 'react-native-reanimated';
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
@@ -34,11 +35,14 @@ export default function SwipeableListItem({
   
   const translateX = useSharedValue(0);
   const isOpen = useSharedValue(false);
+  const isDeleting = useSharedValue(false);
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
     .onUpdate((event) => {
+      if (isDeleting.value) return;
+      
       // If row is open and user swipes right, allow closing
       if (isOpen.value && event.translationX > 0) {
         const newTranslation = -DELETE_BUTTON_WIDTH + event.translationX;
@@ -50,34 +54,36 @@ export default function SwipeableListItem({
       }
     })
     .onEnd(() => {
+      if (isDeleting.value) return;
+      
       // If row is open and user swipes right past halfway, close it
       if (isOpen.value && translateX.value > -DELETE_BUTTON_WIDTH / 2) {
-        translateX.value = withSpring(0, {
-          damping: 25,
-          stiffness: 200,
+        translateX.value = withTiming(0, {
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
         });
         isOpen.value = false;
       }
       // If row is open but user didn't swipe enough, keep it open
       else if (isOpen.value) {
-        translateX.value = withSpring(-DELETE_BUTTON_WIDTH, {
-          damping: 25,
-          stiffness: 200,
+        translateX.value = withTiming(-DELETE_BUTTON_WIDTH, {
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
         });
       }
       // If row is closed and user swiped left past threshold, lock it open
       else if (translateX.value < SWIPE_THRESHOLD) {
-        translateX.value = withSpring(-DELETE_BUTTON_WIDTH, {
-          damping: 25,
-          stiffness: 200,
+        translateX.value = withTiming(-DELETE_BUTTON_WIDTH, {
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
         });
         isOpen.value = true;
       }
       // If row is closed and user didn't swipe enough, snap back
       else {
-        translateX.value = withSpring(0, {
-          damping: 25,
-          stiffness: 200,
+        translateX.value = withTiming(0, {
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
         });
       }
     });
@@ -91,14 +97,12 @@ export default function SwipeableListItem({
   }));
 
   const handleDelete = () => {
-    // Fast slide-out animation
-    translateX.value = withTiming(-500, {
-      duration: 250,
-    }, (finished) => {
-      if (finished) {
-        runOnJS(onDelete)();
-      }
-    });
+    if (isDeleting.value) return;
+    isDeleting.value = true;
+    
+    // Call onDelete IMMEDIATELY - no delay
+    // The parent will remove the item from the array and this component will unmount
+    onDelete();
   };
 
   return (
