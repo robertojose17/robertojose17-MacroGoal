@@ -4,69 +4,57 @@
     "slug": "Macro Goal",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/final_quest_240x240.png",
-    "scheme": "macrogoal",
+    "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/final_quest_240x240.png",
+      "image": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.macrogoal.app",
+      "bundleIdentifier": "com.elitemacrotracker.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "This app needs access to your microphone to transcribe voice input for meal descriptions.",
-        "NSSpeechRecognitionUsageDescription": "This app needs access to speech recognition to convert your voice into text for meal descriptions.",
-        "NSCameraUsageDescription": "This app needs access to your camera to take photos of your meals.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select photos of your meals."
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/final_quest_240x240.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+        "backgroundColor": "#000000"
       },
-      "package": "com.macrogoal.app",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+      "edgeToEdgeEnabled": true,
+      "package": "com.elitemacrotracker.app"
     },
     "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/final_quest_240x240.png"
+      "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+      "bundler": "metro"
     },
     "plugins": [
+      "expo-font",
       "expo-router",
+      "expo-web-browser",
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow MacroGoal to access your camera to take photos of your meals.",
-          "microphonePermission": "Allow MacroGoal to access your microphone for voice input.",
-          "recordAudioAndroid": true
+          "cameraPermission": "Allow Elite Macro Tracker to access your camera for barcode scanning"
         }
       ],
       [
-        "expo-image-picker",
+        "expo-audio",
         {
-          "photosPermission": "Allow MacroGoal to access your photos to select meal images."
+          "microphonePermission": "Allow Elite Macro Tracker to access your microphone for voice input"
         }
       ]
     ],
+    "scheme": "elitemacrotracker",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {
-        "origin": false
-      },
-      "eas": {
-        "projectId": "your-project-id"
-      }
+      "router": {},
+      "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW"
     }
   },
   "scheme": "Macro Goal"

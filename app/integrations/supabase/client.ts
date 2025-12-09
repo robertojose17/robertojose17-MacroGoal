@@ -2,7 +2,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js'
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 // CRITICAL: Use safe defaults for environment variables
 const SUPABASE_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
@@ -15,56 +14,18 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   console.error('[Supabase] Key:', SUPABASE_PUBLISHABLE_KEY ? 'present' : 'MISSING');
 }
 
-// Store the client instance
-let supabaseInstance: SupabaseClient<Database> | null = null;
+console.log('[Supabase] Initializing client with URL:', SUPABASE_URL);
 
-// Function to safely initialize the Supabase client
-function initializeSupabase(): SupabaseClient<Database> {
-  if (supabaseInstance) {
-    return supabaseInstance;
-  }
+// Import the supabase client like this:
+// import { supabase } from "@/integrations/supabase/client";
 
-  console.log('[Supabase] Initializing client with URL:', SUPABASE_URL);
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+})
 
-  try {
-    supabaseInstance = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-      },
-    });
-
-    console.log('[Supabase] ✅ Client initialized successfully');
-    return supabaseInstance;
-  } catch (error) {
-    console.error('[Supabase] ❌ Error initializing client:', error);
-    throw error;
-  }
-}
-
-// Create a proxy object that lazily initializes the client
-export const supabase = new Proxy({} as SupabaseClient<Database>, {
-  get(target, prop) {
-    // Initialize the client on first access
-    if (!supabaseInstance) {
-      try {
-        initializeSupabase();
-      } catch (error) {
-        console.error('[Supabase] Failed to initialize on access:', error);
-        throw error;
-      }
-    }
-    
-    // Return the property from the initialized client
-    const value = (supabaseInstance as any)[prop];
-    
-    // If it's a function, bind it to the client instance
-    if (typeof value === 'function') {
-      return value.bind(supabaseInstance);
-    }
-    
-    return value;
-  }
-});
+console.log('[Supabase] ✅ Client initialized successfully');

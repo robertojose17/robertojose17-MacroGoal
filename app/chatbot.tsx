@@ -16,7 +16,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import Voice from '@react-native-voice/voice';
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  setAudioModeAsync,
+  requestRecordingPermissionsAsync,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -74,6 +80,7 @@ export default function ChatbotScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const isMountedRef = useRef(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const audioLevelIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Extract context from params (passed from Add Food screen)
   const mode = (params.mode as string) || 'diary';
@@ -101,71 +108,30 @@ export default function ChatbotScreen() {
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
-  const audioLevelIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder, 50); // Poll every 50ms for smooth visualization
 
   const { sendMessage, loading } = useChatbot();
 
-  // Setup Voice recognition
+  // Setup and cleanup
   useEffect(() => {
     isMountedRef.current = true;
 
-    // Setup Voice event listeners
-    Voice.onSpeechStart = () => {
-      console.log('[Chatbot] Speech recognition started');
-      setIsRecording(true);
-    };
-
-    Voice.onSpeechEnd = () => {
-      console.log('[Chatbot] Speech recognition ended');
-      setIsRecording(false);
-    };
-
-    Voice.onSpeechResults = (e) => {
-      console.log('[Chatbot] Speech results:', e.value);
-      if (e.value && e.value.length > 0) {
-        const transcribedText = e.value[0];
-        console.log('[Chatbot] ✅ Transcription successful:', transcribedText);
-        
-        // Set the transcribed text in the input field
-        setInputText(transcribedText);
-        
-        // Automatically send the transcribed text
-        setTimeout(() => {
-          if (isMountedRef.current && transcribedText.trim()) {
-            handleSendTranscribedText(transcribedText);
-          }
-        }, 100);
+    // Setup audio mode for recording
+    const setupAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+        });
+      } catch (error) {
+        console.error('[Chatbot] Error setting up audio mode:', error);
       }
     };
 
-    Voice.onSpeechError = (e) => {
-      console.error('[Chatbot] Speech recognition error:', e.error);
-      setIsRecording(false);
-      
-      // Show user-friendly error message
-      let errorMessage = "We couldn't transcribe your audio. Please try again.";
-      
-      if (e.error?.message) {
-        const errorMsg = e.error.message.toLowerCase();
-        if (errorMsg.includes('permission')) {
-          errorMessage = 'Microphone permission is required. Please enable it in your device settings.';
-        } else if (errorMsg.includes('network')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        } else if (errorMsg.includes('no match') || errorMsg.includes('no speech')) {
-          errorMessage = 'No speech detected. Please speak clearly and try again.';
-        }
-      }
-      
-      Alert.alert('Transcription Error', errorMessage);
-    };
-
-    Voice.onSpeechPartialResults = (e) => {
-      // Optional: handle partial results for real-time feedback
-      if (e.value && e.value.length > 0) {
-        console.log('[Chatbot] Partial result:', e.value[0]);
-      }
-    };
+    setupAudio();
 
     return () => {
       isMountedRef.current = false;
@@ -175,28 +141,29 @@ export default function ChatbotScreen() {
       if (audioLevelIntervalRef.current) {
         clearInterval(audioLevelIntervalRef.current);
       }
-      
-      // Cleanup Voice
-      Voice.destroy().then(Voice.removeAllListeners);
     };
   }, []);
 
-  // Simulate audio level while recording for visualization
+  // Update audio level based on recording state
+  // Since expo-audio doesn't expose real-time metering data directly,
+  // we simulate realistic audio levels that respond to recording activity
   useEffect(() => {
-    if (isRecording) {
+    if (isRecording && recorderState.isRecording) {
       // Clear any existing interval
       if (audioLevelIntervalRef.current) {
         clearInterval(audioLevelIntervalRef.current);
       }
 
       // Create realistic audio level simulation
+      // In production, you would use actual metering data from the audio recorder
       audioLevelIntervalRef.current = setInterval(() => {
-        if (!isRecording) {
+        if (!recorderState.isRecording) {
           setAudioLevel(0);
           return;
         }
 
         // Generate realistic audio levels that vary over time
+        // This creates a natural-looking waveform animation
         const time = Date.now() / 1000;
         
         // Base level with some variation
@@ -231,7 +198,7 @@ export default function ChatbotScreen() {
       }
       setAudioLevel(0);
     }
-  }, [isRecording]);
+  }, [isRecording, recorderState.isRecording]);
 
   // Check subscription and redirect to paywall if not subscribed
   useEffect(() => {
@@ -396,7 +363,7 @@ export default function ChatbotScreen() {
     setSelectedImage(null);
   };
 
-  // Handle voice input - start/stop recording
+  // Handle voice recording
   const handleVoiceInput = async () => {
     if (isRecording) {
       // Stop recording
@@ -409,45 +376,155 @@ export default function ChatbotScreen() {
 
   const handleStartRecording = async () => {
     try {
-      console.log('[Chatbot] Starting speech recognition...');
-      
-      // Check if speech recognition is available
-      const available = await Voice.isAvailable();
-      if (!available) {
-        Alert.alert(
-          'Not Available',
-          'Speech recognition is not available on this device.'
-        );
+      console.log('[Chatbot] Requesting microphone permission...');
+      const { granted } = await requestRecordingPermissionsAsync();
+
+      if (!granted) {
+        Alert.alert('Permission Required', 'Microphone permission is required to use voice input.');
         return;
       }
 
-      // Start speech recognition
-      await Voice.start('en-US'); // English (US)
-      console.log('[Chatbot] Speech recognition started');
-    } catch (error: any) {
-      console.error('[Chatbot] Error starting speech recognition:', error);
-      
-      let errorMessage = 'Failed to start voice input. Please try again.';
-      if (error?.message) {
-        const errorMsg = error.message.toLowerCase();
-        if (errorMsg.includes('permission')) {
-          errorMessage = 'Microphone permission is required. Please enable it in your device settings.';
-        }
-      }
-      
-      Alert.alert('Recording Error', errorMessage);
+      console.log('[Chatbot] Starting recording...');
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setIsRecording(true);
+      console.log('[Chatbot] Recording started');
+    } catch (error) {
+      console.error('[Chatbot] Error starting recording:', error);
+      Alert.alert('Recording Error', 'Failed to start recording. Please try again.');
     }
   };
 
   const handleStopRecording = async () => {
     try {
-      console.log('[Chatbot] Stopping speech recognition...');
-      await Voice.stop();
+      console.log('[Chatbot] Stopping recording...');
+      await audioRecorder.stop();
       setIsRecording(false);
-      console.log('[Chatbot] Speech recognition stopped');
+
+      const uri = audioRecorder.uri;
+      if (!uri) {
+        console.error('[Chatbot] No recording URI');
+        Alert.alert('Recording Error', 'Failed to save recording. Please try again.');
+        return;
+      }
+
+      console.log('[Chatbot] Recording saved:', uri);
+
+      // Transcribe the audio
+      await transcribeAudio(uri);
     } catch (error) {
-      console.error('[Chatbot] Error stopping speech recognition:', error);
+      console.error('[Chatbot] Error stopping recording:', error);
+      Alert.alert('Recording Error', 'Failed to stop recording. Please try again.');
       setIsRecording(false);
+    }
+  };
+
+  const transcribeAudio = async (audioUri: string) => {
+    try {
+      setIsTranscribing(true);
+      console.log('[Chatbot] Transcribing audio from URI:', audioUri);
+
+      // Read the audio file and convert to base64
+      const response = await fetch(audioUri);
+      const blob = await response.blob();
+
+      // Check if blob is empty
+      if (blob.size === 0) {
+        console.error('[Chatbot] Audio blob is empty');
+        Alert.alert('Recording Error', 'The audio recording is empty. Please try speaking again.');
+        setIsTranscribing(false);
+        return;
+      }
+
+      console.log('[Chatbot] Audio blob size:', blob.size, 'bytes');
+
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result as string;
+          // Extract base64 data (remove data:audio/...;base64, prefix)
+          const base64 = dataUrl.split(',')[1];
+          if (!base64 || base64.length === 0) {
+            reject(new Error('Failed to convert audio to base64'));
+            return;
+          }
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Failed to read audio file'));
+        reader.readAsDataURL(blob);
+      });
+
+      console.log('[Chatbot] Base64 audio length:', base64Audio.length);
+      console.log('[Chatbot] Sending audio to transcription service...');
+
+      // Call the transcription Edge Function
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: {
+          audioBase64: base64Audio,
+          mimeType: 'audio/m4a',
+        },
+      });
+
+      if (error) {
+        console.error('[Chatbot] Transcription error:', error);
+        console.error('[Chatbot] Error details:', JSON.stringify(error, null, 2));
+        
+        // Parse error message for user-friendly feedback
+        let errorMessage = "We couldn't transcribe your audio. Please try again.";
+        
+        if (error?.message) {
+          if (error.message.includes('Subscription Required')) {
+            errorMessage = 'An active subscription is required to use voice input.';
+          } else if (error.message.includes('Configuration Error')) {
+            errorMessage = 'The transcription service is not properly configured. Please contact support.';
+          } else if (error.message.includes('Network Error')) {
+            errorMessage = 'Network error. Please check your connection and try again.';
+          } else if (error.message.includes('Transcription Error')) {
+            errorMessage = 'Failed to transcribe audio. Please speak clearly and try again.';
+          }
+        }
+        
+        Alert.alert('Transcription Error', errorMessage);
+        setIsTranscribing(false);
+        return;
+      }
+
+      if (data && data.text) {
+        console.log('[Chatbot] Transcription successful:', data.text);
+        // Set the transcribed text in the input field
+        setInputText(data.text);
+        
+        // Automatically send the transcribed text
+        // We'll trigger the send after a short delay to allow the UI to update
+        setTimeout(() => {
+          if (isMountedRef.current && data.text.trim()) {
+            // Simulate pressing the send button
+            handleSendTranscribedText(data.text);
+          }
+        }, 100);
+      } else {
+        console.error('[Chatbot] No transcription text received');
+        Alert.alert('Transcription Error', "We couldn't transcribe your audio. Please try again.");
+      }
+    } catch (error: any) {
+      console.error('[Chatbot] Error transcribing audio:', error);
+      
+      // Parse error message for user-friendly feedback
+      let errorMessage = "We couldn't transcribe your audio. Please try again.";
+      
+      if (error?.message) {
+        if (error.message.includes('Subscription Required')) {
+          errorMessage = 'An active subscription is required to use voice input.';
+        } else if (error.message.includes('Configuration Error')) {
+          errorMessage = 'The transcription service is not properly configured. Please contact support.';
+        } else if (error.message.includes('Network Error')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        }
+      }
+      
+      Alert.alert('Transcription Error', errorMessage);
+    } finally {
+      setIsTranscribing(false);
     }
   };
 
@@ -1268,14 +1345,14 @@ If the user provides both text and photo, use both sources to make the most accu
             </View>
           )}
 
-          {loading && (
+          {(loading || isTranscribing) && (
             <View style={styles.loadingWrapper}>
               <View style={[styles.loadingBubble, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text
                   style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}
                 >
-                  Analyzing meal...
+                  {isTranscribing ? 'Transcribing...' : 'Analyzing meal...'}
                 </Text>
               </View>
             </View>
@@ -1485,7 +1562,7 @@ If the user provides both text and photo, use both sources to make the most accu
                 { backgroundColor: isDark ? colors.backgroundDark : colors.background },
               ]}
               onPress={handleAddPhoto}
-              disabled={loading || isRecording}
+              disabled={loading || isRecording || isTranscribing}
             >
               <IconSymbol
                 ios_icon_name="camera.fill"
@@ -1509,7 +1586,7 @@ If the user provides both text and photo, use both sources to make the most accu
               onChangeText={setInputText}
               multiline
               maxLength={500}
-              editable={!loading && !isRecording}
+              editable={!loading && !isRecording && !isTranscribing}
             />
 
             <TouchableOpacity
@@ -1524,7 +1601,7 @@ If the user provides both text and photo, use both sources to make the most accu
                 },
               ]}
               onPress={handleVoiceInput}
-              disabled={loading}
+              disabled={loading || isTranscribing}
             >
               <IconSymbol
                 ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
@@ -1539,13 +1616,13 @@ If the user provides both text and photo, use both sources to make the most accu
                 styles.sendButton,
                 {
                   backgroundColor:
-                    (inputText.trim() || selectedImage) && !loading && !isRecording
+                    (inputText.trim() || selectedImage) && !loading && !isRecording && !isTranscribing
                       ? colors.primary
                       : colors.border,
                 },
               ]}
               onPress={handleSend}
-              disabled={(!inputText.trim() && !selectedImage) || loading || isRecording}
+              disabled={(!inputText.trim() && !selectedImage) || loading || isRecording || isTranscribing}
             >
               <IconSymbol ios_icon_name="arrow.up" android_material_icon_name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
