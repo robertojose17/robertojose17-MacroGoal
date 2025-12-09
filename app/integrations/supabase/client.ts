@@ -1,4 +1,5 @@
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -17,27 +18,6 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
 // Store the client instance
 let supabaseInstance: SupabaseClient<Database> | null = null;
 
-// Lazy load AsyncStorage only when needed
-let AsyncStorage: any = null;
-
-function getAsyncStorage() {
-  if (!AsyncStorage) {
-    try {
-      // Only import AsyncStorage when actually needed (runtime, not build time)
-      AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    } catch (error) {
-      console.error('[Supabase] Failed to load AsyncStorage:', error);
-      // Fallback to a no-op storage for build time
-      AsyncStorage = {
-        getItem: async () => null,
-        setItem: async () => {},
-        removeItem: async () => {},
-      };
-    }
-  }
-  return AsyncStorage;
-}
-
 // Function to safely initialize the Supabase client
 function initializeSupabase(): SupabaseClient<Database> {
   if (supabaseInstance) {
@@ -47,11 +27,9 @@ function initializeSupabase(): SupabaseClient<Database> {
   console.log('[Supabase] Initializing client with URL:', SUPABASE_URL);
 
   try {
-    const storage = getAsyncStorage();
-    
     supabaseInstance = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: {
-        storage: storage,
+        storage: AsyncStorage,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
