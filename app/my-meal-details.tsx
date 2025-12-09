@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Modal, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -22,6 +22,11 @@ export default function MyMealDetailsScreen() {
   const [items, setItems] = useState<MyMealItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showMealTypeModal, setShowMealTypeModal] = useState(false);
+  
+  // Edit mode state - always in edit mode now
+  const [mealName, setMealName] = useState('');
+  const [mealNote, setMealNote] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const loadMyMeal = useCallback(async () => {
     try {
@@ -42,6 +47,8 @@ export default function MyMealDetailsScreen() {
       }
 
       setMeal(mealData);
+      setMealName(mealData.name);
+      setMealNote(mealData.note || '');
 
       // Load meal items
       const { data: itemsData, error: itemsError } = await supabase
@@ -93,14 +100,62 @@ export default function MyMealDetailsScreen() {
     }, [loadMyMeal])
   );
 
-  const handleEdit = () => {
-    console.log('[MyMealDetails] Navigating to edit meal');
-    router.push({
-      pathname: '/my-meal-builder',
-      params: {
-        mealId: mealId,
-      },
-    });
+  const handleSaveChanges = async () => {
+    if (!mealName.trim()) {
+      Alert.alert('Error', 'Please enter a meal name');
+      return;
+    }
+
+    if (items.length === 0) {
+      Alert.alert('Error', 'Please add at least one food item');
+      return;
+    }
+
+    try {
+      console.log('[MyMealDetails] Saving changes');
+
+      // Calculate totals
+      const totals = items.reduce(
+        (acc, item) => ({
+          calories: acc.calories + item.calories,
+          protein: acc.protein + item.protein,
+          carbs: acc.carbs + item.carbs,
+          fats: acc.fats + item.fats,
+          fiber: acc.fiber + item.fiber,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
+      );
+
+      // Update meal
+      const { error: updateError } = await supabase
+        .from('my_meals')
+        .update({
+          name: mealName.trim(),
+          note: mealNote.trim() || null,
+          total_calories: totals.calories,
+          total_protein: totals.protein,
+          total_carbs: totals.carbs,
+          total_fats: totals.fats,
+          total_fiber: totals.fiber,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', mealId);
+
+      if (updateError) {
+        console.error('[MyMealDetails] Error updating meal:', updateError);
+        Alert.alert('Error', 'Failed to update meal');
+        return;
+      }
+
+      console.log('[MyMealDetails] ✅ Meal saved successfully');
+      setHasUnsavedChanges(false);
+      
+      // Reload to get fresh data
+      loadMyMeal();
+    } catch (error) {
+      console.error('[MyMealDetails] Error in handleSaveChanges:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   const handleDeleteItem = async (itemId: string) => {
@@ -119,6 +174,7 @@ export default function MyMealDetailsScreen() {
       }
 
       console.log('[MyMealDetails] ✅ Item deleted successfully');
+      setHasUnsavedChanges(true);
       
       // Reload the meal to update totals
       loadMyMeal();
@@ -126,6 +182,19 @@ export default function MyMealDetailsScreen() {
       console.error('[MyMealDetails] Error in handleDeleteItem:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
+  };
+
+  const handleAddFood = () => {
+    console.log('[MyMealDetails] Opening Add Food');
+    router.push({
+      pathname: '/add-food',
+      params: {
+        mode: 'mymeal',
+        context: 'my_meal_details',
+        mealId: mealId,
+        returnTo: '/my-meal-details',
+      },
+    });
   };
 
   const handleAddToDiary = () => {
@@ -252,33 +321,76 @@ export default function MyMealDetailsScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          My Meal
+          Edit My Meal
         </Text>
-        <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
-          <IconSymbol
-            ios_icon_name="pencil"
-            android_material_icon_name="edit"
-            size={20}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
+        {hasUnsavedChanges && (
+          <TouchableOpacity onPress={handleSaveChanges} style={styles.saveButton}>
+            <Text style={[styles.saveButtonText, { color: colors.primary }]}>
+              Save
+            </Text>
+          </TouchableOpacity>
+        )}
+        {!hasUnsavedChanges && <View style={{ width: 50 }} />}
       </View>
 
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={[styles.mealCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
-            {meal.name}
+        {/* Editable Meal Name and Note */}
+        <View style={[styles.editCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <Text style={[styles.inputLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Meal Name
           </Text>
-          {meal.note && (
-            <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {meal.note}
-            </Text>
-          )}
+          <TextInput
+            style={[
+              styles.input,
+              { 
+                color: isDark ? colors.textDark : colors.text,
+                backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                borderColor: isDark ? colors.borderDark : colors.border,
+              }
+            ]}
+            placeholder="Enter meal name"
+            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            value={mealName}
+            onChangeText={(text) => {
+              setMealName(text);
+              setHasUnsavedChanges(true);
+            }}
+            autoCapitalize="words"
+          />
 
+          <Text style={[styles.inputLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+            Note (Optional)
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              styles.textArea,
+              { 
+                color: isDark ? colors.textDark : colors.text,
+                backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                borderColor: isDark ? colors.borderDark : colors.border,
+              }
+            ]}
+            placeholder="Add any notes..."
+            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            value={mealNote}
+            onChangeText={(text) => {
+              setMealNote(text);
+              setHasUnsavedChanges(true);
+            }}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
+        </View>
+
+        {/* Macros Summary */}
+        <View style={[styles.macrosCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <View style={styles.macrosSummary}>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.calories }]}>
@@ -315,6 +427,7 @@ export default function MyMealDetailsScreen() {
           </View>
         </View>
 
+        {/* Foods Section */}
         <View style={styles.itemsSection}>
           <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Foods ({items.length})
@@ -355,8 +468,26 @@ export default function MyMealDetailsScreen() {
               </View>
             </SwipeToDeleteRow>
           ))}
+
+          {/* Add Food Button */}
+          <TouchableOpacity
+            style={[styles.addFoodButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.primary }]}
+            onPress={handleAddFood}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="plus.circle"
+              android_material_icon_name="add_circle_outline"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.addFoodButtonText, { color: colors.primary }]}>
+              Add Food
+            </Text>
+          </TouchableOpacity>
         </View>
 
+        {/* Add to Diary Button - Primary Action */}
         <TouchableOpacity
           style={[styles.addToDiaryButton, { backgroundColor: colors.primary }]}
           onPress={handleAddToDiary}
@@ -489,8 +620,12 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  editButton: {
+  saveButton: {
     padding: spacing.xs,
+  },
+  saveButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
   },
   scrollView: {
     flex: 1,
@@ -499,29 +634,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
   },
-  mealCard: {
+  editCard: {
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+    elevation: 1,
+  },
+  inputLabel: {
+    ...typography.caption,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  input: {
+    ...typography.body,
+    fontSize: 16,
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  textArea: {
+    minHeight: 80,
+    paddingTop: spacing.sm,
+  },
+  macrosCard: {
     borderRadius: borderRadius.md,
     padding: spacing.lg,
     marginBottom: spacing.md,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
-  mealName: {
-    ...typography.h2,
-    fontSize: 24,
-    marginBottom: spacing.xs,
-  },
-  mealNote: {
-    ...typography.body,
-    fontSize: 14,
-    marginBottom: spacing.md,
-  },
   macrosSummary: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border + '30',
   },
   macroItem: {
     alignItems: 'center',
@@ -577,6 +724,21 @@ const styles = StyleSheet.create({
   },
   foodCaloriesLabel: {
     ...typography.caption,
+  },
+  addFoodButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 2,
+  },
+  addFoodButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
   },
   addToDiaryButton: {
     flexDirection: 'row',
