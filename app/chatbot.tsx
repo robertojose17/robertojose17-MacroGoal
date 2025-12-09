@@ -107,8 +107,10 @@ export default function ChatbotScreen() {
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder, 50); // Poll every 50ms for smooth visualization
+  const audioLevelIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { sendMessage, loading } = useChatbot();
 
@@ -135,8 +137,45 @@ export default function ChatbotScreen() {
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+      }
     };
   }, []);
+
+  // Update audio level based on recording state
+  useEffect(() => {
+    if (isRecording && recorderState.isRecording) {
+      // Simulate audio level based on recording time for visual feedback
+      // In a real implementation, you would get actual audio levels from the recorder
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+      }
+      
+      audioLevelIntervalRef.current = setInterval(() => {
+        // Generate a pseudo-random audio level that looks natural
+        // This creates a wave-like pattern that simulates voice input
+        const baseLevel = 0.3 + Math.random() * 0.4; // 0.3 to 0.7
+        const time = Date.now() / 1000;
+        const wave = Math.sin(time * 2) * 0.2; // Slow wave
+        const noise = (Math.random() - 0.5) * 0.3; // Random variation
+        const level = Math.max(0.1, Math.min(1, baseLevel + wave + noise));
+        setAudioLevel(level);
+      }, 100);
+    } else {
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+        audioLevelIntervalRef.current = null;
+      }
+      setAudioLevel(0);
+    }
+    
+    return () => {
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+      }
+    };
+  }, [isRecording, recorderState.isRecording]);
 
   // Check subscription and redirect to paywall if not subscribed
   useEffect(() => {
@@ -367,23 +406,42 @@ export default function ChatbotScreen() {
   const transcribeAudio = async (audioUri: string) => {
     try {
       setIsTranscribing(true);
-      console.log('[Chatbot] Transcribing audio...');
+      console.log('[Chatbot] Transcribing audio from URI:', audioUri);
 
       // Read the audio file and convert to base64
       const response = await fetch(audioUri);
       const blob = await response.blob();
+      
+      // Check if blob is empty
+      if (blob.size === 0) {
+        console.error('[Chatbot] Audio blob is empty');
+        Alert.alert(
+          'Recording Error',
+          'The audio recording is empty. Please try speaking again.'
+        );
+        setIsTranscribing(false);
+        return;
+      }
+      
+      console.log('[Chatbot] Audio blob size:', blob.size, 'bytes');
+      
       const base64Audio = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           const dataUrl = reader.result as string;
           // Extract base64 data (remove data:audio/...;base64, prefix)
           const base64 = dataUrl.split(',')[1];
+          if (!base64 || base64.length === 0) {
+            reject(new Error('Failed to convert audio to base64'));
+            return;
+          }
           resolve(base64);
         };
-        reader.onerror = reject;
+        reader.onerror = () => reject(new Error('Failed to read audio file'));
         reader.readAsDataURL(blob);
       });
 
+      console.log('[Chatbot] Base64 audio length:', base64Audio.length);
       console.log('[Chatbot] Sending audio to transcription service...');
 
       // Call the transcription Edge Function
@@ -1252,7 +1310,7 @@ If the user provides both text and photo, use both sources to make the most accu
             <View style={styles.audioWaveformContainer}>
               <AudioWaveform 
                 isRecording={isRecording}
-                audioLevel={recorderState.currentTime > 0 ? 0.5 : 0} // Use a simple indicator for now
+                audioLevel={audioLevel}
                 color={colors.primary}
                 barCount={5}
               />

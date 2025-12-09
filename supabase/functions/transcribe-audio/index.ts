@@ -82,17 +82,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get OpenAI API key (using OpenRouter key which should work with OpenAI endpoints)
-    const openaiApiKey = Deno.env.get('OPENROUTER_API_KEY');
+    // Get OpenAI API key
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      console.error('[transcribe-audio] Missing OPENROUTER_API_KEY');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Configuration Error', 
-          detail: 'API key not configured' 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('[transcribe-audio] Missing OPENAI_API_KEY, trying OPENROUTER_API_KEY');
+      
+      // Fallback to OpenRouter key
+      const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+      if (!openRouterKey) {
+        console.error('[transcribe-audio] No API keys configured');
+        return new Response(
+          JSON.stringify({ 
+            error: 'Configuration Error', 
+            detail: 'API key not configured' 
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Parse request body
@@ -106,23 +112,71 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log('[transcribe-audio] Audio base64 length:', audioBase64.length);
+
+    // Validate base64 is not empty
+    if (audioBase64.length < 100) {
+      console.error('[transcribe-audio] Audio data too short, likely empty');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Bad Request', 
+          detail: 'Audio data is empty or too short' 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('[transcribe-audio] Transcribing audio...');
 
     // Convert base64 to binary
-    const audioData = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+    let audioData: Uint8Array;
+    try {
+      audioData = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+      console.log('[transcribe-audio] Audio data size:', audioData.length, 'bytes');
+      
+      if (audioData.length === 0) {
+        throw new Error('Audio data is empty after decoding');
+      }
+    } catch (decodeError) {
+      console.error('[transcribe-audio] Error decoding base64:', decodeError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Bad Request', 
+          detail: 'Invalid base64 audio data' 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     // Create form data for OpenAI Whisper API
     const formData = new FormData();
     const audioBlob = new Blob([audioData], { type: mimeType });
-    formData.append('file', audioBlob, 'audio.m4a');
+    
+    // Determine file extension based on mime type
+    let fileExtension = 'm4a';
+    if (mimeType.includes('wav')) {
+      fileExtension = 'wav';
+    } else if (mimeType.includes('webm')) {
+      fileExtension = 'webm';
+    } else if (mimeType.includes('mp3')) {
+      fileExtension = 'mp3';
+    } else if (mimeType.includes('mpeg')) {
+      fileExtension = 'mp3';
+    }
+    
+    formData.append('file', audioBlob, `audio.${fileExtension}`);
     formData.append('model', 'whisper-1');
     formData.append('language', 'en'); // English language
+    formData.append('response_format', 'json');
 
-    // Call OpenAI Whisper API directly
+    // Try OpenAI API first
+    const apiKey = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('OPENROUTER_API_KEY');
+    
+    console.log('[transcribe-audio] Calling OpenAI Whisper API...');
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: formData,
     });
@@ -131,53 +185,30 @@ Deno.serve(async (req) => {
       const errorText = await whisperResponse.text();
       console.error('[transcribe-audio] OpenAI API error:', whisperResponse.status, errorText);
       
-      // If OpenAI fails, try OpenRouter as fallback
-      console.log('[transcribe-audio] Trying OpenRouter as fallback...');
-      
-      const openRouterFormData = new FormData();
-      openRouterFormData.append('file', audioBlob, 'audio.m4a');
-      openRouterFormData.append('model', 'whisper-1');
-      openRouterFormData.append('language', 'en');
-      
-      const openRouterResponse = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'HTTP-Referer': supabaseUrl,
-          'X-Title': 'Macro Goal',
-        },
-        body: openRouterFormData,
-      });
-      
-      if (!openRouterResponse.ok) {
-        const orErrorText = await openRouterResponse.text();
-        console.error('[transcribe-audio] OpenRouter API error:', openRouterResponse.status, orErrorText);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Transcription Error', 
-            detail: 'Failed to transcribe audio. Please try again.' 
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      // Parse error for better user feedback
+      let errorDetail = 'Failed to transcribe audio';
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorDetail = errorJson.error.message;
+        }
+      } catch (e) {
+        // Use raw error text if not JSON
+        errorDetail = errorText.substring(0, 200);
       }
-      
-      const orTranscription = await openRouterResponse.json();
-      console.log('[transcribe-audio] OpenRouter transcription successful');
       
       return new Response(
         JSON.stringify({ 
-          text: orTranscription.text || '',
-          duration: orTranscription.duration,
+          error: 'Transcription Error', 
+          detail: errorDetail
         }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const transcription = await whisperResponse.json();
-    console.log('[transcribe-audio] OpenAI transcription successful');
+    console.log('[transcribe-audio] Transcription successful');
+    console.log('[transcribe-audio] Transcribed text:', transcription.text);
 
     return new Response(
       JSON.stringify({ 

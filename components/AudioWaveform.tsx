@@ -6,6 +6,8 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 
 interface AudioWaveformProps {
@@ -31,7 +33,8 @@ export function AudioWaveform({
           isRecording={isRecording} 
           audioLevel={audioLevel}
           color={color} 
-          delay={index * 50} 
+          index={index}
+          totalBars={barCount}
         />
       ))}
     </View>
@@ -42,31 +45,39 @@ interface AnimatedBarProps {
   isRecording: boolean;
   audioLevel: number;
   color: string;
-  delay: number;
+  index: number;
+  totalBars: number;
 }
 
-function AnimatedBar({ isRecording, audioLevel, color, delay }: AnimatedBarProps) {
+function AnimatedBar({ isRecording, audioLevel, color, index, totalBars }: AnimatedBarProps) {
   const height = useSharedValue(8);
 
   useEffect(() => {
     if (isRecording) {
       // Calculate target height based on audio level
-      // Map audioLevel (0-1) to height range (8-28)
+      // Map audioLevel (0-1) to height range (8-32)
       const minHeight = 8;
-      const maxHeight = 28;
-      const targetHeight = minHeight + (audioLevel * (maxHeight - minHeight));
+      const maxHeight = 32;
+      
+      // Create a wave effect across bars
+      // Center bars react more to audio, edge bars less
+      const centerIndex = (totalBars - 1) / 2;
+      const distanceFromCenter = Math.abs(index - centerIndex);
+      const barMultiplier = 1 - (distanceFromCenter / (totalBars / 2)) * 0.3; // 0.7 to 1.0
+      
+      const targetHeight = minHeight + (audioLevel * (maxHeight - minHeight) * barMultiplier);
       
       // Animate to target height with spring for natural feel
       height.value = withSpring(targetHeight, {
-        damping: 10,
-        stiffness: 100,
-        mass: 0.5,
+        damping: 8,
+        stiffness: 150,
+        mass: 0.3,
       });
     } else {
       // Reset to minimum height when not recording
       height.value = withTiming(8, { duration: 200 });
     }
-  }, [isRecording, audioLevel]);
+  }, [isRecording, audioLevel, index, totalBars]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     height: height.value,
@@ -91,7 +102,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    height: 32,
+    height: 40,
   },
   bar: {
     width: 3,
