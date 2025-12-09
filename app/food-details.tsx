@@ -50,6 +50,8 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] Mode:', mode);
     console.log('[FoodDetails] Meal:', mealType);
     console.log('[FoodDetails] Date:', date);
+    console.log('[FoodDetails] returnTo:', returnTo);
+    console.log('[FoodDetails] mealId:', myMealId);
     console.log('[FoodDetails] offDataString length:', offDataString?.length || 0);
     
     if (!offDataString) {
@@ -382,6 +384,8 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] Meal:', mealType);
     console.log('[FoodDetails] Servings:', finalServings);
     console.log('[FoodDetails] Grams:', finalGrams);
+    console.log('[FoodDetails] returnTo:', returnTo);
+    console.log('[FoodDetails] mealId:', myMealId);
 
     setSaving(true);
 
@@ -458,11 +462,11 @@ export default function FoodDetailsScreen() {
         fiber: calculatedFiber,
       });
 
-      // If mode is "mymeal", return to builder instead of logging to diary
+      // If mode is "mymeal", return to builder/details instead of logging to diary
       if (mode === 'mymeal') {
-        console.log('[FoodDetails] Mode is mymeal, returning to builder');
+        console.log('[FoodDetails] Mode is mymeal, returning to My Meal screen');
 
-        // Get the full food data for the builder
+        // Get the full food data for the builder/details
         const { data: foodData } = await supabase
           .from('foods')
           .select('*')
@@ -482,11 +486,12 @@ export default function FoodDetailsScreen() {
           grams: finalGrams,
         };
 
-        console.log('[FoodDetails] Dismissing to builder with food item');
+        console.log('[FoodDetails] ✅ FIXED: Using returnTo parameter:', returnTo || '/my-meal-builder');
         
-        // Use dismissTo to go directly back to the builder, skipping add-food
+        // FIXED: Use the returnTo parameter to go back to the correct screen
+        // This will be either /my-meal-details or /my-meal-builder
         router.dismissTo({
-          pathname: '/my-meal-builder',
+          pathname: returnTo || '/my-meal-builder',
           params: {
             mealId: myMealId || '',
             newFoodItem: JSON.stringify(newFoodItem),
