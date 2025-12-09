@@ -96,8 +96,42 @@ export default function MyMealDetailsScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('[MyMealDetails] Screen focused, loading meal');
-      loadMyMeal();
-    }, [loadMyMeal])
+      
+      // Check if we have a new food item from the Add Food flow
+      if (params.newFoodItem) {
+        try {
+          const newItem = JSON.parse(params.newFoodItem as string);
+          console.log('[MyMealDetails] ========== ADDING NEW FOOD ITEM ==========');
+          console.log('[MyMealDetails] Food:', newItem.food?.name || 'Unknown');
+          console.log('[MyMealDetails] Calories:', newItem.calories);
+          
+          // Generate a temporary ID for the item
+          const itemWithTempId = {
+            ...newItem,
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          };
+          
+          // APPEND to existing items (never overwrite)
+          setItems(prev => {
+            console.log('[MyMealDetails] Previous items count:', prev.length);
+            const updated = [...prev, itemWithTempId];
+            console.log('[MyMealDetails] Updated items count:', updated.length);
+            console.log('[MyMealDetails] ========================================');
+            return updated;
+          });
+          
+          setHasUnsavedChanges(true);
+          
+          // Clear the param IMMEDIATELY to prevent re-adding on next focus
+          router.setParams({ newFoodItem: undefined });
+        } catch (error) {
+          console.error('[MyMealDetails] Error parsing new food item:', error);
+        }
+      } else {
+        // Normal load when no new item
+        loadMyMeal();
+      }
+    }, [loadMyMeal, params.newFoodItem, router])
   );
 
   const handleSaveChanges = async () => {
@@ -147,10 +181,62 @@ export default function MyMealDetailsScreen() {
         return;
       }
 
+      // Delete old items
+      const { error: deleteError } = await supabase
+        .from('my_meal_items')
+        .delete()
+        .eq('my_meal_id', mealId);
+
+      if (deleteError) {
+        console.error('[MyMealDetails] Error deleting old items:', deleteError);
+      }
+
+      // Insert new items (filter out temp IDs)
+      const itemsToInsert = items
+        .filter(item => item.food_id) // Only insert items with valid food_id
+        .map(item => ({
+          my_meal_id: mealId,
+          food_id: item.food_id,
+          quantity: item.quantity,
+          calories: item.calories,
+          protein: item.protein,
+          carbs: item.carbs,
+          fats: item.fats,
+          fiber: item.fiber,
+          serving_description: item.serving_description,
+          grams: item.grams,
+        }));
+
+      if (itemsToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('my_meal_items')
+          .insert(itemsToInsert);
+
+        if (insertError) {
+          console.error('[MyMealDetails] Error inserting items:', insertError);
+          Alert.alert('Error', 'Failed to save meal items');
+          return;
+        }
+      }
+
       console.log('[MyMealDetails] ✅ Meal saved successfully');
       setHasUnsavedChanges(false);
       
-      // Reload to get fresh data
+      // Update local meal state with new totals
+      if (meal) {
+        setMeal({
+          ...meal,
+          name: mealName.trim(),
+          note: mealNote.trim() || null,
+          total_calories: totals.calories,
+          total_protein: totals.protein,
+          total_carbs: totals.carbs,
+          total_fats: totals.fats,
+          total_fiber: totals.fiber,
+        });
+      }
+      
+      // Reload to get fresh data with proper IDs
       loadMyMeal();
     } catch (error) {
       console.error('[MyMealDetails] Error in handleSaveChanges:', error);
@@ -166,6 +252,12 @@ export default function MyMealDetailsScreen() {
       const itemToDelete = items.find(item => item.id === itemId);
       setItems(prevItems => prevItems.filter(item => item.id !== itemId));
       setHasUnsavedChanges(true);
+
+      // If it's a temp item (not yet saved to DB), just remove from UI
+      if (itemId.startsWith('temp-')) {
+        console.log('[MyMealDetails] Removed temp item from UI only');
+        return;
+      }
 
       const { error } = await supabase
         .from('my_meal_items')
@@ -230,6 +322,12 @@ export default function MyMealDetailsScreen() {
 
   const handleAddFood = () => {
     console.log('[MyMealDetails] Opening Add Food');
+    
+    // Save current changes before navigating
+    if (hasUnsavedChanges) {
+      handleSaveChanges();
+    }
+    
     router.push({
       pathname: '/add-food',
       params: {
@@ -242,8 +340,29 @@ export default function MyMealDetailsScreen() {
   };
 
   const handleAddToDiary = () => {
-    console.log('[MyMealDetails] Opening meal type selector');
-    setShowMealTypeModal(true);
+    // Save changes first if there are any
+    if (hasUnsavedChanges) {
+      Alert.alert(
+        'Unsaved Changes',
+        'You have unsaved changes. Save them before adding to diary?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Save & Continue',
+            onPress: async () => {
+              await handleSaveChanges();
+              setShowMealTypeModal(true);
+            },
+          },
+        ]
+      );
+    } else {
+      console.log('[MyMealDetails] Opening meal type selector');
+      setShowMealTypeModal(true);
+    }
   };
 
   const handleLogToMeal = async (mealType: MealType) => {
@@ -292,18 +411,25 @@ export default function MyMealDetailsScreen() {
       }
 
       // Insert all items into the diary
-      const itemsToInsert = items.map(item => ({
-        meal_id: diaryMealId,
-        food_id: item.food_id,
-        quantity: item.quantity,
-        calories: item.calories,
-        protein: item.protein,
-        carbs: item.carbs,
-        fats: item.fats,
-        fiber: item.fiber,
-        serving_description: item.serving_description,
-        grams: item.grams,
-      }));
+      const itemsToInsert = items
+        .filter(item => item.food_id) // Only insert items with valid food_id
+        .map(item => ({
+          meal_id: diaryMealId,
+          food_id: item.food_id,
+          quantity: item.quantity,
+          calories: item.calories,
+          protein: item.protein,
+          carbs: item.carbs,
+          fats: item.fats,
+          fiber: item.fiber,
+          serving_description: item.serving_description,
+          grams: item.grams,
+        }));
+
+      if (itemsToInsert.length === 0) {
+        Alert.alert('Error', 'No valid items to add to diary');
+        return;
+      }
 
       const { error: insertError } = await supabase
         .from('meal_items')
@@ -316,7 +442,7 @@ export default function MyMealDetailsScreen() {
       }
 
       console.log('[MyMealDetails] ✅ Items added to diary successfully');
-      Alert.alert('Success', `Added ${items.length} items to ${mealType}`, [
+      Alert.alert('Success', `Added ${itemsToInsert.length} items to ${mealType}`, [
         {
           text: 'OK',
           onPress: () => router.dismissTo('/(tabs)/(home)/'),
@@ -337,6 +463,18 @@ export default function MyMealDetailsScreen() {
     }
     return `${item.quantity}x serving`;
   };
+
+  // Calculate current totals from items (for real-time display)
+  const currentTotals = items.reduce(
+    (acc, item) => ({
+      calories: acc.calories + item.calories,
+      protein: acc.protein + item.protein,
+      carbs: acc.carbs + item.carbs,
+      fats: acc.fats + item.fats,
+      fiber: acc.fiber + item.fiber,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
+  );
 
   if (loading || !meal) {
     return (
@@ -365,7 +503,7 @@ export default function MyMealDetailsScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Edit My Meal
+          My Meal
         </Text>
         {hasUnsavedChanges && (
           <TouchableOpacity onPress={handleSaveChanges} style={styles.saveButton}>
@@ -438,7 +576,7 @@ export default function MyMealDetailsScreen() {
           <View style={styles.macrosSummary}>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.calories }]}>
-                {Math.round(meal.total_calories)}
+                {Math.round(currentTotals.calories)}
               </Text>
               <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Calories
@@ -446,7 +584,7 @@ export default function MyMealDetailsScreen() {
             </View>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.protein }]}>
-                {Math.round(meal.total_protein)}g
+                {Math.round(currentTotals.protein)}g
               </Text>
               <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Protein
@@ -454,7 +592,7 @@ export default function MyMealDetailsScreen() {
             </View>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.carbs }]}>
-                {Math.round(meal.total_carbs)}g
+                {Math.round(currentTotals.carbs)}g
               </Text>
               <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Carbs
@@ -462,7 +600,7 @@ export default function MyMealDetailsScreen() {
             </View>
             <View style={styles.macroItem}>
               <Text style={[styles.macroValue, { color: colors.fats }]}>
-                {Math.round(meal.total_fats)}g
+                {Math.round(currentTotals.fats)}g
               </Text>
               <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Fats
@@ -470,6 +608,21 @@ export default function MyMealDetailsScreen() {
             </View>
           </View>
         </View>
+
+        {/* Add to Diary Button - MOVED HERE: Below macros, above Foods */}
+        <TouchableOpacity
+          style={[styles.addToDiaryButton, { backgroundColor: colors.primary }]}
+          onPress={handleAddToDiary}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="plus.circle.fill"
+            android_material_icon_name="add_circle"
+            size={24}
+            color="#FFFFFF"
+          />
+          <Text style={styles.addToDiaryButtonText}>Add to Diary</Text>
+        </TouchableOpacity>
 
         {/* Foods Section */}
         <View style={styles.itemsSection}>
@@ -530,21 +683,6 @@ export default function MyMealDetailsScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Add to Diary Button - Primary Action */}
-        <TouchableOpacity
-          style={[styles.addToDiaryButton, { backgroundColor: colors.primary }]}
-          onPress={handleAddToDiary}
-          activeOpacity={0.7}
-        >
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add_circle"
-            size={24}
-            color="#FFFFFF"
-          />
-          <Text style={styles.addToDiaryButtonText}>Add to Diary</Text>
-        </TouchableOpacity>
 
         {/* Info message about deleting */}
         <View style={[styles.infoCard, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.info }]}>
@@ -726,6 +864,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  addToDiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.12)',
+    elevation: 3,
+  },
+  addToDiaryButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
   itemsSection: {
     marginBottom: spacing.md,
   },
@@ -783,20 +937,6 @@ const styles = StyleSheet.create({
   addFoodButtonText: {
     ...typography.bodyBold,
     fontSize: 16,
-  },
-  addToDiaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  addToDiaryButtonText: {
-    ...typography.bodyBold,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
   infoCard: {
     flexDirection: 'row',
