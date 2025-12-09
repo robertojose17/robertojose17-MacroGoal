@@ -6,8 +6,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withRepeat,
-  withSequence,
 } from 'react-native-reanimated';
 
 interface AudioWaveformProps {
@@ -17,22 +15,22 @@ interface AudioWaveformProps {
   barCount?: number;
 }
 
-export function AudioWaveform({ 
-  isRecording, 
-  audioLevel = 0.5, 
-  color = '#007AFF', 
-  barCount = 5 
+export function AudioWaveform({
+  isRecording,
+  audioLevel = 0.5,
+  color = '#007AFF',
+  barCount = 5,
 }: AudioWaveformProps) {
   const bars = Array.from({ length: barCount }, (_, i) => i);
 
   return (
     <View style={styles.container}>
       {bars.map((index) => (
-        <AnimatedBar 
-          key={index} 
-          isRecording={isRecording} 
+        <AnimatedBar
+          key={index}
+          isRecording={isRecording}
           audioLevel={audioLevel}
-          color={color} 
+          color={color}
           index={index}
           totalBars={barCount}
         />
@@ -58,15 +56,15 @@ function AnimatedBar({ isRecording, audioLevel, color, index, totalBars }: Anima
       // Map audioLevel (0-1) to height range (8-32)
       const minHeight = 8;
       const maxHeight = 32;
-      
+
       // Create a wave effect across bars
       // Center bars react more to audio, edge bars less
       const centerIndex = (totalBars - 1) / 2;
       const distanceFromCenter = Math.abs(index - centerIndex);
       const barMultiplier = 1 - (distanceFromCenter / (totalBars / 2)) * 0.3; // 0.7 to 1.0
-      
-      const targetHeight = minHeight + (audioLevel * (maxHeight - minHeight) * barMultiplier);
-      
+
+      const targetHeight = minHeight + audioLevel * (maxHeight - minHeight) * barMultiplier;
+
       // Animate to target height with spring for natural feel
       height.value = withSpring(targetHeight, {
         damping: 8,
