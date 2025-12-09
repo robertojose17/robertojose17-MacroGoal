@@ -6,8 +6,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withRepeat,
-  withSequence,
 } from 'react-native-reanimated';
 
 interface AudioWaveformProps {
@@ -55,26 +53,23 @@ function AnimatedBar({ isRecording, audioLevel, color, index, totalBars }: Anima
   useEffect(() => {
     if (isRecording) {
       // Calculate target height based on audio level
-      // Map audioLevel (0-1) to height range (8-40)
+      // Map audioLevel (0-1) to height range (8-32)
       const minHeight = 8;
-      const maxHeight = 40;
+      const maxHeight = 32;
 
       // Create a wave effect across bars
       // Center bars react more to audio, edge bars less
       const centerIndex = (totalBars - 1) / 2;
       const distanceFromCenter = Math.abs(index - centerIndex);
-      const barMultiplier = 1 - (distanceFromCenter / (totalBars / 2)) * 0.4; // 0.6 to 1.0
+      const barMultiplier = 1 - (distanceFromCenter / (totalBars / 2)) * 0.3; // 0.7 to 1.0
 
-      // Add some variation to each bar for more natural look
-      const variation = Math.sin(index * 0.5) * 0.15 + 1; // 0.85 to 1.15
-
-      const targetHeight = minHeight + audioLevel * (maxHeight - minHeight) * barMultiplier * variation;
+      const targetHeight = minHeight + audioLevel * (maxHeight - minHeight) * barMultiplier;
 
       // Animate to target height with spring for natural feel
       height.value = withSpring(targetHeight, {
-        damping: 10,
-        stiffness: 180,
-        mass: 0.4,
+        damping: 8,
+        stiffness: 150,
+        mass: 0.3,
       });
     } else {
       // Reset to minimum height when not recording
@@ -105,10 +100,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    height: 50,
+    height: 40,
   },
   bar: {
-    width: 4,
+    width: 3,
     borderRadius: 2,
     minHeight: 8,
   },
