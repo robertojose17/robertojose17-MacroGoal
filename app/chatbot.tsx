@@ -30,6 +30,7 @@ import { AudioWaveform } from '@/components/AudioWaveform';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useSubscription } from '@/hooks/useSubscription';
+import { transcribeAudioLocally } from '@/utils/localSpeechRecognition';
 
 // Generate a unique ID for each message
 let messageIdCounter = 0;
@@ -71,6 +72,9 @@ type AIEstimate = {
   totalFats: number;
   totalFiber: number;
 };
+
+// Check if we're on a mobile platform
+const isMobilePlatform = Platform.OS === 'ios' || Platform.OS === 'android';
 
 export default function ChatbotScreen() {
   const router = useRouter();
@@ -143,27 +147,14 @@ export default function ChatbotScreen() {
   // Update audio level based on real metering data from the recorder
   useEffect(() => {
     if (isRecording && recorderState.isRecording) {
-      // Get real audio metering data if available
-      // expo-audio provides metering data through the recorder state
-      // The metering value is typically in decibels (dB), ranging from -160 (silence) to 0 (max)
-      // We need to convert this to a 0-1 range for visualization
-
       const updateAudioLevel = () => {
         if (!recorderState.isRecording) {
           setAudioLevel(0);
           return;
         }
 
-        // Get metering data from recorder
-        // Note: expo-audio's metering is in dB, typically -160 to 0
-        // We'll normalize this to 0-1 range for visualization
-        const meteringValue = recorderState.durationMillis ? Math.random() * 0.8 + 0.2 : 0;
-
-        // For now, we'll use a simulated value that looks natural
-        // In a production app, you would use actual metering data from the recorder
-        // However, expo-audio doesn't expose metering data directly in the current API
-        // So we'll create a realistic simulation based on recording activity
-
+        // Create a realistic simulation based on recording activity
+        // expo-audio doesn't expose real-time metering data directly
         const baseLevel = 0.3 + Math.random() * 0.4; // 0.3 to 0.7
         const time = Date.now() / 1000;
         const wave = Math.sin(time * 2) * 0.2; // Slow wave
@@ -395,8 +386,8 @@ export default function ChatbotScreen() {
 
       console.log('[Chatbot] Recording saved:', uri);
 
-      // Transcribe the audio
-      await transcribeAudio(uri);
+      // Transcribe the audio using local speech recognition
+      await transcribeAudioLocally(uri, handleTranscriptionResult, handleTranscriptionError);
     } catch (error) {
       console.error('[Chatbot] Error stopping recording:', error);
       Alert.alert('Error', 'Failed to stop recording. Please try again.');
@@ -404,94 +395,28 @@ export default function ChatbotScreen() {
     }
   };
 
-  const transcribeAudio = async (audioUri: string) => {
-    try {
-      setIsTranscribing(true);
-      console.log('[Chatbot] Transcribing audio from URI:', audioUri);
-
-      // Read the audio file and convert to base64
-      const response = await fetch(audioUri);
-      const blob = await response.blob();
-
-      // Check if blob is empty
-      if (blob.size === 0) {
-        console.error('[Chatbot] Audio blob is empty');
-        Alert.alert('Recording Error', 'The audio recording is empty. Please try speaking again.');
-        setIsTranscribing(false);
-        return;
+  const handleTranscriptionResult = (transcribedText: string) => {
+    console.log('[Chatbot] Transcription successful:', transcribedText);
+    
+    if (!isMountedRef.current) return;
+    
+    // Set the transcribed text in the input field
+    setInputText(transcribedText);
+    
+    // Automatically send the transcribed text
+    setTimeout(() => {
+      if (isMountedRef.current && transcribedText.trim()) {
+        handleSendTranscribedText(transcribedText);
       }
+    }, 100);
+  };
 
-      console.log('[Chatbot] Audio blob size:', blob.size, 'bytes');
-
-      const base64Audio = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const dataUrl = reader.result as string;
-          // Extract base64 data (remove data:audio/...;base64, prefix)
-          const base64 = dataUrl.split(',')[1];
-          if (!base64 || base64.length === 0) {
-            reject(new Error('Failed to convert audio to base64'));
-            return;
-          }
-          resolve(base64);
-        };
-        reader.onerror = () => reject(new Error('Failed to read audio file'));
-        reader.readAsDataURL(blob);
-      });
-
-      console.log('[Chatbot] Base64 audio length:', base64Audio.length);
-      console.log('[Chatbot] Sending audio to transcription service...');
-
-      // Call the transcription Edge Function
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-        body: {
-          audioBase64: base64Audio,
-          mimeType: 'audio/m4a',
-        },
-      });
-
-      if (error) {
-        console.error('[Chatbot] Transcription error:', error);
-        throw error;
-      }
-
-      if (data && data.text) {
-        console.log('[Chatbot] Transcription successful:', data.text);
-        // Set the transcribed text in the input field
-        setInputText(data.text);
-        
-        // Automatically send the transcribed text
-        // We'll trigger the send after a short delay to allow the UI to update
-        setTimeout(() => {
-          if (isMountedRef.current && data.text.trim()) {
-            // Simulate pressing the send button
-            handleSendTranscribedText(data.text);
-          }
-        }, 100);
-      } else {
-        console.error('[Chatbot] No transcription text received');
-        Alert.alert('Transcription Error', "We couldn't transcribe your audio. Please try again.");
-      }
-    } catch (error: any) {
-      console.error('[Chatbot] Error transcribing audio:', error);
-      
-      // Parse error message for user-friendly feedback
-      let errorMessage = "We couldn't transcribe your audio. Please try again.";
-      
-      if (error?.message) {
-        if (error.message.includes('Subscription Required')) {
-          errorMessage = 'An active subscription is required to use voice input.';
-        } else if (error.message.includes('Configuration Error')) {
-          errorMessage = 'The transcription service is not properly configured. Please contact support.';
-        } else if (error.message.includes('Network Error')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        }
-      }
-      
-      Alert.alert('Transcription Error', errorMessage);
-    } finally {
-      setIsTranscribing(false);
-    }
+  const handleTranscriptionError = (error: string) => {
+    console.error('[Chatbot] Transcription error:', error);
+    
+    if (!isMountedRef.current) return;
+    
+    Alert.alert('Transcription Error', "We couldn't transcribe that. Please try again.");
   };
 
   // Handle sending transcribed text automatically
@@ -1555,27 +1480,30 @@ If the user provides both text and photo, use both sources to make the most accu
               editable={!loading && !isRecording && !isTranscribing}
             />
 
-            <TouchableOpacity
-              style={[
-                styles.voiceButton,
-                {
-                  backgroundColor: isRecording
-                    ? colors.error
-                    : isDark
-                    ? colors.backgroundDark
-                    : colors.background,
-                },
-              ]}
-              onPress={handleVoiceInput}
-              disabled={loading || isTranscribing}
-            >
-              <IconSymbol
-                ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
-                android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
-                size={24}
-                color={isRecording ? '#FFFFFF' : colors.primary}
-              />
-            </TouchableOpacity>
+            {/* Only show mic button on mobile platforms */}
+            {isMobilePlatform && (
+              <TouchableOpacity
+                style={[
+                  styles.voiceButton,
+                  {
+                    backgroundColor: isRecording
+                      ? colors.error
+                      : isDark
+                      ? colors.backgroundDark
+                      : colors.background,
+                  },
+                ]}
+                onPress={handleVoiceInput}
+                disabled={loading || isTranscribing}
+              >
+                <IconSymbol
+                  ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
+                  android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
+                  size={24}
+                  color={isRecording ? '#FFFFFF' : colors.primary}
+                />
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[
