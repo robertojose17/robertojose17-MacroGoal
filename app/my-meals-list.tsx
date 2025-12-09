@@ -76,6 +76,9 @@ export default function MyMealsListScreen() {
     try {
       console.log('[MyMealsList] Deleting My Meal:', meal.id);
 
+      // IMMEDIATELY remove from UI for instant feedback
+      setMyMeals(prevMeals => prevMeals.filter(m => m.id !== meal.id));
+
       // Delete meal items first (foreign key constraint)
       const { error: itemsError } = await supabase
         .from('my_meal_items')
@@ -84,6 +87,10 @@ export default function MyMealsListScreen() {
 
       if (itemsError) {
         console.error('[MyMealsList] Error deleting meal items:', itemsError);
+        // Restore the meal if deletion failed
+        setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
         Alert.alert('Error', 'Failed to delete meal items');
         return;
       }
@@ -96,16 +103,21 @@ export default function MyMealsListScreen() {
 
       if (mealError) {
         console.error('[MyMealsList] Error deleting meal:', mealError);
+        // Restore the meal if deletion failed
+        setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
         Alert.alert('Error', 'Failed to delete meal');
         return;
       }
 
       console.log('[MyMealsList] ✅ My Meal deleted successfully');
-      
-      // Reload the list
-      loadMyMeals();
     } catch (error) {
       console.error('[MyMealsList] Error in handleDeleteMyMeal:', error);
+      // Restore the meal if an unexpected error occurred
+      setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ));
       Alert.alert('Error', 'An error occurred while deleting');
     }
   };

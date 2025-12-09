@@ -162,6 +162,11 @@ export default function MyMealDetailsScreen() {
     try {
       console.log('[MyMealDetails] Deleting item:', itemId);
 
+      // IMMEDIATELY remove from UI for instant feedback
+      const itemToDelete = items.find(item => item.id === itemId);
+      setItems(prevItems => prevItems.filter(item => item.id !== itemId));
+      setHasUnsavedChanges(true);
+
       const { error } = await supabase
         .from('my_meal_items')
         .delete()
@@ -169,15 +174,54 @@ export default function MyMealDetailsScreen() {
 
       if (error) {
         console.error('[MyMealDetails] Error deleting item:', error);
+        // Restore the item if deletion failed
+        if (itemToDelete) {
+          setItems(prevItems => [...prevItems, itemToDelete]);
+        }
         Alert.alert('Error', 'Failed to delete item');
         return;
       }
 
       console.log('[MyMealDetails] ✅ Item deleted successfully');
-      setHasUnsavedChanges(true);
       
-      // Reload the meal to update totals
-      loadMyMeal();
+      // Recalculate and update meal totals
+      const newTotals = items
+        .filter(item => item.id !== itemId)
+        .reduce(
+          (acc, item) => ({
+            calories: acc.calories + item.calories,
+            protein: acc.protein + item.protein,
+            carbs: acc.carbs + item.carbs,
+            fats: acc.fats + item.fats,
+            fiber: acc.fiber + item.fiber,
+          }),
+          { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
+        );
+
+      // Update meal totals in database
+      await supabase
+        .from('my_meals')
+        .update({
+          total_calories: newTotals.calories,
+          total_protein: newTotals.protein,
+          total_carbs: newTotals.carbs,
+          total_fats: newTotals.fats,
+          total_fiber: newTotals.fiber,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', mealId);
+
+      // Update local meal state
+      if (meal) {
+        setMeal({
+          ...meal,
+          total_calories: newTotals.calories,
+          total_protein: newTotals.protein,
+          total_carbs: newTotals.carbs,
+          total_fats: newTotals.fats,
+          total_fiber: newTotals.fiber,
+        });
+      }
     } catch (error) {
       console.error('[MyMealDetails] Error in handleDeleteItem:', error);
       Alert.alert('Error', 'An unexpected error occurred');
