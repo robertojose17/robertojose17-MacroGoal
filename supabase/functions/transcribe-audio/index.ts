@@ -18,7 +18,7 @@ console.log('[transcribe-audio] ━━━━━━━━━━━━━━━━
 // Validate environment variables on startup
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 
 if (!SUPABASE_URL) {
   console.error('[transcribe-audio] ❌ CRITICAL: SUPABASE_URL is missing!');
@@ -32,12 +32,12 @@ if (!SUPABASE_SERVICE_KEY) {
   console.log('[transcribe-audio] ✅ SUPABASE_SERVICE_ROLE_KEY configured');
 }
 
-if (!OPENAI_API_KEY) {
-  console.error('[transcribe-audio] ❌ CRITICAL: OPENAI_API_KEY is missing!');
+if (!OPENROUTER_API_KEY) {
+  console.error('[transcribe-audio] ❌ CRITICAL: OPENROUTER_API_KEY is missing!');
   console.error('[transcribe-audio] ❌ The transcription service will not work without this key!');
   console.error('[transcribe-audio] ❌ Please set it in Supabase Dashboard → Settings → Edge Functions → Secrets');
 } else {
-  console.log('[transcribe-audio] ✅ OPENAI_API_KEY configured (length:', OPENAI_API_KEY.length, ')');
+  console.log('[transcribe-audio] ✅ OPENROUTER_API_KEY configured (length:', OPENROUTER_API_KEY.length, ')');
 }
 
 console.log('[transcribe-audio] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -54,13 +54,13 @@ Deno.serve(async (req) => {
   console.log('[transcribe-audio] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   try {
-    // Check if OPENAI_API_KEY is configured
-    if (!OPENAI_API_KEY) {
-      console.error('[transcribe-audio] ❌ OPENAI_API_KEY not configured!');
+    // Check if OPENROUTER_API_KEY is configured
+    if (!OPENROUTER_API_KEY) {
+      console.error('[transcribe-audio] ❌ OPENROUTER_API_KEY not configured!');
       return new Response(
         JSON.stringify({
           error: 'Configuration Error',
-          detail: 'OPENAI_API_KEY environment variable is not set. Please configure it in Supabase Dashboard.',
+          detail: 'OPENROUTER_API_KEY environment variable is not set. Please configure it in Supabase Dashboard.',
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create form data for OpenAI Whisper API
+    // Create form data for OpenRouter Whisper API
     const formData = new FormData();
     const audioBlob = new Blob([audioData], { type: mimeType });
 
@@ -198,37 +198,41 @@ Deno.serve(async (req) => {
     formData.append('language', 'en'); // English language
     formData.append('response_format', 'json');
 
-    console.log('[transcribe-audio] 📤 Calling OpenAI Whisper API...');
+    console.log('[transcribe-audio] 📤 Calling OpenRouter Whisper API...');
     const startTime = performance.now();
 
     let whisperResponse;
     try {
-      whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      // OpenRouter uses OpenAI-compatible endpoints
+      // You can replace this URL with your custom transcription endpoint if needed
+      whisperResponse = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://macro-goal.app', // Optional: your app URL
+          'X-Title': 'Macro Goal', // Optional: your app name
         },
         body: formData,
       });
     } catch (fetchError: any) {
-      console.error('[transcribe-audio] ❌ Network error calling OpenAI:', fetchError);
+      console.error('[transcribe-audio] ❌ Network error calling OpenRouter:', fetchError);
       return new Response(
         JSON.stringify({
           error: 'Network Error',
-          detail: `Failed to connect to OpenAI API: ${fetchError.message}`,
+          detail: `Failed to connect to transcription API: ${fetchError.message}`,
         }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const duration = Math.round(performance.now() - startTime);
-    console.log('[transcribe-audio] 📥 OpenAI response received');
+    console.log('[transcribe-audio] 📥 OpenRouter response received');
     console.log('[transcribe-audio]   - Status:', whisperResponse.status);
     console.log('[transcribe-audio]   - Duration:', duration, 'ms');
 
     if (!whisperResponse.ok) {
       const errorText = await whisperResponse.text();
-      console.error('[transcribe-audio] ❌ OpenAI API error:');
+      console.error('[transcribe-audio] ❌ OpenRouter API error:');
       console.error('[transcribe-audio]   - Status:', whisperResponse.status);
       console.error('[transcribe-audio]   - Response:', errorText);
 
@@ -249,7 +253,7 @@ Deno.serve(async (req) => {
           error: 'Transcription Error',
           detail: errorDetail,
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: whisperResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -281,7 +285,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         error: 'Internal Server Error',
-        detail: error instanceof Error ? error.message : 'Unknown error',
+        detail: error instanceof Error ? error.message : 'Unknown error occurred',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
