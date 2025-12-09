@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -37,10 +37,6 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  
-  // Prevent infinite navigation loops
-  const navigationAttempts = useRef(0);
-  const lastNavigationTime = useRef(0);
 
   useEffect(() => {
     if (loaded) {
@@ -243,19 +239,6 @@ export default function RootLayout() {
 
     const handleNavigation = async () => {
       try {
-        // CRITICAL: Prevent infinite navigation loops
-        const now = Date.now();
-        if (now - lastNavigationTime.current < 1000) {
-          navigationAttempts.current += 1;
-          if (navigationAttempts.current > 5) {
-            console.error('[Navigation] ⚠️ Too many navigation attempts, stopping to prevent infinite loop');
-            return;
-          }
-        } else {
-          navigationAttempts.current = 0;
-        }
-        lastNavigationTime.current = now;
-
         const inAuthGroup = segments[0] === 'auth';
         const inOnboardingGroup = segments[0] === 'onboarding';
         const inTabsGroup = segments[0] === '(tabs)';

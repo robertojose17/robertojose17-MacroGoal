@@ -6,7 +6,7 @@
  * CRITICAL: All functions are non-blocking and never throw errors
  */
 
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Food, Meal, MealItem, DailySummary, MealType } from '@/types';
 import { mockFoods } from '@/data/mockData';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -16,62 +16,6 @@ const MEALS_STORAGE_KEY = '@elite_macro_meals';
 const MEAL_ITEMS_STORAGE_KEY = '@elite_macro_meal_items';
 const DAILY_SUMMARY_STORAGE_KEY = '@elite_macro_daily_summary';
 
-// Lazy load AsyncStorage
-let AsyncStorage: any = null;
-let asyncStorageLoadAttempted = false;
-
-function getAsyncStorage() {
-  if (asyncStorageLoadAttempted) {
-    return AsyncStorage;
-  }
-  
-  asyncStorageLoadAttempted = true;
-  
-  // Only load AsyncStorage on native platforms
-  if (Platform.OS === 'web') {
-    console.log('[FoodDB] Web platform detected, using localStorage');
-    AsyncStorage = {
-      getItem: async (key: string) => {
-        try {
-          return localStorage.getItem(key);
-        } catch {
-          return null;
-        }
-      },
-      setItem: async (key: string, value: string) => {
-        try {
-          localStorage.setItem(key, value);
-        } catch {
-          // Ignore errors
-        }
-      },
-      removeItem: async (key: string) => {
-        try {
-          localStorage.removeItem(key);
-        } catch {
-          // Ignore errors
-        }
-      },
-    };
-    return AsyncStorage;
-  }
-  
-  try {
-    console.log('[FoodDB] Native platform detected, loading AsyncStorage');
-    AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    console.log('[FoodDB] ✅ AsyncStorage loaded successfully');
-  } catch (error) {
-    console.error('[FoodDB] ⚠️ Failed to load AsyncStorage:', error);
-    AsyncStorage = {
-      getItem: async () => null,
-      setItem: async () => {},
-      removeItem: async () => {},
-    };
-  }
-  
-  return AsyncStorage;
-}
-
 /**
  * Initialize food database with mock data
  * CRITICAL: Non-blocking, never throws
@@ -80,14 +24,8 @@ export async function initializeFoodDatabase(): Promise<void> {
   try {
     console.log('[FoodDB] Initializing food database...');
     
-    const storage = getAsyncStorage();
-    if (!storage) {
-      console.log('[FoodDB] ⚠️ Storage not available, skipping initialization');
-      return;
-    }
-    
     // Add timeout to prevent hanging
-    const initPromise = storage.getItem(FOODS_STORAGE_KEY);
+    const initPromise = AsyncStorage.getItem(FOODS_STORAGE_KEY);
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Database init timeout')), 3000)
     );
@@ -96,7 +34,7 @@ export async function initializeFoodDatabase(): Promise<void> {
     
     if (!existing) {
       console.log('[FoodDB] No existing data, initializing with mock data');
-      await storage.setItem(FOODS_STORAGE_KEY, JSON.stringify(mockFoods));
+      await AsyncStorage.setItem(FOODS_STORAGE_KEY, JSON.stringify(mockFoods));
       console.log('[FoodDB] ✅ Mock data initialized');
     } else {
       console.log('[FoodDB] ✅ Existing data found');
@@ -113,12 +51,7 @@ export async function initializeFoodDatabase(): Promise<void> {
  */
 export async function getAllFoods(): Promise<Food[]> {
   try {
-    const storage = getAsyncStorage();
-    if (!storage) {
-      return mockFoods;
-    }
-    
-    const data = await storage.getItem(FOODS_STORAGE_KEY);
+    const data = await AsyncStorage.getItem(FOODS_STORAGE_KEY);
     if (data) {
       return JSON.parse(data);
     }
@@ -158,24 +91,6 @@ export async function searchInternalFoods(query: string): Promise<Food[]> {
  */
 export async function upsertFood(food: Partial<Food>): Promise<Food> {
   try {
-    const storage = getAsyncStorage();
-    if (!storage) {
-      // Return the food object without saving
-      return {
-        id: food.id || `food-${Date.now()}`,
-        name: food.name || 'Unknown',
-        serving_amount: food.serving_amount || 100,
-        serving_unit: food.serving_unit || 'g',
-        calories: food.calories || 0,
-        protein: food.protein || 0,
-        carbs: food.carbs || 0,
-        fats: food.fats || 0,
-        fiber: food.fiber || 0,
-        user_created: food.user_created || false,
-        is_favorite: food.is_favorite || false,
-      } as Food;
-    }
-    
     const foods = await getAllFoods();
     
     // Check if food already exists (by barcode or id)
@@ -211,7 +126,7 @@ export async function upsertFood(food: Partial<Food>): Promise<Food> {
       foods.push(savedFood);
     }
     
-    await storage.setItem(FOODS_STORAGE_KEY, JSON.stringify(foods));
+    await AsyncStorage.setItem(FOODS_STORAGE_KEY, JSON.stringify(foods));
     console.log(`[FoodDB] Food saved successfully: ${savedFood.id}`);
     
     return savedFood;
@@ -377,18 +292,7 @@ export async function getFavoriteFoods(): Promise<Food[]> {
  */
 async function getOrCreateMeal(date: string, mealType: MealType): Promise<Meal> {
   try {
-    const storage = getAsyncStorage();
-    if (!storage) {
-      // Return a temporary meal object
-      return {
-        id: `meal-temp-${Date.now()}`,
-        user_id: 'user-1',
-        date,
-        meal_type: mealType,
-      };
-    }
-    
-    const mealsData = await storage.getItem(MEALS_STORAGE_KEY);
+    const mealsData = await AsyncStorage.getItem(MEALS_STORAGE_KEY);
     const meals: Meal[] = mealsData ? JSON.parse(mealsData) : [];
     
     // Find existing meal
@@ -403,7 +307,7 @@ async function getOrCreateMeal(date: string, mealType: MealType): Promise<Meal> 
         meal_type: mealType,
       };
       meals.push(meal);
-      await storage.setItem(MEALS_STORAGE_KEY, JSON.stringify(meals));
+      await AsyncStorage.setItem(MEALS_STORAGE_KEY, JSON.stringify(meals));
       console.log(`[FoodDB] Created new meal: ${meal.id}`);
     }
     
@@ -438,37 +342,6 @@ export async function addMealItem(params: {
 }): Promise<MealItem> {
   try {
     console.log('[FoodDB] Adding meal item:', params.foodName);
-    
-    const storage = getAsyncStorage();
-    if (!storage) {
-      // Return a temporary meal item
-      const errorFood: Food = {
-        id: `food-temp-${Date.now()}`,
-        name: params.foodName,
-        serving_amount: 1,
-        serving_unit: params.servingDescription,
-        calories: params.calories,
-        protein: params.protein,
-        carbs: params.carbs,
-        fats: params.fats,
-        fiber: params.fiber,
-        user_created: true,
-        is_favorite: false,
-      };
-      
-      return {
-        id: `item-temp-${Date.now()}`,
-        meal_id: `meal-temp-${Date.now()}`,
-        food_id: errorFood.id,
-        food: errorFood,
-        quantity: params.quantity,
-        calories: params.calories * params.quantity,
-        protein: params.protein * params.quantity,
-        carbs: params.carbs * params.quantity,
-        fats: params.fats * params.quantity,
-        fiber: params.fiber * params.quantity,
-      };
-    }
     
     // Get or create the meal
     const meal = await getOrCreateMeal(params.date, params.mealType as MealType);
@@ -506,10 +379,10 @@ export async function addMealItem(params: {
     };
     
     // Save the meal item
-    const itemsData = await storage.getItem(MEAL_ITEMS_STORAGE_KEY);
+    const itemsData = await AsyncStorage.getItem(MEAL_ITEMS_STORAGE_KEY);
     const items: MealItem[] = itemsData ? JSON.parse(itemsData) : [];
     items.push(mealItem);
-    await storage.setItem(MEAL_ITEMS_STORAGE_KEY, JSON.stringify(items));
+    await AsyncStorage.setItem(MEAL_ITEMS_STORAGE_KEY, JSON.stringify(items));
     
     console.log('[FoodDB] Meal item added successfully:', mealItem.id);
     return mealItem;
@@ -553,19 +426,13 @@ export async function updateDailySummary(date: string): Promise<void> {
   try {
     console.log('[FoodDB] Updating daily summary for:', date);
     
-    const storage = getAsyncStorage();
-    if (!storage) {
-      console.log('[FoodDB] ⚠️ Storage not available, skipping daily summary update');
-      return;
-    }
-    
     // Get all meals for this date
-    const mealsData = await storage.getItem(MEALS_STORAGE_KEY);
+    const mealsData = await AsyncStorage.getItem(MEALS_STORAGE_KEY);
     const meals: Meal[] = mealsData ? JSON.parse(mealsData) : [];
     const todayMeals = meals.filter(m => m.date === date);
     
     // Get all meal items for today's meals
-    const itemsData = await storage.getItem(MEAL_ITEMS_STORAGE_KEY);
+    const itemsData = await AsyncStorage.getItem(MEAL_ITEMS_STORAGE_KEY);
     const allItems: MealItem[] = itemsData ? JSON.parse(itemsData) : [];
     const todayItems = allItems.filter(item => 
       todayMeals.some(meal => meal.id === item.meal_id)
@@ -584,7 +451,7 @@ export async function updateDailySummary(date: string): Promise<void> {
     );
     
     // Get existing daily summary
-    const summaryData = await storage.getItem(DAILY_SUMMARY_STORAGE_KEY);
+    const summaryData = await AsyncStorage.getItem(DAILY_SUMMARY_STORAGE_KEY);
     const summaries: DailySummary[] = summaryData ? JSON.parse(summaryData) : [];
     
     // Find or create summary for this date
@@ -615,7 +482,7 @@ export async function updateDailySummary(date: string): Promise<void> {
       });
     }
     
-    await storage.setItem(DAILY_SUMMARY_STORAGE_KEY, JSON.stringify(summaries));
+    await AsyncStorage.setItem(DAILY_SUMMARY_STORAGE_KEY, JSON.stringify(summaries));
     console.log('[FoodDB] Daily summary updated successfully');
   } catch (error) {
     console.error('[FoodDB] Error updating daily summary:', error);

@@ -2,7 +2,6 @@
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { Platform } from 'react-native';
 
 // CRITICAL: Use safe defaults for environment variables
 const SUPABASE_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
@@ -18,63 +17,24 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
 // Store the client instance
 let supabaseInstance: SupabaseClient<Database> | null = null;
 
-// Lazy load AsyncStorage only when needed and only on native platforms
+// Lazy load AsyncStorage only when needed
 let AsyncStorage: any = null;
-let asyncStorageLoadAttempted = false;
 
 function getAsyncStorage() {
-  // Only attempt to load once
-  if (asyncStorageLoadAttempted) {
-    return AsyncStorage;
+  if (!AsyncStorage) {
+    try {
+      // Only import AsyncStorage when actually needed (runtime, not build time)
+      AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    } catch (error) {
+      console.error('[Supabase] Failed to load AsyncStorage:', error);
+      // Fallback to a no-op storage for build time
+      AsyncStorage = {
+        getItem: async () => null,
+        setItem: async () => {},
+        removeItem: async () => {},
+      };
+    }
   }
-  
-  asyncStorageLoadAttempted = true;
-  
-  // Only load AsyncStorage on native platforms
-  if (Platform.OS === 'web') {
-    console.log('[Supabase] Web platform detected, using localStorage');
-    // For web, use localStorage wrapper
-    AsyncStorage = {
-      getItem: async (key: string) => {
-        try {
-          return localStorage.getItem(key);
-        } catch {
-          return null;
-        }
-      },
-      setItem: async (key: string, value: string) => {
-        try {
-          localStorage.setItem(key, value);
-        } catch {
-          // Ignore errors
-        }
-      },
-      removeItem: async (key: string) => {
-        try {
-          localStorage.removeItem(key);
-        } catch {
-          // Ignore errors
-        }
-      },
-    };
-    return AsyncStorage;
-  }
-  
-  // For native platforms, dynamically import AsyncStorage
-  try {
-    console.log('[Supabase] Native platform detected, loading AsyncStorage');
-    AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    console.log('[Supabase] ✅ AsyncStorage loaded successfully');
-  } catch (error) {
-    console.error('[Supabase] ⚠️ Failed to load AsyncStorage:', error);
-    // Fallback to a no-op storage
-    AsyncStorage = {
-      getItem: async () => null,
-      setItem: async () => {},
-      removeItem: async () => {},
-    };
-  }
-  
   return AsyncStorage;
 }
 
