@@ -422,7 +422,9 @@ export default function ChatbotScreen() {
   const transcribeAudio = async (audioUri: string) => {
     try {
       setIsTranscribing(true);
+      console.log('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('[Chatbot] Transcribing audio from URI:', audioUri);
+      console.log('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // Read the audio file and convert to base64
       const response = await fetch(audioUri);
@@ -457,17 +459,28 @@ export default function ChatbotScreen() {
       console.log('[Chatbot] Base64 audio length:', base64Audio.length);
       console.log('[Chatbot] Sending audio to transcription service...');
 
+      // Get the auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
       // Call the transcription Edge Function
       const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: {
           audioBase64: base64Audio,
           mimeType: 'audio/m4a',
         },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
       if (error) {
+        console.error('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.error('[Chatbot] Transcription error:', error);
         console.error('[Chatbot] Error details:', JSON.stringify(error, null, 2));
+        console.error('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // Parse error message for user-friendly feedback
         let errorMessage = "We couldn't transcribe your audio. Please try again.";
@@ -490,7 +503,10 @@ export default function ChatbotScreen() {
       }
 
       if (data && data.text) {
-        console.log('[Chatbot] Transcription successful:', data.text);
+        console.log('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('[Chatbot] ✅ Transcription successful:', data.text);
+        console.log('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
         // Set the transcribed text in the input field
         setInputText(data.text);
         
@@ -507,7 +523,9 @@ export default function ChatbotScreen() {
         Alert.alert('Transcription Error', "We couldn't transcribe your audio. Please try again.");
       }
     } catch (error: any) {
+      console.error('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.error('[Chatbot] Error transcribing audio:', error);
+      console.error('[Chatbot] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       // Parse error message for user-friendly feedback
       let errorMessage = "We couldn't transcribe your audio. Please try again.";
