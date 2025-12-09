@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Modal, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +27,7 @@ export default function MyMealDetailsScreen() {
   const [mealName, setMealName] = useState('');
   const [mealNote, setMealNote] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
 
   const loadMyMeal = useCallback(async () => {
     try {
@@ -95,15 +96,19 @@ export default function MyMealDetailsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[MyMealDetails] Screen focused, loading meal');
+      console.log('[MyMealDetails] ========== SCREEN FOCUSED ==========');
+      console.log('[MyMealDetails] Params:', JSON.stringify(params, null, 2));
       
-      // Check if we have a new food item from the Add Food flow
+      // PRIORITY 1: Check if we have a new food item from the Add Food flow
       if (params.newFoodItem) {
         try {
           const newItem = JSON.parse(params.newFoodItem as string);
           console.log('[MyMealDetails] ========== ADDING NEW FOOD ITEM ==========');
           console.log('[MyMealDetails] Food:', newItem.food?.name || 'Unknown');
           console.log('[MyMealDetails] Calories:', newItem.calories);
+          console.log('[MyMealDetails] Protein:', newItem.protein);
+          console.log('[MyMealDetails] Carbs:', newItem.carbs);
+          console.log('[MyMealDetails] Fats:', newItem.fats);
           
           // Generate a temporary ID for the item
           const itemWithTempId = {
@@ -116,10 +121,12 @@ export default function MyMealDetailsScreen() {
             console.log('[MyMealDetails] Previous items count:', prev.length);
             const updated = [...prev, itemWithTempId];
             console.log('[MyMealDetails] Updated items count:', updated.length);
+            console.log('[MyMealDetails] All items:', updated.map(i => ({ name: i.food?.name, calories: i.calories })));
             console.log('[MyMealDetails] ========================================');
             return updated;
           });
           
+          // Mark as having unsaved changes
           setHasUnsavedChanges(true);
           
           // Clear the param IMMEDIATELY to prevent re-adding on next focus
@@ -128,11 +135,25 @@ export default function MyMealDetailsScreen() {
           console.error('[MyMealDetails] Error parsing new food item:', error);
         }
       } else {
-        // Normal load when no new item
+        // PRIORITY 2: Normal load when no new item
+        console.log('[MyMealDetails] No new food item, loading meal normally');
         loadMyMeal();
       }
     }, [loadMyMeal, params.newFoodItem, router])
   );
+
+  // AUTO-SAVE when items change (after a new food is added)
+  useEffect(() => {
+    if (hasUnsavedChanges && !autoSaving && items.length > 0) {
+      console.log('[MyMealDetails] ========== AUTO-SAVING CHANGES ==========');
+      const autoSave = async () => {
+        setAutoSaving(true);
+        await handleSaveChanges();
+        setAutoSaving(false);
+      };
+      autoSave();
+    }
+  }, [items, hasUnsavedChanges, autoSaving]);
 
   const handleSaveChanges = async () => {
     if (!mealName.trim()) {
@@ -146,7 +167,9 @@ export default function MyMealDetailsScreen() {
     }
 
     try {
-      console.log('[MyMealDetails] Saving changes');
+      console.log('[MyMealDetails] ========== SAVING CHANGES ==========');
+      console.log('[MyMealDetails] Items to save:', items.length);
+      console.log('[MyMealDetails] Items:', items.map(i => ({ name: i.food?.name, calories: i.calories })));
 
       // Calculate totals
       const totals = items.reduce(
@@ -159,6 +182,8 @@ export default function MyMealDetailsScreen() {
         }),
         { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
       );
+
+      console.log('[MyMealDetails] Calculated totals:', totals);
 
       // Update meal
       const { error: updateError } = await supabase
@@ -181,6 +206,8 @@ export default function MyMealDetailsScreen() {
         return;
       }
 
+      console.log('[MyMealDetails] ✅ Meal metadata updated');
+
       // Delete old items
       const { error: deleteError } = await supabase
         .from('my_meal_items')
@@ -189,6 +216,8 @@ export default function MyMealDetailsScreen() {
 
       if (deleteError) {
         console.error('[MyMealDetails] Error deleting old items:', deleteError);
+      } else {
+        console.log('[MyMealDetails] ✅ Old items deleted');
       }
 
       // Insert new items (filter out temp IDs)
@@ -207,6 +236,8 @@ export default function MyMealDetailsScreen() {
           grams: item.grams,
         }));
 
+      console.log('[MyMealDetails] Items to insert:', itemsToInsert.length);
+
       if (itemsToInsert.length > 0) {
         const { error: insertError } = await supabase
           .from('my_meal_items')
@@ -217,9 +248,11 @@ export default function MyMealDetailsScreen() {
           Alert.alert('Error', 'Failed to save meal items');
           return;
         }
+
+        console.log('[MyMealDetails] ✅ New items inserted');
       }
 
-      console.log('[MyMealDetails] ✅ Meal saved successfully');
+      console.log('[MyMealDetails] ✅✅✅ Meal saved successfully ✅✅✅');
       setHasUnsavedChanges(false);
       
       // Update local meal state with new totals
@@ -237,7 +270,7 @@ export default function MyMealDetailsScreen() {
       }
       
       // Reload to get fresh data with proper IDs
-      loadMyMeal();
+      await loadMyMeal();
     } catch (error) {
       console.error('[MyMealDetails] Error in handleSaveChanges:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -321,12 +354,13 @@ export default function MyMealDetailsScreen() {
   };
 
   const handleAddFood = () => {
-    console.log('[MyMealDetails] Opening Add Food');
-    
-    // Save current changes before navigating
-    if (hasUnsavedChanges) {
-      handleSaveChanges();
-    }
+    console.log('[MyMealDetails] ========== OPENING ADD FOOD ==========');
+    console.log('[MyMealDetails] Current items count:', items.length);
+    console.log('[MyMealDetails] Passing params:');
+    console.log('[MyMealDetails]   - mode: mymeal');
+    console.log('[MyMealDetails]   - context: my_meal_details');
+    console.log('[MyMealDetails]   - mealId:', mealId);
+    console.log('[MyMealDetails]   - returnTo: /my-meal-details');
     
     router.push({
       pathname: '/add-food',
