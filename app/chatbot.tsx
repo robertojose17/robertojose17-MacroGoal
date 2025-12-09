@@ -21,6 +21,7 @@ import {
   RecordingPresets,
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
+  useAudioRecorderState,
 } from 'expo-audio';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -107,6 +108,7 @@ export default function ChatbotScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder, 50); // Poll every 50ms for smooth visualization
 
   const { sendMessage, loading } = useChatbot();
 
@@ -403,11 +405,17 @@ export default function ChatbotScreen() {
         setInputText(data.text);
       } else {
         console.error('[Chatbot] No transcription text received');
-        Alert.alert('Transcription Error', 'No se pudo transcribir el audio. Por favor, intenta de nuevo.');
+        Alert.alert(
+          'Transcription Error',
+          'We couldn\'t transcribe your audio. Please try again.'
+        );
       }
     } catch (error) {
       console.error('[Chatbot] Error transcribing audio:', error);
-      Alert.alert('Transcription Error', 'No se pudo transcribir el audio. Por favor, intenta de nuevo.');
+      Alert.alert(
+        'Transcription Error',
+        'We couldn\'t transcribe your audio. Please try again.'
+      );
     } finally {
       setIsTranscribing(false);
     }
@@ -1243,7 +1251,8 @@ If the user provides both text and photo, use both sources to make the most accu
           {isRecording && (
             <View style={styles.audioWaveformContainer}>
               <AudioWaveform 
-                isRecording={isRecording} 
+                isRecording={isRecording}
+                audioLevel={recorderState.currentTime > 0 ? 0.5 : 0} // Use a simple indicator for now
                 color={colors.primary}
                 barCount={5}
               />

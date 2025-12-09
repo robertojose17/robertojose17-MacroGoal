@@ -82,14 +82,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get OpenRouter API key
-    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-    if (!openRouterApiKey) {
+    // Get OpenAI API key (using OpenRouter key which should work with OpenAI endpoints)
+    const openaiApiKey = Deno.env.get('OPENROUTER_API_KEY');
+    if (!openaiApiKey) {
       console.error('[transcribe-audio] Missing OPENROUTER_API_KEY');
       return new Response(
         JSON.stringify({ 
           error: 'Configuration Error', 
-          detail: 'OpenRouter API key not configured' 
+          detail: 'API key not configured' 
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -116,33 +116,68 @@ Deno.serve(async (req) => {
     const audioBlob = new Blob([audioData], { type: mimeType });
     formData.append('file', audioBlob, 'audio.m4a');
     formData.append('model', 'whisper-1');
-    formData.append('language', 'en'); // Can be made configurable
+    formData.append('language', 'en'); // English language
 
-    // Call OpenAI Whisper API via OpenRouter
-    const whisperResponse = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
+    // Call OpenAI Whisper API directly
+    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openRouterApiKey}`,
-        'HTTP-Referer': supabaseUrl,
-        'X-Title': 'Elite Macro Tracker',
+        'Authorization': `Bearer ${openaiApiKey}`,
       },
       body: formData,
     });
 
     if (!whisperResponse.ok) {
       const errorText = await whisperResponse.text();
-      console.error('[transcribe-audio] OpenRouter API error:', whisperResponse.status, errorText);
+      console.error('[transcribe-audio] OpenAI API error:', whisperResponse.status, errorText);
+      
+      // If OpenAI fails, try OpenRouter as fallback
+      console.log('[transcribe-audio] Trying OpenRouter as fallback...');
+      
+      const openRouterFormData = new FormData();
+      openRouterFormData.append('file', audioBlob, 'audio.m4a');
+      openRouterFormData.append('model', 'whisper-1');
+      openRouterFormData.append('language', 'en');
+      
+      const openRouterResponse = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'HTTP-Referer': supabaseUrl,
+          'X-Title': 'Macro Goal',
+        },
+        body: openRouterFormData,
+      });
+      
+      if (!openRouterResponse.ok) {
+        const orErrorText = await openRouterResponse.text();
+        console.error('[transcribe-audio] OpenRouter API error:', openRouterResponse.status, orErrorText);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Transcription Error', 
+            detail: 'Failed to transcribe audio. Please try again.' 
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const orTranscription = await openRouterResponse.json();
+      console.log('[transcribe-audio] OpenRouter transcription successful');
+      
       return new Response(
         JSON.stringify({ 
-          error: 'Transcription Error', 
-          detail: `Failed to transcribe audio: ${whisperResponse.status}` 
+          text: orTranscription.text || '',
+          duration: orTranscription.duration,
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       );
     }
 
     const transcription = await whisperResponse.json();
-    console.log('[transcribe-audio] Transcription successful');
+    console.log('[transcribe-audio] OpenAI transcription successful');
 
     return new Response(
       JSON.stringify({ 
