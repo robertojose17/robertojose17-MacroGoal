@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMeal, MyMealItem, MealType } from '@/types';
 
@@ -118,7 +118,7 @@ export default function MyMealDetailsScreen() {
         return;
       }
 
-      console.log('[MyMealDetails] Item deleted successfully');
+      console.log('[MyMealDetails] ✅ Item deleted successfully');
       
       // Reload the meal to update totals
       loadMyMeal();
@@ -202,7 +202,7 @@ export default function MyMealDetailsScreen() {
         return;
       }
 
-      console.log('[MyMealDetails] Items added to diary successfully');
+      console.log('[MyMealDetails] ✅ Items added to diary successfully');
       Alert.alert('Success', `Added ${items.length} items to ${mealType}`, [
         {
           text: 'OK',
@@ -321,7 +321,7 @@ export default function MyMealDetailsScreen() {
           </Text>
 
           {items.map((item, index) => (
-            <SwipeableListItem
+            <SwipeToDeleteRow
               key={item.id || `item-${index}`}
               onDelete={() => handleDeleteItem(item.id)}
             >
@@ -353,7 +353,7 @@ export default function MyMealDetailsScreen() {
                   </Text>
                 </View>
               </View>
-            </SwipeableListItem>
+            </SwipeToDeleteRow>
           ))}
         </View>
 
@@ -549,9 +549,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    marginBottom: spacing.sm,
-    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
-    elevation: 1,
+    marginBottom: spacing.xs,
   },
   foodInfo: {
     flex: 1,

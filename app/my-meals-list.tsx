@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMeal } from '@/types';
 
@@ -112,7 +112,7 @@ export default function MyMealsListScreen() {
 
   const renderMyMealCard = (meal: MyMeal, index: number) => {
     return (
-      <SwipeableListItem
+      <SwipeToDeleteRow
         key={meal.id || `meal-${index}`}
         onDelete={() => handleDeleteMyMeal(meal)}
       >
@@ -149,7 +149,7 @@ export default function MyMealsListScreen() {
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
         </TouchableOpacity>
-      </SwipeableListItem>
+      </SwipeToDeleteRow>
     );
   };
 
@@ -272,9 +272,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    marginBottom: spacing.sm,
-    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
-    elevation: 1,
+    marginBottom: spacing.xs,
   },
   mealInfo: {
     flex: 1,

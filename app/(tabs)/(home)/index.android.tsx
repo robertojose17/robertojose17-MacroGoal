@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -242,7 +242,6 @@ export default function HomeScreen() {
 
   const handleDeleteFood = async (item: any) => {
     console.log('[Home Android] Delete requested for item:', item.id);
-    console.log('[Home Android] Delete confirmed, proceeding...');
     
     // Store original state for rollback
     const originalMeals = [...meals];
@@ -307,9 +306,6 @@ export default function HomeScreen() {
       
       console.log('[Home Android] Delete response:', data);
       console.log('[Home Android] ✅ Food deleted successfully from database');
-      
-      // Success - the optimistic update is already applied
-      // No need to reload, UI is already updated
       
     } catch (error: any) {
       console.error('[Home Android] ❌ Error in handleDeleteFood:', error);
@@ -596,7 +592,7 @@ export default function HomeScreen() {
                 <View style={styles.mealItems}>
                   {meal.items.map((item, itemIndex) => (
                     <React.Fragment key={itemIndex}>
-                      <SwipeableListItem
+                      <SwipeToDeleteRow
                         onDelete={() => handleDeleteFood(item)}
                       >
                         <TouchableOpacity 
@@ -626,7 +622,7 @@ export default function HomeScreen() {
                             </Text>
                           </View>
                         </TouchableOpacity>
-                      </SwipeableListItem>
+                      </SwipeToDeleteRow>
                     </React.Fragment>
                   ))}
                 </View>
@@ -783,15 +779,14 @@ const styles = StyleSheet.create({
     ...typography.body,
   },
   mealItems: {
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   foodItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   foodInfo: {
     flex: 1,

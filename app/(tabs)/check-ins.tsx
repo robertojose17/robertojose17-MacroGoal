@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
@@ -116,6 +116,8 @@ export default function CheckInsScreen() {
 
   const handleDeleteCheckIn = async (checkIn: CheckIn) => {
     try {
+      console.log('[CheckIns] Deleting check-in:', checkIn.id);
+      
       const { error } = await supabase
         .from('check_ins')
         .delete()
@@ -125,7 +127,8 @@ export default function CheckInsScreen() {
         console.error('[CheckIns] Error deleting check-in:', error);
         Alert.alert('Error', 'Failed to delete check-in');
       } else {
-        console.log('[CheckIns] Check-in deleted successfully');
+        console.log('[CheckIns] ✅ Check-in deleted successfully');
+        // Reload the list
         loadCheckIns();
       }
     } catch (error) {
@@ -331,11 +334,14 @@ export default function CheckInsScreen() {
           <View style={styles.checkInsList}>
             {filteredCheckIns.map((checkIn, index) => (
               <React.Fragment key={checkIn.id}>
-                <SwipeableListItem
+                <SwipeToDeleteRow
                   onDelete={() => handleDeleteCheckIn(checkIn)}
                 >
                   <TouchableOpacity
-                    style={styles.checkInRow}
+                    style={[
+                      styles.checkInRow,
+                      { backgroundColor: isDark ? colors.cardDark : colors.card }
+                    ]}
                     onPress={() => handleViewCheckIn(checkIn)}
                     activeOpacity={0.6}
                   >
@@ -353,10 +359,7 @@ export default function CheckInsScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
-                </SwipeableListItem>
-                {index < filteredCheckIns.length - 1 && (
-                  <View style={[styles.divider, { backgroundColor: isDark ? colors.textSecondaryDark : colors.textSecondary, opacity: 0.1 }]} />
-                )}
+                </SwipeToDeleteRow>
               </React.Fragment>
             ))}
           </View>
@@ -457,14 +460,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   checkInsList: {
-    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   checkInRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
   },
   checkInRowContent: {
     flexDirection: 'row',
@@ -485,10 +489,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
     flex: 1,
-  },
-  divider: {
-    height: 1,
-    marginLeft: spacing.sm,
   },
   bottomSpacer: {
     height: 40,
