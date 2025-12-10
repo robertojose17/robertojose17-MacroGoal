@@ -157,60 +157,39 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       weeklyLossLbs,
     });
 
-    // Calculate weight loss per day
-    const weightLossPerDay = weeklyLossLbs / 7;
+    // Calculate total weight change needed
+    const totalWeightChange = Math.abs(goalWeightLbs - startWeightLbs);
+    
+    // Calculate total weeks needed to reach goal
+    const totalWeeks = totalWeightChange / weeklyLossLbs;
+    
+    // Calculate total days needed (inclusive of start and end date)
+    const totalDays = Math.ceil(totalWeeks * 7);
+    
+    // Calculate the goal date
+    const goalDate = new Date(startDate);
+    goalDate.setDate(goalDate.getDate() + totalDays);
 
-    // Determine if we're losing or gaining weight
-    const isLosingWeight = startWeightLbs > goalWeightLbs;
-
-    console.log('[ProgressCard] Weight change per day:', weightLossPerDay);
-    console.log('[ProgressCard] Is losing weight:', isLosingWeight);
-
-    // Generate daily data points - STOP exactly when target is reached
-    const dataPoints: { date: Date; weightLbs: number }[] = [];
-
-    // Add the starting point
-    dataPoints.push({
-      date: new Date(startDate),
-      weightLbs: startWeightLbs,
+    console.log('[ProgressCard] Calculated goal date:', {
+      totalWeightChange,
+      totalWeeks: totalWeeks.toFixed(2),
+      totalDays,
+      goalDate: goalDate.toISOString().split('T')[0],
     });
 
-    // Generate points until we reach the target weight
-    for (let i = 1; i <= 730; i++) {
+    // Generate daily data points from start date to goal date (inclusive)
+    const dataPoints: { date: Date; weightLbs: number }[] = [];
+
+    for (let i = 0; i <= totalDays; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(currentDate.getDate() + i);
 
-      // Calculate planned weight for this day
-      let plannedWeight: number;
-      if (isLosingWeight) {
-        plannedWeight = startWeightLbs - (i * weightLossPerDay);
-      } else {
-        plannedWeight = startWeightLbs + (i * weightLossPerDay);
-      }
+      // Linear interpolation: weight = startWeight + (goalWeight - startWeight) * (i / totalDays)
+      const weight = startWeightLbs + (goalWeightLbs - startWeightLbs) * (i / totalDays);
 
-      // Check if we've reached or passed the target weight
-      if (isLosingWeight && plannedWeight <= goalWeightLbs) {
-        // We've reached the target - add final point at EXACTLY the target weight
-        dataPoints.push({
-          date: new Date(currentDate),
-          weightLbs: goalWeightLbs,
-        });
-        console.log('[ProgressCard] Reached target weight on day', i, 'at date', currentDate.toISOString().split('T')[0]);
-        break; // STOP - no more points
-      } else if (!isLosingWeight && plannedWeight >= goalWeightLbs) {
-        // We've reached the target for weight gain
-        dataPoints.push({
-          date: new Date(currentDate),
-          weightLbs: goalWeightLbs,
-        });
-        console.log('[ProgressCard] Reached target weight on day', i, 'at date', currentDate.toISOString().split('T')[0]);
-        break; // STOP - no more points
-      }
-
-      // Haven't reached target yet - add this point
       dataPoints.push({
-        date: new Date(currentDate),
-        weightLbs: plannedWeight,
+        date: currentDate,
+        weightLbs: weight,
       });
     }
 
@@ -397,7 +376,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
-  // Fixed width - always use screen width minus padding
+  // Fixed width - always use screen width minus padding with extra margin for labels
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = screenWidth - spacing.md * 4;
 
@@ -466,7 +445,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
           style={{
             marginVertical: 8,
             borderRadius: borderRadius.md,
-            paddingRight: 0,
+            paddingRight: 24, // Add right padding to prevent label clipping
           }}
           withInnerLines={true}
           withOuterLines={true}
