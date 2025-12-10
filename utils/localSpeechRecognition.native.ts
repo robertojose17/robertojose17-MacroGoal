@@ -2,35 +2,44 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 
+// Import the native module
+let ExpoSpeechRecognition: any = null;
+
+try {
+  // Try to import the native module
+  ExpoSpeechRecognition = require('../modules/expo-speech-recognition/src/index');
+  console.log('[LocalSTT] Native speech recognition module loaded successfully');
+} catch (error) {
+  console.warn('[LocalSTT] Native speech recognition module not available:', error);
+}
+
 /**
  * Native implementation of local speech recognition for iOS and Android
  * 
- * CURRENT IMPLEMENTATION:
- * This is a working placeholder that provides clear user feedback.
- * The microphone records audio successfully, but transcription requires
- * a native module or third-party service.
+ * This implementation uses the native speech recognition APIs:
+ * - iOS: Speech framework (SFSpeechRecognizer)
+ * - Android: SpeechRecognizer API
  * 
- * RECOMMENDED PRODUCTION SOLUTIONS:
+ * SETUP INSTRUCTIONS:
  * 
- * Option A: Native Module (Best for privacy, works offline)
- * - Create expo-modules-core native module
- * - iOS: Use Speech framework (SFSpeechRecognizer)
- * - Android: Use SpeechRecognizer API
- * - Pros: Fully local, no API costs, works offline
- * - Cons: Requires native development, more complex
+ * 1. Install the native module:
+ *    - The module is located in modules/expo-speech-recognition
+ *    - Run: npx expo prebuild
+ *    - This will link the native module to your project
  * 
- * Option B: Self-hosted Whisper API (Good balance)
- * - Deploy OpenAI Whisper on your own server
- * - Use whisper.cpp for efficient inference
- * - Pros: Good accuracy, you control the data
- * - Cons: Requires server infrastructure
+ * 2. iOS Setup:
+ *    - Add to Info.plist:
+ *      <key>NSSpeechRecognitionUsageDescription</key>
+ *      <string>We need access to speech recognition to transcribe your voice input</string>
+ *    - The Speech framework is automatically linked
  * 
- * Option C: React Native Voice (Quick solution)
- * - Use @react-native-voice/voice library
- * - Pros: Easy to integrate, works well
- * - Cons: Requires native build, not pure Expo
+ * 3. Android Setup:
+ *    - RECORD_AUDIO permission is already handled by expo-audio
+ *    - No additional setup required
  * 
- * For now, this implementation guides users to use text or photo input.
+ * 4. Build the app:
+ *    npx expo run:ios
+ *    npx expo run:android
  */
 
 export async function transcribeAudioLocally(
@@ -43,6 +52,16 @@ export async function transcribeAudioLocally(
   console.log('[LocalSTT] Audio URI:', audioUri);
 
   try {
+    // Check if native module is available
+    if (!ExpoSpeechRecognition) {
+      console.error('[LocalSTT] Native module not available');
+      onError(
+        'Voice transcription requires a native build. ' +
+        'Please run: npx expo prebuild && npx expo run:' + Platform.OS
+      );
+      return;
+    }
+
     // Verify the audio file exists and has content
     const fileInfo = await FileSystem.getInfoAsync(audioUri);
     
@@ -61,44 +80,58 @@ export async function transcribeAudioLocally(
       return;
     }
 
-    // Simulate processing time to show the "Transcribing..." indicator
-    console.log('[LocalSTT] Simulating transcription process...');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Check if speech recognition is available
+    const isAvailable = await ExpoSpeechRecognition.isAvailableAsync();
+    if (!isAvailable) {
+      console.error('[LocalSTT] Speech recognition not available');
+      onError('Speech recognition is not available on this device.');
+      return;
+    }
 
-    // Provide clear feedback to the user
-    console.log('[LocalSTT] Local STT not yet implemented');
-    console.log('[LocalSTT] Audio was recorded successfully at:', audioUri);
-    console.log('[LocalSTT] File size:', fileInfo.size, 'bytes');
-    
-    // Return a helpful error message
-    onError(
-      'Voice transcription is not yet available. ' +
-      'Please type your meal description or take a photo instead. ' +
-      'Your audio was recorded successfully but requires a transcription service to convert to text.'
-    );
+    // Request permissions
+    const { granted } = await ExpoSpeechRecognition.requestPermissionsAsync();
+    if (!granted) {
+      console.error('[LocalSTT] Speech recognition permission denied');
+      onError('Speech recognition permission is required. Please enable it in Settings.');
+      return;
+    }
 
-    // TODO: Implement one of the production solutions above
-    // Example implementation with a native module:
-    //
-    // import { NativeSpeechRecognition } from './NativeSpeechRecognition';
-    // 
-    // const result = await NativeSpeechRecognition.transcribe({
-    //   audioUri: audioUri,
-    //   language: 'en-US',
-    //   maxDuration: 60,
-    // });
-    // 
-    // if (result.success) {
-    //   console.log('[LocalSTT] Transcription successful:', result.text);
-    //   onSuccess(result.text);
-    // } else {
-    //   console.error('[LocalSTT] Transcription failed:', result.error);
-    //   onError('Could not transcribe audio. Please try again.');
-    // }
+    console.log('[LocalSTT] Starting transcription with native module...');
+
+    // Transcribe the audio file
+    const result = await ExpoSpeechRecognition.transcribeAsync(audioUri, 'en-US');
+
+    if (result && result.text) {
+      console.log('[LocalSTT] ✅ Transcription successful:', result.text);
+      console.log('[LocalSTT] Confidence:', result.confidence);
+      
+      // Return the transcribed text
+      onSuccess(result.text);
+    } else {
+      console.error('[LocalSTT] No transcription result');
+      onError('Could not transcribe audio. Please try again.');
+    }
 
   } catch (error: any) {
     console.error('[LocalSTT] Error during transcription:', error);
-    onError('Failed to process audio. Please try again.');
+    
+    // Provide user-friendly error messages
+    let errorMessage = 'Failed to transcribe audio. Please try again.';
+    
+    if (error.code === 'PERMISSION_DENIED') {
+      errorMessage = 'Speech recognition permission is required. Please enable it in Settings.';
+    } else if (error.code === 'RECOGNIZER_UNAVAILABLE') {
+      errorMessage = 'Speech recognition is temporarily unavailable. Please try again.';
+    } else if (error.code === 'FILE_NOT_FOUND') {
+      errorMessage = 'Audio file not found. Please try recording again.';
+    } else if (error.code === 'NO_RESULT') {
+      errorMessage = 'Could not understand the audio. Please speak clearly and try again.';
+    } else if (error.code === 'NOT_IMPLEMENTED') {
+      // Android file-based transcription limitation
+      errorMessage = 'Voice transcription is not yet fully supported on Android. Please use text or photo input.';
+    }
+    
+    onError(errorMessage);
   }
 }
 
@@ -106,9 +139,12 @@ export async function transcribeAudioLocally(
  * Check if local STT is supported on this device
  */
 export function isLocalSTTSupported(): boolean {
-  // Return true once native module is implemented
-  // For now, return false to indicate it's not yet available
-  return false;
+  if (!ExpoSpeechRecognition) {
+    return false;
+  }
+  
+  // This is a synchronous check, actual availability is checked async in transcribeAudioLocally
+  return true;
 }
 
 /**
@@ -117,18 +153,16 @@ export function isLocalSTTSupported(): boolean {
 export async function requestSpeechRecognitionPermissions(): Promise<boolean> {
   console.log('[LocalSTT] Checking speech recognition permissions');
   
-  // On iOS, speech recognition requires SFSpeechRecognizer permission
-  // On Android, it uses the RECORD_AUDIO permission (already handled by expo-audio)
-  
-  // For now, we rely on the microphone permission from expo-audio
-  // Once native module is implemented, add platform-specific permission requests here
-  
-  if (Platform.OS === 'ios') {
-    // TODO: Request iOS speech recognition permission
-    // import { NativeSpeechRecognition } from './NativeSpeechRecognition';
-    // const granted = await NativeSpeechRecognition.requestPermission();
-    // return granted;
+  if (!ExpoSpeechRecognition) {
+    console.warn('[LocalSTT] Native module not available');
+    return false;
   }
   
-  return true;
+  try {
+    const { granted } = await ExpoSpeechRecognition.requestPermissionsAsync();
+    return granted;
+  } catch (error) {
+    console.error('[LocalSTT] Error requesting permissions:', error);
+    return false;
+  }
 }
