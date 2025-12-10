@@ -833,7 +833,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                 },
               ]}
             >
-              Planeado
+              Planned
             </Text>
           </TouchableOpacity>
 
@@ -865,7 +865,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                   },
                 ]}
               >
-                Calorías
+                Calories
               </Text>
             </TouchableOpacity>
           )}
@@ -898,7 +898,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                   },
                 ]}
               >
-                Peso actual
+                Actual Weight
               </Text>
             </TouchableOpacity>
           )}
