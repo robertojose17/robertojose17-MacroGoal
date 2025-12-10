@@ -7,7 +7,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { LineChart } from 'react-native-chart-kit';
+import Svg, { Line, Path, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -206,89 +206,145 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return dataPoints;
   }, [profileData]);
 
-  // Prepare chart data for rendering with optimized X-axis labels
-  const chartData = useMemo(() => {
+  // Prepare chart data with custom SVG rendering
+  const chartConfig = useMemo(() => {
     if (!profileData || !plannedData || plannedData.length === 0) {
       return null;
     }
 
     const { startWeightLbs, goalWeightLbs } = profileData;
 
-    // Calculate Y-axis range with padding
+    // ========================================
+    // CHART DIMENSIONS - INDEPENDENT CONTROL
+    // ========================================
+    const screenWidth = Dimensions.get('window').width;
+    const cardPadding = spacing.lg * 2;
+    
+    // Y-axis configuration (left side)
+    const yAxisWidth = 55; // Space for "189 lb" labels
+    const yAxisLabelPadding = 8;
+    
+    // X-axis configuration (bottom)
+    const xAxisHeight = 30;
+    const xAxisLabelPadding = 8;
+    
+    // Chart area dimensions
+    const chartAreaWidth = screenWidth - cardPadding - yAxisWidth - 20; // 20 for right padding
+    const chartAreaHeight = 220;
+    
+    const totalWidth = screenWidth - cardPadding;
+    const totalHeight = chartAreaHeight + xAxisHeight;
+
+    console.log('[ProgressCard] Chart dimensions:', {
+      screenWidth,
+      totalWidth,
+      totalHeight,
+      chartAreaWidth,
+      chartAreaHeight,
+      yAxisWidth,
+      xAxisHeight,
+    });
+
+    // ========================================
+    // Y-AXIS CONFIGURATION (Weight in lbs)
+    // ========================================
     const minWeight = Math.min(startWeightLbs, goalWeightLbs);
     const maxWeight = Math.max(startWeightLbs, goalWeightLbs);
+    const weightPadding = 3;
+    const yMin = Math.max(0, minWeight - weightPadding);
+    const yMax = maxWeight + weightPadding;
+    const yRange = yMax - yMin;
 
-    const padding = 3;
-    const yMin = Math.max(0, minWeight - padding);
-    const yMax = maxWeight + padding;
-
-    console.log('[ProgressCard] Y-axis range:', { yMin, yMax });
-
-    // ========================================
-    // X-AXIS LABEL LOGIC WITH MM/DD FORMAT
-    // Add one extra date point to prevent last label from being cut off
-    // ========================================
-    const totalPoints = plannedData.length;
-    const maxXTicks = 5; // Reduced to 5 to prevent overlap
-
-    console.log('[ProgressCard] Total data points:', totalPoints);
-    console.log('[ProgressCard] Max X ticks:', maxXTicks);
-
-    // Determine which indices to show labels for
-    let selectedIndices: number[];
+    // Generate Y-axis labels (6 evenly spaced ticks)
+    const numYTicks = 6;
+    const yTicks: { value: number; label: string; y: number }[] = [];
     
-    if (totalPoints <= maxXTicks) {
-      // If we have fewer points than max ticks, show all
-      selectedIndices = Array.from({ length: totalPoints }, (_, i) => i);
-    } else {
-      // Calculate step size to evenly distribute labels
-      const step = Math.floor(totalPoints / (maxXTicks - 1));
-      selectedIndices = [0]; // Always include first
-      
-      // Add intermediate labels
-      for (let i = 1; i < maxXTicks - 1; i++) {
-        selectedIndices.push(i * step);
-      }
-      
-      // Always include last
-      selectedIndices.push(totalPoints - 1);
+    for (let i = 0; i < numYTicks; i++) {
+      const value = yMax - (yRange * i / (numYTicks - 1));
+      const y = (chartAreaHeight * i / (numYTicks - 1));
+      yTicks.push({
+        value,
+        label: `${Math.round(value)} lb`,
+        y,
+      });
     }
 
-    console.log('[ProgressCard] Selected label indices:', selectedIndices);
+    console.log('[ProgressCard] Y-axis ticks:', yTicks);
 
-    // Create labels array with MM/DD format
-    const labels = plannedData.map((point, index) => {
-      if (selectedIndices.includes(index)) {
-        // Format as MM/DD
-        const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
-        const day = point.date.getDate().toString().padStart(2, '0');
-        return `${month}/${day}`;
+    // ========================================
+    // X-AXIS CONFIGURATION (Dates in MM/DD format)
+    // ========================================
+    const totalPoints = plannedData.length;
+    const numXTicks = 6; // Show 6 date labels
+
+    // Select evenly distributed indices for X-axis labels
+    const xTickIndices: number[] = [];
+    if (totalPoints <= numXTicks) {
+      // Show all points if we have fewer than max ticks
+      for (let i = 0; i < totalPoints; i++) {
+        xTickIndices.push(i);
       }
-      return ''; // Empty string for non-selected indices
+    } else {
+      // Evenly distribute ticks
+      for (let i = 0; i < numXTicks; i++) {
+        const index = Math.round((totalPoints - 1) * i / (numXTicks - 1));
+        xTickIndices.push(index);
+      }
+    }
+
+    const xTicks: { index: number; label: string; x: number }[] = xTickIndices.map((index) => {
+      const point = plannedData[index];
+      const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
+      const day = point.date.getDate().toString().padStart(2, '0');
+      const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
+      
+      return {
+        index,
+        label: `${month}/${day}`,
+        x,
+      };
     });
 
-    // Create dataset for planned line
-    const datasets = [
-      {
-        data: plannedData.map(p => p.weightLbs),
-        color: () => colors.success, // Green for planned
-        strokeWidth: 2,
-        withDots: false,
-      },
-    ];
+    console.log('[ProgressCard] X-axis ticks:', xTicks);
 
-    console.log('[ProgressCard] Chart data prepared:', {
-      selectedIndices: selectedIndices.length,
-      visibleLabels: labels.filter(l => l !== '').length,
-      dataPoints: plannedData.length,
-      totalLabels: labels.length,
-      firstLabel: labels[selectedIndices[0]],
-      lastLabel: labels[selectedIndices[selectedIndices.length - 1]],
+    // ========================================
+    // GENERATE LINE PATH
+    // ========================================
+    const pathPoints = plannedData.map((point, index) => {
+      const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
+      const normalizedWeight = (point.weightLbs - yMin) / yRange;
+      const y = chartAreaHeight * (1 - normalizedWeight);
+      return { x, y };
     });
+
+    // Create SVG path string
+    let pathData = `M ${pathPoints[0].x} ${pathPoints[0].y}`;
+    for (let i = 1; i < pathPoints.length; i++) {
+      pathData += ` L ${pathPoints[i].x} ${pathPoints[i].y}`;
+    }
+
+    // Create filled area path (for gradient under the line)
+    let fillPathData = `M ${pathPoints[0].x} ${chartAreaHeight}`;
+    fillPathData += ` L ${pathPoints[0].x} ${pathPoints[0].y}`;
+    for (let i = 1; i < pathPoints.length; i++) {
+      fillPathData += ` L ${pathPoints[i].x} ${pathPoints[i].y}`;
+    }
+    fillPathData += ` L ${pathPoints[pathPoints.length - 1].x} ${chartAreaHeight}`;
+    fillPathData += ' Z';
+
+    console.log('[ProgressCard] Generated path with', pathPoints.length, 'points');
 
     return {
-      labels,
-      datasets,
+      totalWidth,
+      totalHeight,
+      chartAreaWidth,
+      chartAreaHeight,
+      yAxisWidth,
+      xAxisHeight,
+      yTicks,
+      xTicks,
+      pathData,
+      fillPathData,
       yMin,
       yMax,
     };
@@ -349,7 +405,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
-  if (!chartData) {
+  if (!chartConfig) {
     return (
       <View
         style={[
@@ -377,11 +433,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
-  // Calculate chart width - reduce the extra space to allow more room for the chart itself
-  const screenWidth = Dimensions.get('window').width;
-  // Adjust width to account for card padding only
-  // The chart library will handle its own internal margins for labels
-  const chartWidth = screenWidth - (spacing.lg * 2) - 16;
+  const labelColor = isDark ? colors.textDark : colors.text;
+  const gridColor = isDark ? colors.borderDark : colors.border;
+  const lineColor = colors.success;
 
   return (
     <View
@@ -409,69 +463,72 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         </View>
       </View>
 
-      {/* Chart - with proper container padding and overflow handling */}
-      <View style={styles.chartWrapper}>
-        <View style={styles.chartContainer}>
-          <LineChart
-            data={{
-              labels: chartData.labels,
-              datasets: chartData.datasets,
-            }}
-            width={chartWidth}
-            height={260}
-            chartConfig={{
-              backgroundColor: isDark ? colors.cardDark : colors.card,
-              backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
-              backgroundGradientTo: isDark ? colors.cardDark : colors.card,
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(92, 185, 123, ${opacity})`, // colors.success
-              labelColor: (opacity = 1) =>
-                isDark
-                  ? `rgba(241, 245, 249, ${opacity})`
-                  : `rgba(43, 45, 66, ${opacity})`,
-              style: {
-                borderRadius: borderRadius.md,
-              },
-              propsForDots: {
-                r: '0', // No dots
-              },
-              propsForBackgroundLines: {
-                strokeDasharray: '',
-                stroke: isDark ? colors.borderDark : colors.border,
-                strokeWidth: 1,
-              },
-              propsForLabels: {
-                fontSize: 11,
-              },
-            }}
-            bezier
-            style={{
-              marginVertical: 8,
-              borderRadius: borderRadius.md,
-              paddingRight: 0,
-            }}
-            withInnerLines={true}
-            withOuterLines={true}
-            withVerticalLines={false}
-            withHorizontalLines={true}
-            withVerticalLabels={true}
-            withHorizontalLabels={true}
-            fromZero={false}
-            segments={5}
-            yAxisInterval={1}
-            yAxisSuffix=" lb"
-            formatYLabel={(value) => {
-              // Format Y-axis labels - just return the number, suffix is added by yAxisSuffix
-              const numValue = parseFloat(value);
-              if (Number.isNaN(numValue)) return '';
-              return `${Math.round(numValue)}`;
-            }}
-            formatXLabel={(value) => {
-              // Return the MM/DD formatted label as-is
-              return value;
-            }}
+      {/* Custom SVG Chart with Independent Axis Control */}
+      <View style={styles.chartContainer}>
+        <Svg width={chartConfig.totalWidth} height={chartConfig.totalHeight}>
+          <Defs>
+            <LinearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={lineColor} stopOpacity="0.3" />
+              <Stop offset="1" stopColor={lineColor} stopOpacity="0.05" />
+            </LinearGradient>
+          </Defs>
+
+          {/* Horizontal grid lines */}
+          {chartConfig.yTicks.map((tick, index) => (
+            <Line
+              key={`grid-h-${index}`}
+              x1={chartConfig.yAxisWidth}
+              y1={tick.y}
+              x2={chartConfig.yAxisWidth + chartConfig.chartAreaWidth}
+              y2={tick.y}
+              stroke={gridColor}
+              strokeWidth="1"
+              strokeDasharray="4 4"
+            />
+          ))}
+
+          {/* Filled area under the line */}
+          <Path
+            d={chartConfig.fillPathData}
+            fill="url(#lineGradient)"
           />
-        </View>
+
+          {/* Planned line */}
+          <Path
+            d={chartConfig.pathData}
+            stroke={lineColor}
+            strokeWidth="2.5"
+            fill="none"
+          />
+
+          {/* Y-axis labels (Weight in lbs) - INDEPENDENT CONTROL */}
+          {chartConfig.yTicks.map((tick, index) => (
+            <SvgText
+              key={`y-label-${index}`}
+              x={chartConfig.yAxisWidth - 8}
+              y={tick.y + 4}
+              fontSize="11"
+              fill={labelColor}
+              textAnchor="end"
+            >
+              {tick.label}
+            </SvgText>
+          ))}
+
+          {/* X-axis labels (Dates in MM/DD) - INDEPENDENT CONTROL */}
+          {chartConfig.xTicks.map((tick, index) => (
+            <SvgText
+              key={`x-label-${index}`}
+              x={tick.x}
+              y={chartConfig.chartAreaHeight + 20}
+              fontSize="10"
+              fill={labelColor}
+              textAnchor="middle"
+            >
+              {tick.label}
+            </SvgText>
+          ))}
+        </Svg>
       </View>
 
       {/* Y-axis label */}
@@ -537,20 +594,15 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 12,
   },
-  chartWrapper: {
+  chartContainer: {
     marginBottom: spacing.sm,
     overflow: 'visible',
-  },
-  chartContainer: {
     alignItems: 'center',
-    overflow: 'visible',
-  },
-  chart: {
-    borderRadius: borderRadius.md,
   },
   yAxisLabel: {
     ...typography.caption,
     textAlign: 'center',
     fontSize: 11,
+    marginTop: spacing.xs,
   },
 });
