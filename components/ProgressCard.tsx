@@ -226,9 +226,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     // ========================================
     // X-AXIS LABEL LOGIC WITH MM/DD FORMAT
+    // Add one extra date point to prevent last label from being cut off
     // ========================================
     const totalPoints = plannedData.length;
-    const maxXTicks = 5; // Reduced from 6 to 5 to prevent overlap
+    const maxXTicks = 6; // Increased back to 6 to show more dates
 
     console.log('[ProgressCard] Total data points:', totalPoints);
     console.log('[ProgressCard] Max X ticks:', maxXTicks);
@@ -256,6 +257,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Selected label indices:', selectedIndices);
 
     // Create labels array with MM/DD format
+    // Add one extra empty label at the end to give space for the last date
     const labels = plannedData.map((point, index) => {
       if (selectedIndices.includes(index)) {
         // Format as MM/DD
@@ -265,6 +267,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       }
       return ''; // Empty string for non-selected indices
     });
+
+    // Add one extra empty label at the end to prevent clipping
+    labels.push('');
 
     // Create dataset for planned line
     const datasets = [
@@ -378,12 +383,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   // Calculate chart width with proper margins for labels
   const screenWidth = Dimensions.get('window').width;
-  // Reduce width significantly to account for:
+  // Adjust width to account for:
   // - Card padding (spacing.lg * 2)
-  // - Chart wrapper padding (spacing.sm * 2)
-  // - Extra space for Y-axis labels with "lb" suffix (48px)
-  // - Extra space for right margin to prevent X-axis label cutoff (24px)
-  const chartWidth = screenWidth - (spacing.lg * 2) - (spacing.sm * 2) - 48 - 24;
+  // - Chart wrapper padding (spacing.md * 2) - increased for better spacing
+  // - Extra space for Y-axis labels with "lb" suffix (60px) - increased
+  // - Extra space for right margin to prevent X-axis label cutoff (32px) - increased
+  const chartWidth = screenWidth - (spacing.lg * 2) - (spacing.md * 2) - 60 - 32;
 
   return (
     <View
@@ -451,7 +456,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             style={{
               marginVertical: 8,
               borderRadius: borderRadius.md,
-              paddingRight: 24, // Increased right padding to prevent last X-axis label from being cut off
+              paddingRight: 24, // Right padding to prevent last X-axis label from being cut off
             }}
             withInnerLines={true}
             withOuterLines={true}
@@ -540,8 +545,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   chartWrapper: {
-    // Add horizontal padding to prevent labels from being flush against edges
-    paddingHorizontal: spacing.sm,
+    // Increased horizontal padding to prevent labels from being flush against edges
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.sm,
     // Allow overflow so labels can render outside if needed
     overflow: 'visible',
