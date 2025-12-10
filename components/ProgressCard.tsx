@@ -22,12 +22,20 @@ interface ProfileData {
   startWeightLbs: number;
   goalWeightLbs: number;
   weeklyLossLbs: number;
+  maintenanceCalories: number;
+  dailyCalories: number;
+}
+
+interface CalorieLog {
+  date: Date;
+  calories: number;
 }
 
 export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [calorieLogs, setCalorieLogs] = useState<CalorieLog[]>([]);
 
   useEffect(() => {
     loadProfileData();
@@ -43,7 +51,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       // Load user profile data
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('starting_weight, goal_weight, weight_unit')
+        .select('starting_weight, goal_weight, weight_unit, maintenance_calories')
         .eq('id', userId)
         .maybeSingle();
 
@@ -55,7 +63,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       // Load active goal
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
-        .select('start_date, loss_rate_lbs_per_week')
+        .select('start_date, loss_rate_lbs_per_week, daily_calories')
         .eq('user_id', userId)
         .eq('is_active', true)
         .maybeSingle();
@@ -99,6 +107,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       // Get weekly loss rate (default to 1.0 if not set)
       const weeklyLossLbs = parseFloat(goalData.loss_rate_lbs_per_week) || 1.0;
 
+      // Get maintenance calories and daily calories
+      const maintenanceCalories = userData.maintenance_calories || 2000;
+      const dailyCalories = goalData.daily_calories || 2000;
+
       // Validate all required fields
       const hasValidData =
         typeof goalWeightLbs === 'number' &&
@@ -125,6 +137,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         startWeightLbs,
         goalWeightLbs,
         weeklyLossLbs,
+        maintenanceCalories,
+        dailyCalories,
       });
 
       console.log('[ProgressCard] Profile data loaded successfully:', {
@@ -132,13 +146,75 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         startWeightLbs,
         goalWeightLbs,
         weeklyLossLbs,
+        maintenanceCalories,
+        dailyCalories,
       });
+
+      // Load calorie logs
+      await loadCalorieLogs(userId, startDate);
 
       setLoading(false);
     } catch (err: any) {
       console.error('[ProgressCard] Error loading profile data:', err);
       setError('Failed to load progress data');
       setLoading(false);
+    }
+  };
+
+  const loadCalorieLogs = async (userId: string, startDate: Date) => {
+    try {
+      const today = new Date();
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const todayStr = today.toISOString().split('T')[0];
+
+      console.log('[ProgressCard] Loading calorie logs from', startDateStr, 'to', todayStr);
+
+      // Query meals and meal_items to get daily calorie totals
+      const { data: mealsData, error: mealsError } = await supabase
+        .from('meals')
+        .select(`
+          date,
+          meal_items (
+            calories
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDateStr)
+        .lte('date', todayStr);
+
+      if (mealsError) {
+        console.error('[ProgressCard] Error loading calorie logs:', mealsError);
+        return;
+      }
+
+      console.log('[ProgressCard] Meals data returned:', mealsData?.length || 0, 'meals');
+
+      // Aggregate calories by date
+      const caloriesByDate: { [key: string]: number } = {};
+
+      if (mealsData && mealsData.length > 0) {
+        mealsData.forEach((meal: any) => {
+          if (meal.meal_items) {
+            meal.meal_items.forEach((item: any) => {
+              if (!caloriesByDate[meal.date]) {
+                caloriesByDate[meal.date] = 0;
+              }
+              caloriesByDate[meal.date] += item.calories || 0;
+            });
+          }
+        });
+      }
+
+      // Convert to CalorieLog array
+      const logs: CalorieLog[] = Object.entries(caloriesByDate).map(([dateStr, calories]) => ({
+        date: new Date(dateStr + 'T00:00:00'),
+        calories,
+      }));
+
+      console.log('[ProgressCard] Calorie logs loaded:', logs.length, 'days with data');
+      setCalorieLogs(logs);
+    } catch (err: any) {
+      console.error('[ProgressCard] Error loading calorie logs:', err);
     }
   };
 
@@ -206,6 +282,86 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     return dataPoints;
   }, [profileData]);
 
+  // Calculate calorie projection data
+  const calorieProjectionData = useMemo(() => {
+    if (!profileData || !plannedData || plannedData.length === 0) {
+      return null;
+    }
+
+    const { weeklyLossLbs, maintenanceCalories, dailyCalories } = profileData;
+
+    console.log('[ProgressCard] Computing calorie projection with:', {
+      weeklyLossLbs,
+      maintenanceCalories,
+      dailyCalories,
+      calorieLogsCount: calorieLogs.length,
+    });
+
+    // Create a map of calorie logs by date
+    const logsByDate: { [key: string]: number } = {};
+    calorieLogs.forEach((log) => {
+      const dateStr = log.date.toISOString().split('T')[0];
+      logsByDate[dateStr] = log.calories;
+    });
+
+    // Calculate planned daily deficit and calories
+    const plannedDailyDeficit = (weeklyLossLbs * 3500) / 7;
+    const plannedDailyCalories = dailyCalories; // Use the daily_calories from goals table
+
+    console.log('[ProgressCard] Planned daily deficit:', plannedDailyDeficit);
+    console.log('[ProgressCard] Planned daily calories:', plannedDailyCalories);
+
+    let cumulativeDeviation = 0;
+    const projectionPoints: { date: Date; weightLbs: number }[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < plannedData.length; i++) {
+      const plannedPoint = plannedData[i];
+      const currentDate = new Date(plannedPoint.date);
+      currentDate.setHours(0, 0, 0, 0);
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const plannedWeightForDay = plannedPoint.weightLbs;
+
+      let projectedWeight: number;
+
+      if (currentDate <= today) {
+        // For past and current days, calculate deviation
+        const actualCalories = logsByDate[dateStr];
+        
+        if (actualCalories !== undefined && actualCalories !== null) {
+          // Calculate delta from planned calories
+          const delta = actualCalories - plannedDailyCalories;
+          const deltaWeight = delta / 3500;
+          cumulativeDeviation += deltaWeight;
+          
+          console.log('[ProgressCard] Day', dateStr, ':', {
+            actualCalories,
+            plannedDailyCalories,
+            delta,
+            deltaWeight: deltaWeight.toFixed(4),
+            cumulativeDeviation: cumulativeDeviation.toFixed(4),
+          });
+        }
+        
+        projectedWeight = plannedWeightForDay + cumulativeDeviation;
+      } else {
+        // For future days, use frozen deviation
+        projectedWeight = plannedWeightForDay + cumulativeDeviation;
+      }
+
+      projectionPoints.push({
+        date: currentDate,
+        weightLbs: projectedWeight,
+      });
+    }
+
+    console.log('[ProgressCard] Generated', projectionPoints.length, 'projection data points');
+    console.log('[ProgressCard] Final cumulative deviation:', cumulativeDeviation.toFixed(4), 'lbs');
+
+    return projectionPoints;
+  }, [profileData, plannedData, calorieLogs]);
+
   // Prepare chart data with custom SVG rendering
   const chartConfig = useMemo(() => {
     if (!profileData || !plannedData || plannedData.length === 0) {
@@ -252,12 +408,34 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     // ========================================
     // Y-AXIS CONFIGURATION (Weight in lbs)
     // ========================================
-    const minWeight = Math.min(startWeightLbs, goalWeightLbs);
-    const maxWeight = Math.max(startWeightLbs, goalWeightLbs);
+    // Include both plannedData and calorieProjectionData in yMin/yMax calculation
+    let minWeight = Math.min(startWeightLbs, goalWeightLbs);
+    let maxWeight = Math.max(startWeightLbs, goalWeightLbs);
+
+    if (calorieProjectionData && calorieProjectionData.length > 0) {
+      const projectionWeights = calorieProjectionData.map(p => p.weightLbs);
+      const projectionMin = Math.min(...projectionWeights);
+      const projectionMax = Math.max(...projectionWeights);
+      
+      minWeight = Math.min(minWeight, projectionMin);
+      maxWeight = Math.max(maxWeight, projectionMax);
+      
+      console.log('[ProgressCard] Including projection data in Y-axis range:', {
+        projectionMin: projectionMin.toFixed(1),
+        projectionMax: projectionMax.toFixed(1),
+      });
+    }
+
     const weightPadding = 3;
     const yMin = Math.max(0, minWeight - weightPadding);
     const yMax = maxWeight + weightPadding;
     const yRange = yMax - yMin;
+
+    console.log('[ProgressCard] Y-axis range:', {
+      yMin: yMin.toFixed(1),
+      yMax: yMax.toFixed(1),
+      yRange: yRange.toFixed(1),
+    });
 
     // Generate Y-axis labels (6 evenly spaced ticks)
     const numYTicks = 6;
@@ -312,32 +490,54 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] X-axis ticks:', xTicks);
 
     // ========================================
-    // GENERATE LINE PATH
+    // GENERATE PLANNED LINE PATH
     // ========================================
-    const pathPoints = plannedData.map((point, index) => {
+    const plannedPathPoints = plannedData.map((point, index) => {
       const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
       const normalizedWeight = (point.weightLbs - yMin) / yRange;
       const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
       return { x, y };
     });
 
-    // Create SVG path string
-    let pathData = `M ${pathPoints[0].x} ${pathPoints[0].y}`;
-    for (let i = 1; i < pathPoints.length; i++) {
-      pathData += ` L ${pathPoints[i].x} ${pathPoints[i].y}`;
+    // Create SVG path string for planned line
+    let plannedPathData = `M ${plannedPathPoints[0].x} ${plannedPathPoints[0].y}`;
+    for (let i = 1; i < plannedPathPoints.length; i++) {
+      plannedPathData += ` L ${plannedPathPoints[i].x} ${plannedPathPoints[i].y}`;
     }
 
-    // Create filled area path (for gradient under the line)
+    // Create filled area path (for gradient under the planned line)
     const chartBottom = topPadding + chartAreaHeight;
-    let fillPathData = `M ${pathPoints[0].x} ${chartBottom}`;
-    fillPathData += ` L ${pathPoints[0].x} ${pathPoints[0].y}`;
-    for (let i = 1; i < pathPoints.length; i++) {
-      fillPathData += ` L ${pathPoints[i].x} ${pathPoints[i].y}`;
+    let fillPathData = `M ${plannedPathPoints[0].x} ${chartBottom}`;
+    fillPathData += ` L ${plannedPathPoints[0].x} ${plannedPathPoints[0].y}`;
+    for (let i = 1; i < plannedPathPoints.length; i++) {
+      fillPathData += ` L ${plannedPathPoints[i].x} ${plannedPathPoints[i].y}`;
     }
-    fillPathData += ` L ${pathPoints[pathPoints.length - 1].x} ${chartBottom}`;
+    fillPathData += ` L ${plannedPathPoints[plannedPathPoints.length - 1].x} ${chartBottom}`;
     fillPathData += ' Z';
 
-    console.log('[ProgressCard] Generated path with', pathPoints.length, 'points');
+    console.log('[ProgressCard] Generated planned path with', plannedPathPoints.length, 'points');
+
+    // ========================================
+    // GENERATE CALORIE PROJECTION LINE PATH
+    // ========================================
+    let projectionPathData: string | null = null;
+    
+    if (calorieProjectionData && calorieProjectionData.length > 0) {
+      const projectionPathPoints = calorieProjectionData.map((point, index) => {
+        const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
+        const normalizedWeight = (point.weightLbs - yMin) / yRange;
+        const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
+        return { x, y };
+      });
+
+      // Create SVG path string for projection line
+      projectionPathData = `M ${projectionPathPoints[0].x} ${projectionPathPoints[0].y}`;
+      for (let i = 1; i < projectionPathPoints.length; i++) {
+        projectionPathData += ` L ${projectionPathPoints[i].x} ${projectionPathPoints[i].y}`;
+      }
+
+      console.log('[ProgressCard] Generated projection path with', projectionPathPoints.length, 'points');
+    }
 
     return {
       totalWidth,
@@ -349,12 +549,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       topPadding,
       yTicks,
       xTicks,
-      pathData,
+      pathData: plannedPathData,
       fillPathData,
+      projectionPathData,
       yMin,
       yMax,
     };
-  }, [profileData, plannedData]);
+  }, [profileData, plannedData, calorieProjectionData]);
 
   if (loading) {
     return (
@@ -442,6 +643,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const labelColor = isDark ? colors.textDark : colors.text;
   const gridColor = isDark ? colors.borderDark : colors.border;
   const lineColor = colors.success;
+  const projectionColor = colors.primary;
 
   return (
     <View
@@ -467,6 +669,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             Planned
           </Text>
         </View>
+        {chartConfig.projectionPathData && (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
+            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+              Calorie projection
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Custom SVG Chart with Independent Axis Control */}
@@ -493,7 +703,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             />
           ))}
 
-          {/* Filled area under the line */}
+          {/* Filled area under the planned line */}
           <Path
             d={chartConfig.fillPathData}
             fill="url(#lineGradient)"
@@ -506,6 +716,16 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             strokeWidth="2.5"
             fill="none"
           />
+
+          {/* Calorie projection line */}
+          {chartConfig.projectionPathData && (
+            <Path
+              d={chartConfig.projectionPathData}
+              stroke={projectionColor}
+              strokeWidth="2"
+              fill="none"
+            />
+          )}
 
           {/* Y-axis labels (Weight in lbs) - INDEPENDENT CONTROL */}
           {chartConfig.yTicks.map((tick, index) => (
