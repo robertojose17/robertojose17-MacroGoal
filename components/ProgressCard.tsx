@@ -228,7 +228,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     // X-AXIS LABEL LOGIC WITH MM/DD FORMAT
     // ========================================
     const totalPoints = plannedData.length;
-    const maxXTicks = 6; // Maximum number of labels to show
+    const maxXTicks = 5; // Reduced from 6 to 5 to prevent overlap
 
     console.log('[ProgressCard] Total data points:', totalPoints);
     console.log('[ProgressCard] Max X ticks:', maxXTicks);
@@ -378,8 +378,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   // Calculate chart width with proper margins for labels
   const screenWidth = Dimensions.get('window').width;
-  // Reduce width to account for card padding and extra space for Y-axis labels
-  const chartWidth = screenWidth - (spacing.lg * 2) - 16;
+  // Increase left margin to accommodate Y-axis labels with "lb" suffix
+  // Reduce width to account for card padding and extra space for both Y-axis and X-axis labels
+  const chartWidth = screenWidth - (spacing.lg * 2) - 32;
 
   return (
     <View
@@ -447,7 +448,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             style={{
               marginVertical: 8,
               borderRadius: borderRadius.md,
-              paddingRight: 0,
+              paddingRight: 16, // Add right padding to prevent last X-axis label from being cut off
             }}
             withInnerLines={true}
             withOuterLines={true}
@@ -459,9 +460,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             segments={5}
             yAxisInterval={1}
             formatYLabel={(value) => {
+              // Format Y-axis labels with "lb" suffix
               const numValue = parseFloat(value);
               if (Number.isNaN(numValue)) return '';
-              return Math.round(numValue).toString();
+              return `${Math.round(numValue)} lb`;
             }}
             formatXLabel={(value) => {
               // Return the MM/DD formatted label as-is
@@ -536,7 +538,7 @@ const styles = StyleSheet.create({
   },
   chartWrapper: {
     // Add horizontal padding to prevent labels from being flush against edges
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,
     // Allow overflow so labels can render outside if needed
     overflow: 'visible',
