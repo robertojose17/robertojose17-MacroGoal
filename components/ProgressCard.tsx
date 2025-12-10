@@ -229,7 +229,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     // Add one extra date point to prevent last label from being cut off
     // ========================================
     const totalPoints = plannedData.length;
-    const maxXTicks = 6; // Increased back to 6 to show more dates
+    const maxXTicks = 5; // Reduced to 5 to prevent overlap
 
     console.log('[ProgressCard] Total data points:', totalPoints);
     console.log('[ProgressCard] Max X ticks:', maxXTicks);
@@ -257,7 +257,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Selected label indices:', selectedIndices);
 
     // Create labels array with MM/DD format
-    // Add one extra empty label at the end to give space for the last date
     const labels = plannedData.map((point, index) => {
       if (selectedIndices.includes(index)) {
         // Format as MM/DD
@@ -267,9 +266,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       }
       return ''; // Empty string for non-selected indices
     });
-
-    // Add one extra empty label at the end to prevent clipping
-    labels.push('');
 
     // Create dataset for planned line
     const datasets = [
@@ -381,14 +377,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
-  // Calculate chart width with proper margins for labels
+  // Calculate chart width - reduce the extra space to allow more room for the chart itself
   const screenWidth = Dimensions.get('window').width;
-  // Adjust width to account for:
-  // - Card padding (spacing.lg * 2)
-  // - Chart wrapper padding (spacing.md * 2) - increased for better spacing
-  // - Extra space for Y-axis labels with "lb" suffix (60px) - increased
-  // - Extra space for right margin to prevent X-axis label cutoff (32px) - increased
-  const chartWidth = screenWidth - (spacing.lg * 2) - (spacing.md * 2) - 60 - 32;
+  // Adjust width to account for card padding only
+  // The chart library will handle its own internal margins for labels
+  const chartWidth = screenWidth - (spacing.lg * 2) - 16;
 
   return (
     <View
@@ -425,8 +418,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               datasets: chartData.datasets,
             }}
             width={chartWidth}
-            height={240}
-            yAxisSuffix=" lb"
+            height={260}
             chartConfig={{
               backgroundColor: isDark ? colors.cardDark : colors.card,
               backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
@@ -449,14 +441,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                 strokeWidth: 1,
               },
               propsForLabels: {
-                fontSize: 10,
+                fontSize: 11,
               },
             }}
             bezier
             style={{
               marginVertical: 8,
               borderRadius: borderRadius.md,
-              paddingRight: 24, // Right padding to prevent last X-axis label from being cut off
+              paddingRight: 0,
             }}
             withInnerLines={true}
             withOuterLines={true}
@@ -467,11 +459,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             fromZero={false}
             segments={5}
             yAxisInterval={1}
+            yAxisSuffix=" lb"
             formatYLabel={(value) => {
-              // Format Y-axis labels with "lb" suffix
+              // Format Y-axis labels - just return the number, suffix is added by yAxisSuffix
               const numValue = parseFloat(value);
               if (Number.isNaN(numValue)) return '';
-              return `${Math.round(numValue)} lb`;
+              return `${Math.round(numValue)}`;
             }}
             formatXLabel={(value) => {
               // Return the MM/DD formatted label as-is
@@ -545,15 +538,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   chartWrapper: {
-    // Increased horizontal padding to prevent labels from being flush against edges
-    paddingHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    // Allow overflow so labels can render outside if needed
     overflow: 'visible',
   },
   chartContainer: {
     alignItems: 'center',
-    // Allow overflow for tick labels
     overflow: 'visible',
   },
   chart: {
