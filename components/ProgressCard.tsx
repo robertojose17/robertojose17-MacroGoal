@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import Svg, { Line, Path, Circle, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -42,6 +43,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [calorieLogs, setCalorieLogs] = useState<CalorieLog[]>([]);
   const [actualWeightPoints, setActualWeightPoints] = useState<WeightCheckIn[]>([]);
+
+  // ========================================
+  // VISIBILITY TOGGLES STATE
+  // ========================================
+  const [showPlannedLine, setShowPlannedLine] = useState(true);
+  const [showCalorieProjectionLine, setShowCalorieProjectionLine] = useState(true);
+  const [showActualWeightDots, setShowActualWeightDots] = useState(true);
 
   useEffect(() => {
     loadProfileData();
@@ -788,21 +796,126 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         },
       ]}
     >
+      {/* ========================================
+          HEADER WITH TITLE AND TOGGLE CONTROLS
+          ======================================== */}
       <View style={styles.cardHeader}>
         <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Progress
         </Text>
+        
+        {/* Toggle Controls Panel */}
+        <View style={styles.togglesContainer}>
+          {/* Planned Line Toggle */}
+          <TouchableOpacity
+            style={[
+              styles.toggleChip,
+              {
+                backgroundColor: showPlannedLine
+                  ? (isDark ? colors.success + '30' : colors.success + '20')
+                  : (isDark ? colors.cardDark : colors.card),
+                borderColor: showPlannedLine
+                  ? colors.success
+                  : (isDark ? colors.borderDark : colors.border),
+              },
+            ]}
+            onPress={() => setShowPlannedLine(!showPlannedLine)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.toggleChipText,
+                {
+                  color: showPlannedLine
+                    ? colors.success
+                    : (isDark ? colors.textSecondaryDark : colors.textSecondary),
+                  fontWeight: showPlannedLine ? '600' : '400',
+                },
+              ]}
+            >
+              Planeado
+            </Text>
+          </TouchableOpacity>
+
+          {/* Calorie Projection Toggle */}
+          {chartConfig.projectionPathData && (
+            <TouchableOpacity
+              style={[
+                styles.toggleChip,
+                {
+                  backgroundColor: showCalorieProjectionLine
+                    ? (isDark ? colors.primary + '30' : colors.primary + '20')
+                    : (isDark ? colors.cardDark : colors.card),
+                  borderColor: showCalorieProjectionLine
+                    ? colors.primary
+                    : (isDark ? colors.borderDark : colors.border),
+                },
+              ]}
+              onPress={() => setShowCalorieProjectionLine(!showCalorieProjectionLine)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.toggleChipText,
+                  {
+                    color: showCalorieProjectionLine
+                      ? colors.primary
+                      : (isDark ? colors.textSecondaryDark : colors.textSecondary),
+                    fontWeight: showCalorieProjectionLine ? '600' : '400',
+                  },
+                ]}
+              >
+                Calorías
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Actual Weight Dots Toggle */}
+          {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
+            <TouchableOpacity
+              style={[
+                styles.toggleChip,
+                {
+                  backgroundColor: showActualWeightDots
+                    ? (isDark ? colors.warning + '30' : colors.warning + '20')
+                    : (isDark ? colors.cardDark : colors.card),
+                  borderColor: showActualWeightDots
+                    ? colors.warning
+                    : (isDark ? colors.borderDark : colors.border),
+                },
+              ]}
+              onPress={() => setShowActualWeightDots(!showActualWeightDots)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.toggleChipText,
+                  {
+                    color: showActualWeightDots
+                      ? colors.warning
+                      : (isDark ? colors.textSecondaryDark : colors.textSecondary),
+                    fontWeight: showActualWeightDots ? '600' : '400',
+                  },
+                ]}
+              >
+                Peso actual
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Legend */}
       <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: colors.success }]} />
-          <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-            Planned
-          </Text>
-        </View>
-        {chartConfig.projectionPathData && (
+        {showPlannedLine && (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendLine, { backgroundColor: colors.success }]} />
+            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+              Planned
+            </Text>
+          </View>
+        )}
+        {showCalorieProjectionLine && chartConfig.projectionPathData && (
           <View style={styles.legendItem}>
             <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
             <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
@@ -810,7 +923,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             </Text>
           </View>
         )}
-        {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
+        {showActualWeightDots && chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
             <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
@@ -844,22 +957,30 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             />
           ))}
 
-          {/* Filled area under the planned line */}
-          <Path
-            d={chartConfig.fillPathData}
-            fill="url(#lineGradient)"
-          />
+          {/* ========================================
+              CONDITIONAL RENDERING OF DATASETS
+              ======================================== */}
+
+          {/* Filled area under the planned line (only if planned line is visible) */}
+          {showPlannedLine && (
+            <Path
+              d={chartConfig.fillPathData}
+              fill="url(#lineGradient)"
+            />
+          )}
 
           {/* Planned line */}
-          <Path
-            d={chartConfig.pathData}
-            stroke={lineColor}
-            strokeWidth="2.5"
-            fill="none"
-          />
+          {showPlannedLine && (
+            <Path
+              d={chartConfig.pathData}
+              stroke={lineColor}
+              strokeWidth="2.5"
+              fill="none"
+            />
+          )}
 
           {/* Calorie projection line */}
-          {chartConfig.projectionPathData && (
+          {showCalorieProjectionLine && chartConfig.projectionPathData && (
             <Path
               d={chartConfig.projectionPathData}
               stroke={projectionColor}
@@ -869,7 +990,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
           )}
 
           {/* Actual weight points (circles only, no line) */}
-          {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.map((circle, index) => (
+          {showActualWeightDots && chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.map((circle, index) => (
             <Circle
               key={`actual-weight-${index}`}
               cx={circle.x}
@@ -934,10 +1055,30 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   cardTitle: {
     ...typography.h3,
+  },
+  togglesContainer: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  toggleChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs - 2,
+    borderRadius: borderRadius.full,
+    borderWidth: 1.5,
+  },
+  toggleChipText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
   },
   loadingContainer: {
     alignItems: 'center',
