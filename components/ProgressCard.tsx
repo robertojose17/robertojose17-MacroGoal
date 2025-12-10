@@ -376,9 +376,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     );
   }
 
-  // Fixed width - always use screen width minus padding with extra margin for labels
+  // Calculate chart width with proper margins for labels
   const screenWidth = Dimensions.get('window').width;
-  const chartWidth = screenWidth - spacing.md * 4;
+  // Reduce width to account for card padding and extra space for Y-axis labels
+  const chartWidth = screenWidth - (spacing.lg * 2) - 16;
 
   return (
     <View
@@ -406,66 +407,68 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         </View>
       </View>
 
-      {/* Chart - Fixed width with proper margins and padding */}
-      <View style={styles.chartContainer}>
-        <LineChart
-          data={{
-            labels: chartData.labels,
-            datasets: chartData.datasets,
-          }}
-          width={chartWidth}
-          height={220}
-          yAxisSuffix=" lb"
-          chartConfig={{
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
-            backgroundGradientTo: isDark ? colors.cardDark : colors.card,
-            decimalPlaces: 0,
-            color: (opacity = 1) => `rgba(92, 185, 123, ${opacity})`, // colors.success
-            labelColor: (opacity = 1) =>
-              isDark
-                ? `rgba(241, 245, 249, ${opacity})`
-                : `rgba(43, 45, 66, ${opacity})`,
-            style: {
+      {/* Chart - with proper container padding and overflow handling */}
+      <View style={styles.chartWrapper}>
+        <View style={styles.chartContainer}>
+          <LineChart
+            data={{
+              labels: chartData.labels,
+              datasets: chartData.datasets,
+            }}
+            width={chartWidth}
+            height={240}
+            yAxisSuffix=" lb"
+            chartConfig={{
+              backgroundColor: isDark ? colors.cardDark : colors.card,
+              backgroundGradientFrom: isDark ? colors.cardDark : colors.card,
+              backgroundGradientTo: isDark ? colors.cardDark : colors.card,
+              decimalPlaces: 0,
+              color: (opacity = 1) => `rgba(92, 185, 123, ${opacity})`, // colors.success
+              labelColor: (opacity = 1) =>
+                isDark
+                  ? `rgba(241, 245, 249, ${opacity})`
+                  : `rgba(43, 45, 66, ${opacity})`,
+              style: {
+                borderRadius: borderRadius.md,
+              },
+              propsForDots: {
+                r: '0', // No dots
+              },
+              propsForBackgroundLines: {
+                strokeDasharray: '',
+                stroke: isDark ? colors.borderDark : colors.border,
+                strokeWidth: 1,
+              },
+              propsForLabels: {
+                fontSize: 10,
+              },
+            }}
+            bezier
+            style={{
+              marginVertical: 8,
               borderRadius: borderRadius.md,
-            },
-            propsForDots: {
-              r: '0', // No dots
-            },
-            propsForBackgroundLines: {
-              strokeDasharray: '',
-              stroke: isDark ? colors.borderDark : colors.border,
-              strokeWidth: 1,
-            },
-            propsForLabels: {
-              fontSize: 10,
-            },
-          }}
-          bezier
-          style={{
-            marginVertical: 8,
-            borderRadius: borderRadius.md,
-            paddingRight: 24, // Add right padding to prevent label clipping
-          }}
-          withInnerLines={true}
-          withOuterLines={true}
-          withVerticalLines={false}
-          withHorizontalLines={true}
-          withVerticalLabels={true}
-          withHorizontalLabels={true}
-          fromZero={false}
-          segments={5}
-          yAxisInterval={1}
-          formatYLabel={(value) => {
-            const numValue = parseFloat(value);
-            if (Number.isNaN(numValue)) return '';
-            return Math.round(numValue).toString();
-          }}
-          formatXLabel={(value) => {
-            // Return the MM/DD formatted label as-is
-            return value;
-          }}
-        />
+              paddingRight: 0,
+            }}
+            withInnerLines={true}
+            withOuterLines={true}
+            withVerticalLines={false}
+            withHorizontalLines={true}
+            withVerticalLabels={true}
+            withHorizontalLabels={true}
+            fromZero={false}
+            segments={5}
+            yAxisInterval={1}
+            formatYLabel={(value) => {
+              const numValue = parseFloat(value);
+              if (Number.isNaN(numValue)) return '';
+              return Math.round(numValue).toString();
+            }}
+            formatXLabel={(value) => {
+              // Return the MM/DD formatted label as-is
+              return value;
+            }}
+          />
+        </View>
       </View>
 
       {/* Y-axis label */}
@@ -531,9 +534,17 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 12,
   },
+  chartWrapper: {
+    // Add horizontal padding to prevent labels from being flush against edges
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
+    // Allow overflow so labels can render outside if needed
+    overflow: 'visible',
+  },
   chartContainer: {
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    // Allow overflow for tick labels
+    overflow: 'visible',
   },
   chart: {
     borderRadius: borderRadius.md,
