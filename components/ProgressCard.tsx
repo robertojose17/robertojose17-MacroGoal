@@ -7,7 +7,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import Svg, { Line, Path, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Line, Path, Circle, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -31,11 +31,17 @@ interface CalorieLog {
   calories: number;
 }
 
+interface WeightCheckIn {
+  date: Date;
+  weightLbs: number;
+}
+
 export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [calorieLogs, setCalorieLogs] = useState<CalorieLog[]>([]);
+  const [actualWeightPoints, setActualWeightPoints] = useState<WeightCheckIn[]>([]);
 
   useEffect(() => {
     loadProfileData();
@@ -153,6 +159,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       // Load calorie logs
       await loadCalorieLogs(userId, startDate);
 
+      // Load weight check-ins
+      await loadWeightCheckIns(userId, startDate, weightUnit);
+
       setLoading(false);
     } catch (err: any) {
       console.error('[ProgressCard] Error loading profile data:', err);
@@ -215,6 +224,72 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setCalorieLogs(logs);
     } catch (err: any) {
       console.error('[ProgressCard] Error loading calorie logs:', err);
+    }
+  };
+
+  const loadWeightCheckIns = async (userId: string, startDate: Date, weightUnit: string) => {
+    try {
+      const today = new Date();
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const todayStr = today.toISOString().split('T')[0];
+
+      console.log('[ProgressCard] Loading weight check-ins from', startDateStr, 'to', todayStr);
+
+      // Query check_ins table for weight data
+      const { data: checkInsData, error: checkInsError } = await supabase
+        .from('check_ins')
+        .select('date, weight')
+        .eq('user_id', userId)
+        .gte('date', startDateStr)
+        .lte('date', todayStr)
+        .not('weight', 'is', null)
+        .order('date', { ascending: true });
+
+      if (checkInsError) {
+        console.error('[ProgressCard] Error loading weight check-ins:', checkInsError);
+        return;
+      }
+
+      console.log('[ProgressCard] Weight check-ins returned:', checkInsData?.length || 0, 'entries');
+
+      if (!checkInsData || checkInsData.length === 0) {
+        console.log('[ProgressCard] No weight check-ins found');
+        setActualWeightPoints([]);
+        return;
+      }
+
+      // Convert weights to lbs if needed (check_ins table stores weight in kg)
+      const weightPoints: WeightCheckIn[] = checkInsData.map((checkIn: any) => {
+        let weightLbs: number;
+        
+        // The check_ins table stores weight in kg, so we need to convert based on user preference
+        if (weightUnit === 'lbs') {
+          // If user prefers lbs, the weight in the table is actually in kg, so convert
+          weightLbs = checkIn.weight * 2.20462;
+        } else {
+          // If user prefers kg, the weight in the table is in kg, so convert to lbs for chart
+          weightLbs = checkIn.weight * 2.20462;
+        }
+
+        return {
+          date: new Date(checkIn.date + 'T00:00:00'),
+          weightLbs,
+        };
+      });
+
+      console.log('[ProgressCard] Weight check-ins loaded:', weightPoints.length, 'points');
+      console.log('[ProgressCard] First check-in:', {
+        date: weightPoints[0]?.date.toISOString().split('T')[0],
+        weightLbs: weightPoints[0]?.weightLbs.toFixed(1),
+      });
+      console.log('[ProgressCard] Last check-in:', {
+        date: weightPoints[weightPoints.length - 1]?.date.toISOString().split('T')[0],
+        weightLbs: weightPoints[weightPoints.length - 1]?.weightLbs.toFixed(1),
+      });
+
+      setActualWeightPoints(weightPoints);
+    } catch (err: any) {
+      console.error('[ProgressCard] Error loading weight check-ins:', err);
     }
   };
 
@@ -408,7 +483,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     // ========================================
     // Y-AXIS CONFIGURATION (Weight in lbs)
     // ========================================
-    // Include both plannedData and calorieProjectionData in yMin/yMax calculation
+    // Include plannedData, calorieProjectionData, and actualWeightPoints in yMin/yMax calculation
     let minWeight = Math.min(startWeightLbs, goalWeightLbs);
     let maxWeight = Math.max(startWeightLbs, goalWeightLbs);
 
@@ -423,6 +498,20 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] Including projection data in Y-axis range:', {
         projectionMin: projectionMin.toFixed(1),
         projectionMax: projectionMax.toFixed(1),
+      });
+    }
+
+    if (actualWeightPoints && actualWeightPoints.length > 0) {
+      const actualWeights = actualWeightPoints.map(p => p.weightLbs);
+      const actualMin = Math.min(...actualWeights);
+      const actualMax = Math.max(...actualWeights);
+      
+      minWeight = Math.min(minWeight, actualMin);
+      maxWeight = Math.max(maxWeight, actualMax);
+      
+      console.log('[ProgressCard] Including actual weight points in Y-axis range:', {
+        actualMin: actualMin.toFixed(1),
+        actualMax: actualMax.toFixed(1),
       });
     }
 
@@ -539,6 +628,48 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] Generated projection path with', projectionPathPoints.length, 'points');
     }
 
+    // ========================================
+    // GENERATE ACTUAL WEIGHT POINTS (NO LINE)
+    // ========================================
+    const actualWeightCircles: { x: number; y: number; weightLbs: number }[] = [];
+    
+    if (actualWeightPoints && actualWeightPoints.length > 0) {
+      // Create a date-to-index map for the planned data
+      const dateToIndexMap: { [key: string]: number } = {};
+      plannedData.forEach((point, index) => {
+        const dateStr = point.date.toISOString().split('T')[0];
+        dateToIndexMap[dateStr] = index;
+      });
+
+      // Map each actual weight point to its corresponding position on the chart
+      actualWeightPoints.forEach((point) => {
+        const dateStr = point.date.toISOString().split('T')[0];
+        
+        // Find the closest index in the planned data
+        let closestIndex = 0;
+        let minDiff = Math.abs(point.date.getTime() - plannedData[0].date.getTime());
+        
+        for (let i = 1; i < plannedData.length; i++) {
+          const diff = Math.abs(point.date.getTime() - plannedData[i].date.getTime());
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = i;
+          }
+        }
+
+        // Calculate x position based on the closest index
+        const x = yAxisWidth + (chartAreaWidth * closestIndex / (totalPoints - 1));
+        
+        // Calculate y position based on weight
+        const normalizedWeight = (point.weightLbs - yMin) / yRange;
+        const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
+
+        actualWeightCircles.push({ x, y, weightLbs: point.weightLbs });
+      });
+
+      console.log('[ProgressCard] Generated', actualWeightCircles.length, 'actual weight point circles');
+    }
+
     return {
       totalWidth,
       totalHeight,
@@ -552,10 +683,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       pathData: plannedPathData,
       fillPathData,
       projectionPathData,
+      actualWeightCircles,
       yMin,
       yMax,
     };
-  }, [profileData, plannedData, calorieProjectionData]);
+  }, [profileData, plannedData, calorieProjectionData, actualWeightPoints]);
 
   if (loading) {
     return (
@@ -644,6 +776,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const gridColor = isDark ? colors.borderDark : colors.border;
   const lineColor = colors.success;
   const projectionColor = colors.primary;
+  const actualWeightColor = colors.warning; // Using warning color (orange) for actual weight points
 
   return (
     <View
@@ -674,6 +807,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
             <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
               Calorie projection
+            </Text>
+          </View>
+        )}
+        {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
+              Actual weight
             </Text>
           </View>
         )}
@@ -726,6 +867,19 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               fill="none"
             />
           )}
+
+          {/* Actual weight points (circles only, no line) */}
+          {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.map((circle, index) => (
+            <Circle
+              key={`actual-weight-${index}`}
+              cx={circle.x}
+              cy={circle.y}
+              r="5"
+              fill={actualWeightColor}
+              stroke={isDark ? colors.cardDark : colors.card}
+              strokeWidth="2"
+            />
+          ))}
 
           {/* Y-axis labels (Weight in lbs) - INDEPENDENT CONTROL */}
           {chartConfig.yTicks.map((tick, index) => (
@@ -805,6 +959,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
   },
   legendItem: {
     flexDirection: 'row',
@@ -815,6 +970,11 @@ const styles = StyleSheet.create({
     width: 20,
     height: 3,
     borderRadius: 2,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   legendText: {
     ...typography.caption,
