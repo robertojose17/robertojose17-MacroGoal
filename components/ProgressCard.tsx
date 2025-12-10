@@ -157,48 +157,61 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       weeklyLossLbs,
     });
 
-    // Calculate total weight to lose (can be positive for loss, negative for gain)
-    const totalToLose = startWeightLbs - goalWeightLbs;
+    // Calculate weight loss per day
+    const weightLossPerDay = weeklyLossLbs / 7;
 
-    // Calculate weeks needed to reach goal
-    const weeksNeeded = Math.abs(totalToLose / weeklyLossLbs);
+    // Determine if we're losing or gaining weight
+    const isLosingWeight = startWeightLbs > goalWeightLbs;
 
-    // Calculate goal date
-    const daysToGoal = Math.round(weeksNeeded * 7);
-    const goalDate = new Date(startDate);
-    goalDate.setDate(goalDate.getDate() + daysToGoal);
+    console.log('[ProgressCard] Weight change per day:', weightLossPerDay);
+    console.log('[ProgressCard] Is losing weight:', isLosingWeight);
 
-    console.log('[ProgressCard] Planned timeline:', {
-      totalToLose,
-      weeksNeeded,
-      daysToGoal,
-      goalDate: goalDate.toISOString().split('T')[0],
+    // Generate daily data points - STOP exactly when target is reached
+    const dataPoints: { date: Date; weightLbs: number }[] = [];
+
+    // Add the starting point
+    dataPoints.push({
+      date: new Date(startDate),
+      weightLbs: startWeightLbs,
     });
 
-    // Generate daily data points from startDate to goalDate
-    const dataPoints: { date: Date; weightLbs: number }[] = [];
-    const currentDate = new Date(startDate);
+    // Generate points until we reach the target weight
+    for (let i = 1; i <= 730; i++) {
+      const currentDate = new Date(startDate);
+      currentDate.setDate(currentDate.getDate() + i);
 
-    while (currentDate <= goalDate) {
-      const daysSinceStart = Math.floor(
-        (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      // Linear interpolation
+      // Calculate planned weight for this day
       let plannedWeight: number;
-      if (daysToGoal > 0) {
-        const progress = daysSinceStart / daysToGoal;
-        plannedWeight = startWeightLbs + (goalWeightLbs - startWeightLbs) * progress;
+      if (isLosingWeight) {
+        plannedWeight = startWeightLbs - (i * weightLossPerDay);
       } else {
-        plannedWeight = goalWeightLbs;
+        plannedWeight = startWeightLbs + (i * weightLossPerDay);
       }
 
+      // Check if we've reached or passed the target weight
+      if (isLosingWeight && plannedWeight <= goalWeightLbs) {
+        // We've reached the target - add final point at EXACTLY the target weight
+        dataPoints.push({
+          date: new Date(currentDate),
+          weightLbs: goalWeightLbs,
+        });
+        console.log('[ProgressCard] Reached target weight on day', i, 'at date', currentDate.toISOString().split('T')[0]);
+        break; // STOP - no more points
+      } else if (!isLosingWeight && plannedWeight >= goalWeightLbs) {
+        // We've reached the target for weight gain
+        dataPoints.push({
+          date: new Date(currentDate),
+          weightLbs: goalWeightLbs,
+        });
+        console.log('[ProgressCard] Reached target weight on day', i, 'at date', currentDate.toISOString().split('T')[0]);
+        break; // STOP - no more points
+      }
+
+      // Haven't reached target yet - add this point
       dataPoints.push({
         date: new Date(currentDate),
         weightLbs: plannedWeight,
       });
-
-      currentDate.setDate(currentDate.getDate() + 1);
     }
 
     console.log('[ProgressCard] Generated', dataPoints.length, 'planned data points');
@@ -233,7 +246,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Y-axis range:', { yMin, yMax });
 
     // ========================================
-    // X-AXIS LABEL LOGIC WITH RIGHT PADDING
+    // X-AXIS LABEL LOGIC WITH MM/DD FORMAT
     // ========================================
     const totalPoints = plannedData.length;
     const maxXTicks = 6; // Maximum number of labels to show
@@ -241,15 +254,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     console.log('[ProgressCard] Total data points:', totalPoints);
     console.log('[ProgressCard] Max X ticks:', maxXTicks);
 
-    // Add a dummy padding date after the last real date
-    // This creates visual space so the last real date is fully visible
-    const lastRealDate = plannedData[plannedData.length - 1].date;
-    const paddingDate = new Date(lastRealDate);
-    paddingDate.setDate(paddingDate.getDate() + 4); // Add 4 days of padding
-
-    console.log('[ProgressCard] Adding padding date:', paddingDate.toISOString().split('T')[0]);
-
-    // Determine which indices to show labels for (from the REAL data points only)
+    // Determine which indices to show labels for
     let selectedIndices: number[];
     
     if (totalPoints <= maxXTicks) {
@@ -271,44 +276,21 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     console.log('[ProgressCard] Selected label indices:', selectedIndices);
 
-    // Determine date format based on total range
-    const totalDays = totalPoints;
-    let labelFormat: 'MM/dd' | 'MM/yy';
-    
-    if (totalDays <= 60) {
-      labelFormat = 'MM/dd';
-    } else {
-      labelFormat = 'MM/yy';
-    }
-
-    console.log('[ProgressCard] Using label format:', labelFormat);
-
-    // Create labels array - empty strings for non-selected indices
-    // Include the padding date at the end with an empty label
+    // Create labels array with MM/DD format
     const labels = plannedData.map((point, index) => {
       if (selectedIndices.includes(index)) {
+        // Format as MM/DD
         const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
         const day = point.date.getDate().toString().padStart(2, '0');
-        const year = point.date.getFullYear().toString().slice(-2);
-
-        if (labelFormat === 'MM/dd') {
-          return `${month}/${day}`;
-        } else {
-          return `${month}/${year}`;
-        }
+        return `${month}/${day}`;
       }
       return ''; // Empty string for non-selected indices
     });
 
-    // Add the padding label (empty string - no visible label, just spacing)
-    labels.push('');
-
     // Create dataset for planned line
-    // Add the last weight value again for the padding point (so the line extends to the edge)
-    const lastWeight = plannedData[plannedData.length - 1].weightLbs;
     const datasets = [
       {
-        data: [...plannedData.map(p => p.weightLbs), lastWeight],
+        data: plannedData.map(p => p.weightLbs),
         color: () => colors.success, // Green for planned
         strokeWidth: 2,
         withDots: false,
@@ -316,8 +298,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     ];
 
     console.log('[ProgressCard] Chart data prepared:', {
-      totalDays,
-      labelFormat,
       selectedIndices: selectedIndices.length,
       visibleLabels: labels.filter(l => l !== '').length,
       dataPoints: plannedData.length,
@@ -447,7 +427,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         </View>
       </View>
 
-      {/* Chart - Fixed width, no scrolling */}
+      {/* Chart - Fixed width with proper margins and padding */}
       <View style={styles.chartContainer}>
         <LineChart
           data={{
@@ -478,9 +458,16 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               stroke: isDark ? colors.borderDark : colors.border,
               strokeWidth: 1,
             },
+            propsForLabels: {
+              fontSize: 10,
+            },
           }}
           bezier
-          style={styles.chart}
+          style={{
+            marginVertical: 8,
+            borderRadius: borderRadius.md,
+            paddingRight: 0,
+          }}
           withInnerLines={true}
           withOuterLines={true}
           withVerticalLines={false}
@@ -494,6 +481,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             const numValue = parseFloat(value);
             if (Number.isNaN(numValue)) return '';
             return Math.round(numValue).toString();
+          }}
+          formatXLabel={(value) => {
+            // Return the MM/DD formatted label as-is
+            return value;
           }}
         />
       </View>
