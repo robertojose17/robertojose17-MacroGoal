@@ -378,9 +378,12 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   // Calculate chart width with proper margins for labels
   const screenWidth = Dimensions.get('window').width;
-  // Increase left margin to accommodate Y-axis labels with "lb" suffix
-  // Reduce width to account for card padding and extra space for both Y-axis and X-axis labels
-  const chartWidth = screenWidth - (spacing.lg * 2) - 32;
+  // Reduce width significantly to account for:
+  // - Card padding (spacing.lg * 2)
+  // - Chart wrapper padding (spacing.sm * 2)
+  // - Extra space for Y-axis labels with "lb" suffix (48px)
+  // - Extra space for right margin to prevent X-axis label cutoff (24px)
+  const chartWidth = screenWidth - (spacing.lg * 2) - (spacing.sm * 2) - 48 - 24;
 
   return (
     <View
@@ -448,7 +451,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             style={{
               marginVertical: 8,
               borderRadius: borderRadius.md,
-              paddingRight: 16, // Add right padding to prevent last X-axis label from being cut off
+              paddingRight: 24, // Increased right padding to prevent last X-axis label from being cut off
             }}
             withInnerLines={true}
             withOuterLines={true}
