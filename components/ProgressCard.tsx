@@ -228,12 +228,15 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const xAxisHeight = 30;
     const xAxisLabelPadding = 8;
     
+    // Top padding to prevent label cutoff
+    const topPadding = 16; // Extra space at the top for the highest label
+    
     // Chart area dimensions
     const chartAreaWidth = screenWidth - cardPadding - yAxisWidth - 20; // 20 for right padding
     const chartAreaHeight = 220;
     
     const totalWidth = screenWidth - cardPadding;
-    const totalHeight = chartAreaHeight + xAxisHeight;
+    const totalHeight = chartAreaHeight + xAxisHeight + topPadding;
 
     console.log('[ProgressCard] Chart dimensions:', {
       screenWidth,
@@ -243,6 +246,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       chartAreaHeight,
       yAxisWidth,
       xAxisHeight,
+      topPadding,
     });
 
     // ========================================
@@ -261,7 +265,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     
     for (let i = 0; i < numYTicks; i++) {
       const value = yMax - (yRange * i / (numYTicks - 1));
-      const y = (chartAreaHeight * i / (numYTicks - 1));
+      const y = topPadding + (chartAreaHeight * i / (numYTicks - 1));
       yTicks.push({
         value,
         label: `${Math.round(value)} lb`,
@@ -313,7 +317,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const pathPoints = plannedData.map((point, index) => {
       const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
       const normalizedWeight = (point.weightLbs - yMin) / yRange;
-      const y = chartAreaHeight * (1 - normalizedWeight);
+      const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
       return { x, y };
     });
 
@@ -324,12 +328,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     }
 
     // Create filled area path (for gradient under the line)
-    let fillPathData = `M ${pathPoints[0].x} ${chartAreaHeight}`;
+    const chartBottom = topPadding + chartAreaHeight;
+    let fillPathData = `M ${pathPoints[0].x} ${chartBottom}`;
     fillPathData += ` L ${pathPoints[0].x} ${pathPoints[0].y}`;
     for (let i = 1; i < pathPoints.length; i++) {
       fillPathData += ` L ${pathPoints[i].x} ${pathPoints[i].y}`;
     }
-    fillPathData += ` L ${pathPoints[pathPoints.length - 1].x} ${chartAreaHeight}`;
+    fillPathData += ` L ${pathPoints[pathPoints.length - 1].x} ${chartBottom}`;
     fillPathData += ' Z';
 
     console.log('[ProgressCard] Generated path with', pathPoints.length, 'points');
@@ -341,6 +346,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       chartAreaHeight,
       yAxisWidth,
       xAxisHeight,
+      topPadding,
       yTicks,
       xTicks,
       pathData,
@@ -520,7 +526,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             <SvgText
               key={`x-label-${index}`}
               x={tick.x}
-              y={chartConfig.chartAreaHeight + 20}
+              y={chartConfig.topPadding + chartConfig.chartAreaHeight + 20}
               fontSize="10"
               fill={labelColor}
               textAnchor="middle"
