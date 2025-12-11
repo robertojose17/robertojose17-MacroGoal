@@ -5,9 +5,11 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
+import { IconSymbol } from '@/components/IconSymbol';
 
 interface ConsistencyScoreProps {
   userId: string;
@@ -28,6 +30,7 @@ interface ScoreBreakdown {
 export default function ConsistencyScore({ userId, isDark }: ConsistencyScoreProps) {
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<ScoreBreakdown | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     if (userId) {
@@ -334,8 +337,12 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         },
       ]}
     >
-      {/* Main Score Display */}
-      <View style={styles.mainScoreContainer}>
+      {/* Main Score Display - Tappable */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => setShowDetails(!showDetails)}
+        style={styles.mainScoreContainer}
+      >
         <View style={styles.scoreCircle}>
           <Text style={[styles.scoreValue, { color: scoreColor }]}>
             {scoreData.total}
@@ -352,88 +359,96 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
             Your daily tracking performance
           </Text>
         </View>
-      </View>
+        <IconSymbol
+          ios_icon_name={showDetails ? "chevron.up" : "chevron.down"}
+          android_material_icon_name={showDetails ? "expand_less" : "expand_more"}
+          size={24}
+          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+        />
+      </TouchableOpacity>
 
-      {/* Score Breakdown */}
-      <View style={styles.breakdownContainer}>
-        {/* Daily Tracking */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownHeader}>
-            <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-              Daily Tracking
-            </Text>
-            <Text style={[styles.breakdownScore, { color: scoreData.dailyTracking === 40 ? colors.success : colors.error }]}>
-              {scoreData.dailyTracking}/40
+      {/* Score Breakdown - Conditionally Rendered */}
+      {showDetails && (
+        <View style={styles.breakdownContainer}>
+          {/* Daily Tracking */}
+          <View style={styles.breakdownItem}>
+            <View style={styles.breakdownHeader}>
+              <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Daily Tracking
+              </Text>
+              <Text style={[styles.breakdownScore, { color: scoreData.dailyTracking === 40 ? colors.success : colors.error }]}>
+                {scoreData.dailyTracking}/40
+              </Text>
+            </View>
+            <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${(scoreData.dailyTracking / 40) * 100}%`,
+                    backgroundColor: scoreData.dailyTracking === 40 ? colors.success : colors.error,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {scoreData.hasLoggedToday ? '✓ Logged today' : '✗ No meals logged today'}
             </Text>
           </View>
-          <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${(scoreData.dailyTracking / 40) * 100}%`,
-                  backgroundColor: scoreData.dailyTracking === 40 ? colors.success : colors.error,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {scoreData.hasLoggedToday ? '✓ Logged today' : '✗ No meals logged today'}
-          </Text>
-        </View>
 
-        {/* Streak Score */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownHeader}>
-            <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-              Streak Score
-            </Text>
-            <Text style={[styles.breakdownScore, { color: colors.primary }]}>
-              {scoreData.streakScore}/35
+          {/* Streak Score */}
+          <View style={styles.breakdownItem}>
+            <View style={styles.breakdownHeader}>
+              <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Streak Score
+              </Text>
+              <Text style={[styles.breakdownScore, { color: colors.primary }]}>
+                {scoreData.streakScore}/35
+              </Text>
+            </View>
+            <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${(scoreData.streakScore / 35) * 100}%`,
+                    backgroundColor: colors.primary,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {scoreData.streakDays} day{scoreData.streakDays !== 1 ? 's' : ''} streak
             </Text>
           </View>
-          <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${(scoreData.streakScore / 35) * 100}%`,
-                  backgroundColor: colors.primary,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {scoreData.streakDays} day{scoreData.streakDays !== 1 ? 's' : ''} streak
-          </Text>
-        </View>
 
-        {/* Protein Accuracy */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownHeader}>
-            <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-              Protein Accuracy
-            </Text>
-            <Text style={[styles.breakdownScore, { color: colors.protein }]}>
-              {scoreData.proteinAccuracy}/25
+          {/* Protein Accuracy */}
+          <View style={styles.breakdownItem}>
+            <View style={styles.breakdownHeader}>
+              <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Protein Accuracy
+              </Text>
+              <Text style={[styles.breakdownScore, { color: colors.protein }]}>
+                {scoreData.proteinAccuracy}/25
+              </Text>
+            </View>
+            <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${(scoreData.proteinAccuracy / 25) * 100}%`,
+                    backgroundColor: colors.protein,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {Math.round(scoreData.proteinLogged)}g / {scoreData.proteinTarget}g ({Math.round((scoreData.proteinLogged / scoreData.proteinTarget) * 100)}%)
             </Text>
           </View>
-          <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${(scoreData.proteinAccuracy / 25) * 100}%`,
-                  backgroundColor: colors.protein,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {Math.round(scoreData.proteinLogged)}g / {scoreData.proteinTarget}g ({Math.round((scoreData.proteinLogged / scoreData.proteinTarget) * 100)}%)
-          </Text>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -455,7 +470,6 @@ const styles = StyleSheet.create({
   mainScoreContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
     gap: spacing.md,
   },
   scoreCircle: {
@@ -491,6 +505,7 @@ const styles = StyleSheet.create({
   },
   breakdownContainer: {
     gap: spacing.md,
+    marginTop: spacing.lg,
   },
   breakdownItem: {
     gap: spacing.xs,
