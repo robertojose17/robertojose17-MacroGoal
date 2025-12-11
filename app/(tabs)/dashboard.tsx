@@ -17,6 +17,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
+import ProgressCircle from '@/components/ProgressCircle';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
@@ -396,13 +397,14 @@ export default function DashboardScreen() {
   }
 
   const caloriesGoal = goal?.daily_calories || 2000;
-  const caloriesEaten = todaySummary?.total_calories || 0;
-  const caloriesRemaining = caloriesGoal - caloriesEaten;
-  const caloriesProgress = Math.min((caloriesEaten / caloriesGoal) * 100, 100);
+  const proteinGoal = goal?.protein_g || 150;
+  const carbsGoal = goal?.carbs_g || 200;
+  const fatsGoal = goal?.fats_g || 65;
+  const fiberGoal = goal?.fiber_g || 30;
 
   // Calculate nutrition trend values for display (matching Foods tab style)
-  const nutritionCaloriesRemaining = nutritionStats ? caloriesGoal - nutritionStats.avgCalories : 0;
-  const nutritionCaloriesProgress = nutritionStats ? Math.min((nutritionStats.avgCalories / caloriesGoal) * 100, 100) : 0;
+  const nutritionCaloriesEaten = nutritionStats?.avgCalories || 0;
+  const nutritionCaloriesRemaining = caloriesGoal - nutritionCaloriesEaten;
 
   return (
     <SafeAreaView
@@ -424,7 +426,7 @@ export default function DashboardScreen() {
         {/* Consistency Score - NEW COMPONENT AT THE TOP */}
         {user && <ConsistencyScore userId={user.id} isDark={isDark} />}
 
-        {/* Nutrition Trends Card - RESTYLED TO MATCH FOODS TAB */}
+        {/* Nutrition Trends Card - RESTYLED TO MATCH FOODS TAB MOBILE LAYOUT */}
         <View style={[
           styles.card, 
           { 
@@ -515,84 +517,127 @@ export default function DashboardScreen() {
                 </View>
               )}
 
-              {/* Summary Row - Matching Foods tab style */}
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Goal
-                  </Text>
-                  <Text style={[styles.summaryValue, { color: isDark ? colors.textDark : colors.text }]}>
-                    {caloriesGoal}
-                  </Text>
+              {/* Main Content: Circular Ring + Macro Bars (Food Tab Style) */}
+              <View style={styles.nutritionContent}>
+                {/* Left: Circular Calories Ring */}
+                <View style={styles.caloriesRingContainer}>
+                  <ProgressCircle
+                    current={nutritionCaloriesEaten}
+                    target={caloriesGoal}
+                    size={140}
+                    strokeWidth={12}
+                    color={nutritionCaloriesRemaining >= 0 ? colors.success : colors.error}
+                    label="kcal"
+                  />
                 </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {nutritionRange === 'today' ? 'Eaten' : 'Avg'}
-                  </Text>
-                  <Text style={[styles.summaryValue, { color: colors.calories }]}>
-                    {Math.round(nutritionStats.avgCalories)}
-                  </Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Remaining
-                  </Text>
-                  <Text style={[styles.summaryValue, { color: nutritionCaloriesRemaining >= 0 ? colors.success : colors.error }]}>
-                    {Math.round(nutritionCaloriesRemaining)}
-                  </Text>
+
+                {/* Right: Macro Bars */}
+                <View style={styles.macrosContainer}>
+                  {/* Protein Bar */}
+                  <View style={styles.macroBarWrapper}>
+                    <View style={styles.macroBarHeader}>
+                      <Text style={[styles.macroBarLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                        Protein
+                      </Text>
+                      <Text style={[styles.macroBarValues, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {Math.round(nutritionStats.avgProtein)} / {proteinGoal}g
+                      </Text>
+                    </View>
+                    <View style={[styles.macroBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+                      <View
+                        style={[
+                          styles.macroBarFill,
+                          {
+                            width: `${Math.min((nutritionStats.avgProtein / proteinGoal) * 100, 100)}%`,
+                            backgroundColor: colors.protein,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Carbs Bar */}
+                  <View style={styles.macroBarWrapper}>
+                    <View style={styles.macroBarHeader}>
+                      <Text style={[styles.macroBarLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                        Carbs
+                      </Text>
+                      <Text style={[styles.macroBarValues, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {Math.round(nutritionStats.avgCarbs)} / {carbsGoal}g
+                      </Text>
+                    </View>
+                    <View style={[styles.macroBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+                      <View
+                        style={[
+                          styles.macroBarFill,
+                          {
+                            width: `${Math.min((nutritionStats.avgCarbs / carbsGoal) * 100, 100)}%`,
+                            backgroundColor: colors.carbs,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Fats Bar */}
+                  <View style={styles.macroBarWrapper}>
+                    <View style={styles.macroBarHeader}>
+                      <Text style={[styles.macroBarLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                        Fats
+                      </Text>
+                      <Text style={[styles.macroBarValues, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {Math.round(nutritionStats.avgFats)} / {fatsGoal}g
+                      </Text>
+                    </View>
+                    <View style={[styles.macroBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+                      <View
+                        style={[
+                          styles.macroBarFill,
+                          {
+                            width: `${Math.min((nutritionStats.avgFats / fatsGoal) * 100, 100)}%`,
+                            backgroundColor: colors.fats,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Fiber Bar */}
+                  <View style={styles.macroBarWrapper}>
+                    <View style={styles.macroBarHeader}>
+                      <Text style={[styles.macroBarLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                        Fiber
+                      </Text>
+                      <Text style={[styles.macroBarValues, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {Math.round(nutritionStats.avgFiber)} / {fiberGoal}g
+                      </Text>
+                    </View>
+                    <View style={[styles.macroBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+                      <View
+                        style={[
+                          styles.macroBarFill,
+                          {
+                            width: `${Math.min((nutritionStats.avgFiber / fiberGoal) * 100, 100)}%`,
+                            backgroundColor: colors.fiber,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
                 </View>
               </View>
 
-              {/* Progress Bar - Matching Foods tab style */}
-              <View style={[styles.progressBarContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <View 
-                  style={[
-                    styles.progressBarFill, 
-                    { 
-                      width: `${nutritionCaloriesProgress}%`,
-                      backgroundColor: nutritionCaloriesRemaining >= 0 ? colors.success : colors.error
+              {/* Optional: Remaining Calories Text */}
+              {nutritionCaloriesRemaining !== 0 && (
+                <View style={styles.remainingContainer}>
+                  <Text style={[styles.remainingText, { color: nutritionCaloriesRemaining >= 0 ? (isDark ? colors.textSecondaryDark : colors.textSecondary) : colors.error }]}>
+                    {nutritionCaloriesRemaining >= 0 
+                      ? `${Math.round(nutritionCaloriesRemaining)} kcal remaining`
+                      : `${Math.abs(Math.round(nutritionCaloriesRemaining))} kcal over`
                     }
-                  ]} 
-                />
-              </View>
-
-              {/* Macros Summary - Matching Foods tab style */}
-              <View style={styles.macrosSummary}>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.protein }]}>
-                    {Math.round(nutritionStats.avgProtein)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Protein
                   </Text>
                 </View>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.carbs }]}>
-                    {Math.round(nutritionStats.avgCarbs)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Carbs
-                  </Text>
-                </View>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.fats }]}>
-                    {Math.round(nutritionStats.avgFats)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Fats
-                  </Text>
-                </View>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.fiber }]}>
-                    {Math.round(nutritionStats.avgFiber)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Fiber
-                  </Text>
-                </View>
-              </View>
+              )}
             </React.Fragment>
           ) : (
             <Text style={[styles.noDataText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -765,48 +810,53 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 16,
   },
-  summaryRow: {
+  nutritionContent: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
+    gap: spacing.lg,
     marginBottom: spacing.md,
   },
-  summaryItem: {
+  caloriesRingContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  summaryLabel: {
-    ...typography.caption,
+  macrosContainer: {
+    flex: 1,
+    gap: spacing.md,
+  },
+  macroBarWrapper: {
     marginBottom: spacing.xs,
   },
-  summaryValue: {
-    ...typography.h2,
+  macroBarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
   },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: colors.border,
+  macroBarLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
-  progressBarContainer: {
-    height: 8,
+  macroBarValues: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  macroBarBackground: {
+    height: 6,
     borderRadius: borderRadius.full,
     overflow: 'hidden',
-    marginBottom: spacing.md,
   },
-  progressBarFill: {
+  macroBarFill: {
     height: '100%',
     borderRadius: borderRadius.full,
   },
-  macrosSummary: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  macroItem: {
+  remainingContainer: {
     alignItems: 'center',
+    paddingTop: spacing.sm,
   },
-  macroValue: {
-    ...typography.bodyBold,
-    fontSize: 18,
-  },
-  macroLabel: {
-    ...typography.caption,
+  remainingText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   noDataText: {
     ...typography.body,
