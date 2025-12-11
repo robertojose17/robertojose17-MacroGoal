@@ -57,12 +57,13 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       const hasLoggedToday = todayMeals && todayMeals.length > 0;
 
       // Daily Tracking Score (0-40 points)
+      // Binary: 40 if logged today, 0 if not
       const dailyTrackingScore = hasLoggedToday ? 40 : 0;
 
-      // 2. Calculate streak (consecutive days with at least one meal logged)
-      const streakDays = await calculateStreak(userId);
+      // 2. Calculate streak with decay logic
+      const streakDays = await calculateStreakWithDecay(userId, today, hasLoggedToday);
 
-      // Streak Score (0-35 points) using logarithmic curve
+      // Streak Score (0-35 points) using exponential curve
       // Formula: 35 * (1 - e^(-0.1 * streak_days))
       const streakScore = 35 * (1 - Math.exp(-0.1 * streakDays));
 
@@ -109,7 +110,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       // Protein Accuracy Score (0-25 points)
       const proteinAccuracyScore = calculateProteinAccuracyScore(proteinLogged, proteinTarget);
 
-      // Total Score
+      // Total Score (0-100)
       const totalScore = dailyTrackingScore + streakScore + proteinAccuracyScore;
 
       console.log('[ConsistencyScore] Score breakdown:', {
@@ -141,56 +142,101 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     }
   };
 
-  const calculateStreak = async (userId: string): Promise<number> => {
+  const calculateStreakWithDecay = async (userId: string, today: string, hasLoggedToday: boolean): Promise<number> => {
     try {
-      // Get all dates with at least one meal logged, ordered by date descending
-      const { data: mealsData, error } = await supabase
-        .from('meals')
-        .select('date')
+      // Get or create user streak record
+      const { data: streakData, error: streakError } = await supabase
+        .from('user_streaks')
+        .select('*')
         .eq('user_id', userId)
-        .order('date', { ascending: false });
+        .maybeSingle();
 
-      if (error) {
-        console.error('[ConsistencyScore] Error loading meals for streak:', error);
+      if (streakError && streakError.code !== 'PGRST116') {
+        console.error('[ConsistencyScore] Error loading streak:', streakError);
         return 0;
       }
 
-      if (!mealsData || mealsData.length === 0) {
-        return 0;
+      let currentStreak = 0;
+      let lastTrackedDate = null;
+
+      if (streakData) {
+        currentStreak = streakData.current_streak || 0;
+        lastTrackedDate = streakData.last_tracked_date;
       }
 
-      // Get unique dates
-      const uniqueDates = Array.from(new Set(mealsData.map((m: any) => m.date))).sort().reverse();
-
-      const today = new Date().toISOString().split('T')[0];
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      // Check if the most recent log is today or yesterday
-      const lastDate = uniqueDates[0];
-      if (lastDate !== today && lastDate !== yesterdayStr) {
-        // Streak is broken
-        return 0;
+      // Calculate days since last tracked
+      let daysSinceLastTracked = 0;
+      if (lastTrackedDate) {
+        const lastDate = new Date(lastTrackedDate);
+        const todayDate = new Date(today);
+        daysSinceLastTracked = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
       }
 
-      // Count consecutive days
-      let streak = 1;
-      for (let i = 1; i < uniqueDates.length; i++) {
-        const currentDate = new Date(uniqueDates[i - 1]);
-        const prevDate = new Date(uniqueDates[i]);
-        const diffDays = Math.floor((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+      console.log('[ConsistencyScore] Streak calculation:', {
+        currentStreak,
+        lastTrackedDate,
+        daysSinceLastTracked,
+        hasLoggedToday,
+      });
 
-        if (diffDays === 1) {
-          streak++;
+      // Apply decay logic
+      if (lastTrackedDate && lastTrackedDate !== today) {
+        if (daysSinceLastTracked === 1) {
+          // Logged yesterday, continue or start streak
+          if (hasLoggedToday) {
+            currentStreak += 1;
+          } else {
+            // Missed today, no change yet (will decay tomorrow)
+            // Keep current streak
+          }
+        } else if (daysSinceLastTracked === 2) {
+          // Missed 1 day (yesterday), apply 30% decay
+          currentStreak = Math.floor(currentStreak * 0.7);
+          if (hasLoggedToday) {
+            currentStreak += 1;
+          }
+        } else if (daysSinceLastTracked > 2) {
+          // Missed more than 2 days, reset to 0
+          currentStreak = 0;
+          if (hasLoggedToday) {
+            currentStreak = 1;
+          }
+        }
+      } else if (!lastTrackedDate) {
+        // First time tracking
+        if (hasLoggedToday) {
+          currentStreak = 1;
+        }
+      } else if (lastTrackedDate === today) {
+        // Already tracked today, keep current streak
+        // No change needed
+      }
+
+      // Update streak record
+      if (hasLoggedToday && lastTrackedDate !== today) {
+        const upsertData = {
+          user_id: userId,
+          current_streak: currentStreak,
+          last_tracked_date: today,
+          last_updated: new Date().toISOString(),
+        };
+
+        const { error: upsertError } = await supabase
+          .from('user_streaks')
+          .upsert(upsertData, {
+            onConflict: 'user_id',
+          });
+
+        if (upsertError) {
+          console.error('[ConsistencyScore] Error updating streak:', upsertError);
         } else {
-          break;
+          console.log('[ConsistencyScore] Streak updated:', upsertData);
         }
       }
 
-      return streak;
+      return currentStreak;
     } catch (error) {
-      console.error('[ConsistencyScore] Error calculating streak:', error);
+      console.error('[ConsistencyScore] Error calculating streak with decay:', error);
       return 0;
     }
   };
@@ -201,6 +247,13 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     }
 
     const percentage = (proteinLogged / proteinTarget) * 100;
+
+    // Exact scoring as specified:
+    // 95-105% → 25 pts
+    // 80-94% → 20 pts
+    // 60-79% → 15 pts
+    // 40-59% → 10 pts
+    // <40% → 0-5 pts (scaled)
 
     if (percentage >= 95 && percentage <= 105) {
       return 25;
@@ -214,10 +267,11 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       // Scale from 0-5 based on how close to 40%
       return Math.round((percentage / 40) * 5);
     } else {
-      // Over 105%, scale down from 25 to 15 as percentage increases
+      // Over 105%, gradually reduce score
+      // Scale down from 25 to 15 as percentage increases beyond 105%
       const excess = percentage - 105;
       const penalty = Math.min(10, excess / 5);
-      return Math.max(15, 25 - penalty);
+      return Math.max(15, Math.round(25 - penalty));
     }
   };
 
