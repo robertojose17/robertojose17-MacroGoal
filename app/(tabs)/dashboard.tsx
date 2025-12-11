@@ -381,6 +381,25 @@ export default function DashboardScreen() {
     return `${start} - ${end}`;
   };
 
+  // Helper function to get the average text based on selected range
+  const getAverageText = () => {
+    if (nutritionRange === 'today') {
+      return null; // No text for Today
+    } else if (nutritionRange === '7days') {
+      return 'Average for last 7 days';
+    } else if (nutritionRange === '30days') {
+      return 'Average for last 30 days';
+    } else if (nutritionRange === 'custom' && nutritionCustomRange) {
+      // Calculate number of days in custom range
+      const start = new Date(nutritionCustomRange.startDate);
+      const end = new Date(nutritionCustomRange.endDate);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end dates
+      return `Average for last ${diffDays} days`;
+    }
+    return null;
+  };
+
   if (loading) {
     return (
       <SafeAreaView
@@ -627,14 +646,11 @@ export default function DashboardScreen() {
                 </View>
               </View>
 
-              {/* Optional: Remaining Calories Text */}
-              {nutritionCaloriesRemaining !== 0 && (
-                <View style={styles.remainingContainer}>
-                  <Text style={[styles.remainingText, { color: nutritionCaloriesRemaining >= 0 ? (isDark ? colors.textSecondaryDark : colors.textSecondary) : colors.error }]}>
-                    {nutritionCaloriesRemaining >= 0 
-                      ? `${Math.round(nutritionCaloriesRemaining)} kcal remaining`
-                      : `${Math.abs(Math.round(nutritionCaloriesRemaining))} kcal over`
-                    }
+              {/* Average Text - Replaces "kcal remaining" */}
+              {getAverageText() && (
+                <View style={styles.averageTextContainer}>
+                  <Text style={[styles.averageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {getAverageText()}
                   </Text>
                 </View>
               )}
@@ -785,21 +801,24 @@ const styles = StyleSheet.create({
   },
   rangeSelector: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
     marginBottom: spacing.md,
   },
   rangeButton: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: 4,
     borderRadius: borderRadius.md,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 32,
   },
   rangeButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
+    textAlign: 'center',
   },
   streakBadge: {
     alignItems: 'center',
@@ -850,11 +869,11 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: borderRadius.full,
   },
-  remainingContainer: {
+  averageTextContainer: {
     alignItems: 'center',
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
   },
-  remainingText: {
+  averageText: {
     fontSize: 13,
     fontWeight: '500',
   },
