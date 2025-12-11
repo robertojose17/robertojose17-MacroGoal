@@ -22,7 +22,7 @@ import ProgressCard from '@/components/ProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import { supabase } from '@/app/integrations/supabase/client';
 
-type TimeRange = '7days' | '30days' | 'custom';
+type TimeRange = 'today' | '7days' | '30days' | 'custom';
 
 interface CheckIn {
   id: string;
@@ -195,7 +195,12 @@ export default function DashboardScreen() {
       let startDate: Date;
       let endDate: Date;
       
-      if (nutritionRange === '7days') {
+      if (nutritionRange === 'today') {
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+      } else if (nutritionRange === '7days') {
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
         startDate = new Date();
@@ -554,6 +559,22 @@ export default function DashboardScreen() {
           </Text>
 
           <View style={styles.rangeSelector}>
+            <TouchableOpacity
+              style={[
+                styles.rangeButton,
+                nutritionRange === 'today' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => setNutritionRange('today')}
+            >
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: nutritionRange === 'today' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                Today
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.rangeButton,
