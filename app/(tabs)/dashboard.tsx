@@ -20,6 +20,7 @@ import MacroBar from '@/components/MacroBar';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
+import PhotoProgressCard from '@/components/PhotoProgressCard';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type TimeRange = 'today' | '7days' | '30days' | 'custom';
@@ -602,6 +603,9 @@ export default function DashboardScreen() {
 
         {/* Progress Card */}
         {user && <ProgressCard userId={user.id} isDark={isDark} />}
+
+        {/* Photo Progress Card */}
+        {user && <PhotoProgressCard userId={user.id} isDark={isDark} />}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
