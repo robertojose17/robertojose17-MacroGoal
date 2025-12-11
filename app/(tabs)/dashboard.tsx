@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import MacroBar from '@/components/MacroBar';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
+import ConsistencyScore from '@/components/ConsistencyScore';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type TimeRange = '7days' | '30days' | 'custom';
@@ -410,6 +411,9 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
+        {/* Consistency Score - NEW COMPONENT AT THE TOP */}
+        {user && <ConsistencyScore userId={user.id} isDark={isDark} />}
+
         {/* Daily Summary Card */}
         <View style={[
           styles.card, 
@@ -670,7 +674,7 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Progress Card - NEW */}
+        {/* Progress Card */}
         {user && <ProgressCard userId={user.id} isDark={isDark} />}
 
         <View style={styles.bottomSpacer} />
