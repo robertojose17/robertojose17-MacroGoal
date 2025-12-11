@@ -59,7 +59,7 @@ export default function DashboardScreen() {
   const [todayCheckIn, setTodayCheckIn] = useState<CheckIn | null>(null);
   const [todaySummary, setTodaySummary] = useState<DailySummary | null>(null);
   
-  const [nutritionRange, setNutritionRange] = useState<TimeRange>('7days');
+  const [nutritionRange, setNutritionRange] = useState<TimeRange>('today');
   
   const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
   
@@ -368,7 +368,7 @@ export default function DashboardScreen() {
     setShowCalendarPicker(false);
     
     if (nutritionRange === 'custom' && !nutritionCustomRange) {
-      setNutritionRange('7days');
+      setNutritionRange('today');
     }
   };
 
