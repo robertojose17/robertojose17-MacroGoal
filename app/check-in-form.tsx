@@ -20,6 +20,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { compressImage, uriToBlob, generateCheckInPhotoFilename } from '@/utils/imageUtils';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
 
@@ -128,14 +129,13 @@ export default function CheckInFormScreen() {
 
       console.log('[CheckInForm] 📥 Loaded check-in data:', data);
 
-      // FIX: Parse date correctly from database (stored as YYYY-MM-DD)
-      // Create a date object at noon local time to avoid timezone issues
+      // Parse date correctly from database (stored as YYYY-MM-DD)
       const [year, month, day] = data.date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day, 12, 0, 0);
       console.log('[CheckInForm] 📅 Parsed date:', data.date, '→', localDate.toLocaleDateString());
       setDate(localDate);
       
-      // FIX: Weight is stored in kg, convert to display units WITHOUT double conversion
+      // Weight is stored in kg, convert to display units
       if (data.weight) {
         const units = user?.preferred_units || 'metric';
         console.log('[CheckInForm] ⚖️ Weight from DB:', data.weight, 'kg');
@@ -219,37 +219,96 @@ export default function CheckInFormScreen() {
     setPhotoUrl(null);
   };
 
-  const uploadPhoto = async (uri: string, userId: string): Promise<string | null> => {
+  /**
+   * Upload photo to Supabase Storage with retry logic
+   * @param uri - The local URI of the image
+   * @param userId - The user's ID
+   * @param dateString - The check-in date (YYYY-MM-DD)
+   * @param retryCount - Current retry attempt (default: 0)
+   * @returns The public URL of the uploaded photo, or null if failed
+   */
+  const uploadPhoto = async (
+    uri: string,
+    userId: string,
+    dateString: string,
+    retryCount: number = 0
+  ): Promise<string | null> => {
+    const maxRetries = 1;
+    
     try {
-      console.log('[CheckInForm] Uploading photo...');
+      console.log('[CheckInForm] 📤 Uploading photo (attempt', retryCount + 1, 'of', maxRetries + 1, ')...');
       
-      const fileExt = uri.split('.').pop();
-      const fileName = `${userId}/${Date.now()}.${fileExt}`;
+      // Step 1: Compress the image
+      const compressedUri = await compressImage(uri);
+      console.log('[CheckInForm] ✅ Image compressed');
+      
+      // Step 2: Convert to blob
+      const blob = await uriToBlob(compressedUri);
+      console.log('[CheckInForm] ✅ Blob created, size:', blob.size, 'bytes');
+      
+      // Step 3: Generate unique filename
+      const fileName = generateCheckInPhotoFilename(userId, dateString);
       const filePath = `check-in-photos/${fileName}`;
+      console.log('[CheckInForm] 📁 Upload path:', filePath);
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
+      // Step 4: Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from('check-ins')
         .upload(filePath, blob, {
-          contentType: `image/${fileExt}`,
+          contentType: 'image/jpeg',
           upsert: false,
         });
 
       if (error) {
-        console.error('[CheckInForm] Upload error:', error);
+        console.error('[CheckInForm] ❌ Upload error:', error);
+        
+        // Retry logic for transient errors
+        if (retryCount < maxRetries) {
+          console.log('[CheckInForm] 🔄 Retrying upload...');
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+          return uploadPhoto(uri, userId, dateString, retryCount + 1);
+        }
+        
+        // Log detailed error for debugging
+        console.error('[CheckInForm] ❌ Photo upload failed after', maxRetries + 1, 'attempts');
+        console.error('[CheckInForm] Error details:', {
+          message: error.message,
+          userId,
+          date: dateString,
+          filePath,
+          blobSize: blob.size,
+        });
+        
         return null;
       }
 
+      // Step 5: Get public URL
       const { data: urlData } = supabase.storage
         .from('check-ins')
         .getPublicUrl(filePath);
 
-      console.log('[CheckInForm] Photo uploaded successfully');
+      console.log('[CheckInForm] ✅ Photo uploaded successfully');
+      console.log('[CheckInForm] 🔗 Public URL:', urlData.publicUrl);
+      
       return urlData.publicUrl;
     } catch (error) {
-      console.error('[CheckInForm] Error uploading photo:', error);
+      console.error('[CheckInForm] ❌ Error in uploadPhoto:', error);
+      
+      // Retry logic for unexpected errors
+      if (retryCount < maxRetries) {
+        console.log('[CheckInForm] 🔄 Retrying upload after error...');
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        return uploadPhoto(uri, userId, dateString, retryCount + 1);
+      }
+      
+      // Log detailed error for debugging
+      console.error('[CheckInForm] ❌ Photo upload failed after', maxRetries + 1, 'attempts');
+      console.error('[CheckInForm] Error details:', {
+        error: error instanceof Error ? error.message : String(error),
+        userId,
+        date: dateString,
+      });
+      
       return null;
     }
   };
@@ -276,19 +335,7 @@ export default function CheckInFormScreen() {
         return;
       }
 
-      // Upload photo if new one was selected (only for weight check-ins)
-      let finalPhotoUrl = photoUrl;
-      if (checkInType === 'weight' && photoUri) {
-        const uploadedUrl = await uploadPhoto(photoUri, authUser.id);
-        if (uploadedUrl) {
-          finalPhotoUrl = uploadedUrl;
-        } else {
-          Alert.alert('Warning', 'Photo upload failed, but check-in will be saved without it');
-        }
-      }
-
-      // FIX: Convert date to YYYY-MM-DD format in LOCAL timezone (no UTC conversion)
-      // This ensures the date saved matches the date the user selected
+      // Convert date to YYYY-MM-DD format in LOCAL timezone
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -296,16 +343,35 @@ export default function CheckInFormScreen() {
       
       console.log('[CheckInForm] 📅 Saving date:', dateString, '(from', date.toLocaleDateString(), ')');
 
+      // Upload photo if new one was selected (only for weight check-ins)
+      let finalPhotoUrl = photoUrl;
+      if (checkInType === 'weight' && photoUri) {
+        console.log('[CheckInForm] 📸 New photo selected, uploading...');
+        const uploadedUrl = await uploadPhoto(photoUri, authUser.id, dateString);
+        
+        if (uploadedUrl) {
+          finalPhotoUrl = uploadedUrl;
+          console.log('[CheckInForm] ✅ Photo uploaded successfully');
+        } else {
+          console.error('[CheckInForm] ❌ Photo upload failed');
+          Alert.alert(
+            'Photo Upload Failed',
+            'Photo upload failed, but check-in will be saved without it.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+
       // Build check-in data based on type
       const checkInData: any = {
         user_id: authUser.id,
-        date: dateString, // FIX: Use local date string, not ISO string
+        date: dateString,
         notes: notes || null,
         updated_at: new Date().toISOString(),
       };
 
       if (checkInType === 'weight') {
-        // FIX: Convert weight to kg for storage (always store in kg)
+        // Convert weight to kg for storage (always store in kg)
         const units = user?.preferred_units || 'metric';
         let weightInKg: number;
         
@@ -445,7 +511,7 @@ export default function CheckInFormScreen() {
               onChange={(event, selectedDate) => {
                 setShowDatePicker(Platform.OS === 'ios');
                 if (selectedDate) {
-                  // FIX: Set date at noon to avoid timezone issues
+                  // Set date at noon to avoid timezone issues
                   const noonDate = new Date(selectedDate);
                   noonDate.setHours(12, 0, 0, 0);
                   console.log('[CheckInForm] 📅 Date selected:', noonDate.toLocaleDateString());
