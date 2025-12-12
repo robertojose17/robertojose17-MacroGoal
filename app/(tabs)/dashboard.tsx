@@ -66,204 +66,9 @@ export default function DashboardScreen() {
   const [nutritionCustomRange, setNutritionCustomRange] = useState<CustomDateRange | null>(null);
   
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
-  const [showRangeDropdown, setShowRangeDropdown] = useState(false);
   
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
-
-  const loadTodaySummary = async (userId: string, date: string) => {
-    try {
-      const { data: mealsData } = await supabase
-        .from('meals')
-        .select(`
-          meal_items (
-            calories,
-            protein,
-            carbs,
-            fats,
-            fiber
-          )
-        `)
-        .eq('user_id', userId)
-        .eq('date', date);
-
-      let totalCals = 0;
-      let totalP = 0;
-      let totalC = 0;
-      let totalF = 0;
-      let totalFib = 0;
-
-      if (mealsData && mealsData.length > 0) {
-        mealsData.forEach((meal: any) => {
-          if (meal.meal_items) {
-            meal.meal_items.forEach((item: any) => {
-              totalCals += item.calories || 0;
-              totalP += item.protein || 0;
-              totalC += item.carbs || 0;
-              totalF += item.fats || 0;
-              totalFib += item.fiber || 0;
-            });
-          }
-        });
-      }
-
-      setTodaySummary({
-        date,
-        total_calories: totalCals,
-        total_protein: totalP,
-        total_carbs: totalC,
-        total_fats: totalF,
-        total_fiber: totalFib,
-      });
-    } catch (error) {
-      console.error('[Dashboard] Error loading today summary:', error);
-    }
-  };
-
-  // Wrap loadNutritionTrends in useCallback to ensure it's stable and uses latest state
-  const loadNutritionTrends = useCallback(async (userId: string) => {
-    try {
-      console.log('[Dashboard] loadNutritionTrends called with range:', nutritionRange, 'custom:', nutritionCustomRange);
-      
-      let startDate: Date;
-      let endDate: Date;
-      
-      if (nutritionRange === 'today') {
-        startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-      } else if (nutritionRange === '7days') {
-        endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6);
-        startDate.setHours(0, 0, 0, 0);
-      } else if (nutritionRange === '30days') {
-        endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 29);
-        startDate.setHours(0, 0, 0, 0);
-      } else if (nutritionRange === 'custom' && nutritionCustomRange) {
-        startDate = new Date(nutritionCustomRange.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(nutritionCustomRange.endDate);
-        endDate.setHours(23, 59, 59, 999);
-      } else {
-        // Fallback to today if custom is selected but no range is set
-        console.log('[Dashboard] Custom range selected but no dates set, using today');
-        startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-      }
-
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
-
-      console.log('[Dashboard] Loading nutrition trends from', startDateStr, 'to', endDateStr);
-      console.log('[Dashboard] Date range:', nutritionRange, '| Days included:', Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-
-      const { data: mealsData } = await supabase
-        .from('meals')
-        .select(`
-          date,
-          meal_items (
-            calories,
-            protein,
-            carbs,
-            fats,
-            fiber
-          )
-        `)
-        .eq('user_id', userId)
-        .gte('date', startDateStr)
-        .lte('date', endDateStr);
-
-      console.log('[Dashboard] Meals data returned:', mealsData?.length || 0, 'meals');
-
-      const daysWithData = new Set<string>();
-      let totalCals = 0;
-      let totalP = 0;
-      let totalC = 0;
-      let totalF = 0;
-      let totalFib = 0;
-
-      if (mealsData && mealsData.length > 0) {
-        mealsData.forEach((meal: any) => {
-          daysWithData.add(meal.date);
-          if (meal.meal_items) {
-            meal.meal_items.forEach((item: any) => {
-              totalCals += item.calories || 0;
-              totalP += item.protein || 0;
-              totalC += item.carbs || 0;
-              totalF += item.fats || 0;
-              totalFib += item.fiber || 0;
-            });
-          }
-        });
-      }
-
-      const daysCount = daysWithData.size;
-      const avgCals = daysCount > 0 ? totalCals / daysCount : 0;
-      const avgP = daysCount > 0 ? totalP / daysCount : 0;
-      const avgC = daysCount > 0 ? totalC / daysCount : 0;
-      const avgF = daysCount > 0 ? totalF / daysCount : 0;
-      const avgFib = daysCount > 0 ? totalFib / daysCount : 0;
-
-      const streak = calculateStreak(Array.from(daysWithData).sort());
-
-      console.log('[Dashboard] Nutrition stats calculated:', { 
-        range: nutritionRange,
-        daysCount, 
-        avgCals: Math.round(avgCals), 
-        streak, 
-        uniqueDays: Array.from(daysWithData).sort() 
-      });
-
-      setNutritionStats({
-        streak,
-        avgCalories: avgCals,
-        avgProtein: avgP,
-        avgCarbs: avgC,
-        avgFats: avgF,
-        avgFiber: avgFib,
-      });
-    } catch (error) {
-      console.error('[Dashboard] Error loading nutrition trends:', error);
-    }
-  }, [nutritionRange, nutritionCustomRange]); // Dependencies: re-create when range changes
-
-  const calculateStreak = (sortedDates: string[]): number => {
-    if (sortedDates.length === 0) return 0;
-
-    let currentStreak = 1;
-    const today = new Date().toISOString().split('T')[0];
-    
-    const lastDate = sortedDates[sortedDates.length - 1];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
-    if (lastDate !== today && lastDate !== yesterdayStr) {
-      return 0;
-    }
-
-    for (let i = sortedDates.length - 2; i >= 0; i--) {
-      const currentDate = new Date(sortedDates[i + 1]);
-      const prevDate = new Date(sortedDates[i]);
-      const diffDays = Math.floor((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 1) {
-        currentStreak++;
-      } else {
-        break;
-      }
-    }
-
-    return currentStreak;
-  };
 
   const loadData = useCallback(async () => {
     try {
@@ -329,15 +134,199 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadNutritionTrends]);
+  }, []);
 
-  // Effect to reload nutrition trends when range changes
   useEffect(() => {
     if (user) {
-      console.log('[Dashboard] useEffect triggered - Range changed to:', nutritionRange, '| Custom range:', nutritionCustomRange);
+      console.log('[Dashboard] Nutrition range changed, reloading trends');
       loadNutritionTrends(user.id);
     }
-  }, [nutritionRange, nutritionCustomRange, user, loadNutritionTrends]);
+  }, [nutritionRange, nutritionCustomRange]);
+
+  const loadTodaySummary = async (userId: string, date: string) => {
+    try {
+      const { data: mealsData } = await supabase
+        .from('meals')
+        .select(`
+          meal_items (
+            calories,
+            protein,
+            carbs,
+            fats,
+            fiber
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('date', date);
+
+      let totalCals = 0;
+      let totalP = 0;
+      let totalC = 0;
+      let totalF = 0;
+      let totalFib = 0;
+
+      if (mealsData && mealsData.length > 0) {
+        mealsData.forEach((meal: any) => {
+          if (meal.meal_items) {
+            meal.meal_items.forEach((item: any) => {
+              totalCals += item.calories || 0;
+              totalP += item.protein || 0;
+              totalC += item.carbs || 0;
+              totalF += item.fats || 0;
+              totalFib += item.fiber || 0;
+            });
+          }
+        });
+      }
+
+      setTodaySummary({
+        date,
+        total_calories: totalCals,
+        total_protein: totalP,
+        total_carbs: totalC,
+        total_fats: totalF,
+        total_fiber: totalFib,
+      });
+    } catch (error) {
+      console.error('[Dashboard] Error loading today summary:', error);
+    }
+  };
+
+  const loadNutritionTrends = async (userId: string) => {
+    try {
+      let startDate: Date;
+      let endDate: Date;
+      
+      if (nutritionRange === 'today') {
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+      } else if (nutritionRange === '7days') {
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
+      } else if (nutritionRange === '30days') {
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 29);
+        startDate.setHours(0, 0, 0, 0);
+      } else if (nutritionRange === 'custom' && nutritionCustomRange) {
+        startDate = new Date(nutritionCustomRange.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(nutritionCustomRange.endDate);
+        endDate.setHours(23, 59, 59, 999);
+      } else {
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
+      }
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      console.log('[Dashboard] Loading nutrition trends from', startDateStr, 'to', endDateStr);
+      console.log('[Dashboard] Start date object:', startDate.toISOString());
+      console.log('[Dashboard] End date object:', endDate.toISOString());
+
+      const { data: mealsData } = await supabase
+        .from('meals')
+        .select(`
+          date,
+          meal_items (
+            calories,
+            protein,
+            carbs,
+            fats,
+            fiber
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDateStr)
+        .lte('date', endDateStr);
+
+      console.log('[Dashboard] Meals data returned:', mealsData?.length || 0, 'meals');
+
+      const daysWithData = new Set<string>();
+      let totalCals = 0;
+      let totalP = 0;
+      let totalC = 0;
+      let totalF = 0;
+      let totalFib = 0;
+
+      if (mealsData && mealsData.length > 0) {
+        mealsData.forEach((meal: any) => {
+          daysWithData.add(meal.date);
+          if (meal.meal_items) {
+            meal.meal_items.forEach((item: any) => {
+              totalCals += item.calories || 0;
+              totalP += item.protein || 0;
+              totalC += item.carbs || 0;
+              totalF += item.fats || 0;
+              totalFib += item.fiber || 0;
+            });
+          }
+        });
+      }
+
+      const daysCount = daysWithData.size;
+      const avgCals = daysCount > 0 ? totalCals / daysCount : 0;
+      const avgP = daysCount > 0 ? totalP / daysCount : 0;
+      const avgC = daysCount > 0 ? totalC / daysCount : 0;
+      const avgF = daysCount > 0 ? totalF / daysCount : 0;
+      const avgFib = daysCount > 0 ? totalFib / daysCount : 0;
+
+      const streak = calculateStreak(Array.from(daysWithData).sort());
+
+      console.log('[Dashboard] Nutrition stats:', { daysCount, avgCals, streak, uniqueDays: Array.from(daysWithData) });
+
+      setNutritionStats({
+        streak,
+        avgCalories: avgCals,
+        avgProtein: avgP,
+        avgCarbs: avgC,
+        avgFats: avgF,
+        avgFiber: avgFib,
+      });
+    } catch (error) {
+      console.error('[Dashboard] Error loading nutrition trends:', error);
+    }
+  };
+
+  const calculateStreak = (sortedDates: string[]): number => {
+    if (sortedDates.length === 0) return 0;
+
+    let currentStreak = 1;
+    const today = new Date().toISOString().split('T')[0];
+    
+    const lastDate = sortedDates[sortedDates.length - 1];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    if (lastDate !== today && lastDate !== yesterdayStr) {
+      return 0;
+    }
+
+    for (let i = sortedDates.length - 2; i >= 0; i--) {
+      const currentDate = new Date(sortedDates[i + 1]);
+      const prevDate = new Date(sortedDates[i]);
+      const diffDays = Math.floor((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    }
+
+    return currentStreak;
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -361,7 +350,6 @@ export default function DashboardScreen() {
 
   const handleCustomRangeSelect = () => {
     console.log('[Dashboard] Opening calendar date range picker for nutrition');
-    setShowRangeDropdown(false);
     setShowCalendarPicker(true);
   };
 
@@ -373,44 +361,16 @@ export default function DashboardScreen() {
       endDate 
     };
     
-    // Update both custom range and set range to 'custom'
     setNutritionCustomRange(customRange);
     setNutritionRange('custom');
-    setShowCalendarPicker(false);
   };
 
   const handleCalendarClose = () => {
     console.log('[Dashboard] Calendar picker closed');
     setShowCalendarPicker(false);
     
-    // If user closed calendar without selecting and we're on custom, revert to today
     if (nutritionRange === 'custom' && !nutritionCustomRange) {
-      console.log('[Dashboard] Reverting to today since no custom range was selected');
       setNutritionRange('today');
-    }
-  };
-
-  const handleRangeSelect = (range: TimeRange) => {
-    console.log('[Dashboard] handleRangeSelect called with:', range);
-    
-    // Close dropdown first
-    setShowRangeDropdown(false);
-    
-    if (range === 'custom') {
-      // Open custom date picker
-      console.log('[Dashboard] Opening calendar picker for custom range');
-      setShowCalendarPicker(true);
-      // Don't update nutritionRange yet - wait for date selection
-    } else {
-      // Update the range state - this will trigger the useEffect
-      console.log('[Dashboard] Setting nutrition range to:', range);
-      setNutritionRange(range);
-      
-      // Clear custom range when switching away from custom
-      if (nutritionCustomRange) {
-        console.log('[Dashboard] Clearing custom range');
-        setNutritionCustomRange(null);
-      }
     }
   };
 
@@ -419,21 +379,6 @@ export default function DashboardScreen() {
     const start = range.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const end = range.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     return `${start} - ${end}`;
-  };
-
-  const getRangeLabel = () => {
-    switch (nutritionRange) {
-      case 'today':
-        return 'Today';
-      case '7days':
-        return 'Last 7 days';
-      case '30days':
-        return 'Last 30 days';
-      case 'custom':
-        return getCustomRangeLabel(nutritionCustomRange);
-      default:
-        return 'Today';
-    }
   };
 
   // Helper function to get the average text based on selected range
@@ -500,7 +445,7 @@ export default function DashboardScreen() {
         {/* Consistency Score - NEW COMPONENT AT THE TOP */}
         {user && <ConsistencyScore userId={user.id} isDark={isDark} />}
 
-        {/* Nutrition Trends Card - RESTYLED WITH COMPACT HEADER CONTROL */}
+        {/* Nutrition Trends Card - RESTYLED TO MATCH FOODS TAB MOBILE LAYOUT */}
         <View style={[
           styles.card, 
           { 
@@ -508,142 +453,77 @@ export default function DashboardScreen() {
             borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
           }
         ]}>
-          {/* Card Header with Title and Compact Range Selector */}
-          <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              Nutrition Trends
-            </Text>
-            
-            {/* Compact Range Dropdown Trigger */}
+          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Nutrition Trends
+          </Text>
+
+          {/* Tab Selector - Matching Foods tab style */}
+          <View style={styles.rangeSelector}>
             <TouchableOpacity
               style={[
-                styles.compactRangeTrigger,
-                {
-                  backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                  borderColor: isDark ? colors.borderDark : colors.border,
-                }
+                styles.rangeButton,
+                nutritionRange === 'today' && { backgroundColor: colors.primary },
               ]}
-              onPress={() => setShowRangeDropdown(!showRangeDropdown)}
-              activeOpacity={0.7}
+              onPress={() => setNutritionRange('today')}
             >
-              <Text style={[styles.compactRangeText, { color: isDark ? colors.textDark : colors.text }]}>
-                {getRangeLabel()}
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: nutritionRange === 'today' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                Today
               </Text>
-              <IconSymbol
-                ios_icon_name="chevron.down"
-                android_material_icon_name="arrow_drop_down"
-                size={16}
-                color={isDark ? colors.textDark : colors.text}
-              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.rangeButton,
+                nutritionRange === '7days' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => setNutritionRange('7days')}
+            >
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: nutritionRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                Last 7 days
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.rangeButton,
+                nutritionRange === '30days' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => setNutritionRange('30days')}
+            >
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: nutritionRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                Last 30 days
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.rangeButton,
+                nutritionRange === 'custom' && { backgroundColor: colors.primary },
+              ]}
+              onPress={handleCustomRangeSelect}
+            >
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  { color: nutritionRange === 'custom' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
+                ]}
+              >
+                {nutritionRange === 'custom' ? getCustomRangeLabel(nutritionCustomRange) : 'Custom'}
+              </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Dropdown Menu */}
-          {showRangeDropdown && (
-            <View style={[
-              styles.rangeDropdown,
-              {
-                backgroundColor: isDark ? colors.cardDark : colors.card,
-                borderColor: isDark ? colors.borderDark : colors.border,
-              }
-            ]}>
-              <TouchableOpacity
-                style={[
-                  styles.rangeDropdownItem,
-                  nutritionRange === 'today' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
-                ]}
-                onPress={() => handleRangeSelect('today')}
-              >
-                <Text style={[
-                  styles.rangeDropdownText,
-                  { color: isDark ? colors.textDark : colors.text },
-                  nutritionRange === 'today' && { fontWeight: '600' }
-                ]}>
-                  Today
-                </Text>
-                {nutritionRange === 'today' && (
-                  <IconSymbol
-                    ios_icon_name="checkmark"
-                    android_material_icon_name="check"
-                    size={16}
-                    color={colors.primary}
-                  />
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.rangeDropdownItem,
-                  nutritionRange === '7days' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
-                ]}
-                onPress={() => handleRangeSelect('7days')}
-              >
-                <Text style={[
-                  styles.rangeDropdownText,
-                  { color: isDark ? colors.textDark : colors.text },
-                  nutritionRange === '7days' && { fontWeight: '600' }
-                ]}>
-                  Last 7 days
-                </Text>
-                {nutritionRange === '7days' && (
-                  <IconSymbol
-                    ios_icon_name="checkmark"
-                    android_material_icon_name="check"
-                    size={16}
-                    color={colors.primary}
-                  />
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.rangeDropdownItem,
-                  nutritionRange === '30days' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
-                ]}
-                onPress={() => handleRangeSelect('30days')}
-              >
-                <Text style={[
-                  styles.rangeDropdownText,
-                  { color: isDark ? colors.textDark : colors.text },
-                  nutritionRange === '30days' && { fontWeight: '600' }
-                ]}>
-                  Last 30 days
-                </Text>
-                {nutritionRange === '30days' && (
-                  <IconSymbol
-                    ios_icon_name="checkmark"
-                    android_material_icon_name="check"
-                    size={16}
-                    color={colors.primary}
-                  />
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.rangeDropdownItem,
-                  nutritionRange === 'custom' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
-                ]}
-                onPress={() => handleRangeSelect('custom')}
-              >
-                <Text style={[
-                  styles.rangeDropdownText,
-                  { color: isDark ? colors.textDark : colors.text },
-                  nutritionRange === 'custom' && { fontWeight: '600' }
-                ]}>
-                  {nutritionRange === 'custom' ? getCustomRangeLabel(nutritionCustomRange) : 'Custom'}
-                </Text>
-                {nutritionRange === 'custom' && (
-                  <IconSymbol
-                    ios_icon_name="checkmark"
-                    android_material_icon_name="check"
-                    size={16}
-                    color={colors.primary}
-                  />
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
 
           {nutritionStats ? (
             <React.Fragment>
@@ -791,15 +671,6 @@ export default function DashboardScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Overlay to close dropdown when tapping outside */}
-      {showRangeDropdown && (
-        <TouchableOpacity
-          style={styles.dropdownOverlay}
-          activeOpacity={1}
-          onPress={() => setShowRangeDropdown(false)}
-        />
-      )}
-
       <Modal
         visible={showCheckInModal}
         transparent
@@ -924,61 +795,30 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
   cardTitle: {
     ...typography.h3,
-    flex: 1,
+    marginBottom: spacing.md,
   },
-  compactRangeTrigger: {
+  rangeSelector: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  rangeButton: {
+    flex: 1,
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 2,
     borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
+    borderColor: colors.border,
     minHeight: 32,
   },
-  compactRangeText: {
-    fontSize: 12,
+  rangeButtonText: {
+    fontSize: 10,
     fontWeight: '600',
-  },
-  rangeDropdown: {
-    position: 'absolute',
-    top: 60,
-    right: spacing.lg,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
-    elevation: 5,
-    zIndex: 1000,
-    minWidth: 160,
-  },
-  rangeDropdownItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  rangeDropdownText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  dropdownOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 999,
+    textAlign: 'center',
   },
   streakBadge: {
     alignItems: 'center',
