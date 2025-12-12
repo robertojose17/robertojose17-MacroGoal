@@ -69,6 +69,7 @@ export default function DashboardScreen() {
   
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -350,6 +351,7 @@ export default function DashboardScreen() {
 
   const handleCustomRangeSelect = () => {
     console.log('[Dashboard] Opening calendar date range picker for nutrition');
+    setShowTimeRangeDropdown(false);
     setShowCalendarPicker(true);
   };
 
@@ -379,6 +381,23 @@ export default function DashboardScreen() {
     const start = range.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const end = range.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     return `${start} - ${end}`;
+  };
+
+  const getTimeRangeLabel = () => {
+    if (nutritionRange === 'today') return 'Today';
+    if (nutritionRange === '7days') return 'Last 7 days';
+    if (nutritionRange === '30days') return 'Last 30 days';
+    if (nutritionRange === 'custom') return getCustomRangeLabel(nutritionCustomRange);
+    return 'Today';
+  };
+
+  const handleTimeRangeSelect = (range: TimeRange) => {
+    if (range === 'custom') {
+      handleCustomRangeSelect();
+    } else {
+      setNutritionRange(range);
+      setShowTimeRangeDropdown(false);
+    }
   };
 
   // Helper function to get the average text based on selected range
@@ -445,7 +464,7 @@ export default function DashboardScreen() {
         {/* Consistency Score - NEW COMPONENT AT THE TOP */}
         {user && <ConsistencyScore userId={user.id} isDark={isDark} />}
 
-        {/* Nutrition Trends Card - RESTYLED TO MATCH FOODS TAB MOBILE LAYOUT */}
+        {/* Nutrition Trends Card - WITH DROPDOWN IN HEADER */}
         <View style={[
           styles.card, 
           { 
@@ -453,75 +472,32 @@ export default function DashboardScreen() {
             borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
           }
         ]}>
-          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Nutrition Trends
-          </Text>
-
-          {/* Tab Selector - Matching Foods tab style */}
-          <View style={styles.rangeSelector}>
+          {/* Card Header with Title and Dropdown */}
+          <View style={styles.cardHeader}>
+            <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Nutrition Trends
+            </Text>
+            
+            {/* Time Range Dropdown */}
             <TouchableOpacity
               style={[
-                styles.rangeButton,
-                nutritionRange === 'today' && { backgroundColor: colors.primary },
+                styles.dropdownButton,
+                { 
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                  borderColor: isDark ? colors.borderDark : colors.border,
+                }
               ]}
-              onPress={() => setNutritionRange('today')}
+              onPress={() => setShowTimeRangeDropdown(!showTimeRangeDropdown)}
             >
-              <Text
-                style={[
-                  styles.rangeButtonText,
-                  { color: nutritionRange === 'today' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-                ]}
-              >
-                Today
+              <Text style={[styles.dropdownButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+                {getTimeRangeLabel()}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.rangeButton,
-                nutritionRange === '7days' && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setNutritionRange('7days')}
-            >
-              <Text
-                style={[
-                  styles.rangeButtonText,
-                  { color: nutritionRange === '7days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-                ]}
-              >
-                Last 7 days
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.rangeButton,
-                nutritionRange === '30days' && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setNutritionRange('30days')}
-            >
-              <Text
-                style={[
-                  styles.rangeButtonText,
-                  { color: nutritionRange === '30days' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-                ]}
-              >
-                Last 30 days
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.rangeButton,
-                nutritionRange === 'custom' && { backgroundColor: colors.primary },
-              ]}
-              onPress={handleCustomRangeSelect}
-            >
-              <Text
-                style={[
-                  styles.rangeButtonText,
-                  { color: nutritionRange === 'custom' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-                ]}
-              >
-                {nutritionRange === 'custom' ? getCustomRangeLabel(nutritionCustomRange) : 'Custom'}
-              </Text>
+              <IconSymbol
+                ios_icon_name="chevron.down"
+                android_material_icon_name="arrow_drop_down"
+                size={16}
+                color={isDark ? colors.textDark : colors.text}
+              />
             </TouchableOpacity>
           </View>
 
@@ -746,6 +722,124 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Time Range Dropdown Modal */}
+      <Modal
+        visible={showTimeRangeDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimeRangeDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTimeRangeDropdown(false)}
+        >
+          <View style={[
+            styles.dropdownMenu,
+            { 
+              backgroundColor: isDark ? colors.cardDark : colors.card,
+              borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+            }
+          ]}>
+            <TouchableOpacity
+              style={[
+                styles.dropdownMenuItem,
+                nutritionRange === 'today' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
+              ]}
+              onPress={() => handleTimeRangeSelect('today')}
+            >
+              <Text style={[
+                styles.dropdownMenuItemText,
+                { color: isDark ? colors.textDark : colors.text },
+                nutritionRange === 'today' && { fontWeight: '600' }
+              ]}>
+                Today
+              </Text>
+              {nutritionRange === 'today' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={18}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.dropdownMenuItem,
+                nutritionRange === '7days' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
+              ]}
+              onPress={() => handleTimeRangeSelect('7days')}
+            >
+              <Text style={[
+                styles.dropdownMenuItemText,
+                { color: isDark ? colors.textDark : colors.text },
+                nutritionRange === '7days' && { fontWeight: '600' }
+              ]}>
+                Last 7 days
+              </Text>
+              {nutritionRange === '7days' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={18}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.dropdownMenuItem,
+                nutritionRange === '30days' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
+              ]}
+              onPress={() => handleTimeRangeSelect('30days')}
+            >
+              <Text style={[
+                styles.dropdownMenuItemText,
+                { color: isDark ? colors.textDark : colors.text },
+                nutritionRange === '30days' && { fontWeight: '600' }
+              ]}>
+                Last 30 days
+              </Text>
+              {nutritionRange === '30days' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={18}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.dropdownMenuItem,
+                nutritionRange === 'custom' && { backgroundColor: isDark ? colors.backgroundDark : colors.background }
+              ]}
+              onPress={() => handleTimeRangeSelect('custom')}
+            >
+              <Text style={[
+                styles.dropdownMenuItemText,
+                { color: isDark ? colors.textDark : colors.text },
+                nutritionRange === 'custom' && { fontWeight: '600' }
+              ]}>
+                {nutritionRange === 'custom' ? getCustomRangeLabel(nutritionCustomRange) : 'Custom'}
+              </Text>
+              {nutritionRange === 'custom' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={18}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <CalendarDateRangePicker
         visible={showCalendarPicker}
         onClose={handleCalendarClose}
@@ -795,30 +889,28 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   cardTitle: {
     ...typography.h3,
-    marginBottom: spacing.md,
-  },
-  rangeSelector: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  rangeButton: {
     flex: 1,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: 2,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 32,
   },
-  rangeButtonText: {
-    fontSize: 10,
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+  },
+  dropdownButtonText: {
+    fontSize: 13,
     fontWeight: '600',
-    textAlign: 'center',
   },
   streakBadge: {
     alignItems: 'center',
@@ -927,5 +1019,34 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     ...typography.bodyBold,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'android' ? 180 : 160,
+    paddingRight: spacing.md,
+  },
+  dropdownMenu: {
+    minWidth: 180,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  dropdownMenuItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  dropdownMenuItemText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
