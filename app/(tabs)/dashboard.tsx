@@ -807,7 +807,7 @@ const styles = StyleSheet.create({
   rangeButton: {
     flex: 1,
     paddingVertical: spacing.xs,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -816,7 +816,7 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   rangeButtonText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
   },

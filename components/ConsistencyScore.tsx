@@ -42,29 +42,54 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     try {
       setLoading(true);
 
-      // Get today's date
-      const today = new Date().toISOString().split('T')[0];
+      // Get today's date in user's local timezone
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
 
-      // 1. Check if user has logged at least one meal today
+      console.log('[ConsistencyScore] Checking for today:', todayStr);
+
+      // 1. Check if user has logged at least one meal item with calories > 0 today
       const { data: todayMeals, error: todayMealsError } = await supabase
         .from('meals')
-        .select('id')
+        .select(`
+          id,
+          date,
+          meal_items (
+            id,
+            calories
+          )
+        `)
         .eq('user_id', userId)
-        .eq('date', today)
-        .limit(1);
+        .eq('date', todayStr);
 
       if (todayMealsError) {
         console.error('[ConsistencyScore] Error checking today meals:', todayMealsError);
       }
 
-      const hasLoggedToday = todayMeals && todayMeals.length > 0;
+      // Check if there's at least one meal_item with calories > 0
+      let hasLoggedToday = false;
+      if (todayMeals && todayMeals.length > 0) {
+        for (const meal of todayMeals) {
+          if (meal.meal_items && meal.meal_items.length > 0) {
+            for (const item of meal.meal_items) {
+              if (item.calories && item.calories > 0) {
+                hasLoggedToday = true;
+                break;
+              }
+            }
+            if (hasLoggedToday) break;
+          }
+        }
+      }
+
+      console.log('[ConsistencyScore] Has logged today:', hasLoggedToday, 'Meals found:', todayMeals?.length || 0);
 
       // Daily Tracking Score (0-40 points)
       // Binary: 40 if logged today, 0 if not
       const dailyTrackingScore = hasLoggedToday ? 40 : 0;
 
       // 2. Calculate streak with decay logic
-      const streakDays = await calculateStreakWithDecay(userId, today, hasLoggedToday);
+      const streakDays = await calculateStreakWithDecay(userId, todayStr, hasLoggedToday);
 
       // Streak Score (0-35 points) using exponential curve
       // Formula: 35 * (1 - e^(-0.1 * streak_days))
@@ -79,7 +104,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
           )
         `)
         .eq('user_id', userId)
-        .eq('date', today);
+        .eq('date', todayStr);
 
       if (mealsError) {
         console.error('[ConsistencyScore] Error loading today meals:', mealsError);
