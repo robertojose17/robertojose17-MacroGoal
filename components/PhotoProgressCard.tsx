@@ -6,8 +6,9 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -30,6 +31,8 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   const [checkIns, setCheckIns] = useState<CheckInWithPhoto[]>([]);
   const [leftDateIndex, setLeftDateIndex] = useState<number>(0);
   const [rightDateIndex, setRightDateIndex] = useState<number>(0);
+  const [showLeftPicker, setShowLeftPicker] = useState(false);
+  const [showRightPicker, setShowRightPicker] = useState(false);
 
   useEffect(() => {
     loadCheckInsWithPhotos();
@@ -94,6 +97,18 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   const rightCheckIn = useMemo(() => {
     return checkIns[rightDateIndex] || null;
   }, [checkIns, rightDateIndex]);
+
+  const handleLeftDateSelect = (index: number) => {
+    console.log('[PhotoProgressCard] Left date selected:', checkIns[index].date);
+    setLeftDateIndex(index);
+    setShowLeftPicker(false);
+  };
+
+  const handleRightDateSelect = (index: number) => {
+    console.log('[PhotoProgressCard] Right date selected:', checkIns[index].date);
+    setRightDateIndex(index);
+    setShowRightPicker(false);
+  };
 
   if (loading) {
     return (
@@ -206,199 +221,280 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   console.log('[PhotoProgressCard] Rendering comparison - Left:', leftCheckIn?.photo_url, 'Right:', rightCheckIn?.photo_url);
   
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-        },
-      ]}
-    >
-      <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-        Photo Progress
-      </Text>
+    <React.Fragment>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+          Photo Progress
+        </Text>
 
-      {/* Side-by-side photos */}
-      <View style={styles.photosRow}>
-        {/* Left photo */}
-        <View style={styles.photoWrapper}>
-          {leftCheckIn && (
-            <>
-              <Image
-                key={leftCheckIn.photo_url}
-                source={{ uri: leftCheckIn.photo_url }}
-                style={styles.photoImage}
-                resizeMode="cover"
-                onError={(error) => {
-                  console.error('[PhotoProgressCard] ❌ Left photo failed to load:', leftCheckIn.photo_url);
-                  console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
-                }}
-                onLoad={() => {
-                  console.log('[PhotoProgressCard] ✅ Left photo loaded successfully');
-                }}
-              />
-              <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
-                {formatDate(leftCheckIn.date)}
-              </Text>
-            </>
-          )}
-        </View>
+        {/* Side-by-side photos */}
+        <View style={styles.photosRow}>
+          {/* Left photo */}
+          <View style={styles.photoWrapper}>
+            {leftCheckIn && (
+              <React.Fragment>
+                <Image
+                  key={leftCheckIn.photo_url}
+                  source={{ uri: leftCheckIn.photo_url }}
+                  style={styles.photoImage}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.error('[PhotoProgressCard] ❌ Left photo failed to load:', leftCheckIn.photo_url);
+                    console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('[PhotoProgressCard] ✅ Left photo loaded successfully');
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowLeftPicker(true)}
+                  activeOpacity={0.7}
+                  style={styles.dateButton}
+                >
+                  <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
+                    {formatDate(leftCheckIn.date)}
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="expand_more"
+                    size={14}
+                    color={isDark ? colors.textDark : colors.text}
+                  />
+                </TouchableOpacity>
+              </React.Fragment>
+            )}
+          </View>
 
-        {/* Arrow separator */}
-        <View style={styles.arrowContainer}>
-          <IconSymbol
-            ios_icon_name="arrow.right"
-            android_material_icon_name="arrow_forward"
-            size={24}
-            color={colors.primary}
-          />
-        </View>
+          {/* Arrow separator */}
+          <View style={styles.arrowContainer}>
+            <IconSymbol
+              ios_icon_name="arrow.right"
+              android_material_icon_name="arrow_forward"
+              size={24}
+              color={colors.primary}
+            />
+          </View>
 
-        {/* Right photo */}
-        <View style={styles.photoWrapper}>
-          {rightCheckIn && (
-            <>
-              <Image
-                key={rightCheckIn.photo_url}
-                source={{ uri: rightCheckIn.photo_url }}
-                style={styles.photoImage}
-                resizeMode="cover"
-                onError={(error) => {
-                  console.error('[PhotoProgressCard] ❌ Right photo failed to load:', rightCheckIn.photo_url);
-                  console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
-                }}
-                onLoad={() => {
-                  console.log('[PhotoProgressCard] ✅ Right photo loaded successfully');
-                }}
-              />
-              <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
-                {formatDate(rightCheckIn.date)}
-              </Text>
-            </>
-          )}
+          {/* Right photo */}
+          <View style={styles.photoWrapper}>
+            {rightCheckIn && (
+              <React.Fragment>
+                <Image
+                  key={rightCheckIn.photo_url}
+                  source={{ uri: rightCheckIn.photo_url }}
+                  style={styles.photoImage}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.error('[PhotoProgressCard] ❌ Right photo failed to load:', rightCheckIn.photo_url);
+                    console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('[PhotoProgressCard] ✅ Right photo loaded successfully');
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowRightPicker(true)}
+                  activeOpacity={0.7}
+                  style={styles.dateButton}
+                >
+                  <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
+                    {formatDate(rightCheckIn.date)}
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="expand_more"
+                    size={14}
+                    color={isDark ? colors.textDark : colors.text}
+                  />
+                </TouchableOpacity>
+              </React.Fragment>
+            )}
+          </View>
         </View>
       </View>
 
-      {/* Date selectors */}
-      <View style={styles.selectorsContainer}>
-        {/* Left date selector */}
-        <View style={styles.selectorWrapper}>
-          <Text
+      {/* Left Date Picker Modal */}
+      <Modal
+        visible={showLeftPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLeftPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowLeftPicker(false)}
+        >
+          <View
             style={[
-              styles.selectorLabel,
-              { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
+              styles.pickerModal,
+              {
+                backgroundColor: isDark ? colors.cardDark : colors.card,
+                borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+              },
             ]}
+            onStartShouldSetResponder={() => true}
           >
-            Left Date
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.selectorScroll}
-          >
-            {checkIns.map((checkIn, index) => (
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Select Left Photo Date
+              </Text>
               <TouchableOpacity
-                key={checkIn.id}
-                style={[
-                  styles.dateChip,
-                  {
-                    backgroundColor:
-                      leftDateIndex === index
-                        ? colors.primary
-                        : isDark
-                        ? colors.backgroundDark
-                        : colors.background,
-                    borderColor:
-                      leftDateIndex === index
-                        ? colors.primary
-                        : isDark
-                        ? colors.borderDark
-                        : colors.border,
-                  },
-                ]}
-                onPress={() => setLeftDateIndex(index)}
-                activeOpacity={0.7}
+                onPress={() => setShowLeftPicker(false)}
+                style={styles.closeButton}
               >
-                <Text
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={isDark ? colors.textDark : colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerScroll}>
+              {checkIns.map((checkIn, index) => (
+                <TouchableOpacity
+                  key={checkIn.id}
                   style={[
-                    styles.dateChipText,
+                    styles.pickerOption,
                     {
-                      color:
+                      backgroundColor:
                         leftDateIndex === index
-                          ? '#FFFFFF'
-                          : isDark
-                          ? colors.textDark
-                          : colors.text,
+                          ? isDark
+                            ? 'rgba(255, 255, 255, 0.1)'
+                            : 'rgba(0, 0, 0, 0.05)'
+                          : 'transparent',
                     },
                   ]}
+                  onPress={() => handleLeftDateSelect(index)}
+                  activeOpacity={0.7}
                 >
-                  {formatDate(checkIn.date)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      {
+                        color:
+                          leftDateIndex === index
+                            ? colors.primary
+                            : isDark
+                            ? colors.textDark
+                            : colors.text,
+                        fontWeight: leftDateIndex === index ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {formatDate(checkIn.date)}
+                  </Text>
+                  {leftDateIndex === index && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={20}
+                      color={colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
-        {/* Right date selector */}
-        <View style={styles.selectorWrapper}>
-          <Text
+      {/* Right Date Picker Modal */}
+      <Modal
+        visible={showRightPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRightPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowRightPicker(false)}
+        >
+          <View
             style={[
-              styles.selectorLabel,
-              { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
+              styles.pickerModal,
+              {
+                backgroundColor: isDark ? colors.cardDark : colors.card,
+                borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+              },
             ]}
+            onStartShouldSetResponder={() => true}
           >
-            Right Date
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.selectorScroll}
-          >
-            {checkIns.map((checkIn, index) => (
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Select Right Photo Date
+              </Text>
               <TouchableOpacity
-                key={checkIn.id}
-                style={[
-                  styles.dateChip,
-                  {
-                    backgroundColor:
-                      rightDateIndex === index
-                        ? colors.primary
-                        : isDark
-                        ? colors.backgroundDark
-                        : colors.background,
-                    borderColor:
-                      rightDateIndex === index
-                        ? colors.primary
-                        : isDark
-                        ? colors.borderDark
-                        : colors.border,
-                  },
-                ]}
-                onPress={() => setRightDateIndex(index)}
-                activeOpacity={0.7}
+                onPress={() => setShowRightPicker(false)}
+                style={styles.closeButton}
               >
-                <Text
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={isDark ? colors.textDark : colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerScroll}>
+              {checkIns.map((checkIn, index) => (
+                <TouchableOpacity
+                  key={checkIn.id}
                   style={[
-                    styles.dateChipText,
+                    styles.pickerOption,
                     {
-                      color:
+                      backgroundColor:
                         rightDateIndex === index
-                          ? '#FFFFFF'
-                          : isDark
-                          ? colors.textDark
-                          : colors.text,
+                          ? isDark
+                            ? 'rgba(255, 255, 255, 0.1)'
+                            : 'rgba(0, 0, 0, 0.05)'
+                          : 'transparent',
                     },
                   ]}
+                  onPress={() => handleRightDateSelect(index)}
+                  activeOpacity={0.7}
                 >
-                  {formatDate(checkIn.date)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-    </View>
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      {
+                        color:
+                          rightDateIndex === index
+                            ? colors.primary
+                            : isDark
+                            ? colors.textDark
+                            : colors.text,
+                        fontWeight: rightDateIndex === index ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {formatDate(checkIn.date)}
+                  </Text>
+                  {rightDateIndex === index && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={20}
+                      color={colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </React.Fragment>
   );
 }
 
@@ -444,7 +540,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.lg,
   },
   photoWrapper: {
     flex: 1,
@@ -457,6 +552,14 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     backgroundColor: colors.border,
   },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+  },
   photoDate: {
     ...typography.caption,
     fontSize: 12,
@@ -465,29 +568,51 @@ const styles = StyleSheet.create({
   arrowContainer: {
     paddingHorizontal: spacing.xs,
   },
-  selectorsContainer: {
-    gap: spacing.md,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
   },
-  selectorWrapper: {
-    gap: spacing.xs,
-  },
-  selectorLabel: {
-    ...typography.caption,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  selectorScroll: {
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-  },
-  dateChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+  pickerModal: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '70%',
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
+    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
+    elevation: 5,
+    overflow: 'hidden',
   },
-  dateChipText: {
-    fontSize: 12,
-    fontWeight: '500',
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerTitle: {
+    ...typography.h3,
+    fontSize: 18,
+  },
+  closeButton: {
+    padding: spacing.xs,
+  },
+  pickerScroll: {
+    maxHeight: 400,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerOptionText: {
+    fontSize: 16,
   },
 });
