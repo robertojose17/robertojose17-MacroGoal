@@ -71,79 +71,6 @@ export default function DashboardScreen() {
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        console.log('[Dashboard] No user found');
-        setLoading(false);
-        return;
-      }
-
-      setUser(authUser);
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (userData) {
-        setUser({ ...authUser, ...userData });
-      }
-
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (goalData) {
-        setGoal(goalData);
-      } else {
-        setGoal({
-          daily_calories: 2000,
-          protein_g: 150,
-          carbs_g: 200,
-          fats_g: 65,
-          fiber_g: 30,
-        });
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      const { data: checkInsData } = await supabase
-        .from('check_ins')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('date', today)
-        .order('created_at', { ascending: false });
-
-      if (checkInsData && checkInsData.length > 0) {
-        setTodayCheckIn(checkInsData[0]);
-      } else {
-        setTodayCheckIn(null);
-      }
-
-      await loadTodaySummary(authUser.id, today);
-      await loadNutritionTrends(authUser.id);
-
-    } catch (error) {
-      console.error('[Dashboard] Error loading data:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      console.log('[Dashboard] Nutrition range changed, reloading trends');
-      loadNutritionTrends(user.id);
-    }
-  }, [nutritionRange, nutritionCustomRange, user]);
-
   const loadTodaySummary = async (userId: string, date: string) => {
     try {
       const { data: mealsData } = await supabase
@@ -193,7 +120,8 @@ export default function DashboardScreen() {
     }
   };
 
-  const loadNutritionTrends = async (userId: string) => {
+  // Wrap loadNutritionTrends in useCallback to ensure it's stable and uses latest state
+  const loadNutritionTrends = useCallback(async (userId: string) => {
     try {
       let startDate: Date;
       let endDate: Date;
@@ -297,7 +225,7 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('[Dashboard] Error loading nutrition trends:', error);
     }
-  };
+  }, [nutritionRange, nutritionCustomRange]); // Dependencies: re-create when range changes
 
   const calculateStreak = (sortedDates: string[]): number => {
     if (sortedDates.length === 0) return 0;
@@ -328,6 +256,80 @@ export default function DashboardScreen() {
 
     return currentStreak;
   };
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        console.log('[Dashboard] No user found');
+        setLoading(false);
+        return;
+      }
+
+      setUser(authUser);
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (userData) {
+        setUser({ ...authUser, ...userData });
+      }
+
+      const { data: goalData } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (goalData) {
+        setGoal(goalData);
+      } else {
+        setGoal({
+          daily_calories: 2000,
+          protein_g: 150,
+          carbs_g: 200,
+          fats_g: 65,
+          fiber_g: 30,
+        });
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const { data: checkInsData } = await supabase
+        .from('check_ins')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('date', today)
+        .order('created_at', { ascending: false });
+
+      if (checkInsData && checkInsData.length > 0) {
+        setTodayCheckIn(checkInsData[0]);
+      } else {
+        setTodayCheckIn(null);
+      }
+
+      await loadTodaySummary(authUser.id, today);
+      await loadNutritionTrends(authUser.id);
+
+    } catch (error) {
+      console.error('[Dashboard] Error loading data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [loadNutritionTrends]);
+
+  // Effect to reload nutrition trends when range changes
+  useEffect(() => {
+    if (user) {
+      console.log('[Dashboard] Nutrition range changed to:', nutritionRange, 'custom range:', nutritionCustomRange);
+      loadNutritionTrends(user.id);
+    }
+  }, [nutritionRange, nutritionCustomRange, user, loadNutritionTrends]);
 
   useFocusEffect(
     useCallback(() => {
@@ -363,6 +365,7 @@ export default function DashboardScreen() {
       endDate 
     };
     
+    // Update both custom range and set range to 'custom'
     setNutritionCustomRange(customRange);
     setNutritionRange('custom');
   };
@@ -371,6 +374,7 @@ export default function DashboardScreen() {
     console.log('[Dashboard] Calendar picker closed');
     setShowCalendarPicker(false);
     
+    // If user closed calendar without selecting and we're on custom, revert to today
     if (nutritionRange === 'custom' && !nutritionCustomRange) {
       setNutritionRange('today');
     }
@@ -386,13 +390,11 @@ export default function DashboardScreen() {
       // Open custom date picker
       setShowCalendarPicker(true);
     } else {
-      // Update the range state
+      // Update the range state - this will trigger the useEffect
       setNutritionRange(range);
       
       // Clear custom range when switching away from custom
-      if (range !== 'custom') {
-        setNutritionCustomRange(null);
-      }
+      setNutritionCustomRange(null);
     }
   };
 
