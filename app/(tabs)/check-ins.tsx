@@ -108,10 +108,19 @@ export default function CheckInsScreen() {
   };
 
   const handleViewCheckIn = (checkIn: CheckIn) => {
-    router.push({
-      pathname: '/check-in-details',
-      params: { checkInId: checkIn.id },
-    });
+    // For weight check-ins, navigate directly to the edit form
+    // For other types, keep the existing behavior (navigate to details screen)
+    if (selectedType === 'weight') {
+      router.push({
+        pathname: '/check-in-form',
+        params: { checkInId: checkIn.id, type: selectedType },
+      });
+    } else {
+      router.push({
+        pathname: '/check-in-details',
+        params: { checkInId: checkIn.id },
+      });
+    }
   };
 
   const handleDeleteCheckIn = async (checkIn: CheckIn) => {
