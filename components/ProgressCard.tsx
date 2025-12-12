@@ -905,34 +905,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         </View>
       </View>
 
-      {/* Legend */}
-      <View style={styles.legend}>
-        {showPlannedLine && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: colors.success }]} />
-            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-              Planned
-            </Text>
-          </View>
-        )}
-        {showCalorieProjectionLine && chartConfig.projectionPathData && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-              Calorie projection
-            </Text>
-          </View>
-        )}
-        {showActualWeightDots && chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
-            <Text style={[styles.legendText, { color: isDark ? colors.textDark : colors.text }]}>
-              Actual weight
-            </Text>
-          </View>
-        )}
-      </View>
-
       {/* Custom SVG Chart with Independent Axis Control */}
       <View style={styles.chartContainer}>
         <Svg width={chartConfig.totalWidth} height={chartConfig.totalHeight}>
@@ -1094,32 +1066,6 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.body,
     textAlign: 'center',
-  },
-  legend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-    flexWrap: 'wrap',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  legendLine: {
-    width: 20,
-    height: 3,
-    borderRadius: 2,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendText: {
-    ...typography.caption,
-    fontSize: 12,
   },
   chartContainer: {
     marginBottom: spacing.sm,
