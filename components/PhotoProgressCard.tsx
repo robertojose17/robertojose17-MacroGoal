@@ -54,8 +54,13 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
       }
 
       console.log('[PhotoProgressCard] Loaded', data?.length || 0, 'check-ins with photos');
-
+      
       if (data && data.length > 0) {
+        // Log the photo URLs to verify they're correct
+        data.forEach((checkIn, index) => {
+          console.log(`[PhotoProgressCard] Check-in ${index + 1}:`, checkIn.date, '→', checkIn.photo_url);
+        });
+        
         setCheckIns(data);
         // Set default selection: earliest (left) and most recent (right)
         setLeftDateIndex(0);
@@ -149,6 +154,8 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   // Single photo state
   if (checkIns.length === 1) {
     const singleCheckIn = checkIns[0];
+    console.log('[PhotoProgressCard] Rendering single photo:', singleCheckIn.photo_url);
+    
     return (
       <View
         style={[
@@ -166,9 +173,17 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
         <View style={styles.singlePhotoContainer}>
           <View style={styles.photoWrapper}>
             <Image
+              key={singleCheckIn.photo_url}
               source={{ uri: singleCheckIn.photo_url }}
               style={styles.photoImage}
               resizeMode="cover"
+              onError={(error) => {
+                console.error('[PhotoProgressCard] ❌ Single photo failed to load:', singleCheckIn.photo_url);
+                console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
+              }}
+              onLoad={() => {
+                console.log('[PhotoProgressCard] ✅ Single photo loaded successfully');
+              }}
             />
             <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
               {formatDate(singleCheckIn.date)}
@@ -188,6 +203,8 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   }
 
   // Normal state: two or more photos
+  console.log('[PhotoProgressCard] Rendering comparison - Left:', leftCheckIn?.photo_url, 'Right:', rightCheckIn?.photo_url);
+  
   return (
     <View
       style={[
@@ -206,14 +223,26 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
       <View style={styles.photosRow}>
         {/* Left photo */}
         <View style={styles.photoWrapper}>
-          <Image
-            source={{ uri: leftCheckIn?.photo_url }}
-            style={styles.photoImage}
-            resizeMode="cover"
-          />
-          <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
-            {leftCheckIn ? formatDate(leftCheckIn.date) : ''}
-          </Text>
+          {leftCheckIn && (
+            <>
+              <Image
+                key={leftCheckIn.photo_url}
+                source={{ uri: leftCheckIn.photo_url }}
+                style={styles.photoImage}
+                resizeMode="cover"
+                onError={(error) => {
+                  console.error('[PhotoProgressCard] ❌ Left photo failed to load:', leftCheckIn.photo_url);
+                  console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
+                }}
+                onLoad={() => {
+                  console.log('[PhotoProgressCard] ✅ Left photo loaded successfully');
+                }}
+              />
+              <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
+                {formatDate(leftCheckIn.date)}
+              </Text>
+            </>
+          )}
         </View>
 
         {/* Arrow separator */}
@@ -228,14 +257,26 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
 
         {/* Right photo */}
         <View style={styles.photoWrapper}>
-          <Image
-            source={{ uri: rightCheckIn?.photo_url }}
-            style={styles.photoImage}
-            resizeMode="cover"
-          />
-          <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
-            {rightCheckIn ? formatDate(rightCheckIn.date) : ''}
-          </Text>
+          {rightCheckIn && (
+            <>
+              <Image
+                key={rightCheckIn.photo_url}
+                source={{ uri: rightCheckIn.photo_url }}
+                style={styles.photoImage}
+                resizeMode="cover"
+                onError={(error) => {
+                  console.error('[PhotoProgressCard] ❌ Right photo failed to load:', rightCheckIn.photo_url);
+                  console.error('[PhotoProgressCard] Error:', error.nativeEvent.error);
+                }}
+                onLoad={() => {
+                  console.log('[PhotoProgressCard] ✅ Right photo loaded successfully');
+                }}
+              />
+              <Text style={[styles.photoDate, { color: isDark ? colors.textDark : colors.text }]}>
+                {formatDate(rightCheckIn.date)}
+              </Text>
+            </>
+          )}
         </View>
       </View>
 

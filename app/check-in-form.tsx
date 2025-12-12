@@ -168,7 +168,13 @@ export default function CheckInFormScreen() {
       setStepsGoal(data.steps_goal?.toString() || '');
       setWentToGym(data.went_to_gym || false);
       setNotes(data.notes || '');
-      setPhotoUrl(data.photo_url || null);
+      
+      // Load the photo URL from the database
+      if (data.photo_url) {
+        console.log('[CheckInForm] 📸 Photo URL from DB:', data.photo_url);
+        setPhotoUrl(data.photo_url);
+        setPhotoUri(null); // Clear any local URI
+      }
     } catch (error) {
       console.error('[CheckInForm] Error in loadCheckInData:', error);
     }
@@ -190,8 +196,9 @@ export default function CheckInFormScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
+        console.log('[CheckInForm] 📸 New photo taken:', result.assets[0].uri);
         setPhotoUri(result.assets[0].uri);
-        setPhotoUrl(null);
+        // Don't clear photoUrl yet - we'll update it after upload
       }
     } catch (error) {
       console.error('[CheckInForm] Error taking photo:', error);
@@ -215,8 +222,9 @@ export default function CheckInFormScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
+        console.log('[CheckInForm] 📸 Photo selected:', result.assets[0].uri);
         setPhotoUri(result.assets[0].uri);
-        setPhotoUrl(null);
+        // Don't clear photoUrl yet - we'll update it after upload
       }
     } catch (error) {
       console.error('[CheckInForm] Error choosing photo:', error);
@@ -351,7 +359,7 @@ export default function CheckInFormScreen() {
         
         if (uploadedUrl) {
           finalPhotoUrl = uploadedUrl;
-          console.log('[CheckInForm] ✅ Photo uploaded successfully');
+          console.log('[CheckInForm] ✅ Photo uploaded successfully, URL:', uploadedUrl);
         } else {
           console.error('[CheckInForm] ❌ Photo upload failed - showing alert to user');
           Alert.alert(
@@ -388,6 +396,7 @@ export default function CheckInFormScreen() {
         
         checkInData.weight = weightInKg;
         checkInData.photo_url = finalPhotoUrl;
+        console.log('[CheckInForm] 💾 Saving photo_url:', finalPhotoUrl);
       } else if (checkInType === 'steps') {
         checkInData.steps = steps ? parseInt(steps, 10) : null;
         checkInData.steps_goal = stepsGoal ? parseInt(stepsGoal, 10) : null;
@@ -447,6 +456,9 @@ export default function CheckInFormScreen() {
     console.log('[CheckInForm] 📅 Date selected from calendar:', selectedDate.toLocaleDateString());
     setDate(selectedDate);
   };
+
+  // Determine which image to display
+  const displayImageUri = photoUri || photoUrl;
 
   if (loading) {
     return (
@@ -541,12 +553,20 @@ export default function CheckInFormScreen() {
                 Progress Photo (Optional)
               </Text>
               
-              {(photoUri || photoUrl) ? (
+              {displayImageUri ? (
                 <View style={styles.photoPreview}>
                   <Image
-                    source={{ uri: photoUri || photoUrl || undefined }}
+                    key={displayImageUri}
+                    source={{ uri: displayImageUri }}
                     style={styles.photoImage}
                     resizeMode="cover"
+                    onError={(error) => {
+                      console.error('[CheckInForm] ❌ Image failed to load:', displayImageUri);
+                      console.error('[CheckInForm] Error:', error.nativeEvent.error);
+                    }}
+                    onLoad={() => {
+                      console.log('[CheckInForm] ✅ Image loaded successfully:', displayImageUri);
+                    }}
                   />
                   <TouchableOpacity
                     style={[styles.removePhotoButton, { backgroundColor: colors.error }]}
@@ -850,6 +870,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 300,
     borderRadius: borderRadius.md,
+    backgroundColor: colors.border,
   },
   removePhotoButton: {
     position: 'absolute',
