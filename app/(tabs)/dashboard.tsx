@@ -123,6 +123,8 @@ export default function DashboardScreen() {
   // Wrap loadNutritionTrends in useCallback to ensure it's stable and uses latest state
   const loadNutritionTrends = useCallback(async (userId: string) => {
     try {
+      console.log('[Dashboard] loadNutritionTrends called with range:', nutritionRange, 'custom:', nutritionCustomRange);
+      
       let startDate: Date;
       let endDate: Date;
       
@@ -149,19 +151,19 @@ export default function DashboardScreen() {
         endDate = new Date(nutritionCustomRange.endDate);
         endDate.setHours(23, 59, 59, 999);
       } else {
+        // Fallback to today if custom is selected but no range is set
+        console.log('[Dashboard] Custom range selected but no dates set, using today');
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6);
-        startDate.setHours(0, 0, 0, 0);
       }
 
       const startDateStr = startDate.toISOString().split('T')[0];
       const endDateStr = endDate.toISOString().split('T')[0];
 
       console.log('[Dashboard] Loading nutrition trends from', startDateStr, 'to', endDateStr);
-      console.log('[Dashboard] Start date object:', startDate.toISOString());
-      console.log('[Dashboard] End date object:', endDate.toISOString());
+      console.log('[Dashboard] Date range:', nutritionRange, '| Days included:', Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
       const { data: mealsData } = await supabase
         .from('meals')
@@ -212,7 +214,13 @@ export default function DashboardScreen() {
 
       const streak = calculateStreak(Array.from(daysWithData).sort());
 
-      console.log('[Dashboard] Nutrition stats:', { daysCount, avgCals, streak, uniqueDays: Array.from(daysWithData) });
+      console.log('[Dashboard] Nutrition stats calculated:', { 
+        range: nutritionRange,
+        daysCount, 
+        avgCals: Math.round(avgCals), 
+        streak, 
+        uniqueDays: Array.from(daysWithData).sort() 
+      });
 
       setNutritionStats({
         streak,
@@ -326,7 +334,7 @@ export default function DashboardScreen() {
   // Effect to reload nutrition trends when range changes
   useEffect(() => {
     if (user) {
-      console.log('[Dashboard] Nutrition range changed to:', nutritionRange, 'custom range:', nutritionCustomRange);
+      console.log('[Dashboard] useEffect triggered - Range changed to:', nutritionRange, '| Custom range:', nutritionCustomRange);
       loadNutritionTrends(user.id);
     }
   }, [nutritionRange, nutritionCustomRange, user, loadNutritionTrends]);
@@ -368,6 +376,7 @@ export default function DashboardScreen() {
     // Update both custom range and set range to 'custom'
     setNutritionCustomRange(customRange);
     setNutritionRange('custom');
+    setShowCalendarPicker(false);
   };
 
   const handleCalendarClose = () => {
@@ -376,25 +385,32 @@ export default function DashboardScreen() {
     
     // If user closed calendar without selecting and we're on custom, revert to today
     if (nutritionRange === 'custom' && !nutritionCustomRange) {
+      console.log('[Dashboard] Reverting to today since no custom range was selected');
       setNutritionRange('today');
     }
   };
 
   const handleRangeSelect = (range: TimeRange) => {
-    console.log('[Dashboard] Range selected:', range);
+    console.log('[Dashboard] handleRangeSelect called with:', range);
     
     // Close dropdown first
     setShowRangeDropdown(false);
     
     if (range === 'custom') {
       // Open custom date picker
+      console.log('[Dashboard] Opening calendar picker for custom range');
       setShowCalendarPicker(true);
+      // Don't update nutritionRange yet - wait for date selection
     } else {
       // Update the range state - this will trigger the useEffect
+      console.log('[Dashboard] Setting nutrition range to:', range);
       setNutritionRange(range);
       
       // Clear custom range when switching away from custom
-      setNutritionCustomRange(null);
+      if (nutritionCustomRange) {
+        console.log('[Dashboard] Clearing custom range');
+        setNutritionCustomRange(null);
+      }
     }
   };
 
