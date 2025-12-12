@@ -58,18 +58,19 @@ export default function CheckInFormScreen() {
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
-    loadUserData();
-    if (isEditing) {
-      loadCheckInData();
-    } else if (checkInType === 'steps') {
-      loadDefaultStepsGoal();
-    }
+    initializeForm();
   }, []);
 
-  const loadUserData = async () => {
+  const initializeForm = async () => {
     try {
+      setLoading(true);
+      
+      // Load user data first
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
+      if (!authUser) {
+        setLoading(false);
+        return;
+      }
 
       const { data: userData } = await supabase
         .from('users')
@@ -77,22 +78,31 @@ export default function CheckInFormScreen() {
         .eq('id', authUser.id)
         .maybeSingle();
 
-      setUser({ ...authUser, ...userData });
+      const userWithPrefs = { ...authUser, ...userData };
+      setUser(userWithPrefs);
+
+      console.log('[CheckInForm] 👤 User loaded with preferred_units:', userData?.preferred_units);
+
+      // Then load check-in data if editing
+      if (isEditing) {
+        await loadCheckInData(userWithPrefs);
+      } else if (checkInType === 'steps') {
+        await loadDefaultStepsGoal(authUser.id);
+      }
     } catch (error) {
-      console.error('[CheckInForm] Error loading user data:', error);
+      console.error('[CheckInForm] Error in initializeForm:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loadDefaultStepsGoal = async () => {
+  const loadDefaultStepsGoal = async (userId: string) => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
       // Try to get the most recent steps goal
       const { data } = await supabase
         .from('check_ins')
         .select('steps_goal')
-        .eq('user_id', authUser.id)
+        .eq('user_id', userId)
         .not('steps_goal', 'is', null)
         .order('date', { ascending: false })
         .limit(1)
@@ -109,11 +119,10 @@ export default function CheckInFormScreen() {
     }
   };
 
-  const loadCheckInData = async () => {
+  const loadCheckInData = async (userWithPrefs: any) => {
     if (!checkInId) return;
     
     try {
-      setLoading(true);
       const { data, error } = await supabase
         .from('check_ins')
         .select('*')
@@ -138,18 +147,19 @@ export default function CheckInFormScreen() {
       // Weight is ALWAYS stored in kg in the database
       // Convert to user's preferred unit for display
       if (data.weight) {
-        const units = user?.preferred_units || 'metric';
+        const units = userWithPrefs?.preferred_units || 'metric';
         const weightInKg = parseFloat(data.weight);
         console.log('[CheckInForm] ⚖️ Weight from DB (always kg):', weightInKg);
+        console.log('[CheckInForm] ⚖️ User preferred_units:', units);
         
         if (units === 'imperial') {
           // Convert kg to lbs for display
           const lbs = weightInKg * 2.20462;
-          console.log('[CheckInForm] ⚖️ Converting to lbs for display:', lbs);
+          console.log('[CheckInForm] ⚖️ Converting kg → lbs for display:', weightInKg, 'kg →', lbs, 'lbs');
           setWeight(Math.round(lbs).toString());
         } else {
           // Display in kg
-          console.log('[CheckInForm] ⚖️ Displaying in kg:', weightInKg);
+          console.log('[CheckInForm] ⚖️ Displaying in kg (no conversion):', weightInKg);
           setWeight(Math.round(weightInKg).toString());
         }
       }
@@ -161,8 +171,6 @@ export default function CheckInFormScreen() {
       setPhotoUrl(data.photo_url || null);
     } catch (error) {
       console.error('[CheckInForm] Error in loadCheckInData:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -375,16 +383,17 @@ export default function CheckInFormScreen() {
       if (checkInType === 'weight') {
         // ALWAYS convert weight to kg for storage, regardless of user's preferred unit
         const units = user?.preferred_units || 'metric';
+        const weightValue = parseFloat(weight);
         let weightInKg: number;
         
         if (units === 'imperial') {
           // User entered lbs, convert to kg for storage
-          weightInKg = parseFloat(weight) / 2.20462;
-          console.log('[CheckInForm] ⚖️ Converting weight:', weight, 'lbs →', weightInKg, 'kg (for storage)');
+          weightInKg = weightValue / 2.20462;
+          console.log('[CheckInForm] ⚖️ Converting weight for storage:', weightValue, 'lbs →', weightInKg, 'kg');
         } else {
           // User entered kg, store as-is
-          weightInKg = parseFloat(weight);
-          console.log('[CheckInForm] ⚖️ Storing weight:', weightInKg, 'kg (no conversion needed)');
+          weightInKg = weightValue;
+          console.log('[CheckInForm] ⚖️ Storing weight (no conversion needed):', weightInKg, 'kg');
         }
         
         checkInData.weight = weightInKg;
