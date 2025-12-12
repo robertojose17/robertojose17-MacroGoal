@@ -256,9 +256,9 @@ export default function CheckInFormScreen() {
       const blob = await uriToBlob(compressedUri);
       console.log('[CheckInForm] ✅ Blob created, size:', blob.size, 'bytes');
       
-      // Step 3: Generate unique filename
-      const fileName = generateCheckInPhotoFilename(userId, dateString);
-      const filePath = `check-in-photos/${fileName}`;
+      // Step 3: Generate unique filename with correct path structure
+      // Path: userId/check-in-photos/checkin_DATE_TIMESTAMP.jpg
+      const filePath = generateCheckInPhotoFilename(userId, dateString);
       console.log('[CheckInForm] 📁 Upload path:', filePath);
 
       // Step 4: Upload to Supabase Storage
@@ -266,11 +266,16 @@ export default function CheckInFormScreen() {
         .from('check-ins')
         .upload(filePath, blob, {
           contentType: 'image/jpeg',
-          upsert: true, // Changed to true to allow overwriting
+          upsert: true,
         });
 
       if (error) {
-        console.error('[CheckInForm] ❌ Upload error:', error);
+        console.error('[CheckInForm] ❌ Supabase Storage upload error:', error);
+        console.error('[CheckInForm] Error details:', {
+          message: error.message,
+          statusCode: (error as any).statusCode,
+          error: (error as any).error,
+        });
         
         // Retry logic for transient errors
         if (retryCount < maxRetries) {
@@ -278,16 +283,6 @@ export default function CheckInFormScreen() {
           await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
           return uploadPhoto(uri, userId, dateString, retryCount + 1);
         }
-        
-        // Log detailed error for debugging
-        console.error('[CheckInForm] ❌ Photo upload failed after', maxRetries + 1, 'attempts');
-        console.error('[CheckInForm] Error details:', {
-          message: error.message,
-          userId,
-          date: dateString,
-          filePath,
-          blobSize: blob.size,
-        });
         
         return null;
       }
@@ -302,7 +297,10 @@ export default function CheckInFormScreen() {
       
       return urlData.publicUrl;
     } catch (error) {
-      console.error('[CheckInForm] ❌ Error in uploadPhoto:', error);
+      console.error('[CheckInForm] ❌ Unexpected error in uploadPhoto:', error);
+      console.error('[CheckInForm] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('[CheckInForm] Error message:', error instanceof Error ? error.message : String(error));
+      console.error('[CheckInForm] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       
       // Retry logic for unexpected errors
       if (retryCount < maxRetries) {
@@ -310,14 +308,6 @@ export default function CheckInFormScreen() {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
         return uploadPhoto(uri, userId, dateString, retryCount + 1);
       }
-      
-      // Log detailed error for debugging
-      console.error('[CheckInForm] ❌ Photo upload failed after', maxRetries + 1, 'attempts');
-      console.error('[CheckInForm] Error details:', {
-        error: error instanceof Error ? error.message : String(error),
-        userId,
-        date: dateString,
-      });
       
       return null;
     }
@@ -363,7 +353,7 @@ export default function CheckInFormScreen() {
           finalPhotoUrl = uploadedUrl;
           console.log('[CheckInForm] ✅ Photo uploaded successfully');
         } else {
-          console.error('[CheckInForm] ❌ Photo upload failed');
+          console.error('[CheckInForm] ❌ Photo upload failed - showing alert to user');
           Alert.alert(
             'Photo Upload Failed',
             'Photo upload failed, but check-in will be saved without it.',

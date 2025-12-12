@@ -71,10 +71,12 @@ export async function uriToBlob(uri: string): Promise<Blob> {
  * Generate a unique filename for a check-in photo
  * @param userId - The user's ID
  * @param date - The check-in date (YYYY-MM-DD format)
- * @returns A unique filename
+ * @returns A unique filename with the correct path structure for RLS policies
  */
 export function generateCheckInPhotoFilename(userId: string, date: string): string {
   const timestamp = Date.now();
   const sanitizedDate = date.replace(/-/g, '');
-  return `${userId}/checkin_${sanitizedDate}_${timestamp}.jpg`;
+  // Path structure: userId/check-in-photos/checkin_DATE_TIMESTAMP.jpg
+  // This ensures the first folder is the userId, which matches the RLS policy
+  return `${userId}/check-in-photos/checkin_${sanitizedDate}_${timestamp}.jpg`;
 }
