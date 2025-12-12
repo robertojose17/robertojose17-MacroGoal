@@ -108,19 +108,12 @@ export default function CheckInsScreen() {
   };
 
   const handleViewCheckIn = (checkIn: CheckIn) => {
-    // For weight check-ins, navigate directly to the edit form
-    // For other types, keep the existing behavior (navigate to details screen)
-    if (selectedType === 'weight') {
-      router.push({
-        pathname: '/check-in-form',
-        params: { checkInId: checkIn.id, type: selectedType },
-      });
-    } else {
-      router.push({
-        pathname: '/check-in-details',
-        params: { checkInId: checkIn.id },
-      });
-    }
+    // For all check-in types, navigate directly to the edit form
+    // This provides a consistent tap-to-edit experience across Weight, Steps, and Gym
+    router.push({
+      pathname: '/check-in-form',
+      params: { checkInId: checkIn.id, type: selectedType },
+    });
   };
 
   const handleDeleteCheckIn = async (checkIn: CheckIn) => {
