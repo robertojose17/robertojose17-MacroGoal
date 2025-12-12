@@ -142,7 +142,7 @@ export default function DashboardScreen() {
       console.log('[Dashboard] Nutrition range changed, reloading trends');
       loadNutritionTrends(user.id);
     }
-  }, [nutritionRange, nutritionCustomRange]);
+  }, [nutritionRange, nutritionCustomRange, user]);
 
   const loadTodaySummary = async (userId: string, date: string) => {
     try {
@@ -379,17 +379,18 @@ export default function DashboardScreen() {
   const handleRangeSelect = (range: TimeRange) => {
     console.log('[Dashboard] Range selected:', range);
     
+    // Close dropdown first
+    setShowRangeDropdown(false);
+    
     if (range === 'custom') {
-      handleCustomRangeSelect();
+      // Open custom date picker
+      setShowCalendarPicker(true);
     } else {
-      // Close dropdown first
-      setShowRangeDropdown(false);
-      
       // Update the range state
       setNutritionRange(range);
       
-      // Clear custom range if switching away from custom
-      if (nutritionCustomRange) {
+      // Clear custom range when switching away from custom
+      if (range !== 'custom') {
         setNutritionCustomRange(null);
       }
     }
