@@ -42,11 +42,15 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     try {
       setLoading(true);
 
-      // Get today's date in user's local timezone
+      // Get today's date in user's local timezone (not UTC)
       const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${year}-${month}-${day}`;
 
-      console.log('[ConsistencyScore] Checking for today:', todayStr);
+      console.log('[ConsistencyScore] Checking for today (local):', todayStr);
+      console.log('[ConsistencyScore] Current time:', today.toISOString());
 
       // 1. Check if user has logged at least one meal item with calories > 0 today
       const { data: todayMeals, error: todayMealsError } = await supabase
@@ -83,6 +87,9 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       }
 
       console.log('[ConsistencyScore] Has logged today:', hasLoggedToday, 'Meals found:', todayMeals?.length || 0);
+      if (todayMeals && todayMeals.length > 0) {
+        console.log('[ConsistencyScore] Today meals data:', JSON.stringify(todayMeals, null, 2));
+      }
 
       // Daily Tracking Score (0-40 points)
       // Binary: 40 if logged today, 0 if not
