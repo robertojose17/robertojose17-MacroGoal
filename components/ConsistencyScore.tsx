@@ -10,6 +10,7 @@ import {
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
+import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 
 interface ConsistencyScoreProps {
   userId: string;
@@ -31,102 +32,182 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<ScoreBreakdown | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
+  
+  // Date range state
+  const [profileStartDate, setProfileStartDate] = useState<string | null>(null);
+  const [customStartDate, setCustomStartDate] = useState<string | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<string | null>(null);
+  const [isCustomRange, setIsCustomRange] = useState(false);
 
   useEffect(() => {
     if (userId) {
-      calculateConsistencyScore();
+      loadProfileStartDate();
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (userId && profileStartDate) {
+      calculateConsistencyScore();
+    }
+  }, [userId, profileStartDate, customStartDate, customEndDate]);
+
+  const loadProfileStartDate = async () => {
+    try {
+      console.log('[ConsistencyScore] Loading profile start date');
+      
+      // Fetch start_date from goals table
+      const { data: goalData, error: goalError } = await supabase
+        .from('goals')
+        .select('start_date')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (goalError) {
+        console.error('[ConsistencyScore] Error loading goal:', goalError);
+      }
+
+      if (goalData?.start_date) {
+        console.log('[ConsistencyScore] Profile start date found:', goalData.start_date);
+        setProfileStartDate(goalData.start_date);
+      } else {
+        // Fallback to today if no start_date
+        const today = new Date().toISOString().split('T')[0];
+        console.log('[ConsistencyScore] No start date found, using today:', today);
+        setProfileStartDate(today);
+      }
+    } catch (error) {
+      console.error('[ConsistencyScore] Error loading profile start date:', error);
+      // Fallback to today
+      const today = new Date().toISOString().split('T')[0];
+      setProfileStartDate(today);
+    }
+  };
 
   const calculateConsistencyScore = async () => {
     try {
       setLoading(true);
 
-      // Get today's date in user's local timezone (not UTC)
+      // Determine the date range to use
+      const startDateStr = isCustomRange && customStartDate ? customStartDate : profileStartDate;
       const today = new Date();
       const year = today.getFullYear();
       const month = String(today.getMonth() + 1).padStart(2, '0');
       const day = String(today.getDate()).padStart(2, '0');
-      const todayStr = `${year}-${month}-${day}`;
+      const endDateStr = isCustomRange && customEndDate ? customEndDate : `${year}-${month}-${day}`;
 
-      console.log('[ConsistencyScore] Checking for today (local):', todayStr);
-      console.log('[ConsistencyScore] Current time:', today.toISOString());
+      if (!startDateStr) {
+        console.log('[ConsistencyScore] No start date available yet');
+        setLoading(false);
+        return;
+      }
 
-      // 1. Check if user has logged at least one meal item with calories > 0 today
-      const { data: todayMeals, error: todayMealsError } = await supabase
+      console.log('[ConsistencyScore] Calculating score for range:', startDateStr, 'to', endDateStr);
+
+      // 1. Get all meals in the date range
+      const { data: allMeals, error: allMealsError } = await supabase
         .from('meals')
         .select(`
           id,
           date,
           meal_items (
             id,
-            calories
-          )
-        `)
-        .eq('user_id', userId)
-        .eq('date', todayStr);
-
-      if (todayMealsError) {
-        console.error('[ConsistencyScore] Error checking today meals:', todayMealsError);
-      }
-
-      // Check if there's at least one meal_item with calories > 0
-      let hasLoggedToday = false;
-      if (todayMeals && todayMeals.length > 0) {
-        for (const meal of todayMeals) {
-          if (meal.meal_items && meal.meal_items.length > 0) {
-            for (const item of meal.meal_items) {
-              if (item.calories && item.calories > 0) {
-                hasLoggedToday = true;
-                break;
-              }
-            }
-            if (hasLoggedToday) break;
-          }
-        }
-      }
-
-      console.log('[ConsistencyScore] Has logged today:', hasLoggedToday, 'Meals found:', todayMeals?.length || 0);
-      if (todayMeals && todayMeals.length > 0) {
-        console.log('[ConsistencyScore] Today meals data:', JSON.stringify(todayMeals, null, 2));
-      }
-
-      // Daily Tracking Score (0-40 points)
-      // Binary: 40 if logged today, 0 if not
-      const dailyTrackingScore = hasLoggedToday ? 40 : 0;
-
-      // 2. Calculate streak with decay logic
-      const streakDays = await calculateStreakWithDecay(userId, todayStr, hasLoggedToday);
-
-      // Streak Score (0-35 points) using exponential curve
-      // Formula: 35 * (1 - e^(-0.1 * streak_days))
-      const streakScore = 35 * (1 - Math.exp(-0.1 * streakDays));
-
-      // 3. Get today's protein intake
-      const { data: todayMealsData, error: mealsError } = await supabase
-        .from('meals')
-        .select(`
-          meal_items (
+            calories,
             protein
           )
         `)
         .eq('user_id', userId)
-        .eq('date', todayStr);
+        .gte('date', startDateStr)
+        .lte('date', endDateStr);
 
-      if (mealsError) {
-        console.error('[ConsistencyScore] Error loading today meals:', mealsError);
+      if (allMealsError) {
+        console.error('[ConsistencyScore] Error loading meals:', allMealsError);
       }
 
-      let proteinLogged = 0;
-      if (todayMealsData && todayMealsData.length > 0) {
-        todayMealsData.forEach((meal: any) => {
+      // Check if there's any data in the range
+      const hasData = allMeals && allMeals.length > 0 && allMeals.some((meal: any) => 
+        meal.meal_items && meal.meal_items.length > 0 && meal.meal_items.some((item: any) => item.calories && item.calories > 0)
+      );
+
+      if (!hasData) {
+        console.log('[ConsistencyScore] No data in selected range');
+        setScoreData({
+          dailyTracking: 0,
+          streakScore: 0,
+          proteinAccuracy: 0,
+          total: 0,
+          streakDays: 0,
+          hasLoggedToday: false,
+          proteinLogged: 0,
+          proteinTarget: 0,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 2. Calculate Daily Tracking Score
+      // Count unique days with at least one meal item with calories > 0
+      const daysWithData = new Set<string>();
+      if (allMeals && allMeals.length > 0) {
+        for (const meal of allMeals) {
+          if (meal.meal_items && meal.meal_items.length > 0) {
+            for (const item of meal.meal_items) {
+              if (item.calories && item.calories > 0) {
+                daysWithData.add(meal.date);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Calculate total days in range
+      const startDate = new Date(startDateStr);
+      const endDate = new Date(endDateStr);
+      const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
+      // Daily Tracking Score: (days_logged / total_days) * 40
+      const daysLogged = daysWithData.size;
+      const dailyTrackingScore = totalDays > 0 ? Math.round((daysLogged / totalDays) * 40) : 0;
+
+      console.log('[ConsistencyScore] Daily tracking:', { daysLogged, totalDays, score: dailyTrackingScore });
+
+      // 3. Calculate Streak Score
+      const streakDays = await calculateStreakInRange(userId, startDateStr, endDateStr, Array.from(daysWithData).sort());
+      
+      // Streak Score (0-35 points) using exponential curve
+      // Formula: 35 * (1 - e^(-0.1 * streak_days))
+      const streakScore = 35 * (1 - Math.exp(-0.1 * streakDays));
+
+      console.log('[ConsistencyScore] Streak:', { streakDays, score: Math.round(streakScore) });
+
+      // 4. Calculate Protein Accuracy Score
+      // Get all protein data in the range
+      let totalProtein = 0;
+      let daysWithProteinData = 0;
+      const dailyProtein: { [date: string]: number } = {};
+
+      if (allMeals && allMeals.length > 0) {
+        allMeals.forEach((meal: any) => {
           if (meal.meal_items) {
             meal.meal_items.forEach((item: any) => {
-              proteinLogged += item.protein || 0;
+              if (item.protein) {
+                if (!dailyProtein[meal.date]) {
+                  dailyProtein[meal.date] = 0;
+                }
+                dailyProtein[meal.date] += item.protein;
+              }
             });
           }
         });
       }
+
+      // Calculate average protein per day
+      const proteinDays = Object.keys(dailyProtein);
+      daysWithProteinData = proteinDays.length;
+      totalProtein = proteinDays.reduce((sum, date) => sum + dailyProtein[date], 0);
+      const avgProteinLogged = daysWithProteinData > 0 ? totalProtein / daysWithProteinData : 0;
 
       // Get protein target from active goal
       const { data: goalData, error: goalError } = await supabase
@@ -143,21 +224,14 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       const proteinTarget = goalData?.protein_g || 150;
 
       // Protein Accuracy Score (0-25 points)
-      const proteinAccuracyScore = calculateProteinAccuracyScore(proteinLogged, proteinTarget);
+      const proteinAccuracyScore = calculateProteinAccuracyScore(avgProteinLogged, proteinTarget);
+
+      console.log('[ConsistencyScore] Protein:', { avgProteinLogged, proteinTarget, score: proteinAccuracyScore });
 
       // Total Score (0-100)
       const totalScore = dailyTrackingScore + streakScore + proteinAccuracyScore;
 
-      console.log('[ConsistencyScore] Score breakdown:', {
-        dailyTracking: dailyTrackingScore,
-        streakScore: streakScore.toFixed(1),
-        proteinAccuracy: proteinAccuracyScore,
-        total: totalScore.toFixed(1),
-        streakDays,
-        hasLoggedToday,
-        proteinLogged: proteinLogged.toFixed(1),
-        proteinTarget,
-      });
+      console.log('[ConsistencyScore] Total score:', totalScore);
 
       setScoreData({
         dailyTracking: dailyTrackingScore,
@@ -165,8 +239,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         proteinAccuracy: proteinAccuracyScore,
         total: Math.round(totalScore),
         streakDays,
-        hasLoggedToday,
-        proteinLogged,
+        hasLoggedToday: daysWithData.has(endDateStr),
+        proteinLogged: avgProteinLogged,
         proteinTarget,
       });
 
@@ -177,101 +251,37 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     }
   };
 
-  const calculateStreakWithDecay = async (userId: string, today: string, hasLoggedToday: boolean): Promise<number> => {
+  const calculateStreakInRange = async (
+    userId: string,
+    startDateStr: string,
+    endDateStr: string,
+    daysWithData: string[]
+  ): Promise<number> => {
     try {
-      // Get or create user streak record
-      const { data: streakData, error: streakError } = await supabase
-        .from('user_streaks')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      if (daysWithData.length === 0) return 0;
 
-      if (streakError && streakError.code !== 'PGRST116') {
-        console.error('[ConsistencyScore] Error loading streak:', streakError);
-        return 0;
-      }
+      // Calculate the longest streak within the date range
+      let currentStreak = 1;
+      let maxStreak = 1;
 
-      let currentStreak = 0;
-      let lastTrackedDate = null;
+      for (let i = 1; i < daysWithData.length; i++) {
+        const prevDate = new Date(daysWithData[i - 1]);
+        const currDate = new Date(daysWithData[i]);
+        const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
 
-      if (streakData) {
-        currentStreak = streakData.current_streak || 0;
-        lastTrackedDate = streakData.last_tracked_date;
-      }
-
-      // Calculate days since last tracked
-      let daysSinceLastTracked = 0;
-      if (lastTrackedDate) {
-        const lastDate = new Date(lastTrackedDate);
-        const todayDate = new Date(today);
-        daysSinceLastTracked = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-      }
-
-      console.log('[ConsistencyScore] Streak calculation:', {
-        currentStreak,
-        lastTrackedDate,
-        daysSinceLastTracked,
-        hasLoggedToday,
-      });
-
-      // Apply decay logic
-      if (lastTrackedDate && lastTrackedDate !== today) {
-        if (daysSinceLastTracked === 1) {
-          // Logged yesterday, continue or start streak
-          if (hasLoggedToday) {
-            currentStreak += 1;
-          } else {
-            // Missed today, no change yet (will decay tomorrow)
-            // Keep current streak
-          }
-        } else if (daysSinceLastTracked === 2) {
-          // Missed 1 day (yesterday), apply 30% decay
-          currentStreak = Math.floor(currentStreak * 0.7);
-          if (hasLoggedToday) {
-            currentStreak += 1;
-          }
-        } else if (daysSinceLastTracked > 2) {
-          // Missed more than 2 days, reset to 0
-          currentStreak = 0;
-          if (hasLoggedToday) {
-            currentStreak = 1;
-          }
-        }
-      } else if (!lastTrackedDate) {
-        // First time tracking
-        if (hasLoggedToday) {
+        if (diffDays === 1) {
+          // Consecutive day
+          currentStreak++;
+          maxStreak = Math.max(maxStreak, currentStreak);
+        } else {
+          // Streak broken
           currentStreak = 1;
         }
-      } else if (lastTrackedDate === today) {
-        // Already tracked today, keep current streak
-        // No change needed
       }
 
-      // Update streak record
-      if (hasLoggedToday && lastTrackedDate !== today) {
-        const upsertData = {
-          user_id: userId,
-          current_streak: currentStreak,
-          last_tracked_date: today,
-          last_updated: new Date().toISOString(),
-        };
-
-        const { error: upsertError } = await supabase
-          .from('user_streaks')
-          .upsert(upsertData, {
-            onConflict: 'user_id',
-          });
-
-        if (upsertError) {
-          console.error('[ConsistencyScore] Error updating streak:', upsertError);
-        } else {
-          console.log('[ConsistencyScore] Streak updated:', upsertData);
-        }
-      }
-
-      return currentStreak;
+      return maxStreak;
     } catch (error) {
-      console.error('[ConsistencyScore] Error calculating streak with decay:', error);
+      console.error('[ConsistencyScore] Error calculating streak in range:', error);
       return 0;
     }
   };
@@ -334,6 +344,48 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     }
   };
 
+  const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
+    console.log('[ConsistencyScore] Custom date range selected:', startDate.toISOString(), 'to', endDate.toISOString());
+    
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    
+    setCustomStartDate(startStr);
+    setCustomEndDate(endStr);
+    setIsCustomRange(true);
+  };
+
+  const handleResetToJourneyStart = () => {
+    console.log('[ConsistencyScore] Resetting to journey start');
+    setCustomStartDate(null);
+    setCustomEndDate(null);
+    setIsCustomRange(false);
+  };
+
+  const getDateRangeText = () => {
+    if (isCustomRange && customStartDate && customEndDate) {
+      const start = new Date(customStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const end = new Date(customEndDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${start} - ${end}`;
+    } else if (profileStartDate) {
+      const start = new Date(profileStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${start} - Today`;
+    }
+    return 'Loading...';
+  };
+
   if (loading) {
     return (
       <View
@@ -360,128 +412,194 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const scoreLabel = getScoreLabel(scoreData.total);
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-        },
-      ]}
-    >
-      {/* Main Score Display - Tappable */}
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => setShowDetails(!showDetails)}
-        style={styles.mainScoreContainer}
+    <React.Fragment>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? colors.cardDark : colors.card,
+            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+          },
+        ]}
       >
-        <View style={styles.scoreCircle}>
-          <Text style={[styles.scoreValue, { color: scoreColor }]}>
-            {scoreData.total}
-          </Text>
-          <Text style={[styles.scoreLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {scoreLabel}
-          </Text>
-        </View>
-        <View style={styles.titleContainer}>
-          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Consistency Score
-          </Text>
-          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Your daily tracking performance
-          </Text>
-        </View>
-        <IconSymbol
-          ios_icon_name={showDetails ? "chevron.up" : "chevron.down"}
-          android_material_icon_name={showDetails ? "expand_less" : "expand_more"}
-          size={24}
-          color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-        />
-      </TouchableOpacity>
-
-      {/* Score Breakdown - Conditionally Rendered */}
-      {showDetails && (
-        <View style={styles.breakdownContainer}>
-          {/* Daily Tracking */}
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                Daily Tracking
-              </Text>
-              <Text style={[styles.breakdownScore, { color: scoreData.dailyTracking === 40 ? colors.success : colors.error }]}>
-                {scoreData.dailyTracking}/40
-              </Text>
-            </View>
-            <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    width: `${(scoreData.dailyTracking / 40) * 100}%`,
-                    backgroundColor: scoreData.dailyTracking === 40 ? colors.success : colors.error,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {scoreData.hasLoggedToday ? '✓ Logged today' : '✗ No meals logged today'}
+        {/* Main Score Display - Tappable */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setShowDetails(!showDetails)}
+          style={styles.mainScoreContainer}
+        >
+          <View style={styles.scoreCircle}>
+            <Text style={[styles.scoreValue, { color: scoreColor }]}>
+              {scoreData.total}
+            </Text>
+            <Text style={[styles.scoreLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {scoreLabel}
             </Text>
           </View>
-
-          {/* Streak Score */}
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                Streak Score
-              </Text>
-              <Text style={[styles.breakdownScore, { color: colors.primary }]}>
-                {scoreData.streakScore}/35
-              </Text>
-            </View>
-            <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    width: `${(scoreData.streakScore / 35) * 100}%`,
-                    backgroundColor: colors.primary,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {scoreData.streakDays} day{scoreData.streakDays !== 1 ? 's' : ''} streak
+          <View style={styles.titleContainer}>
+            <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Consistency Score
+            </Text>
+            <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Your daily tracking performance
             </Text>
           </View>
+          <IconSymbol
+            ios_icon_name={showDetails ? "chevron.up" : "chevron.down"}
+            android_material_icon_name={showDetails ? "expand_less" : "expand_more"}
+            size={24}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+        </TouchableOpacity>
 
-          {/* Protein Accuracy */}
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                Protein Accuracy
-              </Text>
-              <Text style={[styles.breakdownScore, { color: colors.protein }]}>
-                {scoreData.proteinAccuracy}/25
+        {/* Score Breakdown - Conditionally Rendered */}
+        {showDetails && (
+          <View style={styles.breakdownContainer}>
+            {/* Daily Tracking */}
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownHeader}>
+                <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Daily Tracking
+                </Text>
+                <Text style={[styles.breakdownScore, { color: scoreData.dailyTracking >= 30 ? colors.success : colors.warning }]}>
+                  {scoreData.dailyTracking}/40
+                </Text>
+              </View>
+              <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${(scoreData.dailyTracking / 40) * 100}%`,
+                      backgroundColor: scoreData.dailyTracking >= 30 ? colors.success : colors.warning,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Based on days logged in range
               </Text>
             </View>
-            <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    width: `${(scoreData.proteinAccuracy / 25) * 100}%`,
-                    backgroundColor: colors.protein,
-                  },
-                ]}
-              />
+
+            {/* Streak Score */}
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownHeader}>
+                <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Streak Score
+                </Text>
+                <Text style={[styles.breakdownScore, { color: colors.primary }]}>
+                  {scoreData.streakScore}/35
+                </Text>
+              </View>
+              <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${(scoreData.streakScore / 35) * 100}%`,
+                      backgroundColor: colors.primary,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {scoreData.streakDays} day{scoreData.streakDays !== 1 ? 's' : ''} longest streak
+              </Text>
             </View>
-            <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {Math.round(scoreData.proteinLogged)}g / {scoreData.proteinTarget}g ({Math.round((scoreData.proteinLogged / scoreData.proteinTarget) * 100)}%)
-            </Text>
+
+            {/* Protein Accuracy */}
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownHeader}>
+                <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Protein Accuracy
+                </Text>
+                <Text style={[styles.breakdownScore, { color: colors.protein }]}>
+                  {scoreData.proteinAccuracy}/25
+                </Text>
+              </View>
+              <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${(scoreData.proteinAccuracy / 25) * 100}%`,
+                      backgroundColor: colors.protein,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {Math.round(scoreData.proteinLogged)}g / {scoreData.proteinTarget}g avg ({Math.round((scoreData.proteinLogged / scoreData.proteinTarget) * 100)}%)
+              </Text>
+            </View>
+
+            {/* Date Range Control */}
+            <View style={styles.dateRangeSection}>
+              <View style={styles.dateRangeHeader}>
+                <Text style={[styles.dateRangeLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Date range
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.changeDateButton,
+                    {
+                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                      borderColor: isDark ? colors.borderDark : colors.border,
+                    },
+                  ]}
+                  onPress={() => setShowCalendarPicker(true)}
+                >
+                  <IconSymbol
+                    ios_icon_name="calendar"
+                    android_material_icon_name="calendar_today"
+                    size={14}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.changeDateButtonText, { color: colors.primary }]}>
+                    Change
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.dateRangeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {getDateRangeText()}
+              </Text>
+              {isCustomRange && (
+                <TouchableOpacity
+                  style={styles.resetButton}
+                  onPress={handleResetToJourneyStart}
+                >
+                  <Text style={[styles.resetButtonText, { color: colors.primary }]}>
+                    Reset to journey start
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </View>
-      )}
-    </View>
+        )}
+      </View>
+
+      {/* Calendar Date Range Picker */}
+      <CalendarDateRangePicker
+        visible={showCalendarPicker}
+        onClose={() => setShowCalendarPicker(false)}
+        onSelectRange={handleDateRangeSelect}
+        initialStartDate={
+          isCustomRange && customStartDate
+            ? new Date(customStartDate + 'T00:00:00')
+            : profileStartDate
+            ? new Date(profileStartDate + 'T00:00:00')
+            : new Date()
+        }
+        initialEndDate={
+          isCustomRange && customEndDate
+            ? new Date(customEndDate + 'T00:00:00')
+            : new Date()
+        }
+        maxDate={new Date()}
+        minDate={profileStartDate ? new Date(profileStartDate + 'T00:00:00') : undefined}
+        title="Select Date Range"
+      />
+    </React.Fragment>
   );
 }
 
@@ -567,5 +685,48 @@ const styles = StyleSheet.create({
   breakdownHint: {
     ...typography.caption,
     fontSize: 11,
+  },
+  dateRangeSection: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '30',
+  },
+  dateRangeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  dateRangeLabel: {
+    ...typography.bodyBold,
+    fontSize: 13,
+  },
+  changeDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+  },
+  changeDateButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dateRangeText: {
+    ...typography.caption,
+    fontSize: 12,
+    marginBottom: spacing.xs,
+  },
+  resetButton: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+  },
+  resetButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
