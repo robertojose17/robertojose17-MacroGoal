@@ -19,7 +19,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { compressImage, uriToBlob, generateCheckInPhotoFilename } from '@/utils/imageUtils';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
@@ -135,20 +135,22 @@ export default function CheckInFormScreen() {
       console.log('[CheckInForm] 📅 Parsed date:', data.date, '→', localDate.toLocaleDateString());
       setDate(localDate);
       
-      // Weight is stored in kg, convert to display units
+      // Weight is ALWAYS stored in kg in the database
+      // Convert to user's preferred unit for display
       if (data.weight) {
         const units = user?.preferred_units || 'metric';
-        console.log('[CheckInForm] ⚖️ Weight from DB:', data.weight, 'kg');
+        const weightInKg = parseFloat(data.weight);
+        console.log('[CheckInForm] ⚖️ Weight from DB (always kg):', weightInKg);
         
         if (units === 'imperial') {
           // Convert kg to lbs for display
-          const lbs = data.weight * 2.20462;
+          const lbs = weightInKg * 2.20462;
           console.log('[CheckInForm] ⚖️ Converting to lbs for display:', lbs);
           setWeight(Math.round(lbs).toString());
         } else {
           // Display in kg
-          console.log('[CheckInForm] ⚖️ Displaying in kg:', data.weight);
-          setWeight(Math.round(data.weight).toString());
+          console.log('[CheckInForm] ⚖️ Displaying in kg:', weightInKg);
+          setWeight(Math.round(weightInKg).toString());
         }
       }
       
@@ -256,7 +258,7 @@ export default function CheckInFormScreen() {
         .from('check-ins')
         .upload(filePath, blob, {
           contentType: 'image/jpeg',
-          upsert: false,
+          upsert: true, // Changed to true to allow overwriting
         });
 
       if (error) {
@@ -371,18 +373,18 @@ export default function CheckInFormScreen() {
       };
 
       if (checkInType === 'weight') {
-        // Convert weight to kg for storage (always store in kg)
+        // ALWAYS convert weight to kg for storage, regardless of user's preferred unit
         const units = user?.preferred_units || 'metric';
         let weightInKg: number;
         
         if (units === 'imperial') {
           // User entered lbs, convert to kg for storage
           weightInKg = parseFloat(weight) / 2.20462;
-          console.log('[CheckInForm] ⚖️ Converting weight:', weight, 'lbs →', weightInKg, 'kg');
+          console.log('[CheckInForm] ⚖️ Converting weight:', weight, 'lbs →', weightInKg, 'kg (for storage)');
         } else {
           // User entered kg, store as-is
           weightInKg = parseFloat(weight);
-          console.log('[CheckInForm] ⚖️ Storing weight:', weightInKg, 'kg');
+          console.log('[CheckInForm] ⚖️ Storing weight:', weightInKg, 'kg (no conversion needed)');
         }
         
         checkInData.weight = weightInKg;
@@ -442,6 +444,11 @@ export default function CheckInFormScreen() {
     return user?.preferred_units === 'imperial' ? 'lbs' : 'kg';
   };
 
+  const handleDateSelect = (selectedDate: Date) => {
+    console.log('[CheckInForm] 📅 Date selected from calendar:', selectedDate.toLocaleDateString());
+    setDate(selectedDate);
+  };
+
   if (loading) {
     return (
       <SafeAreaView
@@ -480,7 +487,7 @@ export default function CheckInFormScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Date */}
+        {/* Date - Using Calendar Date Picker */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>Date</Text>
           <TouchableOpacity
@@ -503,24 +510,6 @@ export default function CheckInFormScreen() {
               {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </Text>
           </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              value={date}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(Platform.OS === 'ios');
-                if (selectedDate) {
-                  // Set date at noon to avoid timezone issues
-                  const noonDate = new Date(selectedDate);
-                  noonDate.setHours(12, 0, 0, 0);
-                  console.log('[CheckInForm] 📅 Date selected:', noonDate.toLocaleDateString());
-                  setDate(noonDate);
-                }
-              }}
-              maximumDate={new Date()}
-            />
-          )}
         </View>
 
         {/* Weight Fields */}
@@ -730,6 +719,16 @@ export default function CheckInFormScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Calendar Date Picker Modal */}
+      <CalendarDatePicker
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onSelectDate={handleDateSelect}
+        initialDate={date}
+        maxDate={new Date()}
+        title="Select Date"
+      />
     </SafeAreaView>
   );
 }
