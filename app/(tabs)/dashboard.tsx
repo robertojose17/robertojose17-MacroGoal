@@ -377,11 +377,21 @@ export default function DashboardScreen() {
   };
 
   const handleRangeSelect = (range: TimeRange) => {
+    console.log('[Dashboard] Range selected:', range);
+    
     if (range === 'custom') {
       handleCustomRangeSelect();
     } else {
-      setNutritionRange(range);
+      // Close dropdown first
       setShowRangeDropdown(false);
+      
+      // Update the range state
+      setNutritionRange(range);
+      
+      // Clear custom range if switching away from custom
+      if (nutritionCustomRange) {
+        setNutritionCustomRange(null);
+      }
     }
   };
 
