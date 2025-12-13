@@ -11,10 +11,9 @@ import {
   Share,
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
-import * as FileSystem from 'expo-file-system/legacy';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import ProgressCircle from '@/components/ProgressCircle';
 
 interface ShareableProgressCardProps {
   userName: string;
@@ -75,22 +74,19 @@ export default function ShareableProgressCard({
         return;
       }
 
-      // Capture the view as an image
       const uri = await viewShotRef.current.capture();
       console.log('[ShareableCard] Captured image URI:', uri);
 
       if (Platform.OS === 'web') {
-        // On web, download the image
         const link = document.createElement('a');
         link.href = uri;
         link.download = 'fitness-progress.png';
         link.click();
         Alert.alert('Success', 'Image downloaded!');
       } else {
-        // On mobile, use Share API
         await Share.share({
           url: uri,
-          message: `Check out my fitness progress! 💪 ${disciplineScore}/100 Daily Discipline Score`,
+          message: `Check out my fitness progress! 💪 ${disciplineScore}/100 Consistency Score`,
         });
       }
 
@@ -103,18 +99,15 @@ export default function ShareableProgressCard({
   };
 
   const getScoreColor = (score: number): string => {
-    if (score >= 90) return '#10B981'; // Emerald green
-    if (score >= 80) return '#5CB97B'; // Success green
-    if (score >= 70) return '#5B9AA8'; // Teal
-    if (score >= 60) return '#F59E0B'; // Amber
-    return '#EF4444'; // Red
+    if (score >= 90) return '#10B981';
+    if (score >= 80) return '#5CB97B';
+    if (score >= 70) return '#5B9AA8';
+    if (score >= 60) return '#F59E0B';
+    return '#EF4444';
   };
-
-  const caloriesRemaining = caloriesGoal - caloriesConsumed;
 
   return (
     <View style={styles.container}>
-      {/* The card to be captured */}
       <ViewShot
         ref={viewShotRef}
         options={{
@@ -125,8 +118,13 @@ export default function ShareableProgressCard({
         }}
         style={styles.captureContainer}
       >
-        <View style={styles.card}>
-          {/* Logo in top-right corner */}
+        <LinearGradient
+          colors={['#FAFBFC', '#F0F2F7', '#E8EBF2']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.card}
+        >
+          {/* App Logo - Top Right Corner */}
           <View style={styles.logoContainer}>
             <Image
               source={require('@/assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png')}
@@ -135,160 +133,66 @@ export default function ShareableProgressCard({
             />
           </View>
 
-          {/* User Greeting */}
-          <Text style={styles.greeting}>Hi, {userName}</Text>
+          {/* User's Name - Prominent at Top */}
+          <Text style={styles.userName}>{userName}&apos;s Journey</Text>
 
-          {/* Large Central Score */}
+          {/* Consistency Score - Big, Bold, Visually Powerful */}
           <View style={styles.scoreSection}>
             <View
               style={[
                 styles.scoreCircle,
-                { borderColor: getScoreColor(disciplineScore) },
+                { 
+                  borderColor: getScoreColor(disciplineScore),
+                  boxShadow: `0px 12px 32px ${getScoreColor(disciplineScore)}40`,
+                },
               ]}
             >
               <Text style={[styles.scoreValue, { color: getScoreColor(disciplineScore) }]}>
                 {disciplineScore}
               </Text>
-              <Text style={styles.scoreLabel}>Daily Discipline</Text>
-              <Text style={styles.scoreLabel}>Score</Text>
+              <Text style={styles.scoreOutOf}>/100</Text>
+            </View>
+            <Text style={styles.scoreLabel}>Consistency Score</Text>
+          </View>
+
+          {/* Progress Metrics - Clean, Minimal */}
+          <View style={styles.metricsSection}>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricEmoji}>🔥</Text>
+              <Text style={styles.metricValue}>{streakDays}</Text>
+              <Text style={styles.metricLabel}>Day Streak</Text>
+            </View>
+
+            <View style={styles.metricCard}>
+              <Text style={styles.metricEmoji}>💪</Text>
+              <Text style={styles.metricValue}>{proteinAccuracy}%</Text>
+              <Text style={styles.metricLabel}>Protein Accuracy</Text>
+            </View>
+
+            <View style={styles.metricCard}>
+              <Text style={styles.metricEmoji}>⚖️</Text>
+              <Text style={styles.metricValue}>-{weightLost.toFixed(1)}</Text>
+              <Text style={styles.metricLabel}>lbs Lost</Text>
             </View>
           </View>
 
-          {/* Date Range Badge */}
-          <View style={styles.dateRangeBadge}>
-            <Text style={styles.dateRangeText}>{dateRange}</Text>
-          </View>
-
-          {/* Calories Ring + Macro Bars */}
-          <View style={styles.nutritionSection}>
-            {/* Calories Ring */}
-            <View style={styles.caloriesRing}>
-              <View style={styles.ringWrapper}>
-                <ProgressCircle
-                  current={caloriesConsumed}
-                  target={caloriesGoal}
-                  size={160}
-                  strokeWidth={14}
-                  color={caloriesRemaining >= 0 ? '#5CB97B' : '#EF4444'}
-                  label="kcal"
-                />
-              </View>
-              <Text style={styles.caloriesLabel}>
-                {caloriesRemaining >= 0 ? `${caloriesRemaining} left` : `${Math.abs(caloriesRemaining)} over`}
-              </Text>
-            </View>
-
-            {/* Macro Bars */}
-            <View style={styles.macrosSection}>
-              {/* Protein */}
-              <View style={styles.macroRow}>
-                <Text style={styles.macroLabel}>Protein</Text>
-                <Text style={styles.macroValue}>
-                  {Math.round(protein)} / {proteinGoal}g
-                </Text>
-                <View style={styles.macroBarBg}>
-                  <View
-                    style={[
-                      styles.macroBarFill,
-                      {
-                        width: `${Math.min((protein / proteinGoal) * 100, 100)}%`,
-                        backgroundColor: '#EF4444',
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              {/* Carbs */}
-              <View style={styles.macroRow}>
-                <Text style={styles.macroLabel}>Carbs</Text>
-                <Text style={styles.macroValue}>
-                  {Math.round(carbs)} / {carbsGoal}g
-                </Text>
-                <View style={styles.macroBarBg}>
-                  <View
-                    style={[
-                      styles.macroBarFill,
-                      {
-                        width: `${Math.min((carbs / carbsGoal) * 100, 100)}%`,
-                        backgroundColor: '#3B82F6',
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              {/* Fats */}
-              <View style={styles.macroRow}>
-                <Text style={styles.macroLabel}>Fats</Text>
-                <Text style={styles.macroValue}>
-                  {Math.round(fats)} / {fatsGoal}g
-                </Text>
-                <View style={styles.macroBarBg}>
-                  <View
-                    style={[
-                      styles.macroBarFill,
-                      {
-                        width: `${Math.min((fats / fatsGoal) * 100, 100)}%`,
-                        backgroundColor: '#F59E0B',
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              {/* Fiber */}
-              <View style={styles.macroRow}>
-                <Text style={styles.macroLabel}>Fiber</Text>
-                <Text style={styles.macroValue}>
-                  {Math.round(fiber)} / {fiberGoal}g
-                </Text>
-                <View style={styles.macroBarBg}>
-                  <View
-                    style={[
-                      styles.macroBarFill,
-                      {
-                        width: `${Math.min((fiber / fiberGoal) * 100, 100)}%`,
-                        backgroundColor: '#10B981',
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Three Stats */}
-          <View style={styles.statsSection}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>🔥 {streakDays}</Text>
-              <Text style={styles.statLabel}>Day Streak</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{proteinAccuracy}%</Text>
-              <Text style={styles.statLabel}>Protein Accuracy</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>-{weightLost} lbs</Text>
-              <Text style={styles.statLabel}>Weight Lost</Text>
-            </View>
-          </View>
-
-          {/* Photo Progress Section */}
+          {/* Before & After Photos - Beautifully Framed */}
           {leftPhotoUrl && rightPhotoUrl && (
             <View style={styles.photoSection}>
-              <Text style={styles.photoTitle}>Photo Progress</Text>
+              <Text style={styles.photoTitle}>Transformation</Text>
               <View style={styles.photosRow}>
-                {/* Left Photo */}
+                {/* Before Photo */}
                 <View style={styles.photoWrapper}>
-                  <View style={styles.photoPlaceholder}>
+                  <View style={styles.photoFrame}>
                     <Image
                       source={{ uri: leftPhotoUrl }}
                       style={styles.photoImage}
                       resizeMode="cover"
-                      blurRadius={8}
+                      blurRadius={10}
                     />
-                    <View style={styles.photoOverlay} />
+                    <View style={styles.photoOverlay}>
+                      <Text style={styles.photoOverlayText}>BEFORE</Text>
+                    </View>
                   </View>
                   {leftPhotoDate && (
                     <Text style={styles.photoDate}>{leftPhotoDate}</Text>
@@ -296,20 +200,22 @@ export default function ShareableProgressCard({
                 </View>
 
                 {/* Arrow */}
-                <View style={styles.arrowWrapper}>
+                <View style={styles.arrowContainer}>
                   <Text style={styles.arrow}>→</Text>
                 </View>
 
-                {/* Right Photo */}
+                {/* After Photo */}
                 <View style={styles.photoWrapper}>
-                  <View style={styles.photoPlaceholder}>
+                  <View style={styles.photoFrame}>
                     <Image
                       source={{ uri: rightPhotoUrl }}
                       style={styles.photoImage}
                       resizeMode="cover"
-                      blurRadius={8}
+                      blurRadius={10}
                     />
-                    <View style={styles.photoOverlay} />
+                    <View style={styles.photoOverlay}>
+                      <Text style={styles.photoOverlayText}>AFTER</Text>
+                    </View>
                   </View>
                   {rightPhotoDate && (
                     <Text style={styles.photoDate}>{rightPhotoDate}</Text>
@@ -319,12 +225,12 @@ export default function ShareableProgressCard({
             </View>
           )}
 
-          {/* Bottom Callout */}
-          <View style={styles.calloutSection}>
-            <Text style={styles.calloutText}>Track. Improve. Win.</Text>
+          {/* Bottom Tagline - Subtle */}
+          <View style={styles.taglineSection}>
+            <Text style={styles.tagline}>Track. Improve. Win.</Text>
             <Text style={styles.appName}>BuiltToWin App</Text>
           </View>
-        </View>
+        </LinearGradient>
       </ViewShot>
 
       {/* Share Button */}
@@ -359,175 +265,136 @@ const styles = StyleSheet.create({
   card: {
     width: 1080,
     height: 1080,
-    backgroundColor: '#FFFFFF',
-    padding: 60,
+    padding: 70,
     position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   logoContainer: {
     position: 'absolute',
-    top: 40,
-    right: 40,
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    top: 50,
+    right: 50,
+    width: 70,
+    height: 70,
+    borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#F7F8FC',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
-    elevation: 3,
+    backgroundColor: '#FFFFFF',
+    boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.08)',
+    elevation: 4,
   },
   logo: {
     width: '100%',
     height: '100%',
   },
-  greeting: {
-    fontSize: 42,
-    fontWeight: '700',
-    color: '#2B2D42',
+  userName: {
+    fontSize: 48,
+    fontWeight: '800',
+    color: '#1A1C2E',
+    letterSpacing: -1,
     marginTop: 20,
-    marginBottom: 30,
+    textAlign: 'center',
   },
   scoreSection: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginTop: 30,
+    marginBottom: 20,
   },
   scoreCircle: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    borderWidth: 12,
-    backgroundColor: '#F7F8FC',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    borderWidth: 16,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.12)',
-    elevation: 5,
+    elevation: 8,
+    marginBottom: 20,
   },
   scoreValue: {
-    fontSize: 96,
-    fontWeight: '800',
-    lineHeight: 100,
+    fontSize: 120,
+    fontWeight: '900',
+    lineHeight: 120,
+    letterSpacing: -4,
+  },
+  scoreOutOf: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginTop: -10,
   },
   scoreLabel: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  dateRangeBadge: {
-    alignSelf: 'center',
-    backgroundColor: '#5B9AA8',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 24,
-    marginBottom: 30,
-    boxShadow: '0px 4px 12px rgba(91, 154, 168, 0.3)',
-    elevation: 3,
-  },
-  dateRangeText: {
-    fontSize: 18,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#2B2D42',
+    letterSpacing: 0.5,
   },
-  nutritionSection: {
+  metricsSection: {
     flexDirection: 'row',
-    gap: 40,
-    marginBottom: 30,
-    alignItems: 'center',
-  },
-  caloriesRing: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  ringWrapper: {
-    alignItems: 'center',
+    gap: 24,
+    marginVertical: 30,
+    width: '100%',
     justifyContent: 'center',
   },
-  caloriesLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  macrosSection: {
+  metricCard: {
     flex: 1,
-    gap: 20,
-  },
-  macroRow: {
-    gap: 8,
-  },
-  macroLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2B2D42',
-  },
-  macroValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  macroBarBg: {
-    height: 12,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  macroBarFill: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  statsSection: {
-    flexDirection: 'row',
-    gap: 20,
-    marginBottom: 30,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#F7F8FC',
-    padding: 20,
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.06)',
-    elevation: 2,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.06)',
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.04)',
   },
-  statValue: {
-    fontSize: 32,
+  metricEmoji: {
+    fontSize: 44,
+    marginBottom: 12,
+  },
+  metricValue: {
+    fontSize: 40,
     fontWeight: '800',
-    color: '#2B2D42',
+    color: '#1A1C2E',
     marginBottom: 6,
   },
-  statLabel: {
-    fontSize: 14,
+  metricLabel: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#6B7280',
     textAlign: 'center',
   },
   photoSection: {
-    marginBottom: 30,
+    width: '100%',
+    marginVertical: 20,
   },
   photoTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#2B2D42',
-    marginBottom: 16,
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1A1C2E',
     textAlign: 'center',
+    marginBottom: 24,
+    letterSpacing: -0.5,
   },
   photosRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 20,
+    gap: 30,
+    justifyContent: 'center',
   },
   photoWrapper: {
-    flex: 1,
     alignItems: 'center',
-    gap: 10,
+    gap: 14,
   },
-  photoPlaceholder: {
-    width: '100%',
-    aspectRatio: 3 / 4,
-    borderRadius: 16,
+  photoFrame: {
+    width: 340,
+    height: 450,
+    borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: '#E5E7EB',
     position: 'relative',
+    boxShadow: '0px 12px 32px rgba(0, 0, 0, 0.12)',
+    elevation: 6,
+    borderWidth: 6,
+    borderColor: '#FFFFFF',
   },
   photoImage: {
     width: '100%',
@@ -535,37 +402,51 @@ const styles = StyleSheet.create({
   },
   photoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOverlayText: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 3,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   photoDate: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#6B7280',
   },
-  arrowWrapper: {
+  arrowContainer: {
     paddingHorizontal: 10,
   },
   arrow: {
-    fontSize: 40,
+    fontSize: 50,
     color: '#5B9AA8',
     fontWeight: '700',
   },
-  calloutSection: {
+  taglineSection: {
     alignItems: 'center',
-    paddingTop: 20,
+    paddingTop: 30,
     borderTopWidth: 2,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: 'rgba(0, 0, 0, 0.06)',
+    width: '100%',
   },
-  calloutText: {
-    fontSize: 28,
-    fontWeight: '700',
+  tagline: {
+    fontSize: 32,
+    fontWeight: '800',
     color: '#2B2D42',
     marginBottom: 8,
+    letterSpacing: 0.5,
   },
   appName: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '900',
     color: '#5B9AA8',
+    letterSpacing: 1,
   },
   shareButton: {
     flexDirection: 'row',
