@@ -459,6 +459,17 @@ export default function DashboardScreen() {
           <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
             Dashboard
           </Text>
+          <TouchableOpacity
+            style={styles.shareButton}
+            onPress={() => router.push('/share-progress')}
+          >
+            <IconSymbol
+              ios_icon_name="square.and.arrow.up"
+              android_material_icon_name="share"
+              size={24}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* Consistency Score - NEW COMPONENT AT THE TOP */}
@@ -870,12 +881,18 @@ const styles = StyleSheet.create({
     ...typography.body,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
     paddingBottom: spacing.md,
   },
   title: {
     ...typography.h2,
+  },
+  shareButton: {
+    padding: spacing.xs,
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
