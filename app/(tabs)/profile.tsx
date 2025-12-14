@@ -13,7 +13,7 @@ import { logSubscriptionStatus } from '@/utils/subscriptionDebug';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-type EditField = 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
+type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -200,6 +200,9 @@ export default function ProfileScreen() {
     const units = user?.preferred_units || 'metric';
     
     switch (field) {
+      case 'name':
+        setEditValue(user.name || '');
+        break;
       case 'height':
         if (units === 'imperial') {
           const { feet, inches } = cmToFeetInches(user.height || 170);
@@ -315,6 +318,10 @@ export default function ProfileScreen() {
       let needsRecalculation = false;
 
       switch (editingField) {
+        case 'name':
+          updateData.name = editValue.trim();
+          break;
+
         case 'height':
           let heightCm: number;
           if (units === 'imperial') {
@@ -531,11 +538,15 @@ export default function ProfileScreen() {
         <View style={[styles.profileCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
             <Text style={styles.avatarText}>
-              {user.email?.charAt(0).toUpperCase() || 'U'}
+              {user.name ? user.name.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase() || 'U'}
             </Text>
           </View>
           
-          <Text style={[styles.email, { color: isDark ? colors.textDark : colors.text }]}>
+          <Text style={[styles.userName, { color: isDark ? colors.textDark : colors.text }]}>
+            {user.name || 'User'}
+          </Text>
+          
+          <Text style={[styles.email, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {user.email || 'Guest User'}
           </Text>
           
@@ -647,6 +658,13 @@ export default function ProfileScreen() {
 
             {/* Editable Fields */}
             <View style={styles.settingsGrid}>
+              <EditableSettingItem
+                label="Name"
+                value={user.name || 'Tap to set your name'}
+                onPress={() => openEditModal('name')}
+                isDark={isDark}
+                highlight={!user.name}
+              />
               {user.height && (
                 <EditableSettingItem
                   label="Height"
@@ -840,6 +858,7 @@ export default function ProfileScreen() {
             activeOpacity={1}
           >
             <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              {editingField === 'name' && 'Edit Name'}
               {editingField === 'height' && 'Edit Height'}
               {editingField === 'weight' && 'Edit Current Weight'}
               {editingField === 'goalWeight' && 'Edit Goal Weight'}
@@ -878,8 +897,9 @@ export default function ProfileScreen() {
                 style={[styles.input, { backgroundColor: isDark ? colors.backgroundDark : colors.background, color: isDark ? colors.textDark : colors.text }]}
                 value={editValue}
                 onChangeText={setEditValue}
-                keyboardType="decimal-pad"
+                keyboardType={editingField === 'name' ? 'default' : 'decimal-pad'}
                 placeholder={
+                  editingField === 'name' ? 'Your first name' :
                   editingField === 'height' ? (units === 'imperial' ? 'inches' : 'cm') :
                   editingField === 'weight' || editingField === 'goalWeight' ? (units === 'imperial' ? 'lbs' : 'kg') :
                   editingField === 'age' ? 'years' :
@@ -887,6 +907,7 @@ export default function ProfileScreen() {
                 }
                 placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
                 autoFocus
+                autoCapitalize={editingField === 'name' ? 'words' : 'none'}
               />
             )}
 
@@ -1135,8 +1156,12 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
   },
+  userName: {
+    ...typography.h2,
+    marginBottom: spacing.xs,
+  },
   email: {
-    ...typography.h3,
+    ...typography.body,
     marginBottom: spacing.sm,
   },
   badge: {

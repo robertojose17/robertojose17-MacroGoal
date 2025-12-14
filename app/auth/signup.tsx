@@ -13,13 +13,14 @@ export default function SignUpScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
-    if (!email || !password || !confirmPassword) {
+    if (!name || !email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -52,12 +53,13 @@ export default function SignUpScreen() {
       }
 
       if (data.user) {
-        // Create user profile
+        // Create user profile with name
         const { error: profileError } = await supabase
           .from('users')
           .insert({
             id: data.user.id,
             email: data.user.email,
+            name: name,
             user_type: 'free',
             onboarding_completed: false,
           });
@@ -110,6 +112,21 @@ export default function SignUpScreen() {
         </View>
 
         <View style={styles.form}>
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+              Name
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
+              placeholder="Your first name"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              value={name}
+              onChangeText={setName}
+            />
+          </View>
+
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
               Email
