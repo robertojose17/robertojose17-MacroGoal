@@ -143,59 +143,10 @@ export default function ShareableProgressCard({
             </View>
           </View>
 
-          {/* Before & After Photos - Beautifully Framed */}
-          {leftPhotoUrl && rightPhotoUrl && (
-            <View style={styles.photoSection}>
-              <Text style={styles.photoTitle}>Transformation</Text>
-              <View style={styles.photosRow}>
-                {/* Before Photo */}
-                <View style={styles.photoWrapper}>
-                  <View style={styles.photoFrame}>
-                    <Image
-                      source={{ uri: leftPhotoUrl }}
-                      style={styles.photoImage}
-                      resizeMode="cover"
-                      blurRadius={10}
-                    />
-                    <View style={styles.photoOverlay}>
-                      <Text style={styles.photoOverlayText}>BEFORE</Text>
-                    </View>
-                  </View>
-                  {leftPhotoDate && (
-                    <Text style={styles.photoDate}>{leftPhotoDate}</Text>
-                  )}
-                </View>
-
-                {/* Arrow */}
-                <View style={styles.arrowContainer}>
-                  <Text style={styles.arrow}>→</Text>
-                </View>
-
-                {/* After Photo */}
-                <View style={styles.photoWrapper}>
-                  <View style={styles.photoFrame}>
-                    <Image
-                      source={{ uri: rightPhotoUrl }}
-                      style={styles.photoImage}
-                      resizeMode="cover"
-                      blurRadius={10}
-                    />
-                    <View style={styles.photoOverlay}>
-                      <Text style={styles.photoOverlayText}>AFTER</Text>
-                    </View>
-                  </View>
-                  {rightPhotoDate && (
-                    <Text style={styles.photoDate}>{rightPhotoDate}</Text>
-                  )}
-                </View>
-              </View>
-            </View>
-          )}
-
           {/* Bottom Tagline - Subtle */}
           <View style={styles.taglineSection}>
             <Text style={styles.tagline}>Track. Improve. Win.</Text>
-            <Text style={styles.appName}>BuiltToWin App</Text>
+            <Text style={styles.appName}>Macro Goal</Text>
           </View>
         </LinearGradient>
       </View>
@@ -316,72 +267,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6B7280',
     textAlign: 'center',
-  },
-  photoSection: {
-    width: '100%',
-    marginVertical: 15,
-  },
-  photoTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1A1C2E',
-    textAlign: 'center',
-    marginBottom: 20,
-    letterSpacing: -0.5,
-  },
-  photosRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-    justifyContent: 'center',
-  },
-  photoWrapper: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  photoFrame: {
-    width: 280,
-    height: 370,
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
-    position: 'relative',
-    boxShadow: '0px 12px 32px rgba(0, 0, 0, 0.12)',
-    elevation: 6,
-    borderWidth: 5,
-    borderColor: '#FFFFFF',
-  },
-  photoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  photoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoOverlayText: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: 3,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  photoDate: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#6B7280',
-  },
-  arrowContainer: {
-    paddingHorizontal: 8,
-  },
-  arrow: {
-    fontSize: 42,
-    color: '#5B9AA8',
-    fontWeight: '700',
   },
   taglineSection: {
     alignItems: 'center',
