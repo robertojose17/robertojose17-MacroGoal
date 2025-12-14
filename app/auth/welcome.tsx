@@ -23,11 +23,11 @@ export default function AuthWelcomeScreen() {
             <Text style={styles.icon}>💪</Text>
           </View>
           
-          <Text style={[styles.title, { color: isDark ? colors.textDark : '#FFFFFF' }]}>
+          <Text style={[styles.title, { color: isDark ? colors.textDark : '#F8F9FA' }]}>
             Macro Goal
           </Text>
           
-          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : 'rgba(255,255,255,0.9)' }]}>
+          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : '#F8F9FA' }]}>
             Track your macros. Hit your goals.
           </Text>
 
@@ -59,10 +59,10 @@ export default function AuthWelcomeScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.button, styles.buttonOutline, { borderColor: isDark ? colors.textDark : '#FFFFFF' }]}
+            style={[styles.button, styles.buttonOutline, { borderColor: isDark ? colors.textDark : '#F8F9FA' }]}
             onPress={() => router.push('/auth/login')}
           >
-            <Text style={[styles.buttonTextOutline, { color: isDark ? colors.textDark : '#FFFFFF' }]}>
+            <Text style={[styles.buttonTextOutline, { color: isDark ? colors.textDark : '#F8F9FA' }]}>
               Log In
             </Text>
           </TouchableOpacity>
@@ -76,7 +76,7 @@ function FeatureItem({ icon, text, isDark }: { icon: string; text: string; isDar
   return (
     <View style={styles.featureItem}>
       <Text style={styles.featureIcon}>{icon}</Text>
-      <Text style={[styles.featureText, { color: isDark ? colors.textDark : '#FFFFFF' }]}>
+      <Text style={[styles.featureText, { color: isDark ? colors.textDark : '#F8F9FA' }]}>
         {text}
       </Text>
     </View>
