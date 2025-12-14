@@ -1,19 +1,13 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Image,
-  TouchableOpacity,
-  Alert,
-  Platform,
-  Share,
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
 
 interface ShareableProgressCardProps {
   userName: string;
@@ -36,6 +30,7 @@ interface ShareableProgressCardProps {
   rightPhotoUrl?: string;
   leftPhotoDate?: string;
   rightPhotoDate?: string;
+  onCapture?: (ref: React.RefObject<ViewShot>) => void;
 }
 
 export default function ShareableProgressCard({
@@ -59,44 +54,16 @@ export default function ShareableProgressCard({
   rightPhotoUrl,
   leftPhotoDate,
   rightPhotoDate,
+  onCapture,
 }: ShareableProgressCardProps) {
   const viewShotRef = useRef<ViewShot>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
 
-  const handleShare = async () => {
-    try {
-      setIsCapturing(true);
-      console.log('[ShareableCard] Starting capture...');
-
-      if (!viewShotRef.current) {
-        Alert.alert('Error', 'Unable to capture card');
-        setIsCapturing(false);
-        return;
-      }
-
-      const uri = await viewShotRef.current.capture();
-      console.log('[ShareableCard] Captured image URI:', uri);
-
-      if (Platform.OS === 'web') {
-        const link = document.createElement('a');
-        link.href = uri;
-        link.download = 'fitness-progress.png';
-        link.click();
-        Alert.alert('Success', 'Image downloaded!');
-      } else {
-        await Share.share({
-          url: uri,
-          message: `Check out my fitness progress! 💪 ${disciplineScore}/100 Consistency Score`,
-        });
-      }
-
-      setIsCapturing(false);
-    } catch (error) {
-      console.error('[ShareableCard] Error sharing:', error);
-      Alert.alert('Error', 'Failed to share card');
-      setIsCapturing(false);
+  // Expose the ref to parent component
+  React.useEffect(() => {
+    if (onCapture && viewShotRef.current) {
+      onCapture(viewShotRef);
     }
-  };
+  }, [onCapture]);
 
   const getScoreColor = (score: number): string => {
     if (score >= 90) return '#10B981';
@@ -107,17 +74,17 @@ export default function ShareableProgressCard({
   };
 
   return (
-    <View style={styles.container}>
-      <ViewShot
-        ref={viewShotRef}
-        options={{
-          format: 'png',
-          quality: 1.0,
-          width: 1080,
-          height: 1080,
-        }}
-        style={styles.captureContainer}
-      >
+    <ViewShot
+      ref={viewShotRef}
+      options={{
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      }}
+      style={styles.captureWrapper}
+    >
+      {/* Safe area container with padding */}
+      <View style={styles.safeAreaContainer}>
         <LinearGradient
           colors={['#FAFBFC', '#F0F2F7', '#E8EBF2']}
           start={{ x: 0, y: 0 }}
@@ -231,52 +198,40 @@ export default function ShareableProgressCard({
             <Text style={styles.appName}>BuiltToWin App</Text>
           </View>
         </LinearGradient>
-      </ViewShot>
-
-      {/* Share Button */}
-      <TouchableOpacity
-        style={styles.shareButton}
-        onPress={handleShare}
-        disabled={isCapturing}
-      >
-        <IconSymbol
-          ios_icon_name="square.and.arrow.up"
-          android_material_icon_name="share"
-          size={24}
-          color="#FFFFFF"
-        />
-        <Text style={styles.shareButtonText}>
-          {isCapturing ? 'Preparing...' : 'Share Progress Card'}
-        </Text>
-      </TouchableOpacity>
-    </View>
+      </View>
+    </ViewShot>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  captureContainer: {
+  captureWrapper: {
     width: 1080,
-    height: 1080,
+    height: 1350,
+    backgroundColor: '#FAFBFC',
+  },
+  safeAreaContainer: {
+    width: 1080,
+    height: 1350,
+    padding: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
-    width: 1080,
-    height: 1080,
-    padding: 70,
+    width: '100%',
+    height: '100%',
+    padding: 50,
+    borderRadius: 32,
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   logoContainer: {
     position: 'absolute',
-    top: 50,
-    right: 50,
-    width: 70,
-    height: 70,
-    borderRadius: 18,
+    top: 40,
+    right: 40,
+    width: 60,
+    height: 60,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
     boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.08)',
@@ -287,59 +242,59 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   userName: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: '800',
     color: '#1A1C2E',
     letterSpacing: -1,
-    marginTop: 20,
+    marginTop: 10,
     textAlign: 'center',
   },
   scoreSection: {
     alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 15,
   },
   scoreCircle: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    borderWidth: 16,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    borderWidth: 14,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   scoreValue: {
-    fontSize: 120,
+    fontSize: 100,
     fontWeight: '900',
-    lineHeight: 120,
-    letterSpacing: -4,
+    lineHeight: 100,
+    letterSpacing: -3,
   },
   scoreOutOf: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: '#6B7280',
-    marginTop: -10,
+    marginTop: -8,
   },
   scoreLabel: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#2B2D42',
     letterSpacing: 0.5,
   },
   metricsSection: {
     flexDirection: 'row',
-    gap: 24,
-    marginVertical: 30,
+    gap: 20,
+    marginVertical: 20,
     width: '100%',
     justifyContent: 'center',
   },
   metricCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 28,
+    borderRadius: 20,
+    padding: 22,
     alignItems: 'center',
     boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.06)',
     elevation: 3,
@@ -347,53 +302,53 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 0, 0, 0.04)',
   },
   metricEmoji: {
-    fontSize: 44,
-    marginBottom: 12,
+    fontSize: 38,
+    marginBottom: 10,
   },
   metricValue: {
-    fontSize: 40,
+    fontSize: 34,
     fontWeight: '800',
     color: '#1A1C2E',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   metricLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
     textAlign: 'center',
   },
   photoSection: {
     width: '100%',
-    marginVertical: 20,
+    marginVertical: 15,
   },
   photoTitle: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     color: '#1A1C2E',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     letterSpacing: -0.5,
   },
   photosRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 30,
+    gap: 24,
     justifyContent: 'center',
   },
   photoWrapper: {
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
   },
   photoFrame: {
-    width: 340,
-    height: 450,
-    borderRadius: 28,
+    width: 280,
+    height: 370,
+    borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#E5E7EB',
     position: 'relative',
     boxShadow: '0px 12px 32px rgba(0, 0, 0, 0.12)',
     elevation: 6,
-    borderWidth: 6,
+    borderWidth: 5,
     borderColor: '#FFFFFF',
   },
   photoImage: {
@@ -407,7 +362,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   photoOverlayText: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 3,
@@ -416,52 +371,36 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   photoDate: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#6B7280',
   },
   arrowContainer: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
   },
   arrow: {
-    fontSize: 50,
+    fontSize: 42,
     color: '#5B9AA8',
     fontWeight: '700',
   },
   taglineSection: {
     alignItems: 'center',
-    paddingTop: 30,
+    paddingTop: 20,
     borderTopWidth: 2,
     borderTopColor: 'rgba(0, 0, 0, 0.06)',
     width: '100%',
   },
   tagline: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     color: '#2B2D42',
-    marginBottom: 8,
+    marginBottom: 6,
     letterSpacing: 0.5,
   },
   appName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '900',
     color: '#5B9AA8',
     letterSpacing: 1,
-  },
-  shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.lg,
-    boxShadow: '0px 4px 12px rgba(91, 154, 168, 0.3)',
-    elevation: 3,
-  },
-  shareButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
 });

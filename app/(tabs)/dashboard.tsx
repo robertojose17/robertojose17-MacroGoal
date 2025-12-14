@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +23,10 @@ import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import PhotoProgressCard from '@/components/PhotoProgressCard';
+import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/app/integrations/supabase/client';
+import * as Sharing from 'expo-sharing';
+import ViewShot from 'react-native-view-shot';
 
 type TimeRange = 'today' | '7days' | '30days' | 'custom';
 
@@ -70,6 +74,11 @@ export default function DashboardScreen() {
   const [nutritionStats, setNutritionStats] = useState<any>(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
+
+  // Share-related state
+  const [isGeneratingShare, setIsGeneratingShare] = useState(false);
+  const [shareCardData, setShareCardData] = useState<any>(null);
+  const shareCardRef = useRef<ViewShot>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -419,6 +428,239 @@ export default function DashboardScreen() {
     return null;
   };
 
+  // ONE-TAP SHARE HANDLER
+  const handleShareProgress = async () => {
+    try {
+      setIsGeneratingShare(true);
+      console.log('[Dashboard] Starting one-tap share...');
+
+      if (!user) {
+        Alert.alert('Error', 'User data not loaded');
+        setIsGeneratingShare(false);
+        return;
+      }
+
+      // Load share card data
+      const authUser = user;
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      const userName = userData?.name || 'Alex';
+
+      // Get active goal
+      const { data: goalData } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const goalForShare = goalData || {
+        daily_calories: 2000,
+        protein_g: 150,
+        carbs_g: 200,
+        fats_g: 65,
+        fiber_g: 30,
+        start_date: new Date().toISOString().split('T')[0],
+      };
+
+      // Get today's nutrition data
+      const today = new Date().toISOString().split('T')[0];
+      const { data: mealsData } = await supabase
+        .from('meals')
+        .select(`
+          meal_items (
+            calories,
+            protein,
+            carbs,
+            fats,
+            fiber
+          )
+        `)
+        .eq('user_id', authUser.id)
+        .eq('date', today);
+
+      let totalCals = 0;
+      let totalP = 0;
+      let totalC = 0;
+      let totalF = 0;
+      let totalFib = 0;
+
+      if (mealsData && mealsData.length > 0) {
+        mealsData.forEach((meal: any) => {
+          if (meal.meal_items) {
+            meal.meal_items.forEach((item: any) => {
+              totalCals += item.calories || 0;
+              totalP += item.protein || 0;
+              totalC += item.carbs || 0;
+              totalF += item.fats || 0;
+              totalFib += item.fiber || 0;
+            });
+          }
+        });
+      }
+
+      // Calculate streak (last 7 days for demo)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
+
+      const { data: allMeals } = await supabase
+        .from('meals')
+        .select('date, meal_items(calories)')
+        .eq('user_id', authUser.id)
+        .gte('date', startDateStr)
+        .lte('date', today);
+
+      const daysWithData = new Set<string>();
+      if (allMeals && allMeals.length > 0) {
+        allMeals.forEach((meal: any) => {
+          if (meal.meal_items && meal.meal_items.length > 0) {
+            if (meal.meal_items.some((item: any) => item.calories > 0)) {
+              daysWithData.add(meal.date);
+            }
+          }
+        });
+      }
+
+      const streakDays = daysWithData.size;
+
+      // Calculate protein accuracy
+      const proteinAccuracy = goalForShare.protein_g > 0
+        ? Math.round((totalP / goalForShare.protein_g) * 100)
+        : 0;
+
+      // Get weight data for weight lost calculation
+      const { data: checkIns } = await supabase
+        .from('check_ins')
+        .select('weight, date')
+        .eq('user_id', authUser.id)
+        .not('weight', 'is', null)
+        .order('date', { ascending: true });
+
+      let weightLost = 0;
+      if (checkIns && checkIns.length >= 2) {
+        const firstWeight = checkIns[0].weight;
+        const lastWeight = checkIns[checkIns.length - 1].weight;
+        weightLost = Math.abs(firstWeight - lastWeight);
+      }
+
+      // Calculate discipline score (simplified version)
+      const dailyTrackingScore = daysWithData.size >= 5 ? 40 : (daysWithData.size / 7) * 40;
+      const streakScore = Math.min(35, streakDays * 5);
+      const proteinScore = proteinAccuracy >= 95 && proteinAccuracy <= 105 ? 25 : 
+                          proteinAccuracy >= 80 ? 20 : 
+                          proteinAccuracy >= 60 ? 15 : 10;
+      const disciplineScore = Math.round(dailyTrackingScore + streakScore + proteinScore);
+
+      // Get photos for transformation
+      const { data: photoCheckIns } = await supabase
+        .from('check_ins')
+        .select('photo_url, date')
+        .eq('user_id', authUser.id)
+        .not('photo_url', 'is', null)
+        .order('date', { ascending: true });
+
+      let leftPhotoUrl, rightPhotoUrl, leftPhotoDate, rightPhotoDate;
+      if (photoCheckIns && photoCheckIns.length >= 2) {
+        leftPhotoUrl = photoCheckIns[0].photo_url;
+        leftPhotoDate = new Date(photoCheckIns[0].date + 'T00:00:00').toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+        rightPhotoUrl = photoCheckIns[photoCheckIns.length - 1].photo_url;
+        rightPhotoDate = new Date(photoCheckIns[photoCheckIns.length - 1].date + 'T00:00:00').toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+      }
+
+      // Format date range
+      const startDate = new Date(goalForShare.start_date + 'T00:00:00');
+      const dateRange = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - Today`;
+
+      const cardData = {
+        userName,
+        disciplineScore,
+        dateRange,
+        caloriesConsumed: totalCals,
+        caloriesGoal: goalForShare.daily_calories,
+        protein: totalP,
+        proteinGoal: goalForShare.protein_g,
+        carbs: totalC,
+        carbsGoal: goalForShare.carbs_g,
+        fats: totalF,
+        fatsGoal: goalForShare.fats_g,
+        fiber: totalFib,
+        fiberGoal: goalForShare.fiber_g,
+        streakDays,
+        proteinAccuracy,
+        weightLost,
+        leftPhotoUrl,
+        rightPhotoUrl,
+        leftPhotoDate,
+        rightPhotoDate,
+      };
+
+      setShareCardData(cardData);
+
+      // Wait for the card to render
+      setTimeout(async () => {
+        try {
+          if (!shareCardRef.current) {
+            Alert.alert('Error', 'Unable to generate share image');
+            setIsGeneratingShare(false);
+            return;
+          }
+
+          console.log('[Dashboard] Capturing share image...');
+          const uri = await shareCardRef.current.capture();
+          console.log('[Dashboard] Share image captured:', uri);
+
+          // Share immediately
+          if (Platform.OS === 'web') {
+            // For web, download the image
+            const link = document.createElement('a');
+            link.href = uri;
+            link.download = `fitness-progress-${Date.now()}.png`;
+            link.click();
+            Alert.alert('Success', 'Image downloaded!');
+          } else {
+            // For native, use expo-sharing
+            const isAvailable = await Sharing.isAvailableAsync();
+            if (isAvailable) {
+              await Sharing.shareAsync(uri, {
+                mimeType: 'image/png',
+                dialogTitle: `Check out my fitness progress! 💪 ${disciplineScore}/100 Consistency Score`,
+              });
+            } else {
+              Alert.alert('Error', 'Sharing is not available on this device');
+            }
+          }
+
+          setIsGeneratingShare(false);
+          setShareCardData(null);
+        } catch (error) {
+          console.error('[Dashboard] Error capturing/sharing:', error);
+          Alert.alert('Error', 'Failed to share progress card');
+          setIsGeneratingShare(false);
+          setShareCardData(null);
+        }
+      }, 500);
+
+    } catch (error) {
+      console.error('[Dashboard] Error in share handler:', error);
+      Alert.alert('Error', 'Failed to generate share card');
+      setIsGeneratingShare(false);
+      setShareCardData(null);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView
@@ -461,14 +703,19 @@ export default function DashboardScreen() {
           </Text>
           <TouchableOpacity
             style={styles.shareButton}
-            onPress={() => router.push('/share-progress')}
+            onPress={handleShareProgress}
+            disabled={isGeneratingShare}
           >
-            <IconSymbol
-              ios_icon_name="square.and.arrow.up"
-              android_material_icon_name="share"
-              size={24}
-              color={colors.primary}
-            />
+            {isGeneratingShare ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol
+                ios_icon_name="square.and.arrow.up"
+                android_material_icon_name="share"
+                size={24}
+                color={colors.primary}
+              />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -657,6 +904,18 @@ export default function DashboardScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Hidden ShareableProgressCard for capture */}
+      {shareCardData && (
+        <View style={styles.hiddenCardContainer}>
+          <ShareableProgressCard
+            {...shareCardData}
+            onCapture={(ref) => {
+              shareCardRef.current = ref.current;
+            }}
+          />
+        </View>
+      )}
 
       <Modal
         visible={showCheckInModal}
@@ -893,6 +1152,9 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     padding: spacing.xs,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
@@ -993,6 +1255,12 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  hiddenCardContainer: {
+    position: 'absolute',
+    left: -10000,
+    top: -10000,
+    opacity: 0,
   },
   modalOverlay: {
     flex: 1,
