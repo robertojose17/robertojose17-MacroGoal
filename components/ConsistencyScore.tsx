@@ -28,6 +28,13 @@ interface ScoreBreakdown {
   proteinTarget: number;
 }
 
+interface DailyScore {
+  date: string;
+  trackingScore: number; // 0 or 40
+  streakScore: number; // 0-35
+  proteinScore: number; // 0-25
+}
+
 export default function ConsistencyScore({ userId, isDark }: ConsistencyScoreProps) {
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<ScoreBreakdown | null>(null);
@@ -35,34 +42,46 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   
   // Date range state
-  const [profileStartDate, setProfileStartDate] = useState<string | null>(null);
-  const [customStartDate, setCustomStartDate] = useState<string | null>(null);
-  const [customEndDate, setCustomEndDate] = useState<string | null>(null);
-  const [isCustomRange, setIsCustomRange] = useState(false);
+  const [journeyStartDate, setJourneyStartDate] = useState<string | null>(null);
+  const [rangeStartDate, setRangeStartDate] = useState<string | null>(null);
+  const [rangeEndDate, setRangeEndDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (userId) {
-      loadProfileStartDate();
+      loadJourneyStartDate();
     }
   }, [userId]);
 
   useEffect(() => {
-    if (userId && profileStartDate) {
+    if (userId && journeyStartDate && rangeStartDate && rangeEndDate) {
       calculateConsistencyScore();
     }
-  }, [userId, profileStartDate, customStartDate, customEndDate]);
+  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate]);
 
-  const loadProfileStartDate = async () => {
+  const loadJourneyStartDate = async () => {
     try {
-      console.log('[ConsistencyScore] Loading profile start date');
+      console.log('[ConsistencyScore] Loading journey start date for user:', userId);
       
-      // Fetch start_date from goals table (active goal)
+      // First, try to get the user's created_at date (when they joined)
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('created_at')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (userError) {
+        console.error('[ConsistencyScore] Error loading user data:', userError);
+      }
+
+      let startDate: string | null = null;
+
+      // Try to get start_date from active goal
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('start_date')
         .eq('user_id', userId)
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
+        .order('start_date', { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -70,20 +89,33 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         console.error('[ConsistencyScore] Error loading goal:', goalError);
       }
 
+      // Priority: goal start_date > user created_at > today
       if (goalData?.start_date) {
-        console.log('[ConsistencyScore] Profile start date found:', goalData.start_date);
-        setProfileStartDate(goalData.start_date);
+        startDate = goalData.start_date;
+        console.log('[ConsistencyScore] Using goal start_date:', startDate);
+      } else if (userData?.created_at) {
+        startDate = userData.created_at.split('T')[0];
+        console.log('[ConsistencyScore] Using user created_at:', startDate);
       } else {
-        // Fallback to today if no start_date
-        const today = new Date().toISOString().split('T')[0];
-        console.log('[ConsistencyScore] No start date found, using today:', today);
-        setProfileStartDate(today);
+        startDate = new Date().toISOString().split('T')[0];
+        console.log('[ConsistencyScore] No start date found, using today:', startDate);
       }
+
+      setJourneyStartDate(startDate);
+      
+      // Set default range: journey start → today
+      setRangeStartDate(startDate);
+      const today = new Date().toISOString().split('T')[0];
+      setRangeEndDate(today);
+      
+      console.log('[ConsistencyScore] Default range set:', startDate, '→', today);
     } catch (error) {
-      console.error('[ConsistencyScore] Error loading profile start date:', error);
+      console.error('[ConsistencyScore] Error loading journey start date:', error);
       // Fallback to today
       const today = new Date().toISOString().split('T')[0];
-      setProfileStartDate(today);
+      setJourneyStartDate(today);
+      setRangeStartDate(today);
+      setRangeEndDate(today);
     }
   };
 
@@ -91,26 +123,18 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     try {
       setLoading(true);
 
-      // Determine the date range to use
-      const startDateStr = isCustomRange && customStartDate ? customStartDate : profileStartDate;
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      const endDateStr = isCustomRange && customEndDate ? customEndDate : `${year}-${month}-${day}`;
-
-      if (!startDateStr) {
-        console.log('[ConsistencyScore] No start date available yet');
+      if (!rangeStartDate || !rangeEndDate) {
+        console.log('[ConsistencyScore] Missing date range');
         setLoading(false);
         return;
       }
 
-      console.log('[ConsistencyScore] ===== CALCULATING SCORE =====');
-      console.log('[ConsistencyScore] Date range:', startDateStr, 'to', endDateStr);
+      console.log('[ConsistencyScore] ===== CALCULATING CONSISTENCY SCORE =====');
+      console.log('[ConsistencyScore] Date range:', rangeStartDate, '→', rangeEndDate);
       console.log('[ConsistencyScore] User ID:', userId);
 
       // 1. Get all meals in the date range
-      const { data: allMeals, error: allMealsError } = await supabase
+      const { data: allMeals, error: mealsError } = await supabase
         .from('meals')
         .select(`
           id,
@@ -122,85 +146,19 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
           )
         `)
         .eq('user_id', userId)
-        .gte('date', startDateStr)
-        .lte('date', endDateStr);
+        .gte('date', rangeStartDate)
+        .lte('date', rangeEndDate)
+        .order('date', { ascending: true });
 
-      if (allMealsError) {
-        console.error('[ConsistencyScore] ❌ Error loading meals:', allMealsError);
+      if (mealsError) {
+        console.error('[ConsistencyScore] Error loading meals:', mealsError);
+        setLoading(false);
+        return;
       }
 
-      console.log('[ConsistencyScore] Meals query returned:', allMeals?.length || 0, 'meals');
-      console.log('[ConsistencyScore] Raw meals data:', JSON.stringify(allMeals, null, 2));
+      console.log('[ConsistencyScore] Meals found:', allMeals?.length || 0);
 
-      // FIX: Check if there's any data - a day has tracking if it has at least ONE meal_item OR total calories > 0
-      const daysWithData = new Set<string>();
-      const dailyCalories: { [date: string]: number } = {};
-      const dailyProtein: { [date: string]: number } = {};
-
-      if (allMeals && allMeals.length > 0) {
-        for (const meal of allMeals) {
-          if (meal.meal_items && meal.meal_items.length > 0) {
-            // Initialize daily totals if not exists
-            if (!dailyCalories[meal.date]) {
-              dailyCalories[meal.date] = 0;
-            }
-            if (!dailyProtein[meal.date]) {
-              dailyProtein[meal.date] = 0;
-            }
-
-            // Process each meal item
-            for (const item of meal.meal_items) {
-              // FIX: Add day to tracking if there's ANY meal item (regardless of calories value)
-              daysWithData.add(meal.date);
-              
-              // Safely parse calories and protein
-              const itemCalories = parseFloat(String(item.calories || '0'));
-              const itemProtein = parseFloat(String(item.protein || '0'));
-              
-              dailyCalories[meal.date] += itemCalories;
-              dailyProtein[meal.date] += itemProtein;
-            }
-          }
-        }
-      }
-
-      console.log('[ConsistencyScore] Days with data:', Array.from(daysWithData).sort());
-      console.log('[ConsistencyScore] Daily calories:', dailyCalories);
-      console.log('[ConsistencyScore] Daily protein:', dailyProtein);
-
-      // Calculate total days in range
-      const startDate = new Date(startDateStr + 'T00:00:00');
-      const endDate = new Date(endDateStr + 'T00:00:00');
-      const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      
-      // Daily Tracking Score: (days_logged / total_days) * 40
-      const daysLogged = daysWithData.size;
-      const dailyTrackingScore = totalDays > 0 ? Math.round((daysLogged / totalDays) * 40) : 0;
-
-      console.log('[ConsistencyScore] ===== DAILY TRACKING =====');
-      console.log('[ConsistencyScore] Days logged:', daysLogged);
-      console.log('[ConsistencyScore] Total days in range:', totalDays);
-      console.log('[ConsistencyScore] Daily tracking score:', dailyTrackingScore, '/ 40');
-
-      // 3. Calculate Streak Score
-      const streakDays = await calculateStreakInRange(userId, startDateStr, endDateStr, Array.from(daysWithData).sort());
-      
-      // Streak Score (0-35 points) using exponential curve
-      // Formula: 35 * (1 - e^(-0.1 * streak_days))
-      const streakScore = 35 * (1 - Math.exp(-0.1 * streakDays));
-
-      console.log('[ConsistencyScore] ===== STREAK =====');
-      console.log('[ConsistencyScore] Streak days:', streakDays);
-      console.log('[ConsistencyScore] Streak score:', Math.round(streakScore), '/ 35');
-
-      // 4. Calculate Protein Accuracy Score
-      // Calculate average protein per day
-      const proteinDays = Object.keys(dailyProtein);
-      const daysWithProteinData = proteinDays.length;
-      const totalProtein = proteinDays.reduce((sum, date) => sum + dailyProtein[date], 0);
-      const avgProteinLogged = daysWithProteinData > 0 ? totalProtein / daysWithProteinData : 0;
-
-      // Get protein target from active goal (use latest active goal)
+      // 2. Get protein target from active goal
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('protein_g')
@@ -214,77 +172,148 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         console.error('[ConsistencyScore] Error loading goal:', goalError);
       }
 
-      // FIX: Use a default protein target if none exists, but still award tracking points
       const proteinTarget = goalData?.protein_g || 150;
-
-      // Protein Accuracy Score (0-25 points)
-      // FIX: If no protein target, set protein score to 0 but don't fail the whole calculation
-      const proteinAccuracyScore = proteinTarget > 0 ? calculateProteinAccuracyScore(avgProteinLogged, proteinTarget) : 0;
-
-      console.log('[ConsistencyScore] ===== PROTEIN ACCURACY =====');
-      console.log('[ConsistencyScore] Avg protein logged:', avgProteinLogged.toFixed(1), 'g');
       console.log('[ConsistencyScore] Protein target:', proteinTarget, 'g');
-      console.log('[ConsistencyScore] Protein accuracy score:', proteinAccuracyScore, '/ 25');
 
-      // Total Score (0-100)
-      const totalScore = dailyTrackingScore + streakScore + proteinAccuracyScore;
+      // 3. Organize data by date
+      const dailyData: { [date: string]: { calories: number; protein: number; hasMeals: boolean } } = {};
 
-      console.log('[ConsistencyScore] ===== TOTAL SCORE =====');
-      console.log('[ConsistencyScore] Daily Tracking:', dailyTrackingScore, '/ 40');
-      console.log('[ConsistencyScore] Streak:', Math.round(streakScore), '/ 35');
-      console.log('[ConsistencyScore] Protein Accuracy:', proteinAccuracyScore, '/ 25');
-      console.log('[ConsistencyScore] TOTAL:', Math.round(totalScore), '/ 100');
+      if (allMeals && allMeals.length > 0) {
+        for (const meal of allMeals) {
+          if (!dailyData[meal.date]) {
+            dailyData[meal.date] = { calories: 0, protein: 0, hasMeals: false };
+          }
+
+          if (meal.meal_items && meal.meal_items.length > 0) {
+            dailyData[meal.date].hasMeals = true;
+            
+            for (const item of meal.meal_items) {
+              const itemCalories = parseFloat(String(item.calories || '0'));
+              const itemProtein = parseFloat(String(item.protein || '0'));
+              
+              dailyData[meal.date].calories += itemCalories;
+              dailyData[meal.date].protein += itemProtein;
+            }
+          }
+        }
+      }
+
+      console.log('[ConsistencyScore] Daily data:', dailyData);
+
+      // 4. Generate all dates in range
+      const allDatesInRange: string[] = [];
+      const startDate = new Date(rangeStartDate + 'T00:00:00');
+      const endDate = new Date(rangeEndDate + 'T00:00:00');
+      const currentDate = new Date(startDate);
+
+      while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        allDatesInRange.push(dateStr);
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      console.log('[ConsistencyScore] Total days in range:', allDatesInRange.length);
+      console.log('[ConsistencyScore] Days with data:', Object.keys(dailyData).length);
+
+      // Edge case: If range > 2 days with no data at all, score = 0
+      if (allDatesInRange.length > 2 && Object.keys(dailyData).length === 0) {
+        console.log('[ConsistencyScore] No data in range > 2 days, score = 0');
+        setScoreData({
+          dailyTracking: 0,
+          streakScore: 0,
+          proteinAccuracy: 0,
+          total: 0,
+          streakDays: 0,
+          hasLoggedToday: false,
+          proteinLogged: 0,
+          proteinTarget,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 5. Calculate daily scores for each day in range
+      const dailyScores: DailyScore[] = [];
+      let currentStreakDays = 0;
+      let maxStreakDays = 0;
+      let totalProteinLogged = 0;
+      let daysWithProtein = 0;
+
+      for (let i = 0; i < allDatesInRange.length; i++) {
+        const date = allDatesInRange[i];
+        const dayData = dailyData[date];
+        
+        // A) Daily Tracking Score (0 or 40)
+        const hasTracking = dayData?.hasMeals || false;
+        const trackingScore = hasTracking ? 40 : 0;
+
+        // B) Streak Score (0-35)
+        // Update streak counter
+        if (hasTracking) {
+          currentStreakDays++;
+          maxStreakDays = Math.max(maxStreakDays, currentStreakDays);
+        } else {
+          // Apply 30% carryover on break
+          currentStreakDays = Math.floor(currentStreakDays * 0.3);
+        }
+
+        // Calculate streak score using log curve: 35 * (1 - e^(-0.1 * streak))
+        const streakScore = currentStreakDays > 0 
+          ? Math.round(35 * (1 - Math.exp(-0.1 * currentStreakDays)))
+          : 0;
+
+        // C) Protein Accuracy Score (0-25)
+        const proteinLogged = dayData?.protein || 0;
+        const proteinScore = calculateProteinAccuracyScore(proteinLogged, proteinTarget);
+
+        if (proteinLogged > 0) {
+          totalProteinLogged += proteinLogged;
+          daysWithProtein++;
+        }
+
+        dailyScores.push({
+          date,
+          trackingScore,
+          streakScore,
+          proteinScore,
+        });
+      }
+
+      console.log('[ConsistencyScore] Daily scores calculated:', dailyScores.length);
+      console.log('[ConsistencyScore] Max streak days:', maxStreakDays);
+
+      // 6. Calculate averages across all days in range
+      const avgTracking = dailyScores.reduce((sum, day) => sum + day.trackingScore, 0) / dailyScores.length;
+      const avgStreak = dailyScores.reduce((sum, day) => sum + day.streakScore, 0) / dailyScores.length;
+      const avgProtein = dailyScores.reduce((sum, day) => sum + day.proteinScore, 0) / dailyScores.length;
+
+      const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
+      const avgProteinLogged = daysWithProtein > 0 ? totalProteinLogged / daysWithProtein : 0;
+
+      console.log('[ConsistencyScore] ===== AVERAGES ACROSS RANGE =====');
+      console.log('[ConsistencyScore] Avg Daily Tracking:', avgTracking.toFixed(1), '/ 40');
+      console.log('[ConsistencyScore] Avg Streak Score:', avgStreak.toFixed(1), '/ 35');
+      console.log('[ConsistencyScore] Avg Protein Accuracy:', avgProtein.toFixed(1), '/ 25');
+      console.log('[ConsistencyScore] TOTAL SCORE:', totalScore, '/ 100');
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const hasLoggedToday = dailyData[todayStr]?.hasMeals || false;
 
       setScoreData({
-        dailyTracking: dailyTrackingScore,
-        streakScore: Math.round(streakScore),
-        proteinAccuracy: proteinAccuracyScore,
-        total: Math.round(totalScore),
-        streakDays,
-        hasLoggedToday: daysWithData.has(endDateStr),
+        dailyTracking: Math.round(avgTracking),
+        streakScore: Math.round(avgStreak),
+        proteinAccuracy: Math.round(avgProtein),
+        total: totalScore,
+        streakDays: maxStreakDays,
+        hasLoggedToday,
         proteinLogged: avgProteinLogged,
         proteinTarget,
       });
 
       setLoading(false);
     } catch (error) {
-      console.error('[ConsistencyScore] ❌ Error calculating score:', error);
+      console.error('[ConsistencyScore] Error calculating score:', error);
       setLoading(false);
-    }
-  };
-
-  const calculateStreakInRange = async (
-    userId: string,
-    startDateStr: string,
-    endDateStr: string,
-    daysWithData: string[]
-  ): Promise<number> => {
-    try {
-      if (daysWithData.length === 0) return 0;
-
-      // Calculate the longest streak within the date range
-      let currentStreak = 1;
-      let maxStreak = 1;
-
-      for (let i = 1; i < daysWithData.length; i++) {
-        const prevDate = new Date(daysWithData[i - 1] + 'T00:00:00');
-        const currDate = new Date(daysWithData[i] + 'T00:00:00');
-        const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 1) {
-          // Consecutive day
-          currentStreak++;
-          maxStreak = Math.max(maxStreak, currentStreak);
-        } else {
-          // Streak broken
-          currentStreak = 1;
-        }
-      }
-
-      return maxStreak;
-    } catch (error) {
-      console.error('[ConsistencyScore] Error calculating streak in range:', error);
-      return 0;
     }
   };
 
@@ -295,12 +324,13 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
     const percentage = (proteinLogged / proteinTarget) * 100;
 
-    // Exact scoring as specified:
+    // Scoring tiers:
     // 95-105% → 25 pts
     // 80-94% → 20 pts
     // 60-79% → 15 pts
     // 40-59% → 10 pts
     // <40% → 0-5 pts (scaled)
+    // >105% → gradually reduce from 25 to 15
 
     if (percentage >= 95 && percentage <= 105) {
       return 25;
@@ -311,11 +341,9 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     } else if (percentage >= 40 && percentage < 60) {
       return 10;
     } else if (percentage < 40) {
-      // Scale from 0-5 based on how close to 40%
       return Math.round((percentage / 40) * 5);
     } else {
       // Over 105%, gradually reduce score
-      // Scale down from 25 to 15 as percentage increases beyond 105%
       const excess = percentage - 105;
       const penalty = Math.min(10, excess / 5);
       return Math.max(15, Math.round(25 - penalty));
@@ -347,45 +375,63 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   };
 
   const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
-    console.log('[ConsistencyScore] Custom date range selected:', startDate.toISOString(), 'to', endDate.toISOString());
+    console.log('[ConsistencyScore] ===== DATE RANGE CHANGED =====');
+    console.log('[ConsistencyScore] New range:', startDate.toISOString(), '→', endDate.toISOString());
     
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
     
-    setCustomStartDate(startStr);
-    setCustomEndDate(endStr);
-    setIsCustomRange(true);
+    setRangeStartDate(startStr);
+    setRangeEndDate(endStr);
+    
+    console.log('[ConsistencyScore] Range state updated, will recalculate');
   };
 
   const handleResetToJourneyStart = () => {
-    console.log('[ConsistencyScore] Resetting to journey start');
-    setCustomStartDate(null);
-    setCustomEndDate(null);
-    setIsCustomRange(false);
+    console.log('[ConsistencyScore] ===== RESET TO JOURNEY START =====');
+    if (journeyStartDate) {
+      const today = new Date().toISOString().split('T')[0];
+      setRangeStartDate(journeyStartDate);
+      setRangeEndDate(today);
+      console.log('[ConsistencyScore] Reset to:', journeyStartDate, '→', today);
+    }
   };
 
   const getDateRangeText = () => {
-    if (isCustomRange && customStartDate && customEndDate) {
-      const start = new Date(customStartDate + 'T00:00:00').toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      const end = new Date(customEndDate + 'T00:00:00').toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      return `${start} - ${end}`;
-    } else if (profileStartDate) {
-      const start = new Date(profileStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+    if (!rangeStartDate || !rangeEndDate) {
+      return 'Loading...';
+    }
+
+    const isDefaultRange = rangeStartDate === journeyStartDate && rangeEndDate === new Date().toISOString().split('T')[0];
+
+    if (isDefaultRange) {
+      const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
       });
       return `${start} - Today`;
+    } else {
+      const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const end = new Date(rangeEndDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${start} - ${end}`;
     }
-    return 'Loading...';
+  };
+
+  const isCustomRange = () => {
+    if (!rangeStartDate || !rangeEndDate || !journeyStartDate) {
+      return false;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    return rangeStartDate !== journeyStartDate || rangeEndDate !== today;
   };
 
   if (loading) {
@@ -479,7 +525,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
                 />
               </View>
               <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Based on days logged in range
+                Average across days in range
               </Text>
             </View>
 
@@ -565,7 +611,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
               <Text style={[styles.dateRangeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 {getDateRangeText()}
               </Text>
-              {isCustomRange && (
+              {isCustomRange() && (
                 <TouchableOpacity
                   style={styles.resetButton}
                   onPress={handleResetToJourneyStart}
@@ -581,26 +627,18 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       </View>
 
       {/* Calendar Date Range Picker */}
-      <CalendarDateRangePicker
-        visible={showCalendarPicker}
-        onClose={() => setShowCalendarPicker(false)}
-        onSelectRange={handleDateRangeSelect}
-        initialStartDate={
-          isCustomRange && customStartDate
-            ? new Date(customStartDate + 'T00:00:00')
-            : profileStartDate
-            ? new Date(profileStartDate + 'T00:00:00')
-            : new Date()
-        }
-        initialEndDate={
-          isCustomRange && customEndDate
-            ? new Date(customEndDate + 'T00:00:00')
-            : new Date()
-        }
-        maxDate={new Date()}
-        minDate={profileStartDate ? new Date(profileStartDate + 'T00:00:00') : undefined}
-        title="Select Date Range"
-      />
+      {journeyStartDate && rangeStartDate && rangeEndDate && (
+        <CalendarDateRangePicker
+          visible={showCalendarPicker}
+          onClose={() => setShowCalendarPicker(false)}
+          onSelectRange={handleDateRangeSelect}
+          initialStartDate={new Date(rangeStartDate + 'T00:00:00')}
+          initialEndDate={new Date(rangeEndDate + 'T00:00:00')}
+          maxDate={new Date()}
+          minDate={new Date(journeyStartDate + 'T00:00:00')}
+          title="Select Date Range"
+        />
+      )}
     </React.Fragment>
   );
 }
