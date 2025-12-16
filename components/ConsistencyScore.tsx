@@ -105,7 +105,9 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         return;
       }
 
-      console.log('[ConsistencyScore] Calculating score for range:', startDateStr, 'to', endDateStr);
+      console.log('[ConsistencyScore] ===== CALCULATING SCORE =====');
+      console.log('[ConsistencyScore] Date range:', startDateStr, 'to', endDateStr);
+      console.log('[ConsistencyScore] User ID:', userId);
 
       // 1. Get all meals in the date range
       const { data: allMeals, error: allMealsError } = await supabase
@@ -124,47 +126,47 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         .lte('date', endDateStr);
 
       if (allMealsError) {
-        console.error('[ConsistencyScore] Error loading meals:', allMealsError);
+        console.error('[ConsistencyScore] ❌ Error loading meals:', allMealsError);
       }
 
       console.log('[ConsistencyScore] Meals query returned:', allMeals?.length || 0, 'meals');
+      console.log('[ConsistencyScore] Raw meals data:', JSON.stringify(allMeals, null, 2));
 
-      // Check if there's any data in the range
-      const hasData = allMeals && allMeals.length > 0 && allMeals.some((meal: any) => 
-        meal.meal_items && meal.meal_items.length > 0 && meal.meal_items.some((item: any) => item.calories && item.calories > 0)
-      );
-
-      if (!hasData) {
-        console.log('[ConsistencyScore] No data in selected range');
-        setScoreData({
-          dailyTracking: 0,
-          streakScore: 0,
-          proteinAccuracy: 0,
-          total: 0,
-          streakDays: 0,
-          hasLoggedToday: false,
-          proteinLogged: 0,
-          proteinTarget: 0,
-        });
-        setLoading(false);
-        return;
-      }
-
-      // 2. Calculate Daily Tracking Score
-      // Count unique days with at least one meal item with calories > 0
+      // FIX: Check if there's any data - a day has tracking if it has at least ONE meal_item OR total calories > 0
       const daysWithData = new Set<string>();
+      const dailyCalories: { [date: string]: number } = {};
+      const dailyProtein: { [date: string]: number } = {};
+
       if (allMeals && allMeals.length > 0) {
         for (const meal of allMeals) {
           if (meal.meal_items && meal.meal_items.length > 0) {
+            // Initialize daily totals if not exists
+            if (!dailyCalories[meal.date]) {
+              dailyCalories[meal.date] = 0;
+            }
+            if (!dailyProtein[meal.date]) {
+              dailyProtein[meal.date] = 0;
+            }
+
+            // Process each meal item
             for (const item of meal.meal_items) {
-              if (item.calories && item.calories > 0) {
-                daysWithData.add(meal.date);
-                break;
-              }
+              // FIX: Add day to tracking if there's ANY meal item (regardless of calories value)
+              daysWithData.add(meal.date);
+              
+              // Safely parse calories and protein
+              const itemCalories = parseFloat(String(item.calories || '0'));
+              const itemProtein = parseFloat(String(item.protein || '0'));
+              
+              dailyCalories[meal.date] += itemCalories;
+              dailyProtein[meal.date] += itemProtein;
             }
           }
         }
       }
+
+      console.log('[ConsistencyScore] Days with data:', Array.from(daysWithData).sort());
+      console.log('[ConsistencyScore] Daily calories:', dailyCalories);
+      console.log('[ConsistencyScore] Daily protein:', dailyProtein);
 
       // Calculate total days in range
       const startDate = new Date(startDateStr + 'T00:00:00');
@@ -175,7 +177,10 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       const daysLogged = daysWithData.size;
       const dailyTrackingScore = totalDays > 0 ? Math.round((daysLogged / totalDays) * 40) : 0;
 
-      console.log('[ConsistencyScore] Daily tracking:', { daysLogged, totalDays, score: dailyTrackingScore, daysWithData: Array.from(daysWithData) });
+      console.log('[ConsistencyScore] ===== DAILY TRACKING =====');
+      console.log('[ConsistencyScore] Days logged:', daysLogged);
+      console.log('[ConsistencyScore] Total days in range:', totalDays);
+      console.log('[ConsistencyScore] Daily tracking score:', dailyTrackingScore, '/ 40');
 
       // 3. Calculate Streak Score
       const streakDays = await calculateStreakInRange(userId, startDateStr, endDateStr, Array.from(daysWithData).sort());
@@ -184,33 +189,15 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       // Formula: 35 * (1 - e^(-0.1 * streak_days))
       const streakScore = 35 * (1 - Math.exp(-0.1 * streakDays));
 
-      console.log('[ConsistencyScore] Streak:', { streakDays, score: Math.round(streakScore) });
+      console.log('[ConsistencyScore] ===== STREAK =====');
+      console.log('[ConsistencyScore] Streak days:', streakDays);
+      console.log('[ConsistencyScore] Streak score:', Math.round(streakScore), '/ 35');
 
       // 4. Calculate Protein Accuracy Score
-      // Get all protein data in the range
-      let totalProtein = 0;
-      let daysWithProteinData = 0;
-      const dailyProtein: { [date: string]: number } = {};
-
-      if (allMeals && allMeals.length > 0) {
-        allMeals.forEach((meal: any) => {
-          if (meal.meal_items) {
-            meal.meal_items.forEach((item: any) => {
-              if (item.protein) {
-                if (!dailyProtein[meal.date]) {
-                  dailyProtein[meal.date] = 0;
-                }
-                dailyProtein[meal.date] += item.protein;
-              }
-            });
-          }
-        });
-      }
-
       // Calculate average protein per day
       const proteinDays = Object.keys(dailyProtein);
-      daysWithProteinData = proteinDays.length;
-      totalProtein = proteinDays.reduce((sum, date) => sum + dailyProtein[date], 0);
+      const daysWithProteinData = proteinDays.length;
+      const totalProtein = proteinDays.reduce((sum, date) => sum + dailyProtein[date], 0);
       const avgProteinLogged = daysWithProteinData > 0 ? totalProtein / daysWithProteinData : 0;
 
       // Get protein target from active goal (use latest active goal)
@@ -227,17 +214,26 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         console.error('[ConsistencyScore] Error loading goal:', goalError);
       }
 
+      // FIX: Use a default protein target if none exists, but still award tracking points
       const proteinTarget = goalData?.protein_g || 150;
 
       // Protein Accuracy Score (0-25 points)
-      const proteinAccuracyScore = calculateProteinAccuracyScore(avgProteinLogged, proteinTarget);
+      // FIX: If no protein target, set protein score to 0 but don't fail the whole calculation
+      const proteinAccuracyScore = proteinTarget > 0 ? calculateProteinAccuracyScore(avgProteinLogged, proteinTarget) : 0;
 
-      console.log('[ConsistencyScore] Protein:', { avgProteinLogged, proteinTarget, score: proteinAccuracyScore });
+      console.log('[ConsistencyScore] ===== PROTEIN ACCURACY =====');
+      console.log('[ConsistencyScore] Avg protein logged:', avgProteinLogged.toFixed(1), 'g');
+      console.log('[ConsistencyScore] Protein target:', proteinTarget, 'g');
+      console.log('[ConsistencyScore] Protein accuracy score:', proteinAccuracyScore, '/ 25');
 
       // Total Score (0-100)
       const totalScore = dailyTrackingScore + streakScore + proteinAccuracyScore;
 
-      console.log('[ConsistencyScore] Total score:', totalScore);
+      console.log('[ConsistencyScore] ===== TOTAL SCORE =====');
+      console.log('[ConsistencyScore] Daily Tracking:', dailyTrackingScore, '/ 40');
+      console.log('[ConsistencyScore] Streak:', Math.round(streakScore), '/ 35');
+      console.log('[ConsistencyScore] Protein Accuracy:', proteinAccuracyScore, '/ 25');
+      console.log('[ConsistencyScore] TOTAL:', Math.round(totalScore), '/ 100');
 
       setScoreData({
         dailyTracking: dailyTrackingScore,
@@ -252,7 +248,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
       setLoading(false);
     } catch (error) {
-      console.error('[ConsistencyScore] Error calculating score:', error);
+      console.error('[ConsistencyScore] ❌ Error calculating score:', error);
       setLoading(false);
     }
   };
