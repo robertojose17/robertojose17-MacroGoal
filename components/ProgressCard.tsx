@@ -65,7 +65,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       // Load user profile data
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('starting_weight, goal_weight, weight_unit, maintenance_calories')
+        .select('starting_weight, goal_weight, weight_unit, maintenance_calories, created_at')
         .eq('id', userId)
         .maybeSingle();
 
@@ -74,26 +74,29 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         throw userError;
       }
 
-      // Load active goal with fallback to most recent goal
+      // ========================================
+      // ROBUST GOAL QUERY WITH MULTIPLE-ROW HANDLING
+      // ========================================
       let goalData = null;
       
-      // First, try to get active goal
+      // First, try to get active goal with proper ordering and limit
       const { data: activeGoalData, error: activeGoalError } = await supabase
         .from('goals')
         .select('start_date, loss_rate_lbs_per_week, daily_calories, is_active')
         .eq('user_id', userId)
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('start_date', { ascending: false })
+        .limit(1);
 
       if (activeGoalError) {
         console.error('[ProgressCard] Error loading active goal data:', activeGoalError);
+      } else {
+        console.log('[ProgressCard] Active goal query returned:', activeGoalData?.length || 0, 'rows');
       }
 
-      if (activeGoalData) {
-        goalData = activeGoalData;
-        console.log('[ProgressCard] Found active goal');
+      if (activeGoalData && activeGoalData.length > 0) {
+        goalData = activeGoalData[0];
+        console.log('[ProgressCard] Found active goal:', goalData);
       } else {
         // Fallback: get most recent goal (active or not)
         console.log('[ProgressCard] No active goal found, falling back to most recent goal');
@@ -102,16 +105,17 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
           .select('start_date, loss_rate_lbs_per_week, daily_calories, is_active')
           .eq('user_id', userId)
           .order('start_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
         if (recentGoalError) {
           console.error('[ProgressCard] Error loading recent goal data:', recentGoalError);
+        } else {
+          console.log('[ProgressCard] Recent goal query returned:', recentGoalData?.length || 0, 'rows');
         }
 
-        if (recentGoalData) {
-          goalData = recentGoalData;
-          console.log('[ProgressCard] Found most recent goal');
+        if (recentGoalData && recentGoalData.length > 0) {
+          goalData = recentGoalData[0];
+          console.log('[ProgressCard] Found most recent goal:', goalData);
         }
       }
 
@@ -124,8 +128,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] userData.starting_weight (raw):', userData?.starting_weight);
       console.log('[ProgressCard] userData.goal_weight (raw):', userData?.goal_weight);
       console.log('[ProgressCard] userData.weight_unit (raw):', userData?.weight_unit);
-      console.log('[ProgressCard] goalData.start_date (raw):', goalData?.start_date);
-      console.log('[ProgressCard] goalData.is_active (raw):', goalData?.is_active);
+      console.log('[ProgressCard] goalData?.start_date (raw):', goalData?.start_date);
+      console.log('[ProgressCard] goalData?.is_active (raw):', goalData?.is_active);
 
       // Validate required data with defensive checks
       if (!userData) {
@@ -151,6 +155,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] isNaN(parsedStartingWeight):', isNaN(parsedStartingWeight));
       console.log('[ProgressCard] isNaN(parsedGoalWeight):', isNaN(parsedGoalWeight));
 
+      // ========================================
+      // DECOUPLE PROGRESS FROM GOAL ROW DEPENDENCY
+      // Only require valid starting_weight and goal_weight from users table
+      // ========================================
+      
       // Check if goal_weight exists and is valid
       if (!rawGoalWeight || isNaN(parsedGoalWeight) || parsedGoalWeight <= 0) {
         console.log('[ProgressCard] Goal weight is missing or invalid:', rawGoalWeight);
@@ -166,6 +175,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         setLoading(false);
         return;
       }
+
+      console.log('[ProgressCard] ✓ Valid starting_weight and goal_weight found - Progress will render');
 
       // ========================================
       // ROBUST WEIGHT UNIT HANDLING
@@ -220,11 +231,16 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       if (goalData && goalData.start_date) {
         startDate = new Date(goalData.start_date + 'T00:00:00');
         console.log('[ProgressCard] Using goal start_date:', startDate.toISOString().split('T')[0]);
+      } else if (userData.created_at) {
+        // Fallback to user's created_at date
+        startDate = new Date(userData.created_at);
+        startDate.setHours(0, 0, 0, 0);
+        console.log('[ProgressCard] No goal start_date, using user created_at as fallback:', startDate.toISOString().split('T')[0]);
       } else {
-        // Fallback: use today's date if start_date is missing
+        // Final fallback: use today's date
         startDate = new Date();
         startDate.setHours(0, 0, 0, 0);
-        console.log('[ProgressCard] No start_date found, using today as fallback:', startDate.toISOString().split('T')[0]);
+        console.log('[ProgressCard] No start_date or created_at found, using today as fallback:', startDate.toISOString().split('T')[0]);
       }
 
       // Get weekly loss rate (default to 1.0 if not set)
@@ -233,11 +249,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       
       console.log('[ProgressCard] === LOSS RATE ===');
       console.log('[ProgressCard] rawLossRate:', rawLossRate);
-      console.log('[ProgressCard] weeklyLossLbs:', weeklyLossLbs);
+      console.log('[ProgressCard] weeklyLossLbs (with fallback):', weeklyLossLbs);
 
       // Get maintenance calories and daily calories
       const maintenanceCalories = userData.maintenance_calories || 2000;
-      const dailyCalories = goalData?.daily_calories || 2000;
+      const dailyCalories = goalData?.daily_calories || maintenanceCalories || 2000;
 
       console.log('[ProgressCard] === CALORIE VALUES ===');
       console.log('[ProgressCard] maintenanceCalories:', maintenanceCalories);
