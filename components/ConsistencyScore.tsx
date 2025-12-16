@@ -56,12 +56,14 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     try {
       console.log('[ConsistencyScore] Loading profile start date');
       
-      // Fetch start_date from goals table
+      // Fetch start_date from goals table (active goal)
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('start_date')
         .eq('user_id', userId)
         .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (goalError) {
@@ -125,6 +127,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         console.error('[ConsistencyScore] Error loading meals:', allMealsError);
       }
 
+      console.log('[ConsistencyScore] Meals query returned:', allMeals?.length || 0, 'meals');
+
       // Check if there's any data in the range
       const hasData = allMeals && allMeals.length > 0 && allMeals.some((meal: any) => 
         meal.meal_items && meal.meal_items.length > 0 && meal.meal_items.some((item: any) => item.calories && item.calories > 0)
@@ -163,15 +167,15 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       }
 
       // Calculate total days in range
-      const startDate = new Date(startDateStr);
-      const endDate = new Date(endDateStr);
+      const startDate = new Date(startDateStr + 'T00:00:00');
+      const endDate = new Date(endDateStr + 'T00:00:00');
       const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       
       // Daily Tracking Score: (days_logged / total_days) * 40
       const daysLogged = daysWithData.size;
       const dailyTrackingScore = totalDays > 0 ? Math.round((daysLogged / totalDays) * 40) : 0;
 
-      console.log('[ConsistencyScore] Daily tracking:', { daysLogged, totalDays, score: dailyTrackingScore });
+      console.log('[ConsistencyScore] Daily tracking:', { daysLogged, totalDays, score: dailyTrackingScore, daysWithData: Array.from(daysWithData) });
 
       // 3. Calculate Streak Score
       const streakDays = await calculateStreakInRange(userId, startDateStr, endDateStr, Array.from(daysWithData).sort());
@@ -209,12 +213,14 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       totalProtein = proteinDays.reduce((sum, date) => sum + dailyProtein[date], 0);
       const avgProteinLogged = daysWithProteinData > 0 ? totalProtein / daysWithProteinData : 0;
 
-      // Get protein target from active goal
+      // Get protein target from active goal (use latest active goal)
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('protein_g')
         .eq('user_id', userId)
         .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (goalError) {
@@ -265,8 +271,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       let maxStreak = 1;
 
       for (let i = 1; i < daysWithData.length; i++) {
-        const prevDate = new Date(daysWithData[i - 1]);
-        const currDate = new Date(daysWithData[i]);
+        const prevDate = new Date(daysWithData[i - 1] + 'T00:00:00');
+        const currDate = new Date(daysWithData[i] + 'T00:00:00');
         const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
 
         if (diffDays === 1) {

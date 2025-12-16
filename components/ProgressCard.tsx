@@ -74,12 +74,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         throw userError;
       }
 
-      // Load active goal
+      // Load active goal (use latest active goal)
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('start_date, loss_rate_lbs_per_week, daily_calories')
         .eq('user_id', userId)
         .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (goalError) {
@@ -90,9 +92,32 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] userData:', userData);
       console.log('[ProgressCard] goalData:', goalData);
 
-      // Validate required data
-      if (!userData || !goalData || !goalData.start_date) {
-        console.log('[ProgressCard] Missing required profile data');
+      // Validate required data with defensive checks
+      if (!userData) {
+        console.log('[ProgressCard] No user data found');
+        setError('Set your weight goal in Profile to see progress.');
+        setLoading(false);
+        return;
+      }
+
+      if (!goalData || !goalData.start_date) {
+        console.log('[ProgressCard] No active goal or start_date found');
+        setError('Set your weight goal in Profile to see progress.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if goal_weight exists and is valid
+      if (!userData.goal_weight || userData.goal_weight <= 0) {
+        console.log('[ProgressCard] Goal weight is missing or invalid:', userData.goal_weight);
+        setError('Set your weight goal in Profile to see progress.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if starting_weight exists and is valid
+      if (!userData.starting_weight || userData.starting_weight <= 0) {
+        console.log('[ProgressCard] Starting weight is missing or invalid:', userData.starting_weight);
         setError('Set your weight goal in Profile to see progress.');
         setLoading(false);
         return;
@@ -125,7 +150,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       const maintenanceCalories = userData.maintenance_calories || 2000;
       const dailyCalories = goalData.daily_calories || 2000;
 
-      // Validate all required fields
+      // Final validation
       const hasValidData =
         typeof goalWeightLbs === 'number' &&
         !Number.isNaN(goalWeightLbs) &&
@@ -138,13 +163,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         weeklyLossLbs > 0;
 
       if (!hasValidData) {
-        console.log('[ProgressCard] Invalid weight or loss rate data');
+        console.log('[ProgressCard] Invalid weight or loss rate data after conversion');
         setError('Set your weight goal in Profile to see progress.');
         setLoading(false);
         return;
       }
 
-      const startDate = new Date(goalData.start_date);
+      const startDate = new Date(goalData.start_date + 'T00:00:00');
       
       setProfileData({
         startDate,

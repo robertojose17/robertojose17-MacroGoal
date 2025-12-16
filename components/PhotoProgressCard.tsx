@@ -43,11 +43,14 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
       setLoading(true);
       console.log('[PhotoProgressCard] Loading check-ins with photos for user:', userId);
 
+      // Query check_ins table for entries with photo_url
+      // Use NOT NULL filter and order by date ascending
       const { data, error } = await supabase
         .from('check_ins')
         .select('id, date, photo_url, weight')
         .eq('user_id', userId)
         .not('photo_url', 'is', null)
+        .neq('photo_url', '')
         .order('date', { ascending: true });
 
       if (error) {
