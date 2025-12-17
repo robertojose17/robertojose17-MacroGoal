@@ -4,11 +4,12 @@
  * Public API for food database lookup
  * This module handles TEXT SEARCH ONLY
  * 
- * SIMPLIFIED FOR MOBILE RELIABILITY:
- * - No AbortController (removed to fix race conditions)
+ * OPTIMIZED FOR MOBILE PERFORMANCE:
+ * - Minimal field selection (only needed columns)
+ * - Result limit for faster response
  * - Simple endpoint with minimal payload
- * - Basic debounce with query comparison
  * - Clear error handling
+ * - 10-second hard timeout
  * 
  * ENHANCED NUTRIENT PARSING:
  * - Handles multiple field name formats
@@ -509,7 +510,6 @@ export function extractNutrition(product: OpenFoodFactsProduct): {
  * Ensures requests never hang indefinitely
  * CRITICAL: This function implements the hard timeout requirement
  * MOBILE COMPATIBILITY: Adds User-Agent header for mobile network compatibility
- * NO CANCELLATION SUPPORT: Removed AbortController to fix race conditions
  */
 async function fetchWithTimeout(
   url: string, 
@@ -553,9 +553,10 @@ async function fetchWithTimeout(
  * NEVER throws errors - always returns result object
  * HARD TIMEOUT: 10 seconds
  * 
- * SIMPLIFIED FOR RELIABILITY:
- * - Uses simple search endpoint (no custom filters)
- * - No AbortController (removed to fix race conditions)
+ * OPTIMIZED FOR MOBILE PERFORMANCE:
+ * - Minimal field selection (only needed columns)
+ * - Result limit (30 products max)
+ * - Simple search endpoint
  * - Returns status code for debugging
  * - Safe response parsing
  */
@@ -567,8 +568,9 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsS
     // URL-encode the query
     const encodedQuery = encodeURIComponent(query);
     
-    // Use simple, known-good OFF search endpoint
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=20`;
+    // OPTIMIZATION: Use simple, known-good OFF search endpoint with minimal fields and limit
+    // Only request the fields we actually need to reduce response size and parsing time
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=30&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,nutriments`;
     
     console.log(`[OpenFoodFacts] Search URL: ${url}`);
     
