@@ -41,9 +41,11 @@ export default function FoodSearchScreen() {
   const searchInputRef = useRef<TextInput>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const latestQueryRef = useRef<string>('');
+  const isSearchingRef = useRef<boolean>(false);
 
   useEffect(() => {
     console.log('[FoodSearch] Screen mounted, meal:', mealType, 'date:', date);
+    console.log('[FoodSearch] Platform:', Platform.OS);
     
     // Auto-focus the search input with delay for mobile stability
     const focusTimeout = setTimeout(() => {
@@ -60,41 +62,54 @@ export default function FoodSearchScreen() {
       // Clear debounce timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
       }
+      
+      // Reset searching flag
+      isSearchingRef.current = false;
     };
   }, [date, mealType]);
 
   useEffect(() => {
+    console.log('[FoodSearch] Query changed:', searchQuery, 'length:', searchQuery.length);
+    
     // Clear previous debounce timer
     if (debounceTimerRef.current) {
+      console.log('[FoodSearch] Clearing previous debounce timer');
       clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
     }
 
     const trimmedQuery = searchQuery.trim();
 
     // If search query is empty or too short, clear results
     if (trimmedQuery.length === 0) {
+      console.log('[FoodSearch] Query empty, clearing results');
       setResults([]);
       setErrorMessage(null);
       setHasSearched(false);
       setLoading(false);
       setHttpStatus(null);
       latestQueryRef.current = '';
+      isSearchingRef.current = false;
       return;
     }
 
     if (trimmedQuery.length < 2) {
+      console.log('[FoodSearch] Query too short (<2 chars), clearing results');
       setResults([]);
       setErrorMessage(null);
       setHasSearched(false);
       setLoading(false);
       setHttpStatus(null);
+      isSearchingRef.current = false;
       return;
     }
 
     // Debounce search (500ms for optimal mobile performance)
-    console.log('[FoodSearch] Debouncing search for:', trimmedQuery);
+    console.log('[FoodSearch] Setting debounce timer for:', trimmedQuery);
     debounceTimerRef.current = setTimeout(() => {
+      console.log('[FoodSearch] Debounce timer fired for:', trimmedQuery);
       performSearch(trimmedQuery);
     }, 500);
   }, [searchQuery]);
@@ -102,26 +117,41 @@ export default function FoodSearchScreen() {
   const performSearch = async (query: string) => {
     console.log('[FoodSearch] ========== PERFORMING SEARCH ==========');
     console.log('[FoodSearch] Query:', query);
+    console.log('[FoodSearch] Query length:', query.length);
+    console.log('[FoodSearch] Platform:', Platform.OS);
+    console.log('[FoodSearch] isSearchingRef.current:', isSearchingRef.current);
+    
+    // Prevent duplicate searches
+    if (isSearchingRef.current) {
+      console.log('[FoodSearch] 🚫 Already searching, skipping duplicate request');
+      return;
+    }
     
     // Update latest query ref
     latestQueryRef.current = query;
+    isSearchingRef.current = true;
     
+    console.log('[FoodSearch] Setting loading = true');
     setLoading(true);
     setErrorMessage(null);
     setHasSearched(true);
 
     try {
-      // Call OpenFoodFacts search (no cancellation support)
+      // Call OpenFoodFacts search
       console.log('[FoodSearch] Calling searchOpenFoodFacts...');
+      console.log('[FoodSearch] Request URL will be constructed for query:', query);
+      
       const result = await searchOpenFoodFacts(query);
+      
+      console.log('[FoodSearch] Search completed');
+      console.log('[FoodSearch] Response status:', result.status);
+      console.log('[FoodSearch] Products count:', result.products.length);
       
       // Check if this is still the latest search (avoid race conditions)
       if (query !== latestQueryRef.current) {
         console.log('[FoodSearch] 🚫 Ignoring stale search results (query:', query, 'vs latest:', latestQueryRef.current, ')');
         return;
       }
-      
-      console.log('[FoodSearch] Search completed, status:', result.status, 'products:', result.products.length);
       
       // Update status for debug
       setHttpStatus(result.status);
@@ -131,7 +161,6 @@ export default function FoodSearchScreen() {
         console.log('[FoodSearch] Non-200 status returned:', result.status);
         setResults([]);
         setErrorMessage(`Connection issue (status: ${result.status}). Please try again.`);
-        setLoading(false);
         return;
       }
 
@@ -139,7 +168,6 @@ export default function FoodSearchScreen() {
         console.log('[FoodSearch] Network error (status: 0)');
         setResults([]);
         setErrorMessage('Connection issue. Please check your internet and try again.');
-        setLoading(false);
         return;
       }
 
@@ -147,11 +175,11 @@ export default function FoodSearchScreen() {
         console.log('[FoodSearch] No products returned');
         setResults([]);
         setErrorMessage('No foods found. Try a different search term.');
-        setLoading(false);
         return;
       }
 
-      // Transform products into display items (TEXT ONLY, NO IMAGES)
+      // Transform products into display items
+      console.log('[FoodSearch] Transforming products...');
       const items: SearchResultItem[] = result.products.map((product) => {
         const servingInfo = extractServingSize(product);
         const nutrition = extractNutrition(product);
@@ -181,7 +209,6 @@ export default function FoodSearchScreen() {
 
       console.log('[FoodSearch] ✅ Transformed', items.length, 'items for display');
       setResults(items);
-      setLoading(false);
     } catch (error) {
       // Check if this is still the latest search
       if (query !== latestQueryRef.current) {
@@ -190,9 +217,18 @@ export default function FoodSearchScreen() {
       }
 
       console.error('[FoodSearch] ❌ Error in performSearch:', error);
+      if (error instanceof Error) {
+        console.error('[FoodSearch] Error message:', error.message);
+        console.error('[FoodSearch] Error stack:', error.stack);
+      }
+      setResults([]);
       setErrorMessage('Connection issue. Please check your internet and try again.');
       setHttpStatus(0);
+    } finally {
+      // CRITICAL FIX: Always clear loading state in finally block
+      console.log('[FoodSearch] Setting loading = false (finally block)');
       setLoading(false);
+      isSearchingRef.current = false;
     }
   };
 
@@ -427,7 +463,7 @@ export default function FoodSearchScreen() {
           {Platform.OS !== 'web' && httpStatus !== null && (
             <View style={styles.debugContainer}>
               <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                status: {httpStatus} • results: {results.length}
+                status: {httpStatus} • results: {results.length} • loading: {loading ? 'true' : 'false'}
               </Text>
             </View>
           )}
