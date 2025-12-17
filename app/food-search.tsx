@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -45,14 +45,17 @@ export default function FoodSearchScreen() {
   useEffect(() => {
     console.log('[FoodSearch] Screen mounted, meal:', mealType, 'date:', date);
     
-    // Auto-focus the search input
-    setTimeout(() => {
+    // Auto-focus the search input with delay for mobile stability
+    const focusTimeout = setTimeout(() => {
       searchInputRef.current?.focus();
-    }, 100);
+    }, 300);
 
     // Cleanup on unmount
     return () => {
       console.log('[FoodSearch] Screen unmounting, cleaning up...');
+      
+      // Clear focus timeout
+      clearTimeout(focusTimeout);
       
       // Clear debounce timer
       if (debounceTimerRef.current) {
@@ -359,91 +362,101 @@ export default function FoodSearchScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={isDark ? colors.textDark : colors.text}
-          />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-          Search Food Library
-        </Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+        keyboardVerticalOffset={0}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
+            Search Food Library
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
 
-      <View style={styles.searchContainer}>
-        <View style={[styles.searchInputContainer, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border }]}>
-          <IconSymbol
-            ios_icon_name="magnifyingglass"
-            android_material_icon_name="search"
-            size={20}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
-          <TextInput
-            ref={searchInputRef}
-            style={[styles.searchInput, { color: isDark ? colors.textDark : colors.text }]}
-            placeholder="Search foods…"
-            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <IconSymbol
-                ios_icon_name="xmark.circle.fill"
-                android_material_icon_name="cancel"
-                size={20}
-                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              />
-            </TouchableOpacity>
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchInputContainer, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border }]}>
+            <IconSymbol
+              ios_icon_name="magnifyingglass"
+              android_material_icon_name="search"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+            <TextInput
+              ref={searchInputRef}
+              style={[styles.searchInput, { color: isDark ? colors.textDark : colors.text }]}
+              placeholder="Search foods…"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={20}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Searching...
+              </Text>
+            </View>
+          )}
+
+          {/* DEBUG STATUS (TEMPORARY, MOBILE ONLY) */}
+          {Platform.OS !== 'web' && httpStatus !== null && (
+            <View style={styles.debugContainer}>
+              <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                status: {httpStatus} • results: {results.length}
+              </Text>
+            </View>
           )}
         </View>
 
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Searching...
-            </Text>
-          </View>
-        )}
-
-        {/* DEBUG STATUS (TEMPORARY, MOBILE ONLY) */}
-        {Platform.OS !== 'web' && httpStatus !== null && (
-          <View style={styles.debugContainer}>
-            <Text style={[styles.debugText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              status: {httpStatus} • results: {results.length}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <FlatList
-        data={results}
-        renderItem={renderResultItem}
-        keyExtractor={(item, index) => item.product.code || `product-${index}`}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmptyState}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        initialNumToRender={10}
-      />
+        <FlatList
+          data={results}
+          renderItem={renderResultItem}
+          keyExtractor={(item, index) => item.product.code || `product-${index}`}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={renderEmptyState}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={10}
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  keyboardView: {
     flex: 1,
   },
   header: {
@@ -503,7 +516,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: 120,
   },
   resultCard: {
     borderRadius: borderRadius.lg,
