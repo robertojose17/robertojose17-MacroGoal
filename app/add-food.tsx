@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable, TextInput, ActivityIndicator, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -43,6 +43,11 @@ export default function AddFoodScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestQueryRef = useRef<string>('');
+
+  // NEW: Banner state
+  const [showBanner, setShowBanner] = useState(false);
+  const [bannerOpacity] = useState(new Animated.Value(0));
+  const bannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
@@ -125,6 +130,54 @@ export default function AddFoodScreen() {
       // The search query and results will persist across navigation
     }, [loadData])
   );
+
+  /**
+   * NEW: Show success banner
+   */
+  const showSuccessBanner = () => {
+    console.log('[AddFood] Showing success banner');
+    
+    // Clear any existing timeout
+    if (bannerTimeoutRef.current) {
+      clearTimeout(bannerTimeoutRef.current);
+    }
+    
+    // If banner is already showing, reset the timer
+    if (showBanner) {
+      console.log('[AddFood] Banner already visible, resetting timer');
+      bannerTimeoutRef.current = setTimeout(() => {
+        Animated.timing(bannerOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowBanner(false);
+        });
+      }, 1000);
+      return;
+    }
+    
+    // Show banner
+    setShowBanner(true);
+    
+    // Fade in
+    Animated.timing(bannerOpacity, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      // Auto-hide after 1 second
+      bannerTimeoutRef.current = setTimeout(() => {
+        Animated.timing(bannerOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowBanner(false);
+        });
+      }, 1000);
+    });
+  };
 
   /**
    * INLINE SEARCH LOGIC
@@ -427,6 +480,7 @@ export default function AddFoodScreen() {
   /**
    * Add a recent food directly
    * FIXED: Modal stays open after adding food
+   * NEW: Shows success banner
    */
   const handleAddRecentFood = async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
@@ -558,6 +612,9 @@ export default function AddFoodScreen() {
       console.log('[AddFood] Recent food added successfully!');
       console.log('[AddFood] Keeping modal open for multiple adds');
       
+      // NEW: Show success banner
+      showSuccessBanner();
+      
       // SUCCESS: Food logged, modal stays open for next add
       // User can continue adding more recent foods without reopening the modal
     } catch (error) {
@@ -614,6 +671,7 @@ export default function AddFoodScreen() {
   /**
    * Handle adding favorite
    * FIXED: Modal stays open after adding food
+   * NEW: Shows success banner
    */
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
@@ -771,6 +829,9 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Favorite added to meal successfully');
       console.log('[AddFood] Keeping modal open for multiple adds');
+      
+      // NEW: Show success banner
+      showSuccessBanner();
       
       // SUCCESS: Food logged, modal stays open for next add
       // User can continue adding more favorites without reopening the modal
@@ -1393,6 +1454,28 @@ export default function AddFoodScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* NEW: Success Banner */}
+      {showBanner && (
+        <Animated.View 
+          style={[
+            styles.bannerContainer,
+            { 
+              opacity: bannerOpacity,
+            }
+          ]}
+        >
+          <View style={styles.banner}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check_circle"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.bannerText}>Food logged</Text>
+          </View>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1659,5 +1742,30 @@ const styles = StyleSheet.create({
   mealMacros: {
     ...typography.caption,
     fontSize: 12,
+  },
+  bannerContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: spacing.md,
+    right: spacing.md,
+    alignItems: 'center',
+    zIndex: 1000,
+    pointerEvents: 'none',
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
+    elevation: 8,
+  },
+  bannerText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
