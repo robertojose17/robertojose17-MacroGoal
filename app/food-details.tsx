@@ -313,22 +313,22 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] Showing success toast for:', mealName);
     setShowToast(true);
     
-    // Fade in
+    // Fade in quickly
     Animated.timing(toastOpacity, {
       toValue: 1,
-      duration: 200,
+      duration: 150,
       useNativeDriver: true,
     }).start(() => {
-      // Auto-hide after 1000ms
+      // Auto-hide after 600ms (short duration as requested)
       setTimeout(() => {
         Animated.timing(toastOpacity, {
           toValue: 0,
-          duration: 200,
+          duration: 150,
           useNativeDriver: true,
         }).start(() => {
           setShowToast(false);
         });
-      }, 1000);
+      }, 600);
     });
   };
 
@@ -595,8 +595,11 @@ export default function FoodDetailsScreen() {
 
       console.log('[FoodDetails] ✅ Food added successfully!');
       
-      // CHANGED: Instead of dismissing to home, go back to add-food screen
-      console.log('[FoodDetails] Going back to add-food screen');
+      // Reset inputs for next add
+      setServings('1');
+      setGrams(servingInfo.grams.toString());
+      
+      setSaving(false);
       
       // Show success toast
       const mealLabels: Record<string, string> = {
@@ -607,14 +610,12 @@ export default function FoodDetailsScreen() {
       };
       showSuccessToast(mealLabels[mealType] || mealType);
       
-      // Reset inputs for next add
-      setServings('1');
-      setGrams(servingInfo.grams.toString());
-      
-      setSaving(false);
-      
-      // Go back to add-food screen (keep it open)
-      router.back();
+      // Wait for toast to show (let it display for ~500ms), then navigate back
+      // Total time: 150ms fade in + 500ms display = 650ms before navigation
+      setTimeout(() => {
+        console.log('[FoodDetails] Navigating back to add-food screen');
+        router.back();
+      }, 650);
     } catch (error) {
       console.error('[FoodDetails] ❌ Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');

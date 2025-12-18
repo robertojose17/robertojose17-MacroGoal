@@ -120,12 +120,9 @@ export default function AddFoodScreen() {
       console.log('[AddFood] Screen focused, loading data');
       loadData();
       
-      // CHANGED: Clear search query when returning to this screen
-      // This ensures the user sees the recent foods list again
-      setSearchQuery('');
-      setSearchResults([]);
-      setSearchError(null);
-      setIsSearching(false);
+      // REMOVED: Do NOT clear search query when returning to this screen
+      // This allows users to add multiple foods from the same search results
+      // The search query and results will persist across navigation
     }, [loadData])
   );
 
