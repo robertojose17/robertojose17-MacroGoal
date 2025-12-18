@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, memo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,6 +25,55 @@ const formatDateForStorage = (date: Date): string => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+// Memoized food item component to prevent unnecessary re-renders
+const FoodItemRow = memo(({ 
+  item, 
+  isDark, 
+  onDelete, 
+  onEdit, 
+  getServingDisplayText 
+}: { 
+  item: any; 
+  isDark: boolean; 
+  onDelete: () => void; 
+  onEdit: () => void;
+  getServingDisplayText: (item: any) => string;
+}) => {
+  return (
+    <SwipeableListItem onDelete={onDelete}>
+      <TouchableOpacity 
+        style={styles.foodItem}
+        onPress={onEdit}
+        activeOpacity={0.7}
+      >
+        <View style={styles.foodInfo}>
+          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+            {item.foods?.name || 'Unknown Food'}
+          </Text>
+          {item.foods?.brand && (
+            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {item.foods.brand}
+            </Text>
+          )}
+          <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {getServingDisplayText(item)}
+          </Text>
+        </View>
+        <View style={styles.foodActions}>
+          <View style={styles.foodCalories}>
+            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+              {Math.round(item.calories)}
+            </Text>
+            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              kcal
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </SwipeableListItem>
+  );
+});
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -243,9 +292,8 @@ export default function HomeScreen() {
     });
   };
 
-  const handleDeleteFood = async (item: any) => {
+  const handleDeleteFood = useCallback(async (item: any) => {
     console.log('[Home] Delete requested for item:', item.id);
-    console.log('[Home] Delete confirmed, proceeding...');
     
     // Store original state for rollback
     const originalMeals = [...meals];
@@ -292,32 +340,23 @@ export default function HomeScreen() {
         throw new Error('No authenticated user found');
       }
       
-      console.log('[Home] Authenticated user:', user.id);
       console.log('[Home] Deleting meal_item with id:', item.id);
       
       // Delete from database
-      const { error, data } = await supabase
+      const { error } = await supabase
         .from('meal_items')
         .delete()
-        .eq('id', item.id)
-        .select();
+        .eq('id', item.id);
       
       if (error) {
         console.error('[Home] Supabase delete error:', error);
-        console.error('[Home] Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
       
-      console.log('[Home] Delete response:', data);
-      console.log('[Home] ✅ Food deleted successfully from database');
-      
-      // Success - the optimistic update is already applied
-      // No need to reload, UI is already updated
+      console.log('[Home] ✅ Food deleted successfully');
       
     } catch (error: any) {
       console.error('[Home] ❌ Error in handleDeleteFood:', error);
-      console.error('[Home] Error message:', error?.message);
-      console.error('[Home] Error details:', JSON.stringify(error, null, 2));
       
       // Rollback optimistic update
       console.log('[Home] Rolling back optimistic update...');
@@ -325,14 +364,14 @@ export default function HomeScreen() {
       setTotalCalories(originalTotalCalories);
       setTotalMacros(originalTotalMacros);
       
-      // Show detailed error to user
+      // Show error to user
       Alert.alert(
         'Delete Failed', 
         error?.message || 'Failed to delete food entry. Please try again.',
         [{ text: 'OK' }]
       );
     }
-  };
+  }, [meals, totalCalories, totalMacros]);
 
   const goToPreviousDay = () => {
     const newDate = new Date(selectedDate);
@@ -616,41 +655,14 @@ export default function HomeScreen() {
               ) : (
                 <View style={styles.mealItems}>
                   {meal.items.map((item, itemIndex) => (
-                    <React.Fragment key={itemIndex}>
-                      <SwipeableListItem
-                        onDelete={() => handleDeleteFood(item)}
-                      >
-                        <TouchableOpacity 
-                          style={styles.foodItem}
-                          onPress={() => handleEditFood(item)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.foodInfo}>
-                            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                              {item.foods?.name || 'Unknown Food'}
-                            </Text>
-                            {item.foods?.brand && (
-                              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                                {item.foods.brand}
-                              </Text>
-                            )}
-                            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                              {getServingDisplayText(item)}
-                            </Text>
-                          </View>
-                          <View style={styles.foodActions}>
-                            <View style={styles.foodCalories}>
-                              <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-                                {Math.round(item.calories)}
-                              </Text>
-                              <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                                kcal
-                              </Text>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      </SwipeableListItem>
-                    </React.Fragment>
+                    <FoodItemRow
+                      key={item.id || `item-${itemIndex}`}
+                      item={item}
+                      isDark={isDark}
+                      onDelete={() => handleDeleteFood(item)}
+                      onEdit={() => handleEditFood(item)}
+                      getServingDisplayText={getServingDisplayText}
+                    />
                   ))}
                 </View>
               )}

@@ -1,6 +1,6 @@
 
-import React, { ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import React, { ReactNode, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -21,8 +21,9 @@ interface SwipeToDeleteRowProps {
 }
 
 const DELETE_BUTTON_WIDTH = 90;
-const SWIPE_THRESHOLD = -70; // Threshold to lock open
-const FULL_SWIPE_THRESHOLD = -150; // Threshold for immediate delete
+const SWIPE_THRESHOLD = -70;
+const FULL_SWIPE_THRESHOLD = -150;
+const ANIMATION_DURATION = 120; // Faster animation
 
 export default function SwipeToDeleteRow({
   children,
@@ -36,19 +37,20 @@ export default function SwipeToDeleteRow({
   const translateX = useSharedValue(0);
   const isDeleting = useSharedValue(false);
 
-  const handleDelete = () => {
+  // Memoize delete handler to prevent recreation
+  const handleDelete = useCallback(() => {
+    'worklet';
     if (isDeleting.value) return;
     isDeleting.value = true;
-    
-    // Call onDelete IMMEDIATELY - no delay
-    // The parent will remove the item from the array and this component will unmount
     runOnJS(onDelete)();
-  };
+  }, [onDelete]);
 
+  // Optimized pan gesture with minimal logic
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
     .onUpdate((event) => {
+      'worklet';
       if (isDeleting.value) return;
       
       // Only allow left swipe (negative translation)
@@ -56,11 +58,11 @@ export default function SwipeToDeleteRow({
         translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH * 2);
       } else if (event.translationX > 0 && translateX.value < 0) {
         // Allow swiping right to close if already open
-        const newTranslation = translateX.value + event.translationX;
-        translateX.value = Math.min(0, newTranslation);
+        translateX.value = Math.min(0, translateX.value + event.translationX);
       }
     })
     .onEnd((event) => {
+      'worklet';
       if (isDeleting.value) return;
       
       const velocity = event.velocityX;
@@ -75,25 +77,26 @@ export default function SwipeToDeleteRow({
       // Partial swipe past threshold: lock open
       if (translation < SWIPE_THRESHOLD) {
         translateX.value = withTiming(-DELETE_BUTTON_WIDTH, {
-          duration: 150,
+          duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.cubic),
         });
       } else {
         // Not past threshold: close
         translateX.value = withTiming(0, {
-          duration: 150,
+          duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.cubic),
         });
       }
     });
 
+  // Optimized animated styles
   const animatedRowStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
-  }));
+  }), []);
 
   const animatedDeleteStyle = useAnimatedStyle(() => ({
     opacity: translateX.value < -10 ? 1 : 0,
-  }));
+  }), []);
 
   return (
     <View style={styles.container}>
