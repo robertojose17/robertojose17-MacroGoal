@@ -119,6 +119,13 @@ export default function AddFoodScreen() {
     useCallback(() => {
       console.log('[AddFood] Screen focused, loading data');
       loadData();
+      
+      // CHANGED: Clear search query when returning to this screen
+      // This ensures the user sees the recent foods list again
+      setSearchQuery('');
+      setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
     }, [loadData])
   );
 
@@ -275,14 +282,14 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a search result
-   * FIXED: Use router.replace to close Add Food and show Food Details on top
+   * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
   const handleOpenSearchResultDetails = (product: OpenFoodFactsProduct) => {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
     console.log('[AddFood] Product:', product.product_name);
-    console.log('[AddFood] Using router.replace to close Add Food and show Food Details');
+    console.log('[AddFood] Using router.push to keep add-food in navigation stack');
 
-    router.replace({
+    router.push({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(product),
@@ -364,12 +371,12 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a recent food
-   * FIXED: Use router.replace to close Add Food and show Food Details on top
+   * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
   const handleOpenRecentFoodDetails = async (food: Food) => {
     console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
     console.log('[AddFood] Food:', food.name);
-    console.log('[AddFood] Using router.replace to close Add Food and show Food Details');
+    console.log('[AddFood] Using router.push to keep add-food in navigation stack');
 
     try {
       // Fetch the full food data from database to get per-100g values
@@ -403,7 +410,7 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with OFF data');
 
-      router.replace({
+      router.push({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
@@ -564,12 +571,12 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a favorite
-   * FIXED: Use router.replace to close Add Food and show Food Details on top
+   * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
   const handleOpenFavoriteDetails = async (favorite: Favorite) => {
     console.log('[AddFood] ========== OPENING FAVORITE DETAILS ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
-    console.log('[AddFood] Using router.replace to close Add Food and show Food Details');
+    console.log('[AddFood] Using router.push to keep add-food in navigation stack');
 
     try {
       // Convert favorite to OpenFoodFacts format for the food-details screen
@@ -590,7 +597,7 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with favorite data');
 
-      router.replace({
+      router.push({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, KeyboardAvoidingView, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -35,6 +35,10 @@ export default function FoodDetailsScreen() {
   const [isReady, setIsReady] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  // NEW: Toast banner state
+  const [showToast, setShowToast] = useState(false);
+  const [toastOpacity] = useState(new Animated.Value(0));
 
   // NEW: Per-serving macros (derived from per-100g data)
   const [perServingMacros, setPerServingMacros] = useState({
@@ -304,6 +308,30 @@ export default function FoodDetailsScreen() {
     }
   };
 
+  // NEW: Show toast banner
+  const showSuccessToast = (mealName: string) => {
+    console.log('[FoodDetails] Showing success toast for:', mealName);
+    setShowToast(true);
+    
+    // Fade in
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      // Auto-hide after 1000ms
+      setTimeout(() => {
+        Animated.timing(toastOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowToast(false);
+        });
+      }, 1000);
+    });
+  };
+
   // Show loading only briefly while parsing
   if (!isReady || !product || !servingInfo || !nutrition) {
     return (
@@ -566,10 +594,27 @@ export default function FoodDetailsScreen() {
       }
 
       console.log('[FoodDetails] ✅ Food added successfully!');
-      console.log('[FoodDetails] Navigating back to diary');
       
-      // Navigate back to the home/diary screen
-      router.dismissTo('/(tabs)/(home)/');
+      // CHANGED: Instead of dismissing to home, go back to add-food screen
+      console.log('[FoodDetails] Going back to add-food screen');
+      
+      // Show success toast
+      const mealLabels: Record<string, string> = {
+        breakfast: 'Breakfast',
+        lunch: 'Lunch',
+        dinner: 'Dinner',
+        snack: 'Snacks',
+      };
+      showSuccessToast(mealLabels[mealType] || mealType);
+      
+      // Reset inputs for next add
+      setServings('1');
+      setGrams(servingInfo.grams.toString());
+      
+      setSaving(false);
+      
+      // Go back to add-food screen (keep it open)
+      router.back();
     } catch (error) {
       console.error('[FoodDetails] ❌ Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -582,6 +627,13 @@ export default function FoodDetailsScreen() {
     product.product_name === 'Unknown Product' || 
     !product.brands ||
     (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
+
+  const mealLabels: Record<string, string> = {
+    breakfast: 'Breakfast',
+    lunch: 'Lunch',
+    dinner: 'Dinner',
+    snack: 'Snacks',
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -857,12 +909,36 @@ export default function FoodDetailsScreen() {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>Add to {mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
+              <Text style={styles.saveButtonText}>Add to {mealLabels[mealType]}</Text>
             )}
           </TouchableOpacity>
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
+
+        {/* NEW: Toast Banner */}
+        {showToast && (
+          <Animated.View 
+            style={[
+              styles.toastContainer,
+              { 
+                opacity: toastOpacity,
+              }
+            ]}
+          >
+            <View style={styles.toast}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={20}
+                color="#FFFFFF"
+              />
+              <Text style={styles.toastText}>
+                Added to {mealLabels[mealType]}
+              </Text>
+            </View>
+          </Animated.View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1114,5 +1190,29 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100,
+  },
+  toastContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: spacing.md,
+    right: spacing.md,
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  toast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
+    elevation: 8,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
