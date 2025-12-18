@@ -426,7 +426,7 @@ export default function AddFoodScreen() {
 
   /**
    * Add a recent food directly
-   * MODIFIED: Respect mode parameter
+   * FIXED: Modal stays open after adding food
    */
   const handleAddRecentFood = async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
@@ -556,10 +556,10 @@ export default function AddFoodScreen() {
       }
 
       console.log('[AddFood] Recent food added successfully!');
-      console.log('[AddFood] Navigating back to diary');
+      console.log('[AddFood] Keeping modal open for multiple adds');
       
-      // Navigate back to the home/diary screen
-      router.dismissTo('/(tabs)/(home)/');
+      // SUCCESS: Food logged, modal stays open for next add
+      // User can continue adding more recent foods without reopening the modal
     } catch (error) {
       console.error('[AddFood] Error adding recent food:', error);
       Alert.alert('Error', 'An unexpected error occurred while adding food');
@@ -613,7 +613,7 @@ export default function AddFoodScreen() {
 
   /**
    * Handle adding favorite
-   * MODIFIED: Respect mode parameter
+   * FIXED: Modal stays open after adding food
    */
   const handleAddFavorite = async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
@@ -770,7 +770,10 @@ export default function AddFoodScreen() {
       }
 
       console.log('[AddFood] Favorite added to meal successfully');
-      router.dismissTo('/(tabs)/(home)/');
+      console.log('[AddFood] Keeping modal open for multiple adds');
+      
+      // SUCCESS: Food logged, modal stays open for next add
+      // User can continue adding more favorites without reopening the modal
     } catch (error) {
       console.error('[AddFood] Error adding favorite:', error);
       Alert.alert('Error', 'An unexpected error occurred');
