@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback, memo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,9 +26,9 @@ const formatDateForStorage = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// Memoized food item component to prevent unnecessary re-renders
-// FIXED: Removed overly strict memo comparison that was causing invisible gaps on mobile
-const FoodItemRow = memo(({ 
+// FIXED: Removed React.memo to ensure proper re-renders on mobile
+// The memo was causing the second item to become invisible when the first item was deleted
+const FoodItemRow = ({ 
   item, 
   isDark, 
   onDelete, 
@@ -74,7 +74,7 @@ const FoodItemRow = memo(({
       </TouchableOpacity>
     </SwipeableListItem>
   );
-});
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -322,37 +322,47 @@ export default function HomeScreen() {
       // NOW update UI - create completely new state objects
       console.log('[Home] Updating UI state...');
       
-      // Filter out the deleted item and create NEW arrays
-      const updatedMeals = meals.map(meal => {
-        // Create a new items array without the deleted item
-        const newItems = meal.items.filter(i => i.id !== item.id);
+      // FIXED: Force a complete state refresh by creating entirely new objects
+      // This ensures React Native properly detects the change on mobile
+      setMeals(prevMeals => {
+        const updatedMeals = prevMeals.map(meal => {
+          // Create a new items array without the deleted item
+          const newItems = meal.items.filter(i => i.id !== item.id);
+          
+          // Return a completely new meal object
+          return {
+            type: meal.type,
+            label: meal.label,
+            items: newItems,
+            totalCalories: newItems.reduce((sum, i) => sum + (i.calories || 0), 0)
+          };
+        });
         
-        return {
-          ...meal,
-          items: newItems, // New array reference
-          totalCalories: newItems.reduce((sum, i) => sum + (i.calories || 0), 0)
-        };
+        console.log('[Home] Updated meals state:', updatedMeals.map(m => ({ 
+          type: m.type, 
+          itemCount: m.items.length 
+        })));
+        
+        return updatedMeals;
       });
       
-      // Recalculate totals
-      const newTotalCals = updatedMeals.reduce((sum, meal) => sum + meal.totalCalories, 0);
-      const newTotalP = updatedMeals.reduce((sum, meal) => 
-        sum + meal.items.reduce((s, i) => s + (i.protein || 0), 0), 0);
-      const newTotalC = updatedMeals.reduce((sum, meal) => 
-        sum + meal.items.reduce((s, i) => s + (i.carbs || 0), 0), 0);
-      const newTotalF = updatedMeals.reduce((sum, meal) => 
-        sum + meal.items.reduce((s, i) => s + (i.fats || 0), 0), 0);
-      const newTotalFib = updatedMeals.reduce((sum, meal) => 
-        sum + meal.items.reduce((s, i) => s + (i.fiber || 0), 0), 0);
+      // Recalculate totals using the updated meals
+      setTotalCalories(prevTotal => {
+        const itemCalories = item.calories || 0;
+        const newTotal = prevTotal - itemCalories;
+        console.log('[Home] Updated total calories:', newTotal);
+        return newTotal;
+      });
       
-      // Update all state at once
-      setMeals(updatedMeals);
-      setTotalCalories(newTotalCals);
-      setTotalMacros({ 
-        protein: newTotalP, 
-        carbs: newTotalC, 
-        fats: newTotalF, 
-        fiber: newTotalFib 
+      setTotalMacros(prevMacros => {
+        const newMacros = {
+          protein: prevMacros.protein - (item.protein || 0),
+          carbs: prevMacros.carbs - (item.carbs || 0),
+          fats: prevMacros.fats - (item.fats || 0),
+          fiber: prevMacros.fiber - (item.fiber || 0),
+        };
+        console.log('[Home] Updated macros:', newMacros);
+        return newMacros;
       });
       
       console.log('[Home] ✅ UI state updated successfully');
@@ -371,7 +381,7 @@ export default function HomeScreen() {
       console.log('[Home] Reloading data to sync UI with database...');
       loadData();
     }
-  }, [meals, loadData]);
+  }, [loadData]);
 
   const goToPreviousDay = () => {
     const newDate = new Date(selectedDate);
