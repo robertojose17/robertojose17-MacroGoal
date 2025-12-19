@@ -73,6 +73,10 @@ const FoodItemRow = memo(({
       </TouchableOpacity>
     </SwipeableListItem>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for memo
+  // Only re-render if the item ID or isDark changes
+  return prevProps.item.id === nextProps.item.id && prevProps.isDark === nextProps.isDark;
 });
 
 export default function HomeScreen() {
@@ -218,30 +222,30 @@ export default function HomeScreen() {
           });
         }
 
-        // Update meals state
+        // Update meals state - create completely new array with new objects
         const updatedMeals: MealData[] = [
           { 
             type: 'breakfast', 
             label: 'Breakfast', 
-            items: mealsByType.breakfast,
+            items: [...mealsByType.breakfast], // Create new array
             totalCalories: mealsByType.breakfast.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
           { 
             type: 'lunch', 
             label: 'Lunch', 
-            items: mealsByType.lunch,
+            items: [...mealsByType.lunch], // Create new array
             totalCalories: mealsByType.lunch.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
           { 
             type: 'dinner', 
             label: 'Dinner', 
-            items: mealsByType.dinner,
+            items: [...mealsByType.dinner], // Create new array
             totalCalories: mealsByType.dinner.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
           { 
             type: 'snack', 
             label: 'Snacks', 
-            items: mealsByType.snack,
+            items: [...mealsByType.snack], // Create new array
             totalCalories: mealsByType.snack.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
         ];
@@ -293,25 +297,45 @@ export default function HomeScreen() {
   };
 
   const handleDeleteFood = useCallback(async (item: any) => {
+    console.log('[Home] ========== DELETE FOOD ==========');
     console.log('[Home] Delete requested for item:', item.id);
     
-    // Store original state for rollback
-    const originalMeals = [...meals];
-    const originalTotalCalories = totalCalories;
-    const originalTotalMacros = { ...totalMacros };
-    
     try {
-      // Optimistic UI update - remove item immediately
-      console.log('[Home] Applying optimistic update...');
-      const updatedMeals = meals.map(meal => ({
-        ...meal,
-        items: meal.items.filter(i => i.id !== item.id),
-        totalCalories: meal.items
-          .filter(i => i.id !== item.id)
-          .reduce((sum, i) => sum + (i.calories || 0), 0)
-      }));
+      // Get current user for verification
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('No authenticated user found');
+      }
       
-      setMeals(updatedMeals);
+      console.log('[Home] Deleting meal_item with id:', item.id);
+      
+      // Delete from database FIRST
+      const { error } = await supabase
+        .from('meal_items')
+        .delete()
+        .eq('id', item.id);
+      
+      if (error) {
+        console.error('[Home] Supabase delete error:', error);
+        throw error;
+      }
+      
+      console.log('[Home] ✅ Food deleted from database successfully');
+      
+      // NOW update UI - create completely new state objects
+      console.log('[Home] Updating UI state...');
+      
+      // Filter out the deleted item and create NEW arrays
+      const updatedMeals = meals.map(meal => {
+        // Create a new items array without the deleted item
+        const newItems = meal.items.filter(i => i.id !== item.id);
+        
+        return {
+          ...meal,
+          items: newItems, // New array reference
+          totalCalories: newItems.reduce((sum, i) => sum + (i.calories || 0), 0)
+        };
+      });
       
       // Recalculate totals
       const newTotalCals = updatedMeals.reduce((sum, meal) => sum + meal.totalCalories, 0);
@@ -324,6 +348,8 @@ export default function HomeScreen() {
       const newTotalFib = updatedMeals.reduce((sum, meal) => 
         sum + meal.items.reduce((s, i) => s + (i.fiber || 0), 0), 0);
       
+      // Update all state at once
+      setMeals(updatedMeals);
       setTotalCalories(newTotalCals);
       setTotalMacros({ 
         protein: newTotalP, 
@@ -332,37 +358,10 @@ export default function HomeScreen() {
         fiber: newTotalFib 
       });
       
-      console.log('[Home] Optimistic update applied, now deleting from database...');
-      
-      // Get current user for verification
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('No authenticated user found');
-      }
-      
-      console.log('[Home] Deleting meal_item with id:', item.id);
-      
-      // Delete from database
-      const { error } = await supabase
-        .from('meal_items')
-        .delete()
-        .eq('id', item.id);
-      
-      if (error) {
-        console.error('[Home] Supabase delete error:', error);
-        throw error;
-      }
-      
-      console.log('[Home] ✅ Food deleted successfully');
+      console.log('[Home] ✅ UI state updated successfully');
       
     } catch (error: any) {
       console.error('[Home] ❌ Error in handleDeleteFood:', error);
-      
-      // Rollback optimistic update
-      console.log('[Home] Rolling back optimistic update...');
-      setMeals(originalMeals);
-      setTotalCalories(originalTotalCalories);
-      setTotalMacros(originalTotalMacros);
       
       // Show error to user
       Alert.alert(
@@ -370,8 +369,12 @@ export default function HomeScreen() {
         error?.message || 'Failed to delete food entry. Please try again.',
         [{ text: 'OK' }]
       );
+      
+      // Reload data to ensure UI is in sync with database
+      console.log('[Home] Reloading data to sync UI with database...');
+      loadData();
     }
-  }, [meals, totalCalories, totalMacros]);
+  }, [meals, loadData]);
 
   const goToPreviousDay = () => {
     const newDate = new Date(selectedDate);
@@ -416,18 +419,15 @@ export default function HomeScreen() {
   const getServingDisplayText = (item: any): string => {
     // Priority 1: Use the stored serving_description (this is what the user selected)
     if (item.serving_description) {
-      console.log('[Home] Using stored serving_description:', item.serving_description);
       return item.serving_description;
     }
 
     // Priority 2: If grams is available, show that
     if (item.grams) {
-      console.log('[Home] Using grams fallback:', item.grams);
       return `${Math.round(item.grams)} g`;
     }
 
     // Priority 3: Last resort fallback (should rarely happen)
-    console.log('[Home] Using quantity fallback');
     const quantity = item.quantity || 1;
     const servingAmount = item.foods?.serving_amount || 100;
     const servingUnit = item.foods?.serving_unit || 'g';
@@ -611,8 +611,8 @@ export default function HomeScreen() {
         </View>
 
         {/* Meals */}
-        {meals.map((meal, index) => (
-          <React.Fragment key={index}>
+        {meals.map((meal, mealIndex) => (
+          <React.Fragment key={`meal-${meal.type}`}>
             <View style={[
               styles.mealCard, 
               { 
@@ -656,7 +656,7 @@ export default function HomeScreen() {
                 <View style={styles.mealItems}>
                   {meal.items.map((item, itemIndex) => (
                     <FoodItemRow
-                      key={item.id || `item-${itemIndex}`}
+                      key={item.id}
                       item={item}
                       isDark={isDark}
                       onDelete={() => handleDeleteFood(item)}
