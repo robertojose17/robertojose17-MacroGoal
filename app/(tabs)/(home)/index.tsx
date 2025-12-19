@@ -27,6 +27,7 @@ const formatDateForStorage = (date: Date): string => {
 };
 
 // Memoized food item component to prevent unnecessary re-renders
+// FIXED: Removed overly strict memo comparison that was causing invisible gaps on mobile
 const FoodItemRow = memo(({ 
   item, 
   isDark, 
@@ -73,10 +74,6 @@ const FoodItemRow = memo(({
       </TouchableOpacity>
     </SwipeableListItem>
   );
-}, (prevProps, nextProps) => {
-  // Custom comparison function for memo
-  // Only re-render if the item ID or isDark changes
-  return prevProps.item.id === nextProps.item.id && prevProps.isDark === nextProps.isDark;
 });
 
 export default function HomeScreen() {

@@ -16,13 +16,14 @@ interface SwipeableListItemProps {
 }
 
 const SWIPE_THRESHOLD = -80; // Swipe LEFT 80px to trigger delete (negative value)
-const ANIMATION_DURATION = 150; // Very fast animation for instant feel
+const ANIMATION_DURATION = 200; // Fast animation for responsive feel
 
 export default function SwipeableListItem({
   children,
   onDelete,
 }: SwipeableListItemProps) {
   const translateX = useSharedValue(0);
+  const height = useSharedValue(1);
   const opacity = useSharedValue(1);
   const isDeleting = useRef(false);
 
@@ -33,7 +34,7 @@ export default function SwipeableListItem({
     
     console.log('[SwipeableListItem] Delete triggered');
     
-    // Call delete immediately for instant feel
+    // Call delete immediately for instant database update
     onDelete();
   }, [onDelete]);
 
@@ -59,14 +60,18 @@ export default function SwipeableListItem({
       const translation = translateX.value;
       const velocity = event.velocityX;
       
-      // If swiped left past threshold OR fast swipe left, delete immediately
+      // If swiped left past threshold OR fast swipe left, delete
       if (translation < SWIPE_THRESHOLD || velocity < -500) {
-        // Animate out quickly
+        // Animate out: slide left, fade out, and collapse height
+        translateX.value = withTiming(-400, {
+          duration: ANIMATION_DURATION,
+          easing: Easing.out(Easing.ease),
+        });
         opacity.value = withTiming(0, {
           duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.ease),
         });
-        translateX.value = withTiming(-300, {
+        height.value = withTiming(0, {
           duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.ease),
         });
@@ -76,7 +81,7 @@ export default function SwipeableListItem({
       } else {
         // Not past threshold: snap back
         translateX.value = withTiming(0, {
-          duration: 150,
+          duration: 200,
           easing: Easing.out(Easing.ease),
         });
       }
@@ -84,7 +89,10 @@ export default function SwipeableListItem({
 
   // Animated styles
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [
+      { translateX: translateX.value },
+      { scaleY: height.value },
+    ],
     opacity: opacity.value,
   }));
 
