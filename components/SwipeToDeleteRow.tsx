@@ -1,6 +1,6 @@
 
 import React, { ReactNode, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -9,32 +9,21 @@ import Animated, {
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
-import { IconSymbol } from './IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface SwipeToDeleteRowProps {
   children: ReactNode;
   onDelete: () => void;
-  deleteButtonText?: string;
-  deleteButtonColor?: string;
 }
 
-const DELETE_BUTTON_WIDTH = 90;
-const SWIPE_THRESHOLD = -70;
-const FULL_SWIPE_THRESHOLD = -150;
-const ANIMATION_DURATION = 120; // Faster animation
+const SWIPE_THRESHOLD = 80; // Swipe right 80px to trigger delete
+const ANIMATION_DURATION = 200; // Fast animation
 
 export default function SwipeToDeleteRow({
   children,
   onDelete,
-  deleteButtonText = 'Delete',
-  deleteButtonColor = '#FF3B30',
 }: SwipeToDeleteRowProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  
   const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
   const isDeleting = useSharedValue(false);
 
   // Memoize delete handler to prevent recreation
@@ -42,10 +31,20 @@ export default function SwipeToDeleteRow({
     'worklet';
     if (isDeleting.value) return;
     isDeleting.value = true;
-    runOnJS(onDelete)();
+    
+    // Animate out
+    opacity.value = withTiming(0, {
+      duration: ANIMATION_DURATION,
+      easing: Easing.out(Easing.ease),
+    });
+    
+    // Call delete after animation
+    setTimeout(() => {
+      runOnJS(onDelete)();
+    }, ANIMATION_DURATION);
   }, [onDelete]);
 
-  // Optimized pan gesture with minimal logic
+  // Pan gesture - swipe RIGHT to delete
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
@@ -53,79 +52,43 @@ export default function SwipeToDeleteRow({
       'worklet';
       if (isDeleting.value) return;
       
-      // Only allow left swipe (negative translation)
-      if (event.translationX < 0) {
-        translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH * 2);
-      } else if (event.translationX > 0 && translateX.value < 0) {
-        // Allow swiping right to close if already open
-        translateX.value = Math.min(0, translateX.value + event.translationX);
+      // Only allow RIGHT swipe (positive translation)
+      if (event.translationX > 0) {
+        translateX.value = Math.min(event.translationX, 200);
+      } else {
+        translateX.value = 0;
       }
     })
     .onEnd((event) => {
       'worklet';
       if (isDeleting.value) return;
       
-      const velocity = event.velocityX;
       const translation = translateX.value;
+      const velocity = event.velocityX;
       
-      // Full swipe: delete immediately
-      if (translation < FULL_SWIPE_THRESHOLD || velocity < -1000) {
-        runOnJS(handleDelete)();
-        return;
-      }
-      
-      // Partial swipe past threshold: lock open
-      if (translation < SWIPE_THRESHOLD) {
-        translateX.value = withTiming(-DELETE_BUTTON_WIDTH, {
-          duration: ANIMATION_DURATION,
-          easing: Easing.out(Easing.cubic),
-        });
+      // If swiped right past threshold OR fast swipe right, delete immediately
+      if (translation > SWIPE_THRESHOLD || velocity > 500) {
+        handleDelete();
       } else {
-        // Not past threshold: close
+        // Not past threshold: snap back
         translateX.value = withTiming(0, {
-          duration: ANIMATION_DURATION,
-          easing: Easing.out(Easing.cubic),
+          duration: 150,
+          easing: Easing.out(Easing.ease),
         });
       }
     });
 
-  // Optimized animated styles
-  const animatedRowStyle = useAnimatedStyle(() => ({
+  // Animated styles
+  const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
-  }), []);
-
-  const animatedDeleteStyle = useAnimatedStyle(() => ({
-    opacity: translateX.value < -10 ? 1 : 0,
+    opacity: opacity.value,
   }), []);
 
   return (
     <View style={styles.container}>
-      {/* Delete button background (behind the row) */}
-      <Animated.View style={[styles.deleteBackground, animatedDeleteStyle]}>
-        <TouchableOpacity
-          style={[styles.deleteButton, { backgroundColor: deleteButtonColor }]}
-          onPress={handleDelete}
-          activeOpacity={0.8}
-        >
-          <IconSymbol
-            ios_icon_name="trash.fill"
-            android_material_icon_name="delete"
-            size={22}
-            color="#FFFFFF"
-          />
-          <Text style={styles.deleteButtonText}>{deleteButtonText}</Text>
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Swipeable content */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.row, animatedRowStyle]}>
-          <View style={[
-            styles.rowContent,
-            { backgroundColor: isDark ? colors.cardDark : colors.card }
-          ]}>
-            {children}
-          </View>
+        <Animated.View style={[styles.content, animatedStyle]}>
+          {children}
         </Animated.View>
       </GestureDetector>
     </View>
@@ -134,39 +97,9 @@ export default function SwipeToDeleteRow({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'relative',
     overflow: 'hidden',
-    borderRadius: 12,
-    marginBottom: 1,
   },
-  deleteBackground: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: DELETE_BUTTON_WIDTH + 20,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingRight: 8,
-  },
-  deleteButton: {
-    width: DELETE_BUTTON_WIDTH,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 10,
-    gap: 4,
-  },
-  deleteButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  row: {
+  content: {
     width: '100%',
-  },
-  rowContent: {
-    width: '100%',
-    borderRadius: 12,
   },
 });
