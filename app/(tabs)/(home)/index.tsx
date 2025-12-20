@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert, FlatList } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -11,10 +11,30 @@ import { supabase } from '@/app/integrations/supabase/client';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
+interface FoodItem {
+  id: string;
+  quantity: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber: number;
+  serving_description: string | null;
+  grams: number | null;
+  foods: {
+    id: string;
+    name: string;
+    brand: string | null;
+    serving_amount: number;
+    serving_unit: string;
+    user_created: boolean;
+  } | null;
+}
+
 interface MealData {
   type: MealType;
   label: string;
-  items: any[];
+  items: FoodItem[];
   totalCalories: number;
 }
 
@@ -26,20 +46,41 @@ const formatDateForStorage = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// FIXED: Removed React.memo to ensure proper re-renders on mobile
-// The memo was causing the second item to become invisible when the first item was deleted
+// Helper function to get serving description for display
+const getServingDisplayText = (item: FoodItem): string => {
+  // Priority 1: Use the stored serving_description (this is what the user selected)
+  if (item.serving_description) {
+    return item.serving_description;
+  }
+
+  // Priority 2: If grams is available, show that
+  if (item.grams) {
+    return `${Math.round(item.grams)} g`;
+  }
+
+  // Priority 3: Last resort fallback (should rarely happen)
+  const quantity = item.quantity || 1;
+  const servingAmount = item.foods?.serving_amount || 100;
+  const servingUnit = item.foods?.serving_unit || 'g';
+  
+  if (quantity === 1) {
+    return `${servingAmount} ${servingUnit}`;
+  }
+  
+  return `${quantity}x ${servingAmount} ${servingUnit}`;
+};
+
+// Food item row component - NOT memoized to ensure proper re-renders
 const FoodItemRow = ({ 
   item, 
   isDark, 
   onDelete, 
-  onEdit, 
-  getServingDisplayText 
+  onEdit,
 }: { 
-  item: any; 
+  item: FoodItem; 
   isDark: boolean; 
   onDelete: () => void; 
   onEdit: () => void;
-  getServingDisplayText: (item: any) => string;
 }) => {
   return (
     <SwipeableListItem onDelete={onDelete}>
@@ -152,7 +193,7 @@ export default function HomeScreen() {
         });
       }
 
-      // FIXED: Use consistent date formatting (local date, no timezone conversion)
+      // Use consistent date formatting (local date, no timezone conversion)
       const dateString = formatDateForStorage(selectedDate);
       console.log('[Home] Loading meals for date:', dateString);
       
@@ -191,7 +232,7 @@ export default function HomeScreen() {
         console.log('[Home] Meals loaded for', dateString, ':', mealsData?.length || 0, 'meals');
         
         // Organize meals by type
-        const mealsByType: Record<MealType, any[]> = {
+        const mealsByType: Record<MealType, FoodItem[]> = {
           breakfast: [],
           lunch: [],
           dinner: [],
@@ -224,25 +265,25 @@ export default function HomeScreen() {
           { 
             type: 'breakfast', 
             label: 'Breakfast', 
-            items: [...mealsByType.breakfast], // Create new array
+            items: [...mealsByType.breakfast],
             totalCalories: mealsByType.breakfast.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
           { 
             type: 'lunch', 
             label: 'Lunch', 
-            items: [...mealsByType.lunch], // Create new array
+            items: [...mealsByType.lunch],
             totalCalories: mealsByType.lunch.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
           { 
             type: 'dinner', 
             label: 'Dinner', 
-            items: [...mealsByType.dinner], // Create new array
+            items: [...mealsByType.dinner],
             totalCalories: mealsByType.dinner.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
           { 
             type: 'snack', 
             label: 'Snacks', 
-            items: [...mealsByType.snack], // Create new array
+            items: [...mealsByType.snack],
             totalCalories: mealsByType.snack.reduce((sum, item) => sum + (item.calories || 0), 0)
           },
         ];
@@ -274,15 +315,13 @@ export default function HomeScreen() {
 
   const handleAddFood = (mealType: MealType) => {
     console.log('[Home] Opening add food for meal:', mealType);
-    // FIXED: Use consistent date formatting
     const dateString = formatDateForStorage(selectedDate);
     console.log('[Home] Passing date to add-food:', dateString);
     router.push(`/add-food?meal=${mealType}&date=${dateString}`);
   };
 
-  const handleEditFood = (item: any) => {
+  const handleEditFood = (item: FoodItem) => {
     console.log('[Home] Opening edit food:', item.id);
-    // FIXED: Use consistent date formatting
     const dateString = formatDateForStorage(selectedDate);
     router.push({
       pathname: '/edit-food',
@@ -293,7 +332,7 @@ export default function HomeScreen() {
     });
   };
 
-  const handleDeleteFood = useCallback(async (item: any) => {
+  const handleDeleteFood = useCallback(async (item: FoodItem) => {
     console.log('[Home] ========== DELETE FOOD ==========');
     console.log('[Home] Delete requested for item:', item.id);
     
@@ -319,51 +358,32 @@ export default function HomeScreen() {
       
       console.log('[Home] ✅ Food deleted from database successfully');
       
-      // NOW update UI - create completely new state objects
+      // NOW update UI - use filter to create a completely new array
       console.log('[Home] Updating UI state...');
       
-      // FIXED: Force a complete state refresh by creating entirely new objects
-      // This ensures React Native properly detects the change on mobile
       setMeals(prevMeals => {
-        const updatedMeals = prevMeals.map(meal => {
-          // Create a new items array without the deleted item
-          const newItems = meal.items.filter(i => i.id !== item.id);
+        // Create a completely new meals array
+        return prevMeals.map(meal => {
+          // Filter out the deleted item
+          const filteredItems = meal.items.filter(i => i.id !== item.id);
           
-          // Return a completely new meal object
+          // Return a new meal object with the filtered items
           return {
-            type: meal.type,
-            label: meal.label,
-            items: newItems,
-            totalCalories: newItems.reduce((sum, i) => sum + (i.calories || 0), 0)
+            ...meal,
+            items: filteredItems,
+            totalCalories: filteredItems.reduce((sum, i) => sum + (i.calories || 0), 0)
           };
         });
-        
-        console.log('[Home] Updated meals state:', updatedMeals.map(m => ({ 
-          type: m.type, 
-          itemCount: m.items.length 
-        })));
-        
-        return updatedMeals;
       });
       
-      // Recalculate totals using the updated meals
-      setTotalCalories(prevTotal => {
-        const itemCalories = item.calories || 0;
-        const newTotal = prevTotal - itemCalories;
-        console.log('[Home] Updated total calories:', newTotal);
-        return newTotal;
-      });
-      
-      setTotalMacros(prevMacros => {
-        const newMacros = {
-          protein: prevMacros.protein - (item.protein || 0),
-          carbs: prevMacros.carbs - (item.carbs || 0),
-          fats: prevMacros.fats - (item.fats || 0),
-          fiber: prevMacros.fiber - (item.fiber || 0),
-        };
-        console.log('[Home] Updated macros:', newMacros);
-        return newMacros;
-      });
+      // Update totals
+      setTotalCalories(prev => prev - (item.calories || 0));
+      setTotalMacros(prev => ({
+        protein: prev.protein - (item.protein || 0),
+        carbs: prev.carbs - (item.carbs || 0),
+        fats: prev.fats - (item.fats || 0),
+        fiber: prev.fiber - (item.fiber || 0),
+      }));
       
       console.log('[Home] ✅ UI state updated successfully');
       
@@ -419,31 +439,6 @@ export default function HomeScreen() {
     const selected = new Date(selectedDate);
     selected.setHours(0, 0, 0, 0);
     return selected <= earliest;
-  };
-
-  // Helper function to get serving description for display
-  // ALWAYS use the logged serving_description if available
-  const getServingDisplayText = (item: any): string => {
-    // Priority 1: Use the stored serving_description (this is what the user selected)
-    if (item.serving_description) {
-      return item.serving_description;
-    }
-
-    // Priority 2: If grams is available, show that
-    if (item.grams) {
-      return `${Math.round(item.grams)} g`;
-    }
-
-    // Priority 3: Last resort fallback (should rarely happen)
-    const quantity = item.quantity || 1;
-    const servingAmount = item.foods?.serving_amount || 100;
-    const servingUnit = item.foods?.serving_unit || 'g';
-    
-    if (quantity === 1) {
-      return `${servingAmount} ${servingUnit}`;
-    }
-    
-    return `${quantity}x ${servingAmount} ${servingUnit}`;
   };
 
   if (loading) {
@@ -617,64 +612,66 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Meals */}
-        {meals.map((meal, mealIndex) => (
-          <React.Fragment key={`meal-${meal.type}`}>
-            <View style={[
+        {/* Meals - Using FlatList for each meal section */}
+        {meals.map((meal) => (
+          <View 
+            key={meal.type}
+            style={[
               styles.mealCard, 
               { 
                 backgroundColor: isDark ? colors.cardDark : colors.card,
                 borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
               }
-            ]}>
-              <View style={styles.mealHeader}>
-                <View>
-                  <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                    {meal.label}
-                  </Text>
-                  <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {Math.round(meal.totalCalories)} kcal
-                  </Text>
-                </View>
-                {/* Blue "+" icon - Opens Add Food for this meal */}
-                <TouchableOpacity
-                  style={styles.addMealButton}
-                  onPress={() => handleAddFood(meal.type)}
-                >
-                  <IconSymbol
-                    ios_icon_name="plus.circle.fill"
-                    android_material_icon_name="add_circle"
-                    size={28}
-                    color={colors.info}
-                  />
-                </TouchableOpacity>
+            ]}
+          >
+            <View style={styles.mealHeader}>
+              <View>
+                <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                  {meal.label}
+                </Text>
+                <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {Math.round(meal.totalCalories)} kcal
+                </Text>
               </View>
-
-              {meal.items.length === 0 ? (
-                <TouchableOpacity 
-                  style={styles.emptyMeal}
-                  onPress={() => handleAddFood(meal.type)}
-                >
-                  <Text style={[styles.emptyMealText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Tap to add food
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.mealItems}>
-                  {meal.items.map((item, itemIndex) => (
-                    <FoodItemRow
-                      key={item.id}
-                      item={item}
-                      isDark={isDark}
-                      onDelete={() => handleDeleteFood(item)}
-                      onEdit={() => handleEditFood(item)}
-                      getServingDisplayText={getServingDisplayText}
-                    />
-                  ))}
-                </View>
-              )}
+              <TouchableOpacity
+                style={styles.addMealButton}
+                onPress={() => handleAddFood(meal.type)}
+              >
+                <IconSymbol
+                  ios_icon_name="plus.circle.fill"
+                  android_material_icon_name="add_circle"
+                  size={28}
+                  color={colors.info}
+                />
+              </TouchableOpacity>
             </View>
-          </React.Fragment>
+
+            {meal.items.length === 0 ? (
+              <TouchableOpacity 
+                style={styles.emptyMeal}
+                onPress={() => handleAddFood(meal.type)}
+              >
+                <Text style={[styles.emptyMealText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Tap to add food
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <FlatList
+                data={meal.items}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <FoodItemRow
+                    item={item}
+                    isDark={isDark}
+                    onDelete={() => handleDeleteFood(item)}
+                    onEdit={() => handleEditFood(item)}
+                  />
+                )}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+              />
+            )}
+          </View>
         ))}
 
         <View style={styles.bottomSpacer} />
@@ -826,9 +823,6 @@ const styles = StyleSheet.create({
   },
   emptyMealText: {
     ...typography.body,
-  },
-  mealItems: {
-    gap: spacing.sm,
   },
   foodItem: {
     flexDirection: 'row',
