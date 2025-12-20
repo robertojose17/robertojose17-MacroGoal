@@ -44,10 +44,12 @@ export default function AddFoodScreen() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestQueryRef = useRef<string>('');
 
-  // NEW: Banner state
-  const [showBanner, setShowBanner] = useState(false);
+  // FIXED: Queue-based banner system
+  const [bannerQueue, setBannerQueue] = useState<string[]>([]);
+  const [currentBanner, setCurrentBanner] = useState<string | null>(null);
   const [bannerOpacity] = useState(new Animated.Value(0));
-  const bannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isShowingBannerRef = useRef(false);
+  const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
@@ -124,60 +126,74 @@ export default function AddFoodScreen() {
     useCallback(() => {
       console.log('[AddFood] Screen focused, loading data');
       loadData();
-      
-      // REMOVED: Do NOT clear search query when returning to this screen
-      // This allows users to add multiple foods from the same search results
-      // The search query and results will persist across navigation
     }, [loadData])
   );
 
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+      }
+    };
+  }, []);
+
   /**
-   * NEW: Show success banner
+   * FIXED: Queue-based banner system
+   * Adds a banner event to the queue
    */
   const showSuccessBanner = useCallback(() => {
-    console.log('[AddFood] Showing success banner');
-    
-    // Clear any existing timeout
-    if (bannerTimeoutRef.current) {
-      clearTimeout(bannerTimeoutRef.current);
-    }
-    
-    // If banner is already showing, reset the timer
-    if (showBanner) {
-      console.log('[AddFood] Banner already visible, resetting timer');
-      bannerTimeoutRef.current = setTimeout(() => {
-        Animated.timing(bannerOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }).start(() => {
-          setShowBanner(false);
-        });
-      }, 1000);
+    console.log('[AddFood] ========== ADDING BANNER TO QUEUE ==========');
+    setBannerQueue(prev => {
+      const newQueue = [...prev, 'Food Added'];
+      console.log('[AddFood] Queue length:', newQueue.length);
+      return newQueue;
+    });
+  }, []);
+
+  /**
+   * FIXED: Process banner queue
+   * Shows banners consecutively with 500ms duration each
+   */
+  useEffect(() => {
+    // If no banners in queue or already showing one, do nothing
+    if (bannerQueue.length === 0 || isShowingBannerRef.current) {
       return;
     }
+
+    console.log('[AddFood] ========== SHOWING NEXT BANNER ==========');
+    console.log('[AddFood] Queue length:', bannerQueue.length);
     
-    // Show banner
-    setShowBanner(true);
+    // Mark as showing
+    isShowingBannerRef.current = true;
     
-    // Fade in
-    Animated.timing(bannerOpacity, {
-      toValue: 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
-      // Auto-hide after 1 second
-      bannerTimeoutRef.current = setTimeout(() => {
-        Animated.timing(bannerOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }).start(() => {
-          setShowBanner(false);
-        });
-      }, 1000);
-    });
-  }, [showBanner, bannerOpacity]);
+    // Get next banner from queue
+    const nextBanner = bannerQueue[0];
+    setCurrentBanner(nextBanner);
+    
+    // Show immediately (no fade in)
+    bannerOpacity.setValue(1);
+    
+    console.log('[AddFood] Banner visible, will hide after 500ms');
+    
+    // Auto-hide after EXACTLY 500ms
+    bannerTimerRef.current = setTimeout(() => {
+      console.log('[AddFood] Hiding banner');
+      
+      // Hide immediately (no fade out)
+      bannerOpacity.setValue(0);
+      
+      // Remove from queue
+      setBannerQueue(prev => prev.slice(1));
+      setCurrentBanner(null);
+      isShowingBannerRef.current = false;
+      
+      console.log('[AddFood] Banner hidden, ready for next');
+    }, 500);
+  }, [bannerQueue, bannerOpacity]);
 
   /**
    * INLINE SEARCH LOGIC
@@ -332,7 +348,6 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a search result
-   * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
   const handleOpenSearchResultDetails = useCallback((product: OpenFoodFactsProduct) => {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
@@ -421,7 +436,6 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a recent food
-   * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
   const handleOpenRecentFoodDetails = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
@@ -479,8 +493,7 @@ export default function AddFoodScreen() {
 
   /**
    * Add a recent food directly
-   * FIXED: Modal stays open after adding food
-   * NEW: Shows success banner
+   * FIXED: Shows success banner immediately after add
    */
   const handleAddRecentFood = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
@@ -609,14 +622,13 @@ export default function AddFoodScreen() {
         return;
       }
 
-      console.log('[AddFood] Recent food added successfully!');
-      console.log('[AddFood] Keeping modal open for multiple adds');
+      console.log('[AddFood] ✅ Recent food added successfully!');
+      console.log('[AddFood] Showing success banner');
       
-      // NEW: Show success banner
+      // FIXED: Show success banner immediately
       showSuccessBanner();
       
-      // SUCCESS: Food logged, modal stays open for next add
-      // User can continue adding more recent foods without reopening the modal
+      console.log('[AddFood] Keeping modal open for multiple adds');
     } catch (error) {
       console.error('[AddFood] Error adding recent food:', error);
       Alert.alert('Error', 'An unexpected error occurred while adding food');
@@ -625,7 +637,6 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a favorite
-   * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
   const handleOpenFavoriteDetails = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== OPENING FAVORITE DETAILS ==========');
@@ -670,8 +681,7 @@ export default function AddFoodScreen() {
 
   /**
    * Handle adding favorite
-   * FIXED: Modal stays open after adding food
-   * NEW: Shows success banner
+   * FIXED: Shows success banner immediately after add
    */
   const handleAddFavorite = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
@@ -827,14 +837,13 @@ export default function AddFoodScreen() {
         return;
       }
 
-      console.log('[AddFood] Favorite added to meal successfully');
-      console.log('[AddFood] Keeping modal open for multiple adds');
+      console.log('[AddFood] ✅ Favorite added to meal successfully');
+      console.log('[AddFood] Showing success banner');
       
-      // NEW: Show success banner
+      // FIXED: Show success banner immediately
       showSuccessBanner();
       
-      // SUCCESS: Food logged, modal stays open for next add
-      // User can continue adding more favorites without reopening the modal
+      console.log('[AddFood] Keeping modal open for multiple adds');
     } catch (error) {
       console.error('[AddFood] Error adding favorite:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -843,7 +852,6 @@ export default function AddFoodScreen() {
 
   /**
    * Remove a favorite from the list
-   * FIXED: Use swipe-left delete instead of trash icon
    */
   const handleRemoveFavorite = useCallback(async (favoriteId: string) => {
     console.log('[AddFood] ========== REMOVE FAVORITE ==========');
@@ -1455,8 +1463,8 @@ export default function AddFoodScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* NEW: Success Banner */}
-      {showBanner && (
+      {/* FIXED: Queue-based banner - shows for 500ms each */}
+      {currentBanner && (
         <Animated.View 
           style={[
             styles.bannerContainer,
@@ -1472,7 +1480,7 @@ export default function AddFoodScreen() {
               size={20}
               color="#FFFFFF"
             />
-            <Text style={styles.bannerText}>Food logged</Text>
+            <Text style={styles.bannerText}>{currentBanner}</Text>
           </View>
         </Animated.View>
       )}

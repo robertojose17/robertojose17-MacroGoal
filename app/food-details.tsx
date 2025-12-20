@@ -37,11 +37,11 @@ export default function FoodDetailsScreen() {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   // FIXED: Queue-based banner system with 500ms duration
-  const [toastQueue, setToastQueue] = useState<string[]>([]);
-  const [currentToast, setCurrentToast] = useState<string | null>(null);
-  const [toastOpacity] = useState(new Animated.Value(0));
-  const isShowingToastRef = useRef(false);
-  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [bannerQueue, setBannerQueue] = useState<string[]>([]);
+  const [currentBanner, setCurrentBanner] = useState<string | null>(null);
+  const [bannerOpacity] = useState(new Animated.Value(0));
+  const isShowingBannerRef = useRef(false);
+  const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // NEW: Per-serving macros (derived from per-100g data)
   const [perServingMacros, setPerServingMacros] = useState({
@@ -204,8 +204,8 @@ export default function FoodDetailsScreen() {
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
       }
     };
   }, []);
@@ -320,43 +320,59 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  // FIXED: Queue-based toast system with 500ms duration (no entrance delay)
-  const showSuccessToast = useCallback((mealName: string) => {
-    console.log('[FoodDetails] ✅ Adding toast to queue:', mealName);
-    setToastQueue(prev => [...prev, mealName]);
+  /**
+   * FIXED: Queue-based banner system
+   * Adds a banner event to the queue
+   */
+  const showSuccessBanner = useCallback((mealName: string) => {
+    console.log('[FoodDetails] ========== ADDING BANNER TO QUEUE ==========');
+    setBannerQueue(prev => {
+      const newQueue = [...prev, `Added to ${mealName}`];
+      console.log('[FoodDetails] Queue length:', newQueue.length);
+      return newQueue;
+    });
   }, []);
 
-  // FIXED: Process toast queue with 500ms visible duration
+  /**
+   * FIXED: Process banner queue
+   * Shows banners consecutively with 500ms duration each
+   */
   useEffect(() => {
-    if (toastQueue.length === 0 || isShowingToastRef.current) {
+    // If no banners in queue or already showing one, do nothing
+    if (bannerQueue.length === 0 || isShowingBannerRef.current) {
       return;
     }
 
-    // Get next toast from queue
-    const nextToast = toastQueue[0];
-    console.log('[FoodDetails] 🎯 Showing toast IMMEDIATELY:', nextToast);
+    console.log('[FoodDetails] ========== SHOWING NEXT BANNER ==========');
+    console.log('[FoodDetails] Queue length:', bannerQueue.length);
     
-    isShowingToastRef.current = true;
-    setCurrentToast(nextToast);
+    // Mark as showing
+    isShowingBannerRef.current = true;
     
-    // Show immediately (no fade in animation)
-    toastOpacity.setValue(1);
+    // Get next banner from queue
+    const nextBanner = bannerQueue[0];
+    setCurrentBanner(nextBanner);
+    
+    // Show immediately (no fade in)
+    bannerOpacity.setValue(1);
+    
+    console.log('[FoodDetails] Banner visible, will hide after 500ms');
     
     // Auto-hide after EXACTLY 500ms
-    toastTimerRef.current = setTimeout(() => {
-      console.log('[FoodDetails] ⏱️ Hiding toast after 500ms');
+    bannerTimerRef.current = setTimeout(() => {
+      console.log('[FoodDetails] Hiding banner');
       
-      // Hide immediately (no fade out animation)
-      toastOpacity.setValue(0);
+      // Hide immediately (no fade out)
+      bannerOpacity.setValue(0);
       
-      // Remove from queue and reset
-      setToastQueue(prev => prev.slice(1));
-      setCurrentToast(null);
-      isShowingToastRef.current = false;
+      // Remove from queue
+      setBannerQueue(prev => prev.slice(1));
+      setCurrentBanner(null);
+      isShowingBannerRef.current = false;
       
-      console.log('[FoodDetails] ✅ Toast hidden, ready for next');
-    }, 500); // EXACTLY 500ms as specified
-  }, [toastQueue, toastOpacity]);
+      console.log('[FoodDetails] Banner hidden, ready for next');
+    }, 500);
+  }, [bannerQueue, bannerOpacity]);
 
   // Show loading only briefly while parsing
   if (!isReady || !product || !servingInfo || !nutrition) {
@@ -621,14 +637,14 @@ export default function FoodDetailsScreen() {
 
       console.log('[FoodDetails] ✅ Food added successfully!');
       
-      // Show success toast IMMEDIATELY
+      // Show success banner IMMEDIATELY
       const mealLabels: Record<string, string> = {
         breakfast: 'Breakfast',
         lunch: 'Lunch',
         dinner: 'Dinner',
         snack: 'Snacks',
       };
-      showSuccessToast(mealLabels[mealType] || mealType);
+      showSuccessBanner(mealLabels[mealType] || mealType);
       
       // Reset inputs for next add
       setServings('1');
@@ -940,25 +956,25 @@ export default function FoodDetailsScreen() {
           <View style={styles.bottomSpacer} />
         </ScrollView>
 
-        {/* FIXED: Toast Banner - shows immediately for 500ms */}
-        {currentToast && (
+        {/* FIXED: Queue-based banner - shows for 500ms each */}
+        {currentBanner && (
           <Animated.View 
             style={[
-              styles.toastContainer,
+              styles.bannerContainer,
               { 
-                opacity: toastOpacity,
+                opacity: bannerOpacity,
               }
             ]}
           >
-            <View style={styles.toast}>
+            <View style={styles.banner}>
               <IconSymbol
                 ios_icon_name="checkmark.circle.fill"
                 android_material_icon_name="check_circle"
                 size={20}
                 color="#FFFFFF"
               />
-              <Text style={styles.toastText}>
-                Added to {currentToast}
+              <Text style={styles.bannerText}>
+                {currentBanner}
               </Text>
             </View>
           </Animated.View>
@@ -1215,15 +1231,16 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     height: 100,
   },
-  toastContainer: {
+  bannerContainer: {
     position: 'absolute',
     bottom: 100,
     left: spacing.md,
     right: spacing.md,
     alignItems: 'center',
     zIndex: 1000,
+    pointerEvents: 'none',
   },
-  toast: {
+  banner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
@@ -1234,7 +1251,7 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
     elevation: 8,
   },
-  toastText: {
+  bannerText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
