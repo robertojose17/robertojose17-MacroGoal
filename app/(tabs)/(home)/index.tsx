@@ -317,7 +317,7 @@ export default function HomeScreen() {
       setMeals(prevMeals => {
         // Create a completely new meals array
         const newMeals = prevMeals.map(meal => {
-          // Filter out the deleted item
+          // Filter out the deleted item - create a NEW array
           const filteredItems = meal.items.filter(i => i.id !== item.id);
           
           // Return a new meal object with the filtered items
@@ -396,43 +396,6 @@ export default function HomeScreen() {
     selected.setHours(0, 0, 0, 0);
     return selected <= earliest;
   };
-
-  // Render function for FlatList items - defined inline to avoid stale closures
-  const renderFoodItem = useCallback(({ item }: { item: FoodItem }) => {
-    return (
-      <SwipeableListItem onDelete={() => handleDeleteFood(item)}>
-        <TouchableOpacity 
-          style={styles.foodItem}
-          onPress={() => handleEditFood(item)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.foodInfo}>
-            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {item.foods?.name || 'Unknown Food'}
-            </Text>
-            {item.foods?.brand && (
-              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {item.foods.brand}
-              </Text>
-            )}
-            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {getServingDisplayText(item)}
-            </Text>
-          </View>
-          <View style={styles.foodActions}>
-            <View style={styles.foodCalories}>
-              <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-                {Math.round(item.calories)}
-              </Text>
-              <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                kcal
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </SwipeableListItem>
-    );
-  }, [isDark, handleDeleteFood, handleEditFood]);
 
   if (loading) {
     return (
@@ -605,7 +568,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Meals - Using FlatList for each meal section with extraData */}
+        {/* Meals - Using simple map instead of FlatList */}
         {meals.map((meal) => (
           <View 
             key={meal.type}
@@ -649,18 +612,44 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             ) : (
-              <FlatList
-                data={meal.items}
-                keyExtractor={(item) => item.id}
-                renderItem={renderFoodItem}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-                extraData={meal.items.length}
-                removeClippedSubviews={false}
-                initialNumToRender={10}
-                maxToRenderPerBatch={10}
-                windowSize={10}
-              />
+              <View>
+                {meal.items.map((item, index) => (
+                  <React.Fragment key={item.id}>
+                    <SwipeableListItem onDelete={() => handleDeleteFood(item)}>
+                      <TouchableOpacity 
+                        style={styles.foodItem}
+                        onPress={() => handleEditFood(item)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.foodInfo}>
+                          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                            {item.foods?.name || 'Unknown Food'}
+                          </Text>
+                          {item.foods?.brand && (
+                            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                              {item.foods.brand}
+                            </Text>
+                          )}
+                          <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                            {getServingDisplayText(item)}
+                          </Text>
+                        </View>
+                        <View style={styles.foodActions}>
+                          <View style={styles.foodCalories}>
+                            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+                              {Math.round(item.calories)}
+                            </Text>
+                            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                              kcal
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    </SwipeableListItem>
+                    {index < meal.items.length - 1 && <View style={{ height: spacing.sm }} />}
+                  </React.Fragment>
+                ))}
+              </View>
             )}
           </View>
         ))}
