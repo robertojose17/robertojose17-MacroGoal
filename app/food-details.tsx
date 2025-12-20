@@ -36,11 +36,12 @@ export default function FoodDetailsScreen() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  // NEW: Toast banner queue state
+  // FIXED: Queue-based banner system with 500ms duration
   const [toastQueue, setToastQueue] = useState<string[]>([]);
   const [currentToast, setCurrentToast] = useState<string | null>(null);
   const [toastOpacity] = useState(new Animated.Value(0));
   const isShowingToastRef = useRef(false);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // NEW: Per-serving macros (derived from per-100g data)
   const [perServingMacros, setPerServingMacros] = useState({
@@ -200,6 +201,15 @@ export default function FoodDetailsScreen() {
     }
   }, [offDataString, router]);
 
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
   const checkFavoriteStatus = async (prod: OpenFoodFactsProduct) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -310,13 +320,13 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  // NEW: Queue-based toast system
+  // FIXED: Queue-based toast system with 500ms duration (no entrance delay)
   const showSuccessToast = useCallback((mealName: string) => {
-    console.log('[FoodDetails] Adding toast to queue:', mealName);
+    console.log('[FoodDetails] ✅ Adding toast to queue:', mealName);
     setToastQueue(prev => [...prev, mealName]);
   }, []);
 
-  // Process toast queue
+  // FIXED: Process toast queue with 500ms visible duration
   useEffect(() => {
     if (toastQueue.length === 0 || isShowingToastRef.current) {
       return;
@@ -324,31 +334,28 @@ export default function FoodDetailsScreen() {
 
     // Get next toast from queue
     const nextToast = toastQueue[0];
-    console.log('[FoodDetails] Showing toast:', nextToast);
+    console.log('[FoodDetails] 🎯 Showing toast IMMEDIATELY:', nextToast);
     
     isShowingToastRef.current = true;
     setCurrentToast(nextToast);
     
-    // Fade in immediately
-    Animated.timing(toastOpacity, {
-      toValue: 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
-      // Auto-hide after 1200ms
-      setTimeout(() => {
-        Animated.timing(toastOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }).start(() => {
-          // Remove from queue and reset
-          setToastQueue(prev => prev.slice(1));
-          setCurrentToast(null);
-          isShowingToastRef.current = false;
-        });
-      }, 1200);
-    });
+    // Show immediately (no fade in animation)
+    toastOpacity.setValue(1);
+    
+    // Auto-hide after EXACTLY 500ms
+    toastTimerRef.current = setTimeout(() => {
+      console.log('[FoodDetails] ⏱️ Hiding toast after 500ms');
+      
+      // Hide immediately (no fade out animation)
+      toastOpacity.setValue(0);
+      
+      // Remove from queue and reset
+      setToastQueue(prev => prev.slice(1));
+      setCurrentToast(null);
+      isShowingToastRef.current = false;
+      
+      console.log('[FoodDetails] ✅ Toast hidden, ready for next');
+    }, 500); // EXACTLY 500ms as specified
   }, [toastQueue, toastOpacity]);
 
   // Show loading only briefly while parsing
@@ -933,7 +940,7 @@ export default function FoodDetailsScreen() {
           <View style={styles.bottomSpacer} />
         </ScrollView>
 
-        {/* NEW: Toast Banner */}
+        {/* FIXED: Toast Banner - shows immediately for 500ms */}
         {currentToast && (
           <Animated.View 
             style={[
