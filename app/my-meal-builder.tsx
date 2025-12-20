@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMealItem } from '@/types';
 
@@ -31,7 +31,6 @@ export default function MyMealBuilderScreen() {
   const [items, setItems] = useState<MyMealItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // FIXED: Removed loadMyMeal from dependency array to prevent circular dependency
   const loadMyMeal = useCallback(async () => {
     if (!mealId) return;
 
@@ -144,10 +143,9 @@ export default function MyMealBuilderScreen() {
           console.error('[MyMealBuilder] Error parsing new food item:', error);
         }
       }
-    }, [params.newFoodItem, router, items.length])
+    }, [params.newFoodItem, router])
   );
 
-  // FIXED: Added items.length to dependency array to satisfy react-hooks/exhaustive-deps
   const handleAddFood = useCallback(() => {
     console.log('[MyMealBuilder] Opening Add Food in mymeal mode');
     console.log('[MyMealBuilder] Passing builder session ID:', builderSessionIdRef.current);
@@ -162,14 +160,14 @@ export default function MyMealBuilderScreen() {
         mealId: mealId || '',
       },
     });
-  }, [router, mealId, items.length]);
+  }, [router, mealId]);
 
   const handleRemoveItem = useCallback((itemId: string) => {
     console.log('[MyMealBuilder] Removing item:', itemId);
     setItems(prev => prev.filter(item => item.id !== itemId));
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     console.log('[MyMealBuilder] Saving My Meal');
 
     // Validation
@@ -331,9 +329,9 @@ export default function MyMealBuilderScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [mealName, mealNote, items, isEditing, mealId, router]);
 
-  const getServingDisplayText = (item: MyMealItem): string => {
+  const getServingDisplayText = useCallback((item: MyMealItem): string => {
     if (item.serving_description) {
       return item.serving_description;
     }
@@ -341,7 +339,7 @@ export default function MyMealBuilderScreen() {
       return `${Math.round(item.grams)} g`;
     }
     return `${item.quantity}x serving`;
-  };
+  }, []);
 
   return (
     <SafeAreaView 
@@ -435,7 +433,7 @@ export default function MyMealBuilderScreen() {
             </View>
           ) : (
             items.map((item, index) => (
-              <SwipeableListItem
+              <SwipeToDeleteRow
                 key={item.id || `item-${index}`}
                 onDelete={() => handleRemoveItem(item.id)}
               >
@@ -459,7 +457,7 @@ export default function MyMealBuilderScreen() {
                     </Text>
                   </View>
                 </View>
-              </SwipeableListItem>
+              </SwipeToDeleteRow>
             ))
           )}
 

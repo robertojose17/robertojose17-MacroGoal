@@ -227,27 +227,27 @@ export default function ChatbotScreen() {
   }, [messages.length, scrollToBottom]);
 
   // Request camera permissions
-  const requestCameraPermission = async () => {
+  const requestCameraPermission = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Camera permission is required to take photos.');
       return false;
     }
     return true;
-  };
+  }, []);
 
   // Request media library permissions
-  const requestMediaLibraryPermission = async () => {
+  const requestMediaLibraryPermission = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Media library permission is required to select photos.');
       return false;
     }
     return true;
-  };
+  }, []);
 
   // Convert image URI to base64 data URL
-  const convertImageToBase64 = async (uri: string): Promise<string> => {
+  const convertImageToBase64 = useCallback(async (uri: string): Promise<string> => {
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
@@ -264,10 +264,10 @@ export default function ChatbotScreen() {
       console.error('[Chatbot] Error converting image to base64:', error);
       throw error;
     }
-  };
+  }, []);
 
   // Handle photo selection
-  const handleAddPhoto = () => {
+  const handleAddPhoto = useCallback(() => {
     Alert.alert('Add Photo', 'Choose how to add a photo of your meal', [
       {
         text: 'Take Photo',
@@ -282,10 +282,10 @@ export default function ChatbotScreen() {
         style: 'cancel',
       },
     ]);
-  };
+  }, []);
 
   // Take a photo with camera
-  const handleTakePhoto = async () => {
+  const handleTakePhoto = useCallback(async () => {
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) return;
 
@@ -307,10 +307,10 @@ export default function ChatbotScreen() {
       console.error('[Chatbot] Error taking photo:', error);
       Alert.alert('Error', 'Failed to take photo. Please try again.');
     }
-  };
+  }, [requestCameraPermission, convertImageToBase64]);
 
   // Choose photo from gallery
-  const handleChooseFromGallery = async () => {
+  const handleChooseFromGallery = useCallback(async () => {
     const hasPermission = await requestMediaLibraryPermission();
     if (!hasPermission) return;
 
@@ -332,15 +332,15 @@ export default function ChatbotScreen() {
       console.error('[Chatbot] Error selecting photo:', error);
       Alert.alert('Error', 'Failed to select photo. Please try again.');
     }
-  };
+  }, [requestMediaLibraryPermission, convertImageToBase64]);
 
   // Remove selected photo
-  const handleRemovePhoto = () => {
+  const handleRemovePhoto = useCallback(() => {
     setSelectedImage(null);
-  };
+  }, []);
 
   // Handle voice recording
-  const handleVoiceInput = async () => {
+  const handleVoiceInput = useCallback(async () => {
     if (isRecording) {
       // Stop recording
       await handleStopRecording();
@@ -348,9 +348,9 @@ export default function ChatbotScreen() {
       // Start recording
       await handleStartRecording();
     }
-  };
+  }, [isRecording]);
 
-  const handleStartRecording = async () => {
+  const handleStartRecording = useCallback(async () => {
     try {
       console.log('[Chatbot] Requesting microphone permission...');
       const { granted } = await requestRecordingPermissionsAsync();
@@ -369,9 +369,9 @@ export default function ChatbotScreen() {
       console.error('[Chatbot] Error starting recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
-  };
+  }, [audioRecorder]);
 
-  const handleStopRecording = async () => {
+  const handleStopRecording = useCallback(async () => {
     try {
       console.log('[Chatbot] Stopping recording...');
       await audioRecorder.stop();
@@ -393,9 +393,9 @@ export default function ChatbotScreen() {
       Alert.alert('Error', 'Failed to stop recording. Please try again.');
       setIsRecording(false);
     }
-  };
+  }, [audioRecorder]);
 
-  const handleTranscriptionResult = (transcribedText: string) => {
+  const handleTranscriptionResult = useCallback((transcribedText: string) => {
     console.log('[Chatbot] Transcription successful:', transcribedText);
     
     if (!isMountedRef.current) return;
@@ -409,18 +409,18 @@ export default function ChatbotScreen() {
         handleSendTranscribedText(transcribedText);
       }
     }, 100);
-  };
+  }, []);
 
-  const handleTranscriptionError = (error: string) => {
+  const handleTranscriptionError = useCallback((error: string) => {
     console.error('[Chatbot] Transcription error:', error);
     
     if (!isMountedRef.current) return;
     
     Alert.alert('Transcription Error', "We couldn't transcribe that. Please try again.");
-  };
+  }, []);
 
   // Handle sending transcribed text automatically
-  const handleSendTranscribedText = async (text: string) => {
+  const handleSendTranscribedText = useCallback(async (text: string) => {
     const trimmedInput = text.trim();
     
     if (!trimmedInput) {
@@ -573,7 +573,7 @@ If the user provides both text and photo, use both sources to make the most accu
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
-  };
+  }, [loading, messages, sendMessage]);
 
   /**
    * Parse meal data from the Edge Function response
@@ -650,7 +650,7 @@ If the user provides both text and photo, use both sources to make the most accu
     }
   }, []);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     const trimmedInput = inputText.trim();
 
     // Check if we have either text or image
@@ -825,7 +825,7 @@ If the user provides both text and photo, use both sources to make the most accu
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
-  };
+  }, [inputText, selectedImage, loading, messages, sendMessage, parseMealData]);
 
   // Update ingredient quantity and recalculate totals
   const handleQuantityChange = useCallback(
@@ -1095,7 +1095,7 @@ If the user provides both text and photo, use both sources to make the most accu
       console.error('[Chatbot] Error logging meal:', error);
       Alert.alert('Error', 'Failed to log meal. Please try again.');
     }
-  }, [latestEstimate, mealType, date, mode, returnTo, myMealId, router]);
+  }, [latestEstimate, mealType, date, router]);
 
   const formatTime = useCallback((timestamp: number | undefined): string => {
     try {

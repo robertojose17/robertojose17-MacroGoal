@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { getRecentFoods } from '@/utils/foodDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
@@ -56,7 +56,7 @@ export default function AddFoodScreen() {
     snack: 'Snacks',
   };
 
-  const loadFavorites = async () => {
+  const loadFavorites = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -67,9 +67,9 @@ export default function AddFoodScreen() {
     } catch (error) {
       console.error('[AddFood] Error loading favorites:', error);
     }
-  };
+  }, []);
 
-  const loadMyMeals = async () => {
+  const loadMyMeals = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -97,7 +97,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error loading My Meals:', error);
       setMyMeals([]);
     }
-  };
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -117,7 +117,7 @@ export default function AddFoodScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadFavorites, loadMyMeals]);
 
   // Load data when screen comes into focus
   useFocusEffect(
@@ -134,7 +134,7 @@ export default function AddFoodScreen() {
   /**
    * NEW: Show success banner
    */
-  const showSuccessBanner = () => {
+  const showSuccessBanner = useCallback(() => {
     console.log('[AddFood] Showing success banner');
     
     // Clear any existing timeout
@@ -177,13 +177,13 @@ export default function AddFoodScreen() {
         });
       }, 1000);
     });
-  };
+  }, [showBanner, bannerOpacity]);
 
   /**
    * INLINE SEARCH LOGIC
    * Performs actual OpenFoodFacts API call
    */
-  const performSearch = async (query: string) => {
+  const performSearch = useCallback(async (query: string) => {
     console.log('[AddFood] ========== PERFORM SEARCH ==========');
     console.log('[AddFood] Query:', query);
     console.log('[AddFood] Latest query ref:', latestQueryRef.current);
@@ -288,12 +288,12 @@ export default function AddFoodScreen() {
         setIsSearching(false);
       }
     }
-  };
+  }, []);
 
   /**
    * Handle search input change with debouncing
    */
-  const handleSearchChange = (text: string) => {
+  const handleSearchChange = useCallback((text: string) => {
     console.log('[AddFood] Search input changed:', text);
     setSearchQuery(text);
     
@@ -320,21 +320,21 @@ export default function AddFoodScreen() {
     searchTimeoutRef.current = setTimeout(() => {
       performSearch(text);
     }, 500);
-  };
+  }, [performSearch]);
 
   /**
    * Retry search after error
    */
-  const handleRetrySearch = () => {
+  const handleRetrySearch = useCallback(() => {
     console.log('[AddFood] Retrying search');
     performSearch(searchQuery);
-  };
+  }, [searchQuery, performSearch]);
 
   /**
    * Open food details for a search result
    * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
-  const handleOpenSearchResultDetails = (product: OpenFoodFactsProduct) => {
+  const handleOpenSearchResultDetails = useCallback((product: OpenFoodFactsProduct) => {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
     console.log('[AddFood] Product:', product.product_name);
     console.log('[AddFood] Using router.push to keep add-food in navigation stack');
@@ -350,9 +350,9 @@ export default function AddFoodScreen() {
         mealId: myMealId,
       },
     });
-  };
+  }, [router, mealType, date, mode, myMealId]);
 
-  const handleCopyFromPrevious = () => {
+  const handleCopyFromPrevious = useCallback(() => {
     console.log('[AddFood] Navigating to copy-from-previous');
     router.push({
       pathname: '/copy-from-previous',
@@ -361,9 +361,9 @@ export default function AddFoodScreen() {
         date: date,
       },
     });
-  };
+  }, [router, mealType, date]);
 
-  const handleQuickAdd = () => {
+  const handleQuickAdd = useCallback(() => {
     console.log('[AddFood] Navigating to quick-add');
     router.push({
       pathname: '/quick-add',
@@ -375,9 +375,9 @@ export default function AddFoodScreen() {
         mealId: myMealId,
       },
     });
-  };
+  }, [router, mealType, date, mode, returnTo, myMealId]);
 
-  const handleAIMealEstimator = () => {
+  const handleAIMealEstimator = useCallback(() => {
     console.log('[AddFood] Navigating to AI Meal Estimator');
     router.push({
       pathname: '/chatbot',
@@ -389,9 +389,9 @@ export default function AddFoodScreen() {
         mealId: myMealId,
       },
     });
-  };
+  }, [router, mealType, date, mode, returnTo, myMealId]);
 
-  const handleBarcodeScanner = () => {
+  const handleBarcodeScanner = useCallback(() => {
     console.log('[AddFood] Navigating to Barcode Scanner');
     router.push({
       pathname: '/barcode-scanner',
@@ -402,14 +402,14 @@ export default function AddFoodScreen() {
         mealId: myMealId,
       },
     });
-  };
+  }, [router, mealType, date, mode, myMealId]);
 
-  const handleCreateMyMeal = () => {
+  const handleCreateMyMeal = useCallback(() => {
     console.log('[AddFood] Navigating to create My Meal');
     router.push('/my-meal-builder');
-  };
+  }, [router]);
 
-  const handleOpenMyMeal = (meal: MyMeal) => {
+  const handleOpenMyMeal = useCallback((meal: MyMeal) => {
     console.log('[AddFood] Opening My Meal details:', meal.id);
     router.push({
       pathname: '/my-meal-details',
@@ -417,13 +417,13 @@ export default function AddFoodScreen() {
         mealId: meal.id,
       },
     });
-  };
+  }, [router]);
 
   /**
    * Open food details for a recent food
    * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
-  const handleOpenRecentFoodDetails = async (food: Food) => {
+  const handleOpenRecentFoodDetails = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
     console.log('[AddFood] Food:', food.name);
     console.log('[AddFood] Using router.push to keep add-food in navigation stack');
@@ -475,14 +475,14 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error opening recent food details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  };
+  }, [router, mealType, date, mode, myMealId]);
 
   /**
    * Add a recent food directly
    * FIXED: Modal stays open after adding food
    * NEW: Shows success banner
    */
-  const handleAddRecentFood = async (food: Food) => {
+  const handleAddRecentFood = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
     console.log('[AddFood] Food:', food.name);
     console.log('[AddFood] Mode:', mode);
@@ -621,13 +621,13 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error adding recent food:', error);
       Alert.alert('Error', 'An unexpected error occurred while adding food');
     }
-  };
+  }, [mode, returnTo, myMealId, date, mealType, router, showSuccessBanner]);
 
   /**
    * Open food details for a favorite
    * CHANGED: Use router.push instead of router.replace to keep add-food in stack
    */
-  const handleOpenFavoriteDetails = async (favorite: Favorite) => {
+  const handleOpenFavoriteDetails = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== OPENING FAVORITE DETAILS ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
     console.log('[AddFood] Using router.push to keep add-food in navigation stack');
@@ -666,14 +666,14 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error opening favorite details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  };
+  }, [router, mealType, date, mode, myMealId]);
 
   /**
    * Handle adding favorite
    * FIXED: Modal stays open after adding food
    * NEW: Shows success banner
    */
-  const handleAddFavorite = async (favorite: Favorite) => {
+  const handleAddFavorite = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
     console.log('[AddFood] Mode:', mode);
@@ -839,13 +839,13 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error adding favorite:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  };
+  }, [mode, returnTo, myMealId, date, mealType, router, showSuccessBanner]);
 
   /**
    * Remove a favorite from the list
    * FIXED: Use swipe-left delete instead of trash icon
    */
-  const handleRemoveFavorite = async (favoriteId: string) => {
+  const handleRemoveFavorite = useCallback(async (favoriteId: string) => {
     console.log('[AddFood] ========== REMOVE FAVORITE ==========');
     console.log('[AddFood] Favorite ID to remove:', favoriteId);
     
@@ -872,9 +872,9 @@ export default function AddFoodScreen() {
       setFavorites(previousFavorites);
       Alert.alert('Error', error.message || 'Failed to remove favorite. Please try again.');
     }
-  };
+  }, [favorites]);
 
-  const renderFoodItem = (food: Food, index: number) => {
+  const renderFoodItem = useCallback((food: Food, index: number) => {
     const servingText = food.last_serving_description || `${Math.round(food.serving_amount)}g`;
     const macrosText = `P: ${Math.round(food.protein)}g • C: ${Math.round(food.carbs)}g • F: ${Math.round(food.fats)}g`;
     
@@ -919,9 +919,9 @@ export default function AddFoodScreen() {
         </View>
       </React.Fragment>
     );
-  };
+  }, [isDark, handleOpenRecentFoodDetails, handleAddRecentFood]);
 
-  const renderSearchResultItem = (product: OpenFoodFactsProduct, index: number) => {
+  const renderSearchResultItem = useCallback((product: OpenFoodFactsProduct, index: number) => {
     const nutrition = extractNutrition(product);
     const serving = extractServingSize(product);
     
@@ -971,9 +971,9 @@ export default function AddFoodScreen() {
         </View>
       </React.Fragment>
     );
-  };
+  }, [isDark, handleOpenSearchResultDetails]);
 
-  const renderFavoriteItem = (favorite: Favorite, index: number) => {
+  const renderFavoriteItem = useCallback((favorite: Favorite, index: number) => {
     const multiplier = favorite.default_grams / 100;
     const calories = Math.round(favorite.per100_calories * multiplier);
     const protein = Math.round(favorite.per100_protein * multiplier);
@@ -985,7 +985,7 @@ export default function AddFoodScreen() {
 
     return (
       <React.Fragment key={favorite.id ?? `favorite-${index}`}>
-        <SwipeableListItem
+        <SwipeToDeleteRow
           onDelete={() => handleRemoveFavorite(favorite.id)}
         >
           <View 
@@ -1025,12 +1025,12 @@ export default function AddFoodScreen() {
               />
             </TouchableOpacity>
           </View>
-        </SwipeableListItem>
+        </SwipeToDeleteRow>
       </React.Fragment>
     );
-  };
+  }, [isDark, handleRemoveFavorite, handleOpenFavoriteDetails, handleAddFavorite]);
 
-  const renderMyMealCard = (meal: MyMeal, index: number) => {
+  const renderMyMealCard = useCallback((meal: MyMeal, index: number) => {
     return (
       <React.Fragment key={meal.id ?? `my-meal-${index}`}>
         <TouchableOpacity
@@ -1068,9 +1068,9 @@ export default function AddFoodScreen() {
         </TouchableOpacity>
       </React.Fragment>
     );
-  };
+  }, [isDark, handleOpenMyMeal]);
 
-  const renderListContent = () => {
+  const renderListContent = useCallback(() => {
     if (searchQuery.trim().length > 0) {
       if (searchQuery.trim().length < 2) {
         return (
@@ -1152,7 +1152,7 @@ export default function AddFoodScreen() {
         )}
       </React.Fragment>
     );
-  };
+  }, [searchQuery, isSearching, searchError, searchResults, recentFoods, isDark, handleRetrySearch, renderSearchResultItem, renderFoodItem]);
 
   return (
     <SafeAreaView 

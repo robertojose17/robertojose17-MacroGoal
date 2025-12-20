@@ -80,80 +80,7 @@ export default function DashboardScreen() {
   const [shareCardData, setShareCardData] = useState<any>(null);
   const shareCardRef = useRef<ViewShot>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        console.log('[Dashboard] No user found');
-        setLoading(false);
-        return;
-      }
-
-      setUser(authUser);
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (userData) {
-        setUser({ ...authUser, ...userData });
-      }
-
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (goalData) {
-        setGoal(goalData);
-      } else {
-        setGoal({
-          daily_calories: 2000,
-          protein_g: 150,
-          carbs_g: 200,
-          fats_g: 65,
-          fiber_g: 30,
-        });
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      const { data: checkInsData } = await supabase
-        .from('check_ins')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('date', today)
-        .order('created_at', { ascending: false });
-
-      if (checkInsData && checkInsData.length > 0) {
-        setTodayCheckIn(checkInsData[0]);
-      } else {
-        setTodayCheckIn(null);
-      }
-
-      await loadTodaySummary(authUser.id, today);
-      await loadNutritionTrends(authUser.id);
-
-    } catch (error) {
-      console.error('[Dashboard] Error loading data:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      console.log('[Dashboard] Nutrition range changed, reloading trends');
-      loadNutritionTrends(user.id);
-    }
-  }, [nutritionRange, nutritionCustomRange]);
-
-  const loadTodaySummary = async (userId: string, date: string) => {
+  const loadTodaySummary = useCallback(async (userId: string, date: string) => {
     try {
       const { data: mealsData } = await supabase
         .from('meals')
@@ -200,9 +127,9 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('[Dashboard] Error loading today summary:', error);
     }
-  };
+  }, []);
 
-  const loadNutritionTrends = async (userId: string) => {
+  const loadNutritionTrends = useCallback(async (userId: string) => {
     try {
       let startDate: Date;
       let endDate: Date;
@@ -306,9 +233,82 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('[Dashboard] Error loading nutrition trends:', error);
     }
-  };
+  }, [nutritionRange, nutritionCustomRange]);
 
-  const calculateStreak = (sortedDates: string[]): number => {
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        console.log('[Dashboard] No user found');
+        setLoading(false);
+        return;
+      }
+
+      setUser(authUser);
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (userData) {
+        setUser({ ...authUser, ...userData });
+      }
+
+      const { data: goalData } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (goalData) {
+        setGoal(goalData);
+      } else {
+        setGoal({
+          daily_calories: 2000,
+          protein_g: 150,
+          carbs_g: 200,
+          fats_g: 65,
+          fiber_g: 30,
+        });
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const { data: checkInsData } = await supabase
+        .from('check_ins')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('date', today)
+        .order('created_at', { ascending: false });
+
+      if (checkInsData && checkInsData.length > 0) {
+        setTodayCheckIn(checkInsData[0]);
+      } else {
+        setTodayCheckIn(null);
+      }
+
+      await loadTodaySummary(authUser.id, today);
+      await loadNutritionTrends(authUser.id);
+
+    } catch (error) {
+      console.error('[Dashboard] Error loading data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [loadTodaySummary, loadNutritionTrends]);
+
+  useEffect(() => {
+    if (user) {
+      console.log('[Dashboard] Nutrition range changed, reloading trends');
+      loadNutritionTrends(user.id);
+    }
+  }, [nutritionRange, nutritionCustomRange, user, loadNutritionTrends]);
+
+  const calculateStreak = useCallback((sortedDates: string[]): number => {
     if (sortedDates.length === 0) return 0;
 
     let currentStreak = 1;
@@ -336,7 +336,7 @@ export default function DashboardScreen() {
     }
 
     return currentStreak;
-  };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -345,26 +345,26 @@ export default function DashboardScreen() {
     }, [loadData])
   );
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadData();
-  };
+  }, [loadData]);
 
-  const handleQuickCheckIn = (type: 'weight' | 'steps' | 'gym') => {
+  const handleQuickCheckIn = useCallback((type: 'weight' | 'steps' | 'gym') => {
     setShowCheckInModal(false);
     router.push({
       pathname: '/check-in-form',
       params: { type },
     });
-  };
+  }, [router]);
 
-  const handleCustomRangeSelect = () => {
+  const handleCustomRangeSelect = useCallback(() => {
     console.log('[Dashboard] Opening calendar date range picker for nutrition');
     setShowTimeRangeDropdown(false);
     setShowCalendarPicker(true);
-  };
+  }, []);
 
-  const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
+  const handleDateRangeSelect = useCallback((startDate: Date, endDate: Date) => {
     console.log('[Dashboard] Date range selected:', startDate.toISOString(), 'to', endDate.toISOString());
     
     const customRange: CustomDateRange = { 
@@ -374,43 +374,43 @@ export default function DashboardScreen() {
     
     setNutritionCustomRange(customRange);
     setNutritionRange('custom');
-  };
+  }, []);
 
-  const handleCalendarClose = () => {
+  const handleCalendarClose = useCallback(() => {
     console.log('[Dashboard] Calendar picker closed');
     setShowCalendarPicker(false);
     
     if (nutritionRange === 'custom' && !nutritionCustomRange) {
       setNutritionRange('today');
     }
-  };
+  }, [nutritionRange, nutritionCustomRange]);
 
-  const getCustomRangeLabel = (range: CustomDateRange | null) => {
+  const getCustomRangeLabel = useCallback((range: CustomDateRange | null) => {
     if (!range) return 'Custom';
     const start = range.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const end = range.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     return `${start} - ${end}`;
-  };
+  }, []);
 
-  const getTimeRangeLabel = () => {
+  const getTimeRangeLabel = useCallback(() => {
     if (nutritionRange === 'today') return 'Today';
     if (nutritionRange === '7days') return 'Last 7 days';
     if (nutritionRange === '30days') return 'Last 30 days';
     if (nutritionRange === 'custom') return getCustomRangeLabel(nutritionCustomRange);
     return 'Today';
-  };
+  }, [nutritionRange, nutritionCustomRange, getCustomRangeLabel]);
 
-  const handleTimeRangeSelect = (range: TimeRange) => {
+  const handleTimeRangeSelect = useCallback((range: TimeRange) => {
     if (range === 'custom') {
       handleCustomRangeSelect();
     } else {
       setNutritionRange(range);
       setShowTimeRangeDropdown(false);
     }
-  };
+  }, [handleCustomRangeSelect]);
 
   // Helper function to get the average text based on selected range
-  const getAverageText = () => {
+  const getAverageText = useCallback(() => {
     if (nutritionRange === 'today') {
       return null; // No text for Today
     } else if (nutritionRange === '7days') {
@@ -426,10 +426,10 @@ export default function DashboardScreen() {
       return `Average for last ${diffDays} days`;
     }
     return null;
-  };
+  }, [nutritionRange, nutritionCustomRange]);
 
   // ONE-TAP SHARE HANDLER
-  const handleShareProgress = async () => {
+  const handleShareProgress = useCallback(async () => {
     try {
       setIsGeneratingShare(true);
       console.log('[Dashboard] Starting one-tap share...');
@@ -659,7 +659,7 @@ export default function DashboardScreen() {
       setIsGeneratingShare(false);
       setShareCardData(null);
     }
-  };
+  }, [user]);
 
   if (loading) {
     return (

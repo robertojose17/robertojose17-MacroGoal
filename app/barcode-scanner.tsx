@@ -91,7 +91,7 @@ export default function BarcodeScannerScreen() {
   useEffect(() => {
     console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
     console.log('[BarcodeScanner] Params:', { mode, mealType, date, myMealId });
-  }, []);
+  }, [mode, mealType, date, myMealId]);
 
   // Reset state when screen gains focus
   useFocusEffect(
@@ -122,14 +122,14 @@ export default function BarcodeScannerScreen() {
         ]
       );
     }
-  }, [permission]);
+  }, [permission, router]);
 
   /**
    * SINGLE NAVIGATION FUNCTION
    * This is the ONLY place where navigation to food-details happens
    * Prevents duplicate navigation by checking hasNavigatedRef
    */
-  const navigateToFoodDetails = (product: any) => {
+  const navigateToFoodDetails = useCallback((product: any) => {
     // CRITICAL: Check if we've already navigated
     if (hasNavigatedRef.current) {
       console.log('[BarcodeScanner] ⚠️ Navigation already triggered, ignoring duplicate call');
@@ -166,9 +166,9 @@ export default function BarcodeScannerScreen() {
       });
       console.log('[BarcodeScanner] ✅ Navigation completed - EXACTLY ONE Food Details screen');
     }, 100);
-  };
+  }, [router, mealType, date, mode, myMealId]);
 
-  const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+  const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
     // CRITICAL: Only process if not already scanned and not loading
     if (scanned || loading) {
       console.log('[BarcodeScanner] Already processing a scan, ignoring');
@@ -428,7 +428,7 @@ export default function BarcodeScannerScreen() {
         ]
       );
     }
-  };
+  }, [scanned, loading, navigateToFoodDetails, router, mealType, date, mode, myMealId]);
 
   // Show loading while checking permissions
   if (!permission) {
