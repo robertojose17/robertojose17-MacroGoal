@@ -27,7 +27,8 @@ export default function SwipeToDeleteRow({
   const handleDelete = useCallback(() => {
     if (isDeleting.current) return;
     isDeleting.current = true;
-    console.log('[SwipeToDeleteRow] Delete triggered - calling onDelete immediately');
+    console.log('[SwipeToDeleteRow] Delete triggered - calling onDelete IMMEDIATELY');
+    // Call onDelete IMMEDIATELY - no delays, no animations
     onDelete();
   }, [onDelete]);
 
@@ -52,9 +53,11 @@ export default function SwipeToDeleteRow({
       const velocity = event.velocityX;
       
       if (translation < SWIPE_THRESHOLD || velocity < -500) {
-        console.log('[SwipeToDeleteRow] Swipe threshold reached - deleting immediately');
+        console.log('[SwipeToDeleteRow] Swipe threshold reached - deleting IMMEDIATELY');
+        // Delete IMMEDIATELY - no animation delay
         runOnJS(handleDelete)();
       } else {
+        // Only animate back if NOT deleting
         translateX.value = withTiming(0, {
           duration: 200,
           easing: Easing.out(Easing.ease),
