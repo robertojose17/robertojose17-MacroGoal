@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -568,7 +568,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Meals - Using simple map instead of FlatList */}
+        {/* Meals - Using simple map with proper keys */}
         {meals.map((meal) => (
           <View 
             key={meal.type}
@@ -613,42 +613,47 @@ export default function HomeScreen() {
               </TouchableOpacity>
             ) : (
               <View>
-                {meal.items.map((item, index) => (
-                  <React.Fragment key={item.id}>
-                    <SwipeableListItem onDelete={() => handleDeleteFood(item)}>
-                      <TouchableOpacity 
-                        style={styles.foodItem}
-                        onPress={() => handleEditFood(item)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.foodInfo}>
-                          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                            {item.foods?.name || 'Unknown Food'}
-                          </Text>
-                          {item.foods?.brand && (
-                            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                              {item.foods.brand}
+                {meal.items.map((item, index) => {
+                  const isLastItem = index === meal.items.length - 1;
+                  return (
+                    <View key={item.id} style={styles.foodItemWrapper}>
+                      <SwipeableListItem onDelete={() => handleDeleteFood(item)}>
+                        <TouchableOpacity 
+                          style={[
+                            styles.foodItem,
+                            !isLastItem && styles.foodItemWithBorder
+                          ]}
+                          onPress={() => handleEditFood(item)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.foodInfo}>
+                            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                              {item.foods?.name || 'Unknown Food'}
                             </Text>
-                          )}
-                          <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {getServingDisplayText(item)}
-                          </Text>
-                        </View>
-                        <View style={styles.foodActions}>
-                          <View style={styles.foodCalories}>
-                            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-                              {Math.round(item.calories)}
-                            </Text>
-                            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                              kcal
+                            {item.foods?.brand && (
+                              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                                {item.foods.brand}
+                              </Text>
+                            )}
+                            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                              {getServingDisplayText(item)}
                             </Text>
                           </View>
-                        </View>
-                      </TouchableOpacity>
-                    </SwipeableListItem>
-                    {index < meal.items.length - 1 && <View style={{ height: spacing.sm }} />}
-                  </React.Fragment>
-                ))}
+                          <View style={styles.foodActions}>
+                            <View style={styles.foodCalories}>
+                              <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+                                {Math.round(item.calories)}
+                              </Text>
+                              <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                                kcal
+                              </Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      </SwipeableListItem>
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -804,11 +809,16 @@ const styles = StyleSheet.create({
   emptyMealText: {
     ...typography.body,
   },
+  foodItemWrapper: {
+    marginBottom: spacing.sm,
+  },
   foodItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.sm,
+  },
+  foodItemWithBorder: {
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },

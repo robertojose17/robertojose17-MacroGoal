@@ -16,15 +16,15 @@ interface SwipeableListItemProps {
 }
 
 const SWIPE_THRESHOLD = -80; // Swipe LEFT 80px to trigger delete (negative value)
-const ANIMATION_DURATION = 200; // Fast animation for responsive feel
+const ANIMATION_DURATION = 150; // Fast animation for responsive feel
 
 export default function SwipeableListItem({
   children,
   onDelete,
 }: SwipeableListItemProps) {
   const translateX = useSharedValue(0);
-  const height = useSharedValue(1);
   const opacity = useSharedValue(1);
+  const scale = useSharedValue(1);
   const isDeleting = useRef(false);
 
   // Memoize delete handler to prevent recreation
@@ -62,7 +62,7 @@ export default function SwipeableListItem({
       
       // If swiped left past threshold OR fast swipe left, delete
       if (translation < SWIPE_THRESHOLD || velocity < -500) {
-        // Animate out: slide left, fade out, and collapse height
+        // Animate out: slide left, fade out, and scale down
         translateX.value = withTiming(-400, {
           duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.ease),
@@ -71,7 +71,7 @@ export default function SwipeableListItem({
           duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.ease),
         });
-        height.value = withTiming(0, {
+        scale.value = withTiming(0.8, {
           duration: ANIMATION_DURATION,
           easing: Easing.out(Easing.ease),
         });
@@ -91,26 +91,21 @@ export default function SwipeableListItem({
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
-      { scaleY: height.value },
+      { scale: scale.value },
     ],
     opacity: opacity.value,
   }));
 
   return (
-    <View style={styles.container}>
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.content, animatedStyle]}>
-          {children}
-        </Animated.View>
-      </GestureDetector>
-    </View>
+    <GestureDetector gesture={panGesture}>
+      <Animated.View style={[styles.content, animatedStyle]}>
+        {children}
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    overflow: 'hidden',
-  },
   content: {
     width: '100%',
   },
