@@ -1,12 +1,12 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeableListItem from '@/components/SwipeableListItem';
+import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -38,7 +38,6 @@ interface MealData {
   totalCalories: number;
 }
 
-// Helper function to format date consistently (local date, no timezone issues)
 const formatDateForStorage = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -46,19 +45,13 @@ const formatDateForStorage = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// Helper function to get serving description for display
 const getServingDisplayText = (item: FoodItem): string => {
-  // Priority 1: Use the stored serving_description (this is what the user selected)
   if (item.serving_description) {
     return item.serving_description;
   }
-
-  // Priority 2: If grams is available, show that
   if (item.grams) {
     return `${Math.round(item.grams)} g`;
   }
-
-  // Priority 3: Last resort fallback (should rarely happen)
   const quantity = item.quantity || 1;
   const servingAmount = item.foods?.serving_amount || 100;
   const servingUnit = item.foods?.serving_unit || 'g';
@@ -122,7 +115,6 @@ export default function HomeScreen() {
 
       console.log('[Home] Loading data for user:', user.id);
 
-      // Load goal
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('*')
@@ -146,7 +138,6 @@ export default function HomeScreen() {
         });
       }
 
-      // Use consistent date formatting (local date, no timezone conversion)
       const dateString = formatDateForStorage(selectedDate);
       console.log('[Home] Loading meals for date:', dateString);
       
@@ -184,7 +175,6 @@ export default function HomeScreen() {
       } else {
         console.log('[Home] Meals loaded for', dateString, ':', mealsData?.length || 0, 'meals');
         
-        // Organize meals by type
         const mealsByType: Record<MealType, FoodItem[]> = {
           breakfast: [],
           lunch: [],
@@ -213,7 +203,6 @@ export default function HomeScreen() {
           });
         }
 
-        // Update meals state - create completely new array with new objects
         const updatedMeals: MealData[] = [
           { 
             type: 'breakfast', 
@@ -285,42 +274,29 @@ export default function HomeScreen() {
     });
   };
 
-  const handleDeleteFood = useCallback(async (item: FoodItem) => {
+  const handleDeleteFood = useCallback(async (itemId: string) => {
     console.log('[Home] ========== DELETE FOOD ==========');
-    console.log('[Home] Delete requested for item:', item.id);
+    console.log('[Home] Delete requested for item:', itemId);
     
     try {
-      // Get current user for verification
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('No authenticated user found');
       }
       
-      console.log('[Home] Deleting meal_item with id:', item.id);
+      console.log('[Home] Step 1: Remove from UI state immediately');
       
-      // Delete from database FIRST
-      const { error } = await supabase
-        .from('meal_items')
-        .delete()
-        .eq('id', item.id);
-      
-      if (error) {
-        console.error('[Home] Supabase delete error:', error);
-        throw error;
-      }
-      
-      console.log('[Home] ✅ Food deleted from database successfully');
-      
-      // NOW update UI - use filter to create a completely new array
-      console.log('[Home] Updating UI state...');
+      let deletedItem: FoodItem | null = null;
       
       setMeals(prevMeals => {
-        // Create a completely new meals array
         const newMeals = prevMeals.map(meal => {
-          // Filter out the deleted item - create a NEW array
-          const filteredItems = meal.items.filter(i => i.id !== item.id);
+          const itemToDelete = meal.items.find(i => i.id === itemId);
+          if (itemToDelete) {
+            deletedItem = itemToDelete;
+          }
           
-          // Return a new meal object with the filtered items
+          const filteredItems = meal.items.filter(i => i.id !== itemId);
+          
           return {
             ...meal,
             items: filteredItems,
@@ -328,32 +304,43 @@ export default function HomeScreen() {
           };
         });
         
-        console.log('[Home] New meals state created');
+        console.log('[Home] ✅ UI state updated - item removed from list');
         return newMeals;
       });
       
-      // Update totals
-      setTotalCalories(prev => prev - (item.calories || 0));
-      setTotalMacros(prev => ({
-        protein: prev.protein - (item.protein || 0),
-        carbs: prev.carbs - (item.carbs || 0),
-        fats: prev.fats - (item.fats || 0),
-        fiber: prev.fiber - (item.fiber || 0),
-      }));
+      if (deletedItem) {
+        setTotalCalories(prev => prev - (deletedItem.calories || 0));
+        setTotalMacros(prev => ({
+          protein: prev.protein - (deletedItem.protein || 0),
+          carbs: prev.carbs - (deletedItem.carbs || 0),
+          fats: prev.fats - (deletedItem.fats || 0),
+          fiber: prev.fiber - (deletedItem.fiber || 0),
+        }));
+      }
       
-      console.log('[Home] ✅ UI state updated successfully');
+      console.log('[Home] Step 2: Delete from database');
+      
+      const { error } = await supabase
+        .from('meal_items')
+        .delete()
+        .eq('id', itemId);
+      
+      if (error) {
+        console.error('[Home] ❌ Database delete error:', error);
+        throw error;
+      }
+      
+      console.log('[Home] ✅ Successfully deleted from database');
       
     } catch (error: any) {
       console.error('[Home] ❌ Error in handleDeleteFood:', error);
       
-      // Show error to user
       Alert.alert(
         'Delete Failed', 
         error?.message || 'Failed to delete food entry. Please try again.',
         [{ text: 'OK' }]
       );
       
-      // Reload data to ensure UI is in sync with database
       console.log('[Home] Reloading data to sync UI with database...');
       loadData();
     }
@@ -415,252 +402,250 @@ export default function HomeScreen() {
   const leftArrowDisabled = isEarliestDate();
   const rightArrowDisabled = isFutureDate();
 
+  const renderFoodItem = ({ item }: { item: FoodItem }) => (
+    <SwipeToDeleteRow onDelete={() => handleDeleteFood(item.id)}>
+      <TouchableOpacity 
+        style={styles.foodItem}
+        onPress={() => handleEditFood(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.foodInfo}>
+          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+            {item.foods?.name || 'Unknown Food'}
+          </Text>
+          {item.foods?.brand && (
+            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {item.foods.brand}
+            </Text>
+          )}
+          <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {getServingDisplayText(item)}
+          </Text>
+        </View>
+        <View style={styles.foodActions}>
+          <View style={styles.foodCalories}>
+            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+              {Math.round(item.calories)}
+            </Text>
+            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              kcal
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </SwipeToDeleteRow>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* Date Navigation */}
-        <View style={[
-          styles.dateNavigation, 
-          { 
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          }
-        ]}>
-          <TouchableOpacity 
-            onPress={goToPreviousDay} 
-            style={styles.dateButton}
-            disabled={leftArrowDisabled}
-            activeOpacity={leftArrowDisabled ? 1 : 0.7}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-              style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
-            />
-          </TouchableOpacity>
-          
-          <View style={styles.dateCenter}>
-            <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' })}
-            </Text>
-            <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
-              {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-            </Text>
-          </View>
-
-          <TouchableOpacity 
-            onPress={goToNextDay} 
-            style={styles.dateButton}
-            disabled={rightArrowDisabled}
-            activeOpacity={rightArrowDisabled ? 1 : 0.7}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.right"
-              android_material_icon_name="arrow_forward"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-              style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {!isToday() && (
-          <TouchableOpacity 
-            style={[styles.todayButton, { backgroundColor: colors.primary }]}
-            onPress={goToToday}
-          >
-            <Text style={styles.todayButtonText}>Go to Today</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Calorie Summary Card */}
-        <View style={[
-          styles.summaryCard, 
-          { 
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          }
-        ]}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Goal
-              </Text>
-              <Text style={[styles.summaryValue, { color: isDark ? colors.textDark : colors.text }]}>
-                {goal?.daily_calories || 2000}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Eaten
-              </Text>
-              <Text style={[styles.summaryValue, { color: colors.calories }]}>
-                {Math.round(totalCalories)}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Remaining
-              </Text>
-              <Text style={[styles.summaryValue, { color: caloriesRemaining >= 0 ? colors.success : colors.error }]}>
-                {Math.round(caloriesRemaining)}
-              </Text>
-            </View>
-          </View>
-          
-          {/* Progress Bar */}
-          <View style={[styles.progressBarContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-            <View 
-              style={[
-                styles.progressBarFill, 
-                { 
-                  width: `${caloriesProgress}%`,
-                  backgroundColor: caloriesRemaining >= 0 ? colors.success : colors.error
-                }
-              ]} 
-            />
-          </View>
-
-          {/* Macros Summary */}
-          <View style={styles.macrosSummary}>
-            <View style={styles.macroItem}>
-              <Text style={[styles.macroValue, { color: colors.protein }]}>
-                {Math.round(totalMacros.protein)}g
-              </Text>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Protein
-              </Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Text style={[styles.macroValue, { color: colors.carbs }]}>
-                {Math.round(totalMacros.carbs)}g
-              </Text>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Carbs
-              </Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Text style={[styles.macroValue, { color: colors.fats }]}>
-                {Math.round(totalMacros.fats)}g
-              </Text>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Fats
-              </Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Text style={[styles.macroValue, { color: colors.fiber }]}>
-                {Math.round(totalMacros.fiber)}g
-              </Text>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Fiber
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Meals - Using simple map with proper keys */}
-        {meals.map((meal) => (
-          <View 
-            key={meal.type}
-            style={[
-              styles.mealCard, 
+      <FlatList
+        data={[{ key: 'content' }]}
+        renderItem={() => (
+          <View>
+            <View style={[
+              styles.dateNavigation, 
               { 
                 backgroundColor: isDark ? colors.cardDark : colors.card,
                 borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
               }
-            ]}
-          >
-            <View style={styles.mealHeader}>
-              <View>
-                <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                  {meal.label}
-                </Text>
-                <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {Math.round(meal.totalCalories)} kcal
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.addMealButton}
-                onPress={() => handleAddFood(meal.type)}
+            ]}>
+              <TouchableOpacity 
+                onPress={goToPreviousDay} 
+                style={styles.dateButton}
+                disabled={leftArrowDisabled}
+                activeOpacity={leftArrowDisabled ? 1 : 0.7}
               >
                 <IconSymbol
-                  ios_icon_name="plus.circle.fill"
-                  android_material_icon_name="add_circle"
-                  size={28}
-                  color={colors.info}
+                  ios_icon_name="arrow.left"
+                  android_material_icon_name="arrow_back"
+                  size={24}
+                  color={isDark ? colors.textDark : colors.text}
+                  style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
+                />
+              </TouchableOpacity>
+              
+              <View style={styles.dateCenter}>
+                <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' })}
+                </Text>
+                <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
+                  {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </Text>
+              </View>
+
+              <TouchableOpacity 
+                onPress={goToNextDay} 
+                style={styles.dateButton}
+                disabled={rightArrowDisabled}
+                activeOpacity={rightArrowDisabled ? 1 : 0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.right"
+                  android_material_icon_name="arrow_forward"
+                  size={24}
+                  color={isDark ? colors.textDark : colors.text}
+                  style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
                 />
               </TouchableOpacity>
             </View>
 
-            {meal.items.length === 0 ? (
+            {!isToday() && (
               <TouchableOpacity 
-                style={styles.emptyMeal}
-                onPress={() => handleAddFood(meal.type)}
+                style={[styles.todayButton, { backgroundColor: colors.primary }]}
+                onPress={goToToday}
               >
-                <Text style={[styles.emptyMealText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Tap to add food
-                </Text>
+                <Text style={styles.todayButtonText}>Go to Today</Text>
               </TouchableOpacity>
-            ) : (
-              <View>
-                {meal.items.map((item, index) => {
-                  const isLastItem = index === meal.items.length - 1;
-                  return (
-                    <View key={item.id} style={styles.foodItemWrapper}>
-                      <SwipeableListItem onDelete={() => handleDeleteFood(item)}>
-                        <TouchableOpacity 
-                          style={[
-                            styles.foodItem,
-                            !isLastItem && styles.foodItemWithBorder
-                          ]}
-                          onPress={() => handleEditFood(item)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.foodInfo}>
-                            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                              {item.foods?.name || 'Unknown Food'}
-                            </Text>
-                            {item.foods?.brand && (
-                              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                                {item.foods.brand}
-                              </Text>
-                            )}
-                            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                              {getServingDisplayText(item)}
-                            </Text>
-                          </View>
-                          <View style={styles.foodActions}>
-                            <View style={styles.foodCalories}>
-                              <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-                                {Math.round(item.calories)}
-                              </Text>
-                              <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                                kcal
-                              </Text>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      </SwipeableListItem>
-                    </View>
-                  );
-                })}
-              </View>
             )}
-          </View>
-        ))}
 
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+            <View style={[
+              styles.summaryCard, 
+              { 
+                backgroundColor: isDark ? colors.cardDark : colors.card,
+                borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+              }
+            ]}>
+              <View style={styles.summaryRow}>
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Goal
+                  </Text>
+                  <Text style={[styles.summaryValue, { color: isDark ? colors.textDark : colors.text }]}>
+                    {goal?.daily_calories || 2000}
+                  </Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Eaten
+                  </Text>
+                  <Text style={[styles.summaryValue, { color: colors.calories }]}>
+                    {Math.round(totalCalories)}
+                  </Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Remaining
+                  </Text>
+                  <Text style={[styles.summaryValue, { color: caloriesRemaining >= 0 ? colors.success : colors.error }]}>
+                    {Math.round(caloriesRemaining)}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={[styles.progressBarContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <View 
+                  style={[
+                    styles.progressBarFill, 
+                    { 
+                      width: `${caloriesProgress}%`,
+                      backgroundColor: caloriesRemaining >= 0 ? colors.success : colors.error
+                    }
+                  ]} 
+                />
+              </View>
+
+              <View style={styles.macrosSummary}>
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroValue, { color: colors.protein }]}>
+                    {Math.round(totalMacros.protein)}g
+                  </Text>
+                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Protein
+                  </Text>
+                </View>
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroValue, { color: colors.carbs }]}>
+                    {Math.round(totalMacros.carbs)}g
+                  </Text>
+                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Carbs
+                  </Text>
+                </View>
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroValue, { color: colors.fats }]}>
+                    {Math.round(totalMacros.fats)}g
+                  </Text>
+                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Fats
+                  </Text>
+                </View>
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroValue, { color: colors.fiber }]}>
+                    {Math.round(totalMacros.fiber)}g
+                  </Text>
+                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Fiber
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {meals.map((meal) => (
+              <View 
+                key={meal.type}
+                style={[
+                  styles.mealCard, 
+                  { 
+                    backgroundColor: isDark ? colors.cardDark : colors.card,
+                    borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
+                  }
+                ]}
+              >
+                <View style={styles.mealHeader}>
+                  <View>
+                    <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                      {meal.label}
+                    </Text>
+                    <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      {Math.round(meal.totalCalories)} kcal
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.addMealButton}
+                    onPress={() => handleAddFood(meal.type)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus.circle.fill"
+                      android_material_icon_name="add_circle"
+                      size={28}
+                      color={colors.info}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {meal.items.length === 0 ? (
+                  <TouchableOpacity 
+                    style={styles.emptyMeal}
+                    onPress={() => handleAddFood(meal.type)}
+                  >
+                    <Text style={[styles.emptyMealText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Tap to add food
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <FlatList
+                    data={meal.items}
+                    renderItem={renderFoodItem}
+                    keyExtractor={(item) => item.id}
+                    scrollEnabled={false}
+                    ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+                  />
+                )}
+              </View>
+            ))}
+
+            <View style={styles.bottomSpacer} />
+          </View>
+        )}
+        keyExtractor={(item) => item.key}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        contentContainerStyle={styles.scrollContent}
+      />
     </SafeAreaView>
   );
 }
@@ -809,18 +794,16 @@ const styles = StyleSheet.create({
   emptyMealText: {
     ...typography.body,
   },
-  foodItemWrapper: {
-    marginBottom: spacing.sm,
+  itemSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginVertical: spacing.xs,
   },
   foodItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.sm,
-  },
-  foodItemWithBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   foodInfo: {
     flex: 1,
