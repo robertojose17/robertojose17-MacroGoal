@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, KeyboardAvoidingView, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,9 +36,11 @@ export default function FoodDetailsScreen() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  // NEW: Toast banner state
-  const [showToast, setShowToast] = useState(false);
+  // NEW: Toast banner queue state
+  const [toastQueue, setToastQueue] = useState<string[]>([]);
+  const [currentToast, setCurrentToast] = useState<string | null>(null);
   const [toastOpacity] = useState(new Animated.Value(0));
+  const isShowingToastRef = useRef(false);
 
   // NEW: Per-serving macros (derived from per-100g data)
   const [perServingMacros, setPerServingMacros] = useState({
@@ -308,29 +310,46 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  // NEW: Show toast banner
-  const showSuccessToast = (mealName: string) => {
-    console.log('[FoodDetails] Showing success toast for:', mealName);
-    setShowToast(true);
+  // NEW: Queue-based toast system
+  const showSuccessToast = useCallback((mealName: string) => {
+    console.log('[FoodDetails] Adding toast to queue:', mealName);
+    setToastQueue(prev => [...prev, mealName]);
+  }, []);
+
+  // Process toast queue
+  useEffect(() => {
+    if (toastQueue.length === 0 || isShowingToastRef.current) {
+      return;
+    }
+
+    // Get next toast from queue
+    const nextToast = toastQueue[0];
+    console.log('[FoodDetails] Showing toast:', nextToast);
     
-    // Fade in quickly
+    isShowingToastRef.current = true;
+    setCurrentToast(nextToast);
+    
+    // Fade in immediately
     Animated.timing(toastOpacity, {
       toValue: 1,
       duration: 150,
       useNativeDriver: true,
     }).start(() => {
-      // Auto-hide after 600ms (short duration as requested)
+      // Auto-hide after 1200ms
       setTimeout(() => {
         Animated.timing(toastOpacity, {
           toValue: 0,
           duration: 150,
           useNativeDriver: true,
         }).start(() => {
-          setShowToast(false);
+          // Remove from queue and reset
+          setToastQueue(prev => prev.slice(1));
+          setCurrentToast(null);
+          isShowingToastRef.current = false;
         });
-      }, 600);
+      }, 1200);
     });
-  };
+  }, [toastQueue, toastOpacity]);
 
   // Show loading only briefly while parsing
   if (!isReady || !product || !servingInfo || !nutrition) {
@@ -595,13 +614,7 @@ export default function FoodDetailsScreen() {
 
       console.log('[FoodDetails] ✅ Food added successfully!');
       
-      // Reset inputs for next add
-      setServings('1');
-      setGrams(servingInfo.grams.toString());
-      
-      setSaving(false);
-      
-      // Show success toast
+      // Show success toast IMMEDIATELY
       const mealLabels: Record<string, string> = {
         breakfast: 'Breakfast',
         lunch: 'Lunch',
@@ -610,12 +623,15 @@ export default function FoodDetailsScreen() {
       };
       showSuccessToast(mealLabels[mealType] || mealType);
       
-      // Wait for toast to show (let it display for ~500ms), then navigate back
-      // Total time: 150ms fade in + 500ms display = 650ms before navigation
-      setTimeout(() => {
-        console.log('[FoodDetails] Navigating back to add-food screen');
-        router.back();
-      }, 650);
+      // Reset inputs for next add
+      setServings('1');
+      setGrams(servingInfo.grams.toString());
+      
+      setSaving(false);
+      
+      // Navigate back immediately (don't wait for toast)
+      console.log('[FoodDetails] Navigating back to add-food screen');
+      router.back();
     } catch (error) {
       console.error('[FoodDetails] ❌ Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -918,7 +934,7 @@ export default function FoodDetailsScreen() {
         </ScrollView>
 
         {/* NEW: Toast Banner */}
-        {showToast && (
+        {currentToast && (
           <Animated.View 
             style={[
               styles.toastContainer,
@@ -935,7 +951,7 @@ export default function FoodDetailsScreen() {
                 color="#FFFFFF"
               />
               <Text style={styles.toastText}>
-                Added to {mealLabels[mealType]}
+                Added to {currentToast}
               </Text>
             </View>
           </Animated.View>
