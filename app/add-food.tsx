@@ -44,11 +44,11 @@ export default function AddFoodScreen() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestQueryRef = useRef<string>('');
 
-  // FIXED: Queue-based banner system
-  const [bannerQueue, setBannerQueue] = useState<string[]>([]);
-  const [currentBanner, setCurrentBanner] = useState<string | null>(null);
+  // FIXED: OPTION A - RESTART ON EVERY ADD
+  // Use a unique event ID to force banner remount and animation restart
+  const [bannerEventId, setBannerEventId] = useState(0);
+  const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [bannerOpacity] = useState(new Animated.Value(0));
-  const isShowingBannerRef = useRef(false);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const mealLabels: Record<string, string> = {
@@ -142,58 +142,41 @@ export default function AddFoodScreen() {
   }, []);
 
   /**
-   * FIXED: Queue-based banner system
-   * Adds a banner event to the queue
+   * FIXED: OPTION A - RESTART ON EVERY ADD
+   * This function is called on every successful add.
+   * It IMMEDIATELY updates the banner and RESTARTS the animation/timer.
    */
   const showSuccessBanner = useCallback(() => {
-    console.log('[AddFood] ========== ADDING BANNER TO QUEUE ==========');
-    setBannerQueue(prev => {
-      const newQueue = [...prev, 'Food Added'];
-      console.log('[AddFood] Queue length:', newQueue.length);
-      return newQueue;
-    });
-  }, []);
-
-  /**
-   * FIXED: Process banner queue
-   * Shows banners consecutively with 500ms duration each
-   */
-  useEffect(() => {
-    // If no banners in queue or already showing one, do nothing
-    if (bannerQueue.length === 0 || isShowingBannerRef.current) {
-      return;
+    console.log('[AddFood] ========== BANNER TRIGGERED ==========');
+    
+    // STEP 1: Clear existing timer (if any)
+    if (bannerTimerRef.current) {
+      console.log('[AddFood] Clearing existing banner timer');
+      clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = null;
     }
 
-    console.log('[AddFood] ========== SHOWING NEXT BANNER ==========');
-    console.log('[AddFood] Queue length:', bannerQueue.length);
-    
-    // Mark as showing
-    isShowingBannerRef.current = true;
-    
-    // Get next banner from queue
-    const nextBanner = bannerQueue[0];
-    setCurrentBanner(nextBanner);
-    
-    // Show immediately (no fade in)
+    // STEP 2: Increment event ID to force remount (this restarts the animation)
+    setBannerEventId(prev => {
+      const newId = prev + 1;
+      console.log('[AddFood] Banner event ID:', prev, '->', newId);
+      return newId;
+    });
+
+    // STEP 3: Set banner message
+    setBannerMessage('Food Added');
+
+    // STEP 4: Show banner immediately (no fade in)
     bannerOpacity.setValue(1);
-    
-    console.log('[AddFood] Banner visible, will hide after 500ms');
-    
-    // Auto-hide after EXACTLY 500ms
+
+    // STEP 5: Set new timer to hide after 500ms
+    console.log('[AddFood] Setting new timer to hide banner after 500ms');
     bannerTimerRef.current = setTimeout(() => {
-      console.log('[AddFood] Hiding banner');
-      
-      // Hide immediately (no fade out)
+      console.log('[AddFood] Timer fired, hiding banner');
       bannerOpacity.setValue(0);
-      
-      // Remove from queue
-      setBannerQueue(prev => prev.slice(1));
-      setCurrentBanner(null);
-      isShowingBannerRef.current = false;
-      
-      console.log('[AddFood] Banner hidden, ready for next');
+      setBannerMessage(null);
     }, 500);
-  }, [bannerQueue, bannerOpacity]);
+  }, [bannerOpacity]);
 
   /**
    * INLINE SEARCH LOGIC
@@ -623,9 +606,9 @@ export default function AddFoodScreen() {
       }
 
       console.log('[AddFood] ✅ Recent food added successfully!');
-      console.log('[AddFood] Showing success banner');
+      console.log('[AddFood] Triggering success banner');
       
-      // FIXED: Show success banner immediately
+      // FIXED: Show success banner immediately (restarts if already visible)
       showSuccessBanner();
       
       console.log('[AddFood] Keeping modal open for multiple adds');
@@ -838,9 +821,9 @@ export default function AddFoodScreen() {
       }
 
       console.log('[AddFood] ✅ Favorite added to meal successfully');
-      console.log('[AddFood] Showing success banner');
+      console.log('[AddFood] Triggering success banner');
       
-      // FIXED: Show success banner immediately
+      // FIXED: Show success banner immediately (restarts if already visible)
       showSuccessBanner();
       
       console.log('[AddFood] Keeping modal open for multiple adds');
@@ -1463,9 +1446,10 @@ export default function AddFoodScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* FIXED: Queue-based banner - shows for 500ms each */}
-      {currentBanner && (
+      {/* FIXED: OPTION A - Banner restarts on every add via unique key */}
+      {bannerMessage && (
         <Animated.View 
+          key={bannerEventId}
           style={[
             styles.bannerContainer,
             { 
@@ -1480,7 +1464,7 @@ export default function AddFoodScreen() {
               size={20}
               color="#FFFFFF"
             />
-            <Text style={styles.bannerText}>{currentBanner}</Text>
+            <Text style={styles.bannerText}>{bannerMessage}</Text>
           </View>
         </Animated.View>
       )}
