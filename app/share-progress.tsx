@@ -517,6 +517,8 @@ export default function ShareProgressScreen() {
         return;
       }
       
+      console.log('[ShareProgress] Sharing is available, proceeding...');
+      
       // Share the image
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',

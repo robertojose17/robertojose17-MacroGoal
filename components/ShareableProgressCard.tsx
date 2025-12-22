@@ -27,7 +27,6 @@ export default function ShareableProgressCard({
   dayStreak,
   progressPhotoUrl,
   beforePhotoUrl,
-  motivationalLine,
   onCapture,
 }: ShareableProgressCardProps) {
   const viewShotRef = useRef<ViewShot>(null);
@@ -51,47 +50,6 @@ export default function ShareableProgressCard({
   console.log('[ShareableProgressCard] Weight Lost:', safeWeightLost, 'lb');
   console.log('[ShareableProgressCard] Day Streak:', safeDayStreak);
 
-  // Determine consistency status based on score
-  const getConsistencyStatus = (score: number): string => {
-    if (score >= 90) return 'Consistent';
-    if (score >= 75) return 'On Track';
-    if (score >= 50) return 'Building Momentum';
-    return 'Getting Started';
-  };
-
-  const consistencyStatus = getConsistencyStatus(safeConsistencyScore);
-
-  // Determine consistency color
-  const getConsistencyColor = (score: number): string => {
-    if (score >= 90) return '#10B981'; // Green
-    if (score >= 75) return '#F59E0B'; // Amber
-    return '#5B9AA8'; // Primary
-  };
-
-  const consistencyColor = getConsistencyColor(safeConsistencyScore);
-
-  // Generate weight goal progress text
-  const getWeightGoalText = (): string => {
-    if (safeWeightGoalProgress === 0) {
-      return 'Journey started';
-    }
-    
-    let progressPhrase = '';
-    if (safeWeightGoalProgress >= 75) {
-      progressPhrase = 'Almost there';
-    } else if (safeWeightGoalProgress >= 50) {
-      progressPhrase = 'Halfway there';
-    } else if (safeWeightGoalProgress >= 25) {
-      progressPhrase = 'Making progress';
-    } else {
-      progressPhrase = 'Getting started';
-    }
-    
-    return `${safeWeightGoalProgress}% to my weight goal · ${progressPhrase}`;
-  };
-
-  const weightGoalText = getWeightGoalText();
-
   return (
     <ViewShot
       ref={viewShotRef}
@@ -108,27 +66,24 @@ export default function ShareableProgressCard({
         end={{ x: 1, y: 1 }}
         style={styles.card}
       >
-        {/* SECTION 1 — HERO (PRIMARY) */}
-        {/* Big number: Consistency Score */}
+        {/* SECTION 1 — TOP / HERO */}
+        {/* Big number with explicit label "Consistency Score" */}
         <View style={styles.heroSection}>
-          <Text style={[styles.heroValue, { color: consistencyColor }]}>
+          <Text style={styles.heroValue}>
             {safeConsistencyScore}
           </Text>
-          <Text style={styles.heroHeadline}>Staying Consistent</Text>
-          <View style={[styles.statusChip, { backgroundColor: consistencyColor + '20' }]}>
-            <Text style={[styles.statusText, { color: consistencyColor }]}>
-              {consistencyStatus}
-            </Text>
-          </View>
+          <Text style={styles.heroLabel}>Consistency Score</Text>
         </View>
 
-        {/* SECTION 2 — SUPPORTING PROGRESS (SECONDARY) */}
-        {/* Weight goal progress as TEXT */}
+        {/* SECTION 2 — GOAL PROGRESS */}
+        {/* Weight goal progress as simple text */}
         <View style={styles.progressTextSection}>
-          <Text style={styles.progressText}>{weightGoalText}</Text>
+          <Text style={styles.progressText}>
+            {safeWeightGoalProgress}% to weight goal
+          </Text>
         </View>
 
-        {/* SECTION 3 — RESULTS STRIP (NO CARDS) */}
+        {/* SECTION 3 — RESULTS STRIP (ONE LINE) */}
         {/* Single horizontal line with stats */}
         <View style={styles.resultsStrip}>
           <Text style={styles.resultsText}>
@@ -141,7 +96,7 @@ export default function ShareableProgressCard({
           </Text>
         </View>
 
-        {/* SECTION 4 — TRANSFORMATION (KEEP, IMPORTANT) */}
+        {/* SECTION 4 — TRANSFORMATION (KEEP AS IS) */}
         {/* Before → Now photos */}
         {(progressPhotoUrl || beforePhotoUrl) && (
           <View style={styles.photoSection}>
@@ -181,14 +136,8 @@ export default function ShareableProgressCard({
           </View>
         )}
 
-        {/* SECTION 5 — SHARE COPY */}
-        {/* One short, human line */}
-        <View style={styles.shareCopySection}>
-          <Text style={styles.shareCopyText}>This is what consistency looks like.</Text>
-        </View>
-
-        {/* SECTION 6 — BRANDING (SUBTLE PROMO) */}
-        {/* Footer */}
+        {/* SECTION 5 — FOOTER (OPTIONAL BUT CLEAN) */}
+        {/* Subtle branding */}
         <View style={styles.footer}>
           <Text style={styles.footerBrand}>Macro Goal</Text>
           <Text style={styles.footerTagline}>Built with Macro Goal</Text>
@@ -210,61 +159,51 @@ const styles = StyleSheet.create({
     padding: 60,
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingTop: 120,
+    paddingTop: 140,
   },
   
-  // SECTION 1 — HERO (PRIMARY)
+  // SECTION 1 — TOP / HERO
   heroSection: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 56,
   },
   heroValue: {
-    fontSize: 280,
+    fontSize: 320,
     fontWeight: '900',
-    lineHeight: 280,
-    letterSpacing: -14,
+    lineHeight: 320,
+    letterSpacing: -16,
+    color: '#5B9AA8',
   },
-  heroHeadline: {
-    fontSize: 48,
+  heroLabel: {
+    fontSize: 52,
     fontWeight: '700',
     color: '#1F2937',
-    marginTop: 16,
-    letterSpacing: 0.5,
-  },
-  statusChip: {
-    paddingHorizontal: 40,
-    paddingVertical: 16,
-    borderRadius: 32,
-    marginTop: 24,
-  },
-  statusText: {
-    fontSize: 28,
-    fontWeight: '700',
+    marginTop: 20,
     letterSpacing: 0.5,
   },
 
-  // SECTION 2 — SUPPORTING PROGRESS (SECONDARY)
+  // SECTION 2 — GOAL PROGRESS
   progressTextSection: {
     paddingHorizontal: 60,
-    marginBottom: 40,
+    marginBottom: 48,
   },
   progressText: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '600',
     color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 44,
+    lineHeight: 48,
   },
 
-  // SECTION 3 — RESULTS STRIP (NO CARDS)
+  // SECTION 3 — RESULTS STRIP (ONE LINE)
   resultsStrip: {
     paddingHorizontal: 60,
-    marginBottom: 56,
+    marginBottom: 64,
   },
   resultsText: {
-    fontSize: 36,
+    fontSize: 40,
     textAlign: 'center',
-    lineHeight: 48,
+    lineHeight: 52,
   },
   resultsBold: {
     fontWeight: '900',
@@ -279,13 +218,13 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
   },
   resultsEmoji: {
-    fontSize: 36,
+    fontSize: 40,
   },
 
   // SECTION 4 — TRANSFORMATION (EMOTIONAL ANCHOR)
   photoSection: {
     width: '100%',
-    marginBottom: 48,
+    marginBottom: 56,
   },
   photoRow: {
     flexDirection: 'row',
@@ -305,16 +244,16 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   photoLabel: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '400',
     color: '#9CA3AF',
-    marginTop: 12,
+    marginTop: 16,
   },
   photoArrow: {
     paddingHorizontal: 16,
   },
   photoArrowText: {
-    fontSize: 36,
+    fontSize: 40,
     fontWeight: '300',
     color: '#D1D5DB',
   },
@@ -330,37 +269,23 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  // SECTION 5 — SHARE COPY
-  shareCopySection: {
-    paddingHorizontal: 80,
-    marginBottom: 48,
-  },
-  shareCopyText: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: '#1F2937',
-    textAlign: 'center',
-    letterSpacing: -0.5,
-    lineHeight: 52,
-  },
-
-  // SECTION 6 — BRANDING (SUBTLE PROMO)
+  // SECTION 5 — FOOTER (OPTIONAL BUT CLEAN)
   footer: {
     alignItems: 'center',
     marginTop: 'auto',
-    paddingTop: 32,
+    paddingTop: 40,
     paddingBottom: 60,
     width: '100%',
   },
   footerBrand: {
-    fontSize: 36,
+    fontSize: 40,
     fontWeight: '900',
     color: '#5B9AA8',
     letterSpacing: 1.5,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   footerTagline: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '500',
     color: '#9CA3AF',
     letterSpacing: 0.3,
