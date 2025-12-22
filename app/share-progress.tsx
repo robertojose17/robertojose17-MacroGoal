@@ -321,9 +321,9 @@ export default function ShareProgressScreen() {
       // Calculate current streak (working backwards from today)
       let streak = 0;
       const currentDate = new Date(today + 'T00:00:00');
+      const maxIterations = 1000; // Safety limit to prevent infinite loop
       
-      // eslint-disable-next-line no-constant-condition
-      while (streak < 1000) { // Safety limit to prevent infinite loop
+      while (streak < maxIterations) {
         const dateStr = currentDate.toISOString().split('T')[0];
         
         // Safety check: don't go before start date
