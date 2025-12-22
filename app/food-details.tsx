@@ -199,7 +199,8 @@ export default function FoodDetailsScreen() {
         [{ text: 'OK' }]
       );
     }
-  }, [offDataString, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offDataString]);
 
   // Cleanup timers on unmount
   useEffect(() => {

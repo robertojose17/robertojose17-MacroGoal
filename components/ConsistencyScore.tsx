@@ -50,12 +50,14 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     if (userId) {
       loadJourneyStartDate();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   useEffect(() => {
     if (userId && journeyStartDate && rangeStartDate && rangeEndDate) {
       calculateConsistencyScore();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, journeyStartDate, rangeStartDate, rangeEndDate]);
 
   const loadJourneyStartDate = async () => {

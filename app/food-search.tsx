@@ -254,7 +254,8 @@ export default function FoodSearchScreen() {
       console.log('[FoodSearch] Debounce timer fired for:', trimmedQuery);
       performSearch(trimmedQuery);
     }, 350);
-  }, [searchQuery, logTiming]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   const performSearch = async (query: string) => {
     logTiming('(c) Request start');

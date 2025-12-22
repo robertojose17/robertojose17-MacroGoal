@@ -153,9 +153,10 @@ export default function MyMealDetailsScreen() {
       };
       autoSave();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, hasUnsavedChanges, autoSaving]);
 
-  const handleSaveChanges = async () => {
+  const handleSaveChanges = useCallback(async () => {
     if (!mealName.trim()) {
       Alert.alert('Error', 'Please enter a meal name');
       return;
@@ -275,7 +276,7 @@ export default function MyMealDetailsScreen() {
       console.error('[MyMealDetails] Error in handleSaveChanges:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  };
+  }, [mealName, mealNote, items, mealId, meal]);
 
   const handleDeleteItem = async (itemId: string) => {
     try {
@@ -353,7 +354,7 @@ export default function MyMealDetailsScreen() {
     }
   };
 
-  const handleAddFood = () => {
+  const handleAddFood = useCallback(() => {
     console.log('[MyMealDetails] ========== OPENING ADD FOOD ==========');
     console.log('[MyMealDetails] Current items count:', items.length);
     console.log('[MyMealDetails] Passing params:');
@@ -371,7 +372,7 @@ export default function MyMealDetailsScreen() {
         returnTo: '/my-meal-details',
       },
     });
-  };
+  }, [router, mealId]);
 
   const handleAddToDiary = () => {
     // Save changes first if there are any

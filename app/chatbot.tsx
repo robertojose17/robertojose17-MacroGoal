@@ -573,7 +573,7 @@ If the user provides both text and photo, use both sources to make the most accu
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
-  }, [loading, messages, sendMessage]);
+  }, [loading, messages, sendMessage, parseMealData]);
 
   /**
    * Parse meal data from the Edge Function response
@@ -825,7 +825,7 @@ If the user provides both text and photo, use both sources to make the most accu
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
-  }, [inputText, selectedImage, loading, messages, sendMessage, parseMealData]);
+  }, [inputText, selectedImage, loading, messages, sendMessage]);
 
   // Update ingredient quantity and recalculate totals
   const handleQuantityChange = useCallback(

@@ -36,6 +36,7 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
 
   useEffect(() => {
     loadCheckInsWithPhotos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const loadCheckInsWithPhotos = async () => {

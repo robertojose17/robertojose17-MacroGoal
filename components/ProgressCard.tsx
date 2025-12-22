@@ -53,6 +53,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   useEffect(() => {
     loadProfileData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const loadProfileData = async () => {

@@ -361,20 +361,21 @@ export default function ShareProgressScreen() {
       // Calculate current streak (working backwards from today)
       let streak = 0;
       const currentDate = new Date(today + 'T00:00:00');
+      let continueLoop = true;
       
-      while (true) {
+      while (continueLoop) {
         const dateStr = currentDate.toISOString().split('T')[0];
+        
+        // Safety check: don't go before start date
+        if (dateStr < startDate) {
+          break;
+        }
         
         if (daysWithData.has(dateStr)) {
           streak++;
           currentDate.setDate(currentDate.getDate() - 1);
         } else {
-          break;
-        }
-        
-        // Safety check: don't go before start date
-        if (dateStr < startDate) {
-          break;
+          continueLoop = false;
         }
       }
 
