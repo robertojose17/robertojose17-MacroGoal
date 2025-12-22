@@ -129,6 +129,36 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const calculateStreak = useCallback((sortedDates: string[]): number => {
+    if (sortedDates.length === 0) return 0;
+
+    let currentStreak = 1;
+    const today = new Date().toISOString().split('T')[0];
+    
+    const lastDate = sortedDates[sortedDates.length - 1];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    if (lastDate !== today && lastDate !== yesterdayStr) {
+      return 0;
+    }
+
+    for (let i = sortedDates.length - 2; i >= 0; i--) {
+      const currentDate = new Date(sortedDates[i + 1]);
+      const prevDate = new Date(sortedDates[i]);
+      const diffDays = Math.floor((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    }
+
+    return currentStreak;
+  }, []);
+
   const loadNutritionTrends = useCallback(async (userId: string) => {
     try {
       let startDate: Date;
@@ -233,7 +263,7 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('[Dashboard] Error loading nutrition trends:', error);
     }
-  }, [nutritionRange, nutritionCustomRange]);
+  }, [nutritionRange, nutritionCustomRange, calculateStreak]);
 
   const loadData = useCallback(async () => {
     try {
@@ -307,36 +337,6 @@ export default function DashboardScreen() {
       loadNutritionTrends(user.id);
     }
   }, [nutritionRange, nutritionCustomRange, user, loadNutritionTrends]);
-
-  const calculateStreak = useCallback((sortedDates: string[]): number => {
-    if (sortedDates.length === 0) return 0;
-
-    let currentStreak = 1;
-    const today = new Date().toISOString().split('T')[0];
-    
-    const lastDate = sortedDates[sortedDates.length - 1];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
-    if (lastDate !== today && lastDate !== yesterdayStr) {
-      return 0;
-    }
-
-    for (let i = sortedDates.length - 2; i >= 0; i--) {
-      const currentDate = new Date(sortedDates[i + 1]);
-      const prevDate = new Date(sortedDates[i]);
-      const diffDays = Math.floor((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 1) {
-        currentStreak++;
-      } else {
-        break;
-      }
-    }
-
-    return currentStreak;
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
