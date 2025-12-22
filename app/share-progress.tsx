@@ -20,6 +20,16 @@ import { TouchableOpacity } from 'react-native-gesture-handler';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 
+interface CardData {
+  consistencyScore: number;
+  weightGoalProgress: number;
+  weightLost: number;
+  dayStreak: number;
+  progressPhotoUrl?: string;
+  beforePhotoUrl?: string;
+  motivationalLine: string;
+}
+
 export default function ShareProgressScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -27,8 +37,7 @@ export default function ShareProgressScreen() {
 
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [cardData, setCardData] = useState<any>(null);
+  const [cardData, setCardData] = useState<CardData | null>(null);
   const viewShotRef = useRef<ViewShot>(null);
 
   useEffect(() => {
@@ -55,9 +64,6 @@ export default function ShareProgressScreen() {
         .eq('id', authUser.id)
         .maybeSingle();
 
-      const userName = userData?.name || 'You';
-      setUser({ ...authUser, ...userData, displayName: userName });
-
       // Get active goal
       const { data: goalData } = await supabase
         .from('goals')
@@ -75,151 +81,39 @@ export default function ShareProgressScreen() {
         start_date: new Date().toISOString().split('T')[0],
       };
 
-      // Get today's nutrition data
-      const today = new Date().toISOString().split('T')[0];
-      const { data: mealsData } = await supabase
-        .from('meals')
-        .select(`
-          meal_items (
-            calories,
-            protein,
-            carbs,
-            fats,
-            fiber
-          )
-        `)
-        .eq('user_id', authUser.id)
-        .eq('date', today);
+      // ===== CALCULATE CONSISTENCY SCORE =====
+      const consistencyScore = await calculateConsistencyScore(authUser.id, goal.start_date);
+      console.log('[ShareProgress] Consistency Score:', consistencyScore);
 
-      let totalCals = 0;
-      let totalP = 0;
-      let totalC = 0;
-      let totalF = 0;
-      let totalFib = 0;
+      // ===== CALCULATE WEIGHT GOAL PROGRESS (% COMPLETE) =====
+      const { weightGoalProgress, weightLost } = await calculateWeightGoalProgress(
+        authUser.id,
+        userData?.goal_weight
+      );
+      console.log('[ShareProgress] Weight Goal Progress:', weightGoalProgress, '%');
+      console.log('[ShareProgress] Weight Lost:', weightLost, 'lb');
 
-      if (mealsData && mealsData.length > 0) {
-        mealsData.forEach((meal: any) => {
-          if (meal.meal_items) {
-            meal.meal_items.forEach((item: any) => {
-              totalCals += item.calories || 0;
-              totalP += item.protein || 0;
-              totalC += item.carbs || 0;
-              totalF += item.fats || 0;
-              totalFib += item.fiber || 0;
-            });
-          }
-        });
-      }
+      // ===== CALCULATE DAY STREAK =====
+      const dayStreak = await calculateDayStreak(authUser.id, goal.start_date);
+      console.log('[ShareProgress] Day Streak:', dayStreak);
 
-      // Calculate streak (last 7 days for demo)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-      const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
+      // ===== GET PROGRESS PHOTOS =====
+      const { progressPhotoUrl, beforePhotoUrl } = await getProgressPhotos(authUser.id);
+      console.log('[ShareProgress] Progress Photo:', progressPhotoUrl);
+      console.log('[ShareProgress] Before Photo:', beforePhotoUrl);
 
-      const { data: allMeals } = await supabase
-        .from('meals')
-        .select('date, meal_items(calories)')
-        .eq('user_id', authUser.id)
-        .gte('date', startDateStr)
-        .lte('date', today);
-
-      const daysWithData = new Set<string>();
-      if (allMeals && allMeals.length > 0) {
-        allMeals.forEach((meal: any) => {
-          if (meal.meal_items && meal.meal_items.length > 0) {
-            if (meal.meal_items.some((item: any) => item.calories > 0)) {
-              daysWithData.add(meal.date);
-            }
-          }
-        });
-      }
-
-      const streakDays = daysWithData.size;
-
-      // Calculate protein accuracy
-      const proteinAccuracy = goal.protein_g > 0
-        ? Math.round((totalP / goal.protein_g) * 100)
-        : 0;
-
-      // Get weight data for weight lost calculation
-      const { data: checkIns } = await supabase
-        .from('check_ins')
-        .select('weight, date')
-        .eq('user_id', authUser.id)
-        .not('weight', 'is', null)
-        .order('date', { ascending: true });
-
-      let weightLost = 0;
-      if (checkIns && checkIns.length >= 2) {
-        const firstWeight = checkIns[0].weight;
-        const lastWeight = checkIns[checkIns.length - 1].weight;
-        weightLost = Math.abs(firstWeight - lastWeight);
-      }
-
-      // Calculate discipline score (simplified version)
-      const dailyTrackingScore = daysWithData.size >= 5 ? 40 : (daysWithData.size / 7) * 40;
-      const streakScore = Math.min(35, streakDays * 5);
-      const proteinScore = proteinAccuracy >= 95 && proteinAccuracy <= 105 ? 25 : 
-                          proteinAccuracy >= 80 ? 20 : 
-                          proteinAccuracy >= 60 ? 15 : 10;
-      const disciplineScore = Math.round(dailyTrackingScore + streakScore + proteinScore);
-
-      // Get photos for transformation
-      const { data: photoCheckIns } = await supabase
-        .from('check_ins')
-        .select('photo_url, date')
-        .eq('user_id', authUser.id)
-        .not('photo_url', 'is', null)
-        .order('date', { ascending: true });
-
-      let leftPhotoUrl, rightPhotoUrl, leftPhotoDate, rightPhotoDate;
-      if (photoCheckIns && photoCheckIns.length >= 2) {
-        leftPhotoUrl = photoCheckIns[0].photo_url;
-        leftPhotoDate = new Date(photoCheckIns[0].date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        rightPhotoUrl = photoCheckIns[photoCheckIns.length - 1].photo_url;
-        rightPhotoDate = new Date(photoCheckIns[photoCheckIns.length - 1].date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-      }
-
-      // Format date range
-      const startDate = new Date(goal.start_date + 'T00:00:00');
-      const dateRange = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - Today`;
+      // ===== GET MOTIVATIONAL LINE =====
+      const motivationalLine = getMotivationalLine(consistencyScore, weightLost, dayStreak);
+      console.log('[ShareProgress] Motivational Line:', motivationalLine);
 
       setCardData({
-        userName,
-        disciplineScore,
-        dateRange,
-        caloriesConsumed: totalCals,
-        caloriesGoal: goal.daily_calories,
-        protein: totalP,
-        proteinGoal: goal.protein_g,
-        carbs: totalC,
-        carbsGoal: goal.carbs_g,
-        fats: totalF,
-        fatsGoal: goal.fats_g,
-        fiber: totalFib,
-        fiberGoal: goal.fiber_g,
-        streakDays,
-        proteinAccuracy,
+        consistencyScore,
+        weightGoalProgress,
         weightLost,
-        leftPhotoUrl,
-        rightPhotoUrl,
-        leftPhotoDate,
-        rightPhotoDate,
-      });
-
-      console.log('[ShareProgress] Card data loaded:', {
-        disciplineScore,
-        streakDays,
-        proteinAccuracy,
-        weightLost,
+        dayStreak,
+        progressPhotoUrl,
+        beforePhotoUrl,
+        motivationalLine,
       });
 
       setLoading(false);
@@ -227,6 +121,322 @@ export default function ShareProgressScreen() {
       console.error('[ShareProgress] Error loading card data:', error);
       setLoading(false);
     }
+  };
+
+  /**
+   * Calculate Consistency Score based on check-in data
+   * Uses the same logic as ConsistencyScore component
+   */
+  const calculateConsistencyScore = async (userId: string, startDate: string): Promise<number> => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Get all meals in the date range
+      const { data: allMeals } = await supabase
+        .from('meals')
+        .select(`
+          id,
+          date,
+          meal_items (
+            id,
+            calories,
+            protein
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', today)
+        .order('date', { ascending: true });
+
+      // Get protein target from active goal
+      const { data: goalData } = await supabase
+        .from('goals')
+        .select('protein_g')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const proteinTarget = goalData?.protein_g || 150;
+
+      // Organize data by date
+      const dailyData: { [date: string]: { calories: number; protein: number; hasMeals: boolean } } = {};
+
+      if (allMeals && allMeals.length > 0) {
+        for (const meal of allMeals) {
+          if (!dailyData[meal.date]) {
+            dailyData[meal.date] = { calories: 0, protein: 0, hasMeals: false };
+          }
+
+          if (meal.meal_items && meal.meal_items.length > 0) {
+            dailyData[meal.date].hasMeals = true;
+            
+            for (const item of meal.meal_items) {
+              const itemCalories = parseFloat(String(item.calories || '0'));
+              const itemProtein = parseFloat(String(item.protein || '0'));
+              
+              dailyData[meal.date].calories += itemCalories;
+              dailyData[meal.date].protein += itemProtein;
+            }
+          }
+        }
+      }
+
+      // Generate all dates in range
+      const allDatesInRange: string[] = [];
+      const start = new Date(startDate + 'T00:00:00');
+      const end = new Date(today + 'T00:00:00');
+      const currentDate = new Date(start);
+
+      while (currentDate <= end) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        allDatesInRange.push(dateStr);
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Edge case: If range > 2 days with no data at all, score = 0
+      if (allDatesInRange.length > 2 && Object.keys(dailyData).length === 0) {
+        return 0;
+      }
+
+      // Calculate daily scores
+      const dailyScores: { trackingScore: number; streakScore: number; proteinScore: number }[] = [];
+      let currentStreakDays = 0;
+
+      for (let i = 0; i < allDatesInRange.length; i++) {
+        const date = allDatesInRange[i];
+        const dayData = dailyData[date];
+        
+        // A) Daily Tracking Score (0 or 40)
+        const hasTracking = dayData?.hasMeals || false;
+        const trackingScore = hasTracking ? 40 : 0;
+
+        // B) Streak Score (0-35)
+        if (hasTracking) {
+          currentStreakDays++;
+        } else {
+          currentStreakDays = Math.floor(currentStreakDays * 0.3);
+        }
+
+        const streakScore = currentStreakDays > 0 
+          ? Math.round(35 * (1 - Math.exp(-0.1 * currentStreakDays)))
+          : 0;
+
+        // C) Protein Accuracy Score (0-25)
+        const proteinLogged = dayData?.protein || 0;
+        const proteinScore = calculateProteinAccuracyScore(proteinLogged, proteinTarget);
+
+        dailyScores.push({
+          trackingScore,
+          streakScore,
+          proteinScore,
+        });
+      }
+
+      // Calculate averages
+      const avgTracking = dailyScores.reduce((sum, day) => sum + day.trackingScore, 0) / dailyScores.length;
+      const avgStreak = dailyScores.reduce((sum, day) => sum + day.streakScore, 0) / dailyScores.length;
+      const avgProtein = dailyScores.reduce((sum, day) => sum + day.proteinScore, 0) / dailyScores.length;
+
+      const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
+      return totalScore;
+    } catch (error) {
+      console.error('[ShareProgress] Error calculating consistency score:', error);
+      return 0;
+    }
+  };
+
+  const calculateProteinAccuracyScore = (proteinLogged: number, proteinTarget: number): number => {
+    if (proteinTarget === 0) {
+      return 0;
+    }
+
+    const percentage = (proteinLogged / proteinTarget) * 100;
+
+    if (percentage >= 95 && percentage <= 105) {
+      return 25;
+    } else if (percentage >= 80 && percentage < 95) {
+      return 20;
+    } else if (percentage >= 60 && percentage < 80) {
+      return 15;
+    } else if (percentage >= 40 && percentage < 60) {
+      return 10;
+    } else if (percentage < 40) {
+      return Math.round((percentage / 40) * 5);
+    } else {
+      const excess = percentage - 105;
+      const penalty = Math.min(10, excess / 5);
+      return Math.max(15, Math.round(25 - penalty));
+    }
+  };
+
+  /**
+   * Calculate Weight Goal Progress (% Complete)
+   * % Complete = (Weight Lost so far ÷ Total Weight Goal) × 100
+   * Source: CHECK-IN data (not calories)
+   */
+  const calculateWeightGoalProgress = async (
+    userId: string,
+    goalWeight?: number
+  ): Promise<{ weightGoalProgress: number; weightLost: number }> => {
+    try {
+      // Get all weight check-ins ordered by date
+      const { data: checkIns } = await supabase
+        .from('check_ins')
+        .select('weight, date')
+        .eq('user_id', userId)
+        .not('weight', 'is', null)
+        .order('date', { ascending: true });
+
+      if (!checkIns || checkIns.length < 2) {
+        return { weightGoalProgress: 0, weightLost: 0 };
+      }
+
+      // Get first and last weight (in kg from database)
+      const firstWeightKg = checkIns[0].weight;
+      const lastWeightKg = checkIns[checkIns.length - 1].weight;
+      
+      // Calculate weight lost in lbs
+      const weightLostKg = firstWeightKg - lastWeightKg;
+      const weightLostLbs = weightLostKg * 2.20462;
+
+      // Calculate % complete if goal weight is set
+      let weightGoalProgress = 0;
+      if (goalWeight) {
+        // goalWeight is in kg
+        const totalWeightGoalKg = firstWeightKg - goalWeight;
+        const totalWeightGoalLbs = totalWeightGoalKg * 2.20462;
+        
+        if (totalWeightGoalLbs > 0) {
+          weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
+        }
+      } else {
+        // If no goal weight, assume 10% of starting weight as goal
+        const assumedGoalLbs = (firstWeightKg * 2.20462) * 0.1;
+        weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
+      }
+
+      return {
+        weightGoalProgress: Math.max(0, Math.min(100, weightGoalProgress)),
+        weightLost: Math.max(0, weightLostLbs),
+      };
+    } catch (error) {
+      console.error('[ShareProgress] Error calculating weight goal progress:', error);
+      return { weightGoalProgress: 0, weightLost: 0 };
+    }
+  };
+
+  /**
+   * Calculate Day Streak
+   * Consecutive days with at least one meal logged
+   */
+  const calculateDayStreak = async (userId: string, startDate: string): Promise<number> => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Get all meals from start date to today
+      const { data: allMeals } = await supabase
+        .from('meals')
+        .select('date, meal_items(calories)')
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', today)
+        .order('date', { ascending: false });
+
+      if (!allMeals || allMeals.length === 0) {
+        return 0;
+      }
+
+      // Find days with logged meals
+      const daysWithData = new Set<string>();
+      allMeals.forEach((meal: any) => {
+        if (meal.meal_items && meal.meal_items.length > 0) {
+          if (meal.meal_items.some((item: any) => item.calories > 0)) {
+            daysWithData.add(meal.date);
+          }
+        }
+      });
+
+      // Calculate current streak (working backwards from today)
+      let streak = 0;
+      const currentDate = new Date(today + 'T00:00:00');
+      
+      while (true) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        
+        if (daysWithData.has(dateStr)) {
+          streak++;
+          currentDate.setDate(currentDate.getDate() - 1);
+        } else {
+          break;
+        }
+        
+        // Safety check: don't go before start date
+        if (dateStr < startDate) {
+          break;
+        }
+      }
+
+      return streak;
+    } catch (error) {
+      console.error('[ShareProgress] Error calculating day streak:', error);
+      return 0;
+    }
+  };
+
+  /**
+   * Get Progress Photos
+   * Returns the most recent photo and the first photo (if available)
+   */
+  const getProgressPhotos = async (
+    userId: string
+  ): Promise<{ progressPhotoUrl?: string; beforePhotoUrl?: string }> => {
+    try {
+      const { data: photoCheckIns } = await supabase
+        .from('check_ins')
+        .select('photo_url, date')
+        .eq('user_id', userId)
+        .not('photo_url', 'is', null)
+        .order('date', { ascending: true });
+
+      if (!photoCheckIns || photoCheckIns.length === 0) {
+        return {};
+      }
+
+      if (photoCheckIns.length === 1) {
+        return { progressPhotoUrl: photoCheckIns[0].photo_url };
+      }
+
+      return {
+        beforePhotoUrl: photoCheckIns[0].photo_url,
+        progressPhotoUrl: photoCheckIns[photoCheckIns.length - 1].photo_url,
+      };
+    } catch (error) {
+      console.error('[ShareProgress] Error getting progress photos:', error);
+      return {};
+    }
+  };
+
+  /**
+   * Get Motivational Line
+   * Based on consistency score, weight lost, and day streak
+   */
+  const getMotivationalLine = (
+    consistencyScore: number,
+    weightLost: number,
+    dayStreak: number
+  ): string => {
+    if (dayStreak >= 14) {
+      return 'Still showing up 💪';
+    }
+    if (consistencyScore >= 90) {
+      return 'One step closer 🔥';
+    }
+    if (weightLost >= 5) {
+      return 'Progress over perfection';
+    }
+    return 'Small wins add up';
   };
 
   const handleShare = async () => {
