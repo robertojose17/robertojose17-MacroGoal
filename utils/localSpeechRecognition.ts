@@ -46,9 +46,9 @@ let platformImplementation: {
 };
 
 if (Platform.OS === 'web') {
-  platformImplementation = require('./localSpeechRecognition.web');
+  platformImplementation = require('./localSpeechRecognition.web') as typeof platformImplementation;
 } else {
-  platformImplementation = require('./localSpeechRecognition.native');
+  platformImplementation = require('./localSpeechRecognition.native') as typeof platformImplementation;
 }
 
 export const transcribeAudioLocally = platformImplementation.transcribeAudioLocally;

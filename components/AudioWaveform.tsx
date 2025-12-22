@@ -75,7 +75,7 @@ function AnimatedBar({ isRecording, audioLevel, color, index, totalBars }: Anima
       // Reset to minimum height when not recording
       height.value = withTiming(8, { duration: 200 });
     }
-  }, [isRecording, audioLevel, index, totalBars]);
+  }, [isRecording, audioLevel, index, totalBars, height.value]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     height: height.value,

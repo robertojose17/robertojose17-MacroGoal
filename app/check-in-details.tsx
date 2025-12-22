@@ -41,11 +41,6 @@ export default function CheckInDetailsScreen() {
   const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
   const [user, setUser] = useState<any>(null);
 
-  useEffect(() => {
-    loadCheckInData();
-    loadUserData();
-  }, []);
-
   const loadUserData = async () => {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -63,7 +58,7 @@ export default function CheckInDetailsScreen() {
     }
   };
 
-  const loadCheckInData = async () => {
+  const loadCheckInData = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -85,7 +80,12 @@ export default function CheckInDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [checkInId, router]);
+
+  useEffect(() => {
+    loadCheckInData();
+    loadUserData();
+  }, [loadCheckInData]);
 
   const handleEdit = () => {
     if (!checkIn) return;

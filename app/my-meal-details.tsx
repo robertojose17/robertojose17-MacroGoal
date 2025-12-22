@@ -33,6 +33,7 @@ export default function MyMealDetailsScreen() {
     try {
       setLoading(true);
       console.log('[MyMealDetails] Loading My Meal:', mealId);
+      console.log('[MyMealDetails] Params:', JSON.stringify(params, null, 2));
 
       // Load meal details
       const { data: mealData, error: mealError } = await supabase
@@ -92,7 +93,7 @@ export default function MyMealDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [mealId]);
+  }, [mealId, params]);
 
   useFocusEffect(
     useCallback(() => {
@@ -139,7 +140,7 @@ export default function MyMealDetailsScreen() {
         console.log('[MyMealDetails] No new food item, loading meal normally');
         loadMyMeal();
       }
-    }, [loadMyMeal, params.newFoodItem, router])
+    }, [loadMyMeal, params, router])
   );
 
   // AUTO-SAVE when items change (after a new food is added)
@@ -153,8 +154,7 @@ export default function MyMealDetailsScreen() {
       };
       autoSave();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, hasUnsavedChanges, autoSaving]);
+  }, [items.length, hasUnsavedChanges, autoSaving, handleSaveChanges]);
 
   const handleSaveChanges = useCallback(async () => {
     if (!mealName.trim()) {

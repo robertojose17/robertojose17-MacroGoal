@@ -266,6 +266,8 @@ export default function ChatbotScreen() {
     }
   }, []);
 
+
+
   // Handle photo selection
   const handleAddPhoto = useCallback(() => {
     Alert.alert('Add Photo', 'Choose how to add a photo of your meal', [
@@ -282,73 +284,14 @@ export default function ChatbotScreen() {
         style: 'cancel',
       },
     ]);
-  }, []);
+  }, [handleTakePhoto, handleChooseFromGallery]);
 
-  // Take a photo with camera
-  const handleTakePhoto = useCallback(async () => {
-    const hasPermission = await requestCameraPermission();
-    if (!hasPermission) return;
 
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const imageUri = result.assets[0].uri;
-        console.log('[Chatbot] Photo taken:', imageUri);
-        const base64 = await convertImageToBase64(imageUri);
-        setSelectedImage(base64);
-      }
-    } catch (error) {
-      console.error('[Chatbot] Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo. Please try again.');
-    }
-  }, [requestCameraPermission, convertImageToBase64]);
-
-  // Choose photo from gallery
-  const handleChooseFromGallery = useCallback(async () => {
-    const hasPermission = await requestMediaLibraryPermission();
-    if (!hasPermission) return;
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const imageUri = result.assets[0].uri;
-        console.log('[Chatbot] Photo selected:', imageUri);
-        const base64 = await convertImageToBase64(imageUri);
-        setSelectedImage(base64);
-      }
-    } catch (error) {
-      console.error('[Chatbot] Error selecting photo:', error);
-      Alert.alert('Error', 'Failed to select photo. Please try again.');
-    }
-  }, [requestMediaLibraryPermission, convertImageToBase64]);
 
   // Remove selected photo
   const handleRemovePhoto = useCallback(() => {
     setSelectedImage(null);
   }, []);
-
-  // Handle voice recording
-  const handleVoiceInput = useCallback(async () => {
-    if (isRecording) {
-      // Stop recording
-      await handleStopRecording();
-    } else {
-      // Start recording
-      await handleStartRecording();
-    }
-  }, [isRecording]);
 
   const handleStartRecording = useCallback(async () => {
     try {
@@ -370,6 +313,30 @@ export default function ChatbotScreen() {
       Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   }, [audioRecorder]);
+
+  const handleTranscriptionResult = useCallback((transcribedText: string) => {
+    console.log('[Chatbot] Transcription successful:', transcribedText);
+    
+    if (!isMountedRef.current) return;
+    
+    // Set the transcribed text in the input field
+    setInputText(transcribedText);
+    
+    // Automatically send the transcribed text
+    setTimeout(() => {
+      if (isMountedRef.current && transcribedText.trim()) {
+        handleSendTranscribedText(transcribedText);
+      }
+    }, 100);
+  }, [handleSendTranscribedText]);
+
+  const handleTranscriptionError = useCallback((error: string) => {
+    console.error('[Chatbot] Transcription error:', error);
+    
+    if (!isMountedRef.current) return;
+    
+    Alert.alert('Transcription Error', "We couldn't transcribe that. Please try again.");
+  }, []);
 
   const handleStopRecording = useCallback(async () => {
     try {
@@ -393,31 +360,18 @@ export default function ChatbotScreen() {
       Alert.alert('Error', 'Failed to stop recording. Please try again.');
       setIsRecording(false);
     }
-  }, [audioRecorder]);
+  }, [audioRecorder, handleTranscriptionResult, handleTranscriptionError]);
 
-  const handleTranscriptionResult = useCallback((transcribedText: string) => {
-    console.log('[Chatbot] Transcription successful:', transcribedText);
-    
-    if (!isMountedRef.current) return;
-    
-    // Set the transcribed text in the input field
-    setInputText(transcribedText);
-    
-    // Automatically send the transcribed text
-    setTimeout(() => {
-      if (isMountedRef.current && transcribedText.trim()) {
-        handleSendTranscribedText(transcribedText);
-      }
-    }, 100);
-  }, []);
-
-  const handleTranscriptionError = useCallback((error: string) => {
-    console.error('[Chatbot] Transcription error:', error);
-    
-    if (!isMountedRef.current) return;
-    
-    Alert.alert('Transcription Error', "We couldn't transcribe that. Please try again.");
-  }, []);
+  // Handle voice recording
+  const handleVoiceInput = useCallback(async () => {
+    if (isRecording) {
+      // Stop recording
+      await handleStopRecording();
+    } else {
+      // Start recording
+      await handleStartRecording();
+    }
+  }, [isRecording, handleStartRecording, handleStopRecording]);
 
   // Handle sending transcribed text automatically
   const handleSendTranscribedText = useCallback(async (text: string) => {
@@ -578,7 +532,7 @@ If the user provides both text and photo, use both sources to make the most accu
   /**
    * Parse meal data from the Edge Function response
    */
-  const parseMealData = useCallback((mealData: any, userMessage: string): AIEstimate | null => {
+  const parseMealData = (mealData: any, userMessage: string): AIEstimate | null => {
     try {
       if (!mealData || !mealData.ingredients || !Array.isArray(mealData.ingredients)) {
         console.log('[Chatbot] No valid meal data in response');
@@ -648,7 +602,7 @@ If the user provides both text and photo, use both sources to make the most accu
       console.error('[Chatbot] Error parsing meal data:', error);
       return null;
     }
-  }, []);
+  };
 
   const handleSend = useCallback(async () => {
     const trimmedInput = inputText.trim();
@@ -825,7 +779,7 @@ If the user provides both text and photo, use both sources to make the most accu
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
-  }, [inputText, selectedImage, loading, messages, sendMessage]);
+  }, [inputText, selectedImage, loading, messages, sendMessage, parseMealData]);
 
   // Update ingredient quantity and recalculate totals
   const handleQuantityChange = useCallback(

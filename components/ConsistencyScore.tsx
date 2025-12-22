@@ -50,13 +50,15 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     if (userId) {
       loadJourneyStartDate();
     }
-  }, [userId, loadJourneyStartDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     if (userId && journeyStartDate && rangeStartDate && rangeEndDate) {
       calculateConsistencyScore();
     }
-  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate, calculateConsistencyScore]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate]);
 
   const loadJourneyStartDate = useCallback(async () => {
     try {
@@ -117,7 +119,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       setRangeStartDate(today);
       setRangeEndDate(today);
     }
-  }, []);
+  }, [userId]);
 
   const calculateConsistencyScore = useCallback(async () => {
     try {

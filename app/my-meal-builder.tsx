@@ -143,12 +143,13 @@ export default function MyMealBuilderScreen() {
           console.error('[MyMealBuilder] Error parsing new food item:', error);
         }
       }
-    }, [params.newFoodItem, router])
+    }, [params.newFoodItem, router, items.length])
   );
 
   const handleAddFood = useCallback(() => {
     console.log('[MyMealBuilder] Opening Add Food in mymeal mode');
     console.log('[MyMealBuilder] Passing builder session ID:', builderSessionIdRef.current);
+    console.log('[MyMealBuilder] Current items count:', items.length);
     
     router.push({
       pathname: '/add-food',
@@ -160,7 +161,7 @@ export default function MyMealBuilderScreen() {
         mealId: mealId || '',
       },
     });
-  }, [router, mealId]);
+  }, [router, mealId, items.length]);
 
   const handleRemoveItem = useCallback((itemId: string) => {
     console.log('[MyMealBuilder] Removing item:', itemId);

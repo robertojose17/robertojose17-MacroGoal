@@ -57,11 +57,7 @@ export default function CheckInFormScreen() {
   // Common
   const [notes, setNotes] = useState('');
 
-  useEffect(() => {
-    initializeForm();
-  }, []);
-
-  const initializeForm = async () => {
+  const initializeForm = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -94,7 +90,11 @@ export default function CheckInFormScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isEditing, checkInId, checkInType]);
+
+  useEffect(() => {
+    initializeForm();
+  }, [initializeForm]);
 
   const loadDefaultStepsGoal = async (userId: string) => {
     try {

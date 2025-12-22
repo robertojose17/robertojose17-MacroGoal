@@ -133,7 +133,7 @@ export default function ShareProgressScreen() {
       console.error('[ShareProgress] Error loading card data:', error);
       setLoading(false);
     }
-  }, []);
+  }, [calculateConsistencyScore]);
 
   /**
    * Calculate Consistency Score based on check-in data
@@ -334,7 +334,8 @@ export default function ShareProgressScreen() {
           console.log('[ShareProgress] Total weight goal (lbs):', totalWeightGoalLbs);
 
           // DEFENSIVE GUARD: Only calculate % if totalWeightGoalLbs > 0
-          if (totalWeightGoalLbs > 0) {
+          const isValidGoal = totalWeightGoalLbs > 0;
+          if (isValidGoal) {
             weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
             console.log('[ShareProgress] Weight goal progress (%):', weightGoalProgress);
           } else {
@@ -348,7 +349,8 @@ export default function ShareProgressScreen() {
         console.log('[ShareProgress] No goal weight set');
         // If no goal weight, assume 10% of starting weight as goal
         const assumedGoalLbs = (firstWeightKg * 2.20462) * 0.1;
-        if (assumedGoalLbs > 0) {
+        const hasAssumedGoal = assumedGoalLbs > 0;
+        if (hasAssumedGoal) {
           weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
           console.log('[ShareProgress] Using assumed goal (10% of start), progress:', weightGoalProgress);
         }
@@ -507,17 +509,17 @@ export default function ShareProgressScreen() {
 
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
-      if (isAvailable) {
-        // Share the image
-        await Sharing.shareAsync(uri, {
-          mimeType: 'image/png',
-          dialogTitle: 'Share your progress',
-        });
-      } else {
+      if (!isAvailable) {
         Alert.alert('Sharing not available', 'Sharing is not available on this device');
         setSharing(false);
         return;
       }
+      
+      // Share the image
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: 'Share your progress',
+      });
 
       console.log('[ShareProgress] Card shared successfully');
       setSharing(false);

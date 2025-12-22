@@ -254,10 +254,9 @@ export default function FoodSearchScreen() {
       console.log('[FoodSearch] Debounce timer fired for:', trimmedQuery);
       performSearch(trimmedQuery);
     }, 350);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, logTiming, performSearch]);
 
-  const performSearch = async (query: string) => {
+  const performSearch = useCallback(async (query: string) => {
     logTiming('(c) Request start');
     console.log('[FoodSearch] ========== PERFORMING SEARCH ==========');
     console.log('[FoodSearch] Query:', query);
@@ -393,7 +392,7 @@ export default function FoodSearchScreen() {
       console.log('[FoodSearch] Setting loading = false (finally block)');
       setLoading(false);
     }
-  };
+  }, [logTiming]);
 
   const handleRetry = useCallback(() => {
     console.log('[FoodSearch] Retry button pressed');
@@ -401,7 +400,7 @@ export default function FoodSearchScreen() {
     if (trimmedQuery && trimmedQuery.length >= 2) {
       performSearch(trimmedQuery);
     }
-  }, [searchQuery]);
+  }, [searchQuery, performSearch]);
 
   // OPTIMIZATION: Memoize handleSelectProduct to prevent recreation
   const handleSelectProduct = useCallback((item: SearchResultItem) => {

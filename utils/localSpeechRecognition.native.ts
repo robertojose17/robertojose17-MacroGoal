@@ -6,8 +6,9 @@ import * as FileSystem from 'expo-file-system';
 let ExpoSpeechRecognition: any = null;
 
 try {
-  // Try to import the native module
-  ExpoSpeechRecognition = require('../modules/expo-speech-recognition/src/index');
+  // Try to import the native module using dynamic import
+  const module = require('../modules/expo-speech-recognition/src/index') as any;
+  ExpoSpeechRecognition = module;
   console.log('[LocalSTT] Native speech recognition module loaded successfully');
 } catch (error) {
   console.warn('[LocalSTT] Native speech recognition module not available:', error);
