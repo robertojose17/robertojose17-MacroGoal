@@ -81,20 +81,32 @@ export default function ShareProgressScreen() {
         start_date: new Date().toISOString().split('T')[0],
       };
 
+      // Determine journey start date
+      let startDate: string;
+      if (goalData?.start_date) {
+        startDate = goalData.start_date;
+      } else if (userData?.created_at) {
+        startDate = userData.created_at.split('T')[0];
+      } else {
+        startDate = new Date().toISOString().split('T')[0];
+      }
+
+      console.log('[ShareProgress] Journey start date:', startDate);
+
       // ===== CALCULATE CONSISTENCY SCORE =====
-      const consistencyScore = await calculateConsistencyScore(authUser.id, goal.start_date);
+      const consistencyScore = await calculateConsistencyScore(authUser.id, startDate, goal.protein_g || 150);
       console.log('[ShareProgress] Consistency Score:', consistencyScore);
 
       // ===== CALCULATE WEIGHT GOAL PROGRESS (% COMPLETE) =====
       const { weightGoalProgress, weightLost } = await calculateWeightGoalProgress(
         authUser.id,
-        userData?.goal_weight
+        userData
       );
       console.log('[ShareProgress] Weight Goal Progress:', weightGoalProgress, '%');
       console.log('[ShareProgress] Weight Lost:', weightLost, 'lb');
 
       // ===== CALCULATE DAY STREAK =====
-      const dayStreak = await calculateDayStreak(authUser.id, goal.start_date);
+      const dayStreak = await calculateDayStreak(authUser.id, startDate);
       console.log('[ShareProgress] Day Streak:', dayStreak);
 
       // ===== GET PROGRESS PHOTOS =====
@@ -127,7 +139,7 @@ export default function ShareProgressScreen() {
    * Calculate Consistency Score based on check-in data
    * Uses the same logic as ConsistencyScore component
    */
-  const calculateConsistencyScore = async (userId: string, startDate: string): Promise<number> => {
+  const calculateConsistencyScore = async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
     try {
       const today = new Date().toISOString().split('T')[0];
       
@@ -147,18 +159,6 @@ export default function ShareProgressScreen() {
         .gte('date', startDate)
         .lte('date', today)
         .order('date', { ascending: true });
-
-      // Get protein target from active goal
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('protein_g')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const proteinTarget = goalData?.protein_g || 150;
 
       // Organize data by date
       const dailyData: { [date: string]: { calories: number; protein: number; hasMeals: boolean } } = {};
@@ -240,7 +240,8 @@ export default function ShareProgressScreen() {
       const avgProtein = dailyScores.reduce((sum, day) => sum + day.proteinScore, 0) / dailyScores.length;
 
       const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
-      return totalScore;
+      // Ensure score is between 0 and 100
+      return Math.max(0, Math.min(100, totalScore));
     } catch (error) {
       console.error('[ShareProgress] Error calculating consistency score:', error);
       return 0;
@@ -278,9 +279,12 @@ export default function ShareProgressScreen() {
    */
   const calculateWeightGoalProgress = async (
     userId: string,
-    goalWeight?: number
+    userData: any
   ): Promise<{ weightGoalProgress: number; weightLost: number }> => {
     try {
+      console.log('[ShareProgress] === WEIGHT GOAL PROGRESS CALCULATION ===');
+      console.log('[ShareProgress] userData:', userData);
+
       // Get all weight check-ins ordered by date
       const { data: checkIns } = await supabase
         .from('check_ins')
@@ -289,7 +293,10 @@ export default function ShareProgressScreen() {
         .not('weight', 'is', null)
         .order('date', { ascending: true });
 
-      if (!checkIns || checkIns.length < 2) {
+      console.log('[ShareProgress] Check-ins found:', checkIns?.length || 0);
+
+      if (!checkIns || checkIns.length === 0) {
+        console.log('[ShareProgress] No check-ins found, returning 0');
         return { weightGoalProgress: 0, weightLost: 0 };
       }
 
@@ -297,29 +304,74 @@ export default function ShareProgressScreen() {
       const firstWeightKg = checkIns[0].weight;
       const lastWeightKg = checkIns[checkIns.length - 1].weight;
       
+      console.log('[ShareProgress] First weight (kg):', firstWeightKg);
+      console.log('[ShareProgress] Last weight (kg):', lastWeightKg);
+
       // Calculate weight lost in lbs
       const weightLostKg = firstWeightKg - lastWeightKg;
       const weightLostLbs = weightLostKg * 2.20462;
 
+      console.log('[ShareProgress] Weight lost (kg):', weightLostKg);
+      console.log('[ShareProgress] Weight lost (lbs):', weightLostLbs);
+
       // Calculate % complete if goal weight is set
       let weightGoalProgress = 0;
-      if (goalWeight) {
-        // goalWeight is in kg
-        const totalWeightGoalKg = firstWeightKg - goalWeight;
-        const totalWeightGoalLbs = totalWeightGoalKg * 2.20462;
-        
-        if (totalWeightGoalLbs > 0) {
-          weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
+
+      // Parse goal_weight from userData
+      const goalWeightRaw = userData?.goal_weight;
+      console.log('[ShareProgress] Goal weight (raw):', goalWeightRaw);
+
+      if (goalWeightRaw) {
+        const goalWeightKg = parseFloat(goalWeightRaw);
+        console.log('[ShareProgress] Goal weight (kg):', goalWeightKg);
+
+        if (!isNaN(goalWeightKg) && goalWeightKg > 0) {
+          // Calculate total weight goal (starting weight - goal weight)
+          const totalWeightGoalKg = firstWeightKg - goalWeightKg;
+          const totalWeightGoalLbs = totalWeightGoalKg * 2.20462;
+          
+          console.log('[ShareProgress] Total weight goal (kg):', totalWeightGoalKg);
+          console.log('[ShareProgress] Total weight goal (lbs):', totalWeightGoalLbs);
+
+          // DEFENSIVE GUARD: Only calculate % if totalWeightGoalLbs > 0
+          if (totalWeightGoalLbs > 0) {
+            weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
+            console.log('[ShareProgress] Weight goal progress (%):', weightGoalProgress);
+          } else {
+            console.log('[ShareProgress] Total weight goal <= 0, cannot calculate %');
+            weightGoalProgress = 0;
+          }
+        } else {
+          console.log('[ShareProgress] Invalid goal weight, cannot calculate %');
         }
       } else {
+        console.log('[ShareProgress] No goal weight set');
         // If no goal weight, assume 10% of starting weight as goal
         const assumedGoalLbs = (firstWeightKg * 2.20462) * 0.1;
-        weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
+        if (assumedGoalLbs > 0) {
+          weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
+          console.log('[ShareProgress] Using assumed goal (10% of start), progress:', weightGoalProgress);
+        }
       }
 
+      // DEFENSIVE GUARD: Clamp progress between 0 and 100, handle NaN/Infinity
+      if (isNaN(weightGoalProgress) || !isFinite(weightGoalProgress)) {
+        console.log('[ShareProgress] Invalid progress value, setting to 0');
+        weightGoalProgress = 0;
+      } else {
+        weightGoalProgress = Math.max(0, Math.min(100, Math.round(weightGoalProgress)));
+      }
+
+      // DEFENSIVE GUARD: Ensure weightLost is non-negative and rounded
+      const finalWeightLost = Math.max(0, Math.round(weightLostLbs * 10) / 10);
+
+      console.log('[ShareProgress] === FINAL VALUES ===');
+      console.log('[ShareProgress] Weight goal progress:', weightGoalProgress);
+      console.log('[ShareProgress] Weight lost:', finalWeightLost);
+
       return {
-        weightGoalProgress: Math.max(0, Math.min(100, weightGoalProgress)),
-        weightLost: Math.max(0, weightLostLbs),
+        weightGoalProgress,
+        weightLost: finalWeightLost,
       };
     } catch (error) {
       console.error('[ShareProgress] Error calculating weight goal progress:', error);
@@ -361,9 +413,8 @@ export default function ShareProgressScreen() {
       // Calculate current streak (working backwards from today)
       let streak = 0;
       const currentDate = new Date(today + 'T00:00:00');
-      let continueLoop = true;
       
-      while (continueLoop) {
+      while (true) {
         const dateStr = currentDate.toISOString().split('T')[0];
         
         // Safety check: don't go before start date
@@ -375,7 +426,7 @@ export default function ShareProgressScreen() {
           streak++;
           currentDate.setDate(currentDate.getDate() - 1);
         } else {
-          continueLoop = false;
+          break;
         }
       }
 
@@ -601,7 +652,7 @@ export default function ShareProgressScreen() {
           {sharing ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <>
+            <React.Fragment>
               <IconSymbol
                 ios_icon_name="square.and.arrow.up"
                 android_material_icon_name="share"
@@ -609,7 +660,7 @@ export default function ShareProgressScreen() {
                 color="#FFFFFF"
               />
               <Text style={styles.shareButtonText}>Share Your Progress</Text>
-            </>
+            </React.Fragment>
           )}
         </TouchableOpacity>
 

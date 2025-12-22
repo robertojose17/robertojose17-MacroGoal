@@ -40,14 +40,27 @@ export default function ShareableProgressCard({
     }
   }, [onCapture]);
 
+  // DEFENSIVE GUARDS: Ensure all numeric values are valid
+  const safeConsistencyScore = isNaN(consistencyScore) || !isFinite(consistencyScore) ? 0 : Math.max(0, Math.min(100, Math.round(consistencyScore)));
+  const safeWeightGoalProgress = isNaN(weightGoalProgress) || !isFinite(weightGoalProgress) ? 0 : Math.max(0, Math.min(100, Math.round(weightGoalProgress)));
+  const safeWeightLost = isNaN(weightLost) || !isFinite(weightLost) ? 0 : Math.max(0, weightLost);
+  const safeDayStreak = isNaN(dayStreak) || !isFinite(dayStreak) ? 0 : Math.max(0, Math.round(dayStreak));
+
+  console.log('[ShareableProgressCard] === RENDERING WITH VALUES ===');
+  console.log('[ShareableProgressCard] Consistency Score:', safeConsistencyScore);
+  console.log('[ShareableProgressCard] Weight Goal Progress:', safeWeightGoalProgress, '%');
+  console.log('[ShareableProgressCard] Weight Lost:', safeWeightLost, 'lb');
+  console.log('[ShareableProgressCard] Day Streak:', safeDayStreak);
+
   // Determine consistency status based on score
   const getConsistencyStatus = (score: number): string => {
     if (score >= 90) return 'Consistent';
     if (score >= 75) return 'On Track';
-    return 'Building Momentum';
+    if (score >= 50) return 'Building Momentum';
+    return 'Getting Started';
   };
 
-  const consistencyStatus = getConsistencyStatus(consistencyScore);
+  const consistencyStatus = getConsistencyStatus(safeConsistencyScore);
 
   // Determine consistency color
   const getConsistencyColor = (score: number): string => {
@@ -56,7 +69,11 @@ export default function ShareableProgressCard({
     return '#5B9AA8'; // Primary
   };
 
-  const consistencyColor = getConsistencyColor(consistencyScore);
+  const consistencyColor = getConsistencyColor(safeConsistencyScore);
+
+  // Determine if we should show the weight goal progress ring
+  // Show if progress > 0 OR if weight lost > 0
+  const shouldShowProgressRing = safeWeightGoalProgress > 0 || safeWeightLost > 0;
 
   // Render progress ring for weight goal
   const renderProgressRing = () => {
@@ -64,7 +81,7 @@ export default function ShareableProgressCard({
     const strokeWidth = 20;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
-    const progress = Math.min(100, Math.max(0, weightGoalProgress)) / 100;
+    const progress = safeWeightGoalProgress / 100;
     const strokeDashoffset = circumference * (1 - progress);
 
     return (
@@ -116,7 +133,7 @@ export default function ShareableProgressCard({
         {/* Consistency Score (ALWAYS ON TOP) */}
         <View style={styles.heroSection}>
           <Text style={[styles.heroValue, { color: consistencyColor }]}>
-            {consistencyScore}
+            {safeConsistencyScore}
           </Text>
           <Text style={styles.heroLabel}>Consistency Score</Text>
           <View style={[styles.statusBadge, { backgroundColor: consistencyColor + '20' }]}>
@@ -127,32 +144,48 @@ export default function ShareableProgressCard({
         </View>
 
         {/* SECTION 2 — GOAL COMPLETION (% COMPLETE) */}
-        {/* Weight Goal Progress (CRITICAL) */}
-        <View style={styles.goalSection}>
-          <Text style={styles.sectionTitle}>Weight Goal Progress</Text>
-          <View style={styles.progressRingContainer}>
-            {renderProgressRing()}
-            <View style={styles.progressRingCenter}>
-              <Text style={styles.progressPercent}>
-                {Math.round(weightGoalProgress)}%
-              </Text>
-              <Text style={styles.progressLabel}>Complete</Text>
+        {/* Weight Goal Progress (CRITICAL) - Only show if valid data exists */}
+        {shouldShowProgressRing && (
+          <View style={styles.goalSection}>
+            <Text style={styles.sectionTitle}>Weight Goal Progress</Text>
+            <View style={styles.progressRingContainer}>
+              {renderProgressRing()}
+              <View style={styles.progressRingCenter}>
+                <Text style={styles.progressPercent}>
+                  {safeWeightGoalProgress}%
+                </Text>
+                <Text style={styles.progressLabel}>Complete</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
+
+        {/* If no progress ring, show "Progress Started" message */}
+        {!shouldShowProgressRing && (
+          <View style={styles.goalSection}>
+            <Text style={styles.sectionTitle}>Weight Goal</Text>
+            <View style={styles.progressStartedContainer}>
+              <Text style={styles.progressStartedEmoji}>🎯</Text>
+              <Text style={styles.progressStartedText}>Progress Started</Text>
+              <Text style={styles.progressStartedSubtext}>Keep logging to track your journey</Text>
+            </View>
+          </View>
+        )}
 
         {/* SECTION 3 — KEY STATS (PROOF) */}
         {/* Two metrics side by side */}
         <View style={styles.statsSection}>
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>📉</Text>
-            <Text style={styles.statValue}>–{weightLost.toFixed(1)} lb</Text>
+            <Text style={styles.statValue}>
+              {safeWeightLost > 0 ? `–${safeWeightLost.toFixed(1)} lb` : '0 lb'}
+            </Text>
             <Text style={styles.statLabel}>Weight Lost</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>🔥</Text>
-            <Text style={styles.statValue}>{dayStreak} Day{dayStreak !== 1 ? 's' : ''}</Text>
-            <Text style={styles.statLabel}>Streak</Text>
+            <Text style={styles.statValue}>{safeDayStreak}</Text>
+            <Text style={styles.statLabel}>Day Streak</Text>
           </View>
         </View>
 
@@ -221,7 +254,7 @@ const styles = StyleSheet.create({
   card: {
     width: 1080,
     height: 1920,
-    padding: 80,
+    padding: 60,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -229,29 +262,29 @@ const styles = StyleSheet.create({
   // SECTION 1 — HERO (CONSISTENCY SCORE)
   heroSection: {
     alignItems: 'center',
-    marginTop: 60,
+    marginTop: 20,
   },
   heroValue: {
-    fontSize: 180,
+    fontSize: 200,
     fontWeight: '900',
-    lineHeight: 180,
-    letterSpacing: -6,
+    lineHeight: 200,
+    letterSpacing: -8,
   },
   heroLabel: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '700',
     color: '#374151',
-    marginTop: 16,
+    marginTop: 20,
     letterSpacing: 0.5,
   },
   statusBadge: {
-    paddingHorizontal: 40,
-    paddingVertical: 16,
-    borderRadius: 32,
-    marginTop: 24,
+    paddingHorizontal: 48,
+    paddingVertical: 20,
+    borderRadius: 40,
+    marginTop: 28,
   },
   statusText: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
@@ -259,13 +292,13 @@ const styles = StyleSheet.create({
   // SECTION 2 — GOAL COMPLETION
   goalSection: {
     alignItems: 'center',
-    marginTop: 80,
+    marginTop: 40,
   },
   sectionTitle: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
     color: '#374151',
-    marginBottom: 40,
+    marginBottom: 48,
     letterSpacing: 0.5,
   },
   progressRingContainer: {
@@ -282,48 +315,68 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   progressPercent: {
-    fontSize: 80,
+    fontSize: 88,
     fontWeight: '900',
     color: '#1F2937',
-    letterSpacing: -2,
+    letterSpacing: -3,
   },
   progressLabel: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '600',
     color: '#6B7280',
     marginTop: 8,
+  },
+  progressStartedContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  progressStartedEmoji: {
+    fontSize: 80,
+    marginBottom: 24,
+  },
+  progressStartedText: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  progressStartedSubtext: {
+    fontSize: 24,
+    fontWeight: '500',
+    color: '#6B7280',
   },
 
   // SECTION 3 — KEY STATS
   statsSection: {
     flexDirection: 'row',
-    gap: 32,
+    gap: 40,
     width: '100%',
     justifyContent: 'center',
-    marginTop: 80,
+    marginTop: 40,
   },
   statCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 32,
-    padding: 48,
+    borderRadius: 36,
+    padding: 56,
     alignItems: 'center',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.08)',
-    elevation: 4,
+    boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.1)',
+    elevation: 5,
   },
   statIcon: {
-    fontSize: 64,
-    marginBottom: 24,
+    fontSize: 72,
+    marginBottom: 28,
   },
   statValue: {
-    fontSize: 44,
+    fontSize: 48,
     fontWeight: '800',
     color: '#1F2937',
-    marginBottom: 12,
-    letterSpacing: -1,
+    marginBottom: 16,
+    letterSpacing: -1.5,
+    textAlign: 'center',
   },
   statLabel: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '600',
     color: '#6B7280',
   },
@@ -331,36 +384,36 @@ const styles = StyleSheet.create({
   // SECTION 4 — PROGRESS PHOTO
   photoSection: {
     width: '100%',
-    marginTop: 80,
+    marginTop: 40,
   },
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 32,
+    gap: 40,
   },
   photoContainer: {
     alignItems: 'center',
   },
   photo: {
-    width: 360,
-    height: 480,
-    borderRadius: 24,
+    width: 380,
+    height: 500,
+    borderRadius: 28,
     backgroundColor: '#E5E7EB',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.12)',
-    elevation: 4,
+    boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.15)',
+    elevation: 5,
   },
   photoLabel: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '600',
     color: '#6B7280',
-    marginTop: 16,
+    marginTop: 20,
   },
   photoArrow: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
   },
   photoArrowText: {
-    fontSize: 48,
+    fontSize: 56,
     fontWeight: '700',
     color: '#5B9AA8',
   },
@@ -368,48 +421,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   singlePhoto: {
-    width: 720,
-    height: 480,
-    borderRadius: 24,
+    width: 760,
+    height: 500,
+    borderRadius: 28,
     backgroundColor: '#E5E7EB',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.12)',
-    elevation: 4,
+    boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.15)',
+    elevation: 5,
   },
 
   // SECTION 5 — MOTIVATIONAL LINE
   motivationalSection: {
-    marginTop: 80,
-    paddingHorizontal: 60,
+    marginTop: 40,
+    paddingHorizontal: 80,
   },
   motivationalText: {
-    fontSize: 40,
+    fontSize: 44,
     fontWeight: '800',
     color: '#1F2937',
     textAlign: 'center',
     letterSpacing: -0.5,
-    lineHeight: 52,
+    lineHeight: 58,
   },
 
   // FOOTER — BRANDING
   footer: {
     alignItems: 'center',
-    marginTop: 80,
-    paddingTop: 48,
+    marginTop: 40,
+    paddingTop: 40,
     borderTopWidth: 2,
     borderTopColor: '#E5E7EB',
     width: '100%',
   },
   footerBrand: {
-    fontSize: 36,
+    fontSize: 40,
     fontWeight: '900',
     color: '#5B9AA8',
-    letterSpacing: 1,
-    marginBottom: 12,
+    letterSpacing: 1.5,
+    marginBottom: 16,
   },
   footerTagline: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '500',
     color: '#9CA3AF',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
 });

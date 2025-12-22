@@ -533,7 +533,7 @@ export default function DashboardScreen() {
         ? Math.round((totalP / goalForShare.protein_g) * 100)
         : 0;
 
-      // Get weight data for weight lost calculation
+      // Get weight data for weight lost calculation and goal progress
       const { data: checkIns } = await supabase
         .from('check_ins')
         .select('weight, date')
@@ -542,11 +542,50 @@ export default function DashboardScreen() {
         .order('date', { ascending: true });
 
       let weightLost = 0;
-      if (checkIns && checkIns.length >= 2) {
-        const firstWeight = checkIns[0].weight;
-        const lastWeight = checkIns[checkIns.length - 1].weight;
-        weightLost = Math.abs(firstWeight - lastWeight);
+      let weightGoalProgress = 0;
+
+      if (checkIns && checkIns.length > 0) {
+        const firstWeightKg = checkIns[0].weight;
+        const lastWeightKg = checkIns[checkIns.length - 1].weight;
+        
+        // Calculate weight lost in lbs
+        const weightLostKg = firstWeightKg - lastWeightKg;
+        const weightLostLbs = weightLostKg * 2.20462;
+        weightLost = Math.max(0, weightLostLbs);
+
+        // Calculate weight goal progress
+        const goalWeightRaw = userData?.goal_weight;
+        if (goalWeightRaw) {
+          const goalWeightKg = parseFloat(goalWeightRaw);
+          if (!isNaN(goalWeightKg) && goalWeightKg > 0) {
+            const totalWeightGoalKg = firstWeightKg - goalWeightKg;
+            const totalWeightGoalLbs = totalWeightGoalKg * 2.20462;
+            
+            if (totalWeightGoalLbs > 0) {
+              weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
+              weightGoalProgress = Math.max(0, Math.min(100, weightGoalProgress));
+            }
+          }
+        } else {
+          // If no goal weight, assume 10% of starting weight as goal
+          const assumedGoalLbs = (firstWeightKg * 2.20462) * 0.1;
+          if (assumedGoalLbs > 0) {
+            weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
+            weightGoalProgress = Math.max(0, Math.min(100, weightGoalProgress));
+          }
+        }
       }
+
+      // Defensive guards
+      if (isNaN(weightLost) || !isFinite(weightLost)) {
+        weightLost = 0;
+      }
+      if (isNaN(weightGoalProgress) || !isFinite(weightGoalProgress)) {
+        weightGoalProgress = 0;
+      }
+
+      console.log('[Dashboard] Weight Lost:', weightLost, 'lb');
+      console.log('[Dashboard] Weight Goal Progress:', weightGoalProgress, '%');
 
       // Calculate discipline score (simplified version)
       const dailyTrackingScore = daysWithData.size >= 5 ? 40 : (daysWithData.size / 7) * 40;
@@ -584,27 +623,30 @@ export default function DashboardScreen() {
       const startDate = new Date(goalForShare.start_date + 'T00:00:00');
       const dateRange = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - Today`;
 
+      // Get motivational line
+      const getMotivationalLine = (score: number, lost: number, streak: number): string => {
+        if (streak >= 14) {
+          return 'Still showing up 💪';
+        }
+        if (score >= 90) {
+          return 'One step closer 🔥';
+        }
+        if (lost >= 5) {
+          return 'Progress over perfection';
+        }
+        return 'Small wins add up';
+      };
+
+      const motivationalLine = getMotivationalLine(disciplineScore, weightLost, streakDays);
+
       const cardData = {
-        userName,
-        disciplineScore,
-        dateRange,
-        caloriesConsumed: totalCals,
-        caloriesGoal: goalForShare.daily_calories,
-        protein: totalP,
-        proteinGoal: goalForShare.protein_g,
-        carbs: totalC,
-        carbsGoal: goalForShare.carbs_g,
-        fats: totalF,
-        fatsGoal: goalForShare.fats_g,
-        fiber: totalFib,
-        fiberGoal: goalForShare.fiber_g,
-        streakDays,
-        proteinAccuracy,
+        consistencyScore: disciplineScore,
+        weightGoalProgress,
         weightLost,
-        leftPhotoUrl,
-        rightPhotoUrl,
-        leftPhotoDate,
-        rightPhotoDate,
+        dayStreak: streakDays,
+        progressPhotoUrl: rightPhotoUrl,
+        beforePhotoUrl: leftPhotoUrl,
+        motivationalLine,
       };
 
       setShareCardData(cardData);
