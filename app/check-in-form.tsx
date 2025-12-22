@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -57,69 +57,7 @@ export default function CheckInFormScreen() {
   // Common
   const [notes, setNotes] = useState('');
 
-  const initializeForm = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      // Load user data first
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('preferred_units')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      const userWithPrefs = { ...authUser, ...userData };
-      setUser(userWithPrefs);
-
-      console.log('[CheckInForm] 👤 User loaded with preferred_units:', userData?.preferred_units);
-
-      // Then load check-in data if editing
-      if (isEditing) {
-        await loadCheckInData(userWithPrefs);
-      } else if (checkInType === 'steps') {
-        await loadDefaultStepsGoal(authUser.id);
-      }
-    } catch (error) {
-      console.error('[CheckInForm] Error in initializeForm:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [isEditing, checkInId, checkInType]);
-
-  useEffect(() => {
-    initializeForm();
-  }, [initializeForm]);
-
-  const loadDefaultStepsGoal = async (userId: string) => {
-    try {
-      // Try to get the most recent steps goal
-      const { data } = await supabase
-        .from('check_ins')
-        .select('steps_goal')
-        .eq('user_id', userId)
-        .not('steps_goal', 'is', null)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (data?.steps_goal) {
-        setStepsGoal(data.steps_goal.toString());
-      } else {
-        // Default to 10,000 steps
-        setStepsGoal('10000');
-      }
-    } catch (error) {
-      console.error('[CheckInForm] Error loading default steps goal:', error);
-    }
-  };
-
-  const loadCheckInData = async (userWithPrefs: any) => {
+  const loadCheckInData = useCallback(async (userWithPrefs: any) => {
     if (!checkInId) return;
     
     try {
@@ -177,6 +115,68 @@ export default function CheckInFormScreen() {
       }
     } catch (error) {
       console.error('[CheckInForm] Error in loadCheckInData:', error);
+    }
+  }, [checkInId, router]);
+
+  const initializeForm = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Load user data first
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('preferred_units')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      const userWithPrefs = { ...authUser, ...userData };
+      setUser(userWithPrefs);
+
+      console.log('[CheckInForm] 👤 User loaded with preferred_units:', userData?.preferred_units);
+
+      // Then load check-in data if editing
+      if (isEditing) {
+        await loadCheckInData(userWithPrefs);
+      } else if (checkInType === 'steps') {
+        await loadDefaultStepsGoal(authUser.id);
+      }
+    } catch (error) {
+      console.error('[CheckInForm] Error in initializeForm:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [isEditing, checkInType, loadCheckInData]);
+
+  useEffect(() => {
+    initializeForm();
+  }, [initializeForm]);
+
+  const loadDefaultStepsGoal = async (userId: string) => {
+    try {
+      // Try to get the most recent steps goal
+      const { data } = await supabase
+        .from('check_ins')
+        .select('steps_goal')
+        .eq('user_id', userId)
+        .not('steps_goal', 'is', null)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data?.steps_goal) {
+        setStepsGoal(data.steps_goal.toString());
+      } else {
+        // Default to 10,000 steps
+        setStepsGoal('10000');
+      }
+    } catch (error) {
+      console.error('[CheckInForm] Error loading default steps goal:', error);
     }
   };
 
@@ -304,7 +304,7 @@ export default function CheckInFormScreen() {
       console.log('[CheckInForm] 🔗 Public URL:', urlData.publicUrl);
       
       return urlData.publicUrl;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[CheckInForm] ❌ Unexpected error in uploadPhoto:', error);
       console.error('[CheckInForm] Error type:', error instanceof Error ? error.constructor.name : typeof error);
       console.error('[CheckInForm] Error message:', error instanceof Error ? error.message : String(error));

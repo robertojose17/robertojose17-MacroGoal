@@ -7,6 +7,7 @@ let ExpoSpeechRecognition: any = null;
 
 try {
   // Try to import the native module using dynamic import
+  // Dynamic import for native module
   const module = require('../modules/expo-speech-recognition/src/index') as any;
   ExpoSpeechRecognition = module;
   console.log('[LocalSTT] Native speech recognition module loaded successfully');

@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Modal, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,9 +12,18 @@ import { MyMeal, MyMealItem, MealType } from '@/types';
 
 export default function MyMealDetailsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<any>() || {};
+  const rawParams = useLocalSearchParams<any>() || {};
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  // Memoize params to prevent unnecessary re-renders
+  const params = useMemo(() => rawParams, [
+    rawParams.mealId,
+    rawParams.newFoodItem,
+    rawParams.mode,
+    rawParams.context,
+    rawParams.returnTo,
+  ]);
 
   const mealId = params.mealId as string;
 
@@ -143,19 +152,6 @@ export default function MyMealDetailsScreen() {
     }, [loadMyMeal, params, router])
   );
 
-  // AUTO-SAVE when items change (after a new food is added)
-  useEffect(() => {
-    if (hasUnsavedChanges && !autoSaving && items.length > 0) {
-      console.log('[MyMealDetails] ========== AUTO-SAVING CHANGES ==========');
-      const autoSave = async () => {
-        setAutoSaving(true);
-        await handleSaveChanges();
-        setAutoSaving(false);
-      };
-      autoSave();
-    }
-  }, [items.length, hasUnsavedChanges, autoSaving, handleSaveChanges]);
-
   const handleSaveChanges = useCallback(async () => {
     if (!mealName.trim()) {
       Alert.alert('Error', 'Please enter a meal name');
@@ -276,7 +272,20 @@ export default function MyMealDetailsScreen() {
       console.error('[MyMealDetails] Error in handleSaveChanges:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [mealName, mealNote, items, mealId, meal]);
+  }, [mealName, mealNote, items, mealId, meal, loadMyMeal]);
+
+  // AUTO-SAVE when items change (after a new food is added)
+  useEffect(() => {
+    if (hasUnsavedChanges && !autoSaving && items.length > 0) {
+      console.log('[MyMealDetails] ========== AUTO-SAVING CHANGES ==========');
+      const autoSave = async () => {
+        setAutoSaving(true);
+        await handleSaveChanges();
+        setAutoSaving(false);
+      };
+      autoSave();
+    }
+  }, [items.length, hasUnsavedChanges, autoSaving, handleSaveChanges]);
 
   const handleDeleteItem = async (itemId: string) => {
     try {

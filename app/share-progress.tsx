@@ -40,106 +40,35 @@ export default function ShareProgressScreen() {
   const [cardData, setCardData] = useState<CardData | null>(null);
   const viewShotRef = useRef<ViewShot>(null);
 
-  useEffect(() => {
-    loadCardData();
-  }, [loadCardData]);
-
-  const loadCardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('[ShareProgress] Loading card data...');
-
-      // Get user
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        console.log('[ShareProgress] No user found');
-        setLoading(false);
-        return;
-      }
-
-      // Get user profile
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      // Get active goal
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      const goal = goalData || {
-        daily_calories: 2000,
-        protein_g: 150,
-        carbs_g: 200,
-        fats_g: 65,
-        fiber_g: 30,
-        start_date: new Date().toISOString().split('T')[0],
-      };
-
-      // Determine journey start date
-      let startDate: string;
-      if (goalData?.start_date) {
-        startDate = goalData.start_date;
-      } else if (userData?.created_at) {
-        startDate = userData.created_at.split('T')[0];
-      } else {
-        startDate = new Date().toISOString().split('T')[0];
-      }
-
-      console.log('[ShareProgress] Journey start date:', startDate);
-
-      // ===== CALCULATE CONSISTENCY SCORE =====
-      const consistencyScore = await calculateConsistencyScore(authUser.id, startDate, goal.protein_g || 150);
-      console.log('[ShareProgress] Consistency Score:', consistencyScore);
-
-      // ===== CALCULATE WEIGHT GOAL PROGRESS (% COMPLETE) =====
-      const { weightGoalProgress, weightLost } = await calculateWeightGoalProgress(
-        authUser.id,
-        userData
-      );
-      console.log('[ShareProgress] Weight Goal Progress:', weightGoalProgress, '%');
-      console.log('[ShareProgress] Weight Lost:', weightLost, 'lb');
-
-      // ===== CALCULATE DAY STREAK =====
-      const dayStreak = await calculateDayStreak(authUser.id, startDate);
-      console.log('[ShareProgress] Day Streak:', dayStreak);
-
-      // ===== GET PROGRESS PHOTOS =====
-      const { progressPhotoUrl, beforePhotoUrl } = await getProgressPhotos(authUser.id);
-      console.log('[ShareProgress] Progress Photo:', progressPhotoUrl);
-      console.log('[ShareProgress] Before Photo:', beforePhotoUrl);
-
-      // ===== GET MOTIVATIONAL LINE =====
-      const motivationalLine = getMotivationalLine(consistencyScore, weightLost, dayStreak);
-      console.log('[ShareProgress] Motivational Line:', motivationalLine);
-
-      setCardData({
-        consistencyScore,
-        weightGoalProgress,
-        weightLost,
-        dayStreak,
-        progressPhotoUrl,
-        beforePhotoUrl,
-        motivationalLine,
-      });
-
-      setLoading(false);
-    } catch (error) {
-      console.error('[ShareProgress] Error loading card data:', error);
-      setLoading(false);
+  const calculateProteinAccuracyScore = useCallback((proteinLogged: number, proteinTarget: number): number => {
+    if (proteinTarget === 0) {
+      return 0;
     }
-  }, [calculateConsistencyScore]);
+
+    const percentage = (proteinLogged / proteinTarget) * 100;
+
+    if (percentage >= 95 && percentage <= 105) {
+      return 25;
+    } else if (percentage >= 80 && percentage < 95) {
+      return 20;
+    } else if (percentage >= 60 && percentage < 80) {
+      return 15;
+    } else if (percentage >= 40 && percentage < 60) {
+      return 10;
+    } else if (percentage < 40) {
+      return Math.round((percentage / 40) * 5);
+    } else {
+      const excess = percentage - 105;
+      const penalty = Math.min(10, excess / 5);
+      return Math.max(15, Math.round(25 - penalty));
+    }
+  }, []);
 
   /**
    * Calculate Consistency Score based on check-in data
    * Uses the same logic as ConsistencyScore component
    */
-  const calculateConsistencyScore = async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
+  const calculateConsistencyScore = useCallback(async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
     try {
       const today = new Date().toISOString().split('T')[0];
       
@@ -196,7 +125,8 @@ export default function ShareProgressScreen() {
       }
 
       // Edge case: If range > 2 days with no data at all, score = 0
-      if (allDatesInRange.length > 2 && Object.keys(dailyData).length === 0) {
+      const hasNoData = Object.keys(dailyData).length === 0;
+      if (allDatesInRange.length > 2 && hasNoData) {
         return 0;
       }
 
@@ -246,31 +176,7 @@ export default function ShareProgressScreen() {
       console.error('[ShareProgress] Error calculating consistency score:', error);
       return 0;
     }
-  };
-
-  const calculateProteinAccuracyScore = (proteinLogged: number, proteinTarget: number): number => {
-    if (proteinTarget === 0) {
-      return 0;
-    }
-
-    const percentage = (proteinLogged / proteinTarget) * 100;
-
-    if (percentage >= 95 && percentage <= 105) {
-      return 25;
-    } else if (percentage >= 80 && percentage < 95) {
-      return 20;
-    } else if (percentage >= 60 && percentage < 80) {
-      return 15;
-    } else if (percentage >= 40 && percentage < 60) {
-      return 10;
-    } else if (percentage < 40) {
-      return Math.round((percentage / 40) * 5);
-    } else {
-      const excess = percentage - 105;
-      const penalty = Math.min(10, excess / 5);
-      return Math.max(15, Math.round(25 - penalty));
-    }
-  };
+  }, [calculateProteinAccuracyScore]);
 
   /**
    * Calculate Weight Goal Progress (% Complete)
@@ -416,7 +322,8 @@ export default function ShareProgressScreen() {
       let streak = 0;
       const currentDate = new Date(today + 'T00:00:00');
       
-      while (true) {
+      // eslint-disable-next-line no-constant-condition
+      while (streak < 1000) { // Safety limit to prevent infinite loop
         const dateStr = currentDate.toISOString().split('T')[0];
         
         // Safety check: don't go before start date
@@ -492,6 +399,101 @@ export default function ShareProgressScreen() {
     }
     return 'Small wins add up';
   };
+
+  const loadCardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('[ShareProgress] Loading card data...');
+
+      // Get user
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        console.log('[ShareProgress] No user found');
+        setLoading(false);
+        return;
+      }
+
+      // Get user profile
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      // Get active goal
+      const { data: goalData } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const goal = goalData || {
+        daily_calories: 2000,
+        protein_g: 150,
+        carbs_g: 200,
+        fats_g: 65,
+        fiber_g: 30,
+        start_date: new Date().toISOString().split('T')[0],
+      };
+
+      // Determine journey start date
+      let startDate: string;
+      if (goalData?.start_date) {
+        startDate = goalData.start_date;
+      } else if (userData?.created_at) {
+        startDate = userData.created_at.split('T')[0];
+      } else {
+        startDate = new Date().toISOString().split('T')[0];
+      }
+
+      console.log('[ShareProgress] Journey start date:', startDate);
+
+      // ===== CALCULATE CONSISTENCY SCORE =====
+      const consistencyScore = await calculateConsistencyScore(authUser.id, startDate, goal.protein_g || 150);
+      console.log('[ShareProgress] Consistency Score:', consistencyScore);
+
+      // ===== CALCULATE WEIGHT GOAL PROGRESS (% COMPLETE) =====
+      const { weightGoalProgress, weightLost } = await calculateWeightGoalProgress(
+        authUser.id,
+        userData
+      );
+      console.log('[ShareProgress] Weight Goal Progress:', weightGoalProgress, '%');
+      console.log('[ShareProgress] Weight Lost:', weightLost, 'lb');
+
+      // ===== CALCULATE DAY STREAK =====
+      const dayStreak = await calculateDayStreak(authUser.id, startDate);
+      console.log('[ShareProgress] Day Streak:', dayStreak);
+
+      // ===== GET PROGRESS PHOTOS =====
+      const { progressPhotoUrl, beforePhotoUrl } = await getProgressPhotos(authUser.id);
+      console.log('[ShareProgress] Progress Photo:', progressPhotoUrl);
+      console.log('[ShareProgress] Before Photo:', beforePhotoUrl);
+
+      // ===== GET MOTIVATIONAL LINE =====
+      const motivationalLine = getMotivationalLine(consistencyScore, weightLost, dayStreak);
+      console.log('[ShareProgress] Motivational Line:', motivationalLine);
+
+      setCardData({
+        consistencyScore,
+        weightGoalProgress,
+        weightLost,
+        dayStreak,
+        progressPhotoUrl,
+        beforePhotoUrl,
+        motivationalLine,
+      });
+
+      setLoading(false);
+    } catch (error) {
+      console.error('[ShareProgress] Error loading card data:', error);
+      setLoading(false);
+    }
+  }, [calculateConsistencyScore]);
+
+  useEffect(() => {
+    loadCardData();
+  }, [loadCardData]);
 
   const handleShare = async () => {
     if (!viewShotRef.current) {

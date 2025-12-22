@@ -13,6 +13,7 @@ interface AudioWaveformProps {
   audioLevel?: number; // 0 to 1, representing audio input level
   color?: string;
   barCount?: number;
+  height?: number;
 }
 
 export function AudioWaveform({
@@ -20,11 +21,12 @@ export function AudioWaveform({
   audioLevel = 0.5,
   color = '#007AFF',
   barCount = 5,
+  height = 40,
 }: AudioWaveformProps) {
   const bars = Array.from({ length: barCount }, (_, i) => i);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { height }]}>
       {bars.map((index) => (
         <AnimatedBar
           key={index}
@@ -48,7 +50,7 @@ interface AnimatedBarProps {
 }
 
 function AnimatedBar({ isRecording, audioLevel, color, index, totalBars }: AnimatedBarProps) {
-  const height = useSharedValue(8);
+  const heightValue = useSharedValue(8);
 
   useEffect(() => {
     if (isRecording) {
@@ -66,19 +68,19 @@ function AnimatedBar({ isRecording, audioLevel, color, index, totalBars }: Anima
       const targetHeight = minHeight + audioLevel * (maxHeight - minHeight) * barMultiplier;
 
       // Animate to target height with spring for natural feel
-      height.value = withSpring(targetHeight, {
+      heightValue.value = withSpring(targetHeight, {
         damping: 8,
         stiffness: 150,
         mass: 0.3,
       });
     } else {
       // Reset to minimum height when not recording
-      height.value = withTiming(8, { duration: 200 });
+      heightValue.value = withTiming(8, { duration: 200 });
     }
-  }, [isRecording, audioLevel, index, totalBars, height.value]);
+  }, [isRecording, audioLevel, index, totalBars, heightValue]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    height: height.value,
+    height: heightValue.value,
   }));
 
   return (
@@ -100,7 +102,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    height: 40,
   },
   bar: {
     width: 3,

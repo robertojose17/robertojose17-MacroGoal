@@ -268,6 +268,52 @@ export default function ChatbotScreen() {
 
 
 
+  // Take photo
+  const handleTakePhoto = useCallback(async () => {
+    try {
+      const hasPermission = await requestCameraPermission();
+      if (!hasPermission) return;
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const base64 = await convertImageToBase64(result.assets[0].uri);
+        setSelectedImage(base64);
+      }
+    } catch (error) {
+      console.error('[Chatbot] Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  }, [requestCameraPermission, convertImageToBase64]);
+
+  // Choose from gallery
+  const handleChooseFromGallery = useCallback(async () => {
+    try {
+      const hasPermission = await requestMediaLibraryPermission();
+      if (!hasPermission) return;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const base64 = await convertImageToBase64(result.assets[0].uri);
+        setSelectedImage(base64);
+      }
+    } catch (error) {
+      console.error('[Chatbot] Error choosing photo:', error);
+      Alert.alert('Error', 'Failed to choose photo');
+    }
+  }, [requestMediaLibraryPermission, convertImageToBase64]);
+
   // Handle photo selection
   const handleAddPhoto = useCallback(() => {
     Alert.alert('Add Photo', 'Choose how to add a photo of your meal', [
@@ -291,6 +337,81 @@ export default function ChatbotScreen() {
   // Remove selected photo
   const handleRemovePhoto = useCallback(() => {
     setSelectedImage(null);
+  }, []);
+
+  /**
+   * Parse meal data from the Edge Function response
+   */
+  const parseMealData = useCallback((mealData: any, userMessage: string): AIEstimate | null => {
+    try {
+      if (!mealData || !mealData.ingredients || !Array.isArray(mealData.ingredients)) {
+        console.log('[Chatbot] No valid meal data in response');
+        return null;
+      }
+
+      console.log('[Chatbot] Parsing structured ingredient data');
+
+      const ingredients: Ingredient[] = mealData.ingredients.map((ing: any, index: number) => {
+        const quantity = parseFloat(ing.quantity) || 1;
+        const calories = parseFloat(ing.calories) || 0;
+        const protein = parseFloat(ing.protein) || 0;
+        const carbs = parseFloat(ing.carbs) || 0;
+        const fats = parseFloat(ing.fats) || 0;
+        const fiber = parseFloat(ing.fiber) || 0;
+
+        return {
+          id: `ing-${Date.now()}-${index}`,
+          name: ing.name || 'Unknown ingredient',
+          quantity,
+          unit: ing.unit || 'serving',
+          calories,
+          protein,
+          carbs,
+          fats,
+          fiber,
+          included: true,
+          // Store original values for proper scaling
+          originalQuantity: quantity,
+          originalCalories: calories,
+          originalProtein: protein,
+          originalCarbs: carbs,
+          originalFats: fats,
+          originalFiber: fiber,
+        };
+      });
+
+      // Calculate totals
+      const totals = ingredients.reduce(
+        (acc, ing) => ({
+          calories: acc.calories + ing.calories,
+          protein: acc.protein + ing.protein,
+          carbs: acc.carbs + ing.carbs,
+          fats: acc.fats + ing.fats,
+          fiber: acc.fiber + ing.fiber,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
+      );
+
+      const mealName =
+        userMessage && userMessage.length > 50
+          ? userMessage.substring(0, 47) + '...'
+          : userMessage || 'AI Estimated Meal';
+
+      console.log('[Chatbot] Successfully parsed ingredients:', ingredients.length);
+
+      return {
+        name: mealName,
+        ingredients,
+        totalCalories: Math.round(totals.calories),
+        totalProtein: Math.round(totals.protein * 10) / 10,
+        totalCarbs: Math.round(totals.carbs * 10) / 10,
+        totalFats: Math.round(totals.fats * 10) / 10,
+        totalFiber: Math.round(totals.fiber * 10) / 10,
+      };
+    } catch (error) {
+      console.error('[Chatbot] Error parsing meal data:', error);
+      return null;
+    }
   }, []);
 
   const handleStartRecording = useCallback(async () => {
@@ -328,7 +449,7 @@ export default function ChatbotScreen() {
         handleSendTranscribedText(transcribedText);
       }
     }, 100);
-  }, [handleSendTranscribedText]);
+  }, []);
 
   const handleTranscriptionError = useCallback((error: string) => {
     console.error('[Chatbot] Transcription error:', error);
@@ -528,81 +649,6 @@ If the user provides both text and photo, use both sources to make the most accu
       setMessages((prev) => [...prev, errorMessage]);
     }
   }, [loading, messages, sendMessage, parseMealData]);
-
-  /**
-   * Parse meal data from the Edge Function response
-   */
-  const parseMealData = (mealData: any, userMessage: string): AIEstimate | null => {
-    try {
-      if (!mealData || !mealData.ingredients || !Array.isArray(mealData.ingredients)) {
-        console.log('[Chatbot] No valid meal data in response');
-        return null;
-      }
-
-      console.log('[Chatbot] Parsing structured ingredient data');
-
-      const ingredients: Ingredient[] = mealData.ingredients.map((ing: any, index: number) => {
-        const quantity = parseFloat(ing.quantity) || 1;
-        const calories = parseFloat(ing.calories) || 0;
-        const protein = parseFloat(ing.protein) || 0;
-        const carbs = parseFloat(ing.carbs) || 0;
-        const fats = parseFloat(ing.fats) || 0;
-        const fiber = parseFloat(ing.fiber) || 0;
-
-        return {
-          id: `ing-${Date.now()}-${index}`,
-          name: ing.name || 'Unknown ingredient',
-          quantity,
-          unit: ing.unit || 'serving',
-          calories,
-          protein,
-          carbs,
-          fats,
-          fiber,
-          included: true,
-          // Store original values for proper scaling
-          originalQuantity: quantity,
-          originalCalories: calories,
-          originalProtein: protein,
-          originalCarbs: carbs,
-          originalFats: fats,
-          originalFiber: fiber,
-        };
-      });
-
-      // Calculate totals
-      const totals = ingredients.reduce(
-        (acc, ing) => ({
-          calories: acc.calories + ing.calories,
-          protein: acc.protein + ing.protein,
-          carbs: acc.carbs + ing.carbs,
-          fats: acc.fats + ing.fats,
-          fiber: acc.fiber + ing.fiber,
-        }),
-        { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
-      );
-
-      const mealName =
-        userMessage && userMessage.length > 50
-          ? userMessage.substring(0, 47) + '...'
-          : userMessage || 'AI Estimated Meal';
-
-      console.log('[Chatbot] Successfully parsed ingredients:', ingredients.length);
-
-      return {
-        name: mealName,
-        ingredients,
-        totalCalories: Math.round(totals.calories),
-        totalProtein: Math.round(totals.protein * 10) / 10,
-        totalCarbs: Math.round(totals.carbs * 10) / 10,
-        totalFats: Math.round(totals.fats * 10) / 10,
-        totalFiber: Math.round(totals.fiber * 10) / 10,
-      };
-    } catch (error) {
-      console.error('[Chatbot] Error parsing meal data:', error);
-      return null;
-    }
-  };
 
   const handleSend = useCallback(async () => {
     const trimmedInput = inputText.trim();

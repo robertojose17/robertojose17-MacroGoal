@@ -46,8 +46,10 @@ let platformImplementation: {
 };
 
 if (Platform.OS === 'web') {
+  // Dynamic import for web platform
   platformImplementation = require('./localSpeechRecognition.web') as typeof platformImplementation;
 } else {
+  // Dynamic import for native platforms
   platformImplementation = require('./localSpeechRecognition.native') as typeof platformImplementation;
 }
 
