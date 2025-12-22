@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -36,10 +36,9 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
 
   useEffect(() => {
     loadCheckInsWithPhotos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, loadCheckInsWithPhotos]);
 
-  const loadCheckInsWithPhotos = async () => {
+  const loadCheckInsWithPhotos = useCallback(async () => {
     try {
       setLoading(true);
       console.log('[PhotoProgressCard] Loading check-ins with photos for user:', userId);
@@ -81,7 +80,7 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   const formatDate = (dateString: string) => {
     const [year, month, day] = dateString.split('-').map(Number);

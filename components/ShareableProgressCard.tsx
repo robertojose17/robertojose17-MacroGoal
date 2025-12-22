@@ -77,8 +77,8 @@ export default function ShareableProgressCard({
 
   // Render progress ring for weight goal
   const renderProgressRing = () => {
-    const size = 280;
-    const strokeWidth = 20;
+    const size = 220;
+    const strokeWidth = 16;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const progress = safeWeightGoalProgress / 100;
@@ -129,8 +129,8 @@ export default function ShareableProgressCard({
         end={{ x: 1, y: 1 }}
         style={styles.card}
       >
-        {/* SECTION 1 — TOP / HERO (PRIMARY FOCUS) */}
-        {/* Consistency Score (ALWAYS ON TOP) */}
+        {/* SECTION 1 — HERO (DOMINANT) */}
+        {/* Consistency Score (PRIMARY SIGNAL) */}
         <View style={styles.heroSection}>
           <Text style={[styles.heroValue, { color: consistencyColor }]}>
             {safeConsistencyScore}
@@ -143,11 +143,10 @@ export default function ShareableProgressCard({
           </View>
         </View>
 
-        {/* SECTION 2 — GOAL COMPLETION (% COMPLETE) */}
-        {/* Weight Goal Progress (CRITICAL) - Only show if valid data exists */}
+        {/* SECTION 2 — GOAL PROGRESS (SECONDARY HERO) */}
+        {/* Weight Goal Progress Ring */}
         {shouldShowProgressRing && (
           <View style={styles.goalSection}>
-            <Text style={styles.sectionTitle}>Weight Goal Progress</Text>
             <View style={styles.progressRingContainer}>
               {renderProgressRing()}
               <View style={styles.progressRingCenter}>
@@ -157,40 +156,43 @@ export default function ShareableProgressCard({
                 <Text style={styles.progressLabel}>Complete</Text>
               </View>
             </View>
+            <Text style={styles.goalSectionSubtitle}>Weight Goal Progress</Text>
           </View>
         )}
 
         {/* If no progress ring, show "Progress Started" message */}
         {!shouldShowProgressRing && (
           <View style={styles.goalSection}>
-            <Text style={styles.sectionTitle}>Weight Goal</Text>
             <View style={styles.progressStartedContainer}>
               <Text style={styles.progressStartedEmoji}>🎯</Text>
               <Text style={styles.progressStartedText}>Progress Started</Text>
-              <Text style={styles.progressStartedSubtext}>Keep logging to track your journey</Text>
             </View>
           </View>
         )}
 
-        {/* SECTION 3 — KEY STATS (PROOF) */}
-        {/* Two metrics side by side */}
+        {/* SECTION 3 — PROOF STATS (CLEAN + BALANCED) */}
+        {/* Weight Lost + Day Streak (Side by Side) */}
         <View style={styles.statsSection}>
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>📉</Text>
-            <Text style={styles.statValue}>
-              {safeWeightLost > 0 ? `–${safeWeightLost.toFixed(1)} lb` : '0 lb'}
-            </Text>
-            <Text style={styles.statLabel}>Weight Lost</Text>
+            <View style={styles.statValueRow}>
+              <Text style={styles.statValue}>
+                {safeWeightLost > 0 ? `–${safeWeightLost.toFixed(1)}` : '0'}
+              </Text>
+              <Text style={styles.statUnit}>lb</Text>
+            </View>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>🔥</Text>
-            <Text style={styles.statValue}>{safeDayStreak}</Text>
-            <Text style={styles.statLabel}>Day Streak</Text>
+            <View style={styles.statValueRow}>
+              <Text style={styles.statValue}>{safeDayStreak}</Text>
+              <Text style={styles.statUnit}>days</Text>
+            </View>
           </View>
         </View>
 
-        {/* SECTION 4 — PROGRESS PHOTO */}
-        {/* Existing progress photo system */}
+        {/* SECTION 4 — TRANSFORMATION (EMOTIONAL ANCHOR) */}
+        {/* Before → Now photos */}
         {(progressPhotoUrl || beforePhotoUrl) && (
           <View style={styles.photoSection}>
             {beforePhotoUrl && progressPhotoUrl ? (
@@ -229,16 +231,17 @@ export default function ShareableProgressCard({
           </View>
         )}
 
-        {/* SECTION 5 — MOTIVATIONAL LINE */}
-        {/* Short human message */}
+        {/* SECTION 5 — SHARE HOOK (HUMAN) */}
+        {/* Motivational line */}
         <View style={styles.motivationalSection}>
           <Text style={styles.motivationalText}>{motivationalLine}</Text>
         </View>
 
-        {/* FOOTER — BRANDING (SUBTLE) */}
+        {/* SECTION 6 — BRANDING (PROMOTION WITHOUT BEING SALESY) */}
+        {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerBrand}>Macro Goal</Text>
-          <Text style={styles.footerTagline}>Tracked with Macro Goal</Text>
+          <Text style={styles.footerTagline}>Built with Macro Goal</Text>
         </View>
       </LinearGradient>
     </ViewShot>
@@ -256,32 +259,34 @@ const styles = StyleSheet.create({
     height: 1920,
     padding: 60,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    paddingTop: 100,
   },
   
-  // SECTION 1 — HERO (CONSISTENCY SCORE)
+  // SECTION 1 — HERO (DOMINANT)
+  // Consistency Score (PRIMARY SIGNAL)
   heroSection: {
     alignItems: 'center',
-    marginTop: 20,
+    marginBottom: 20,
   },
   heroValue: {
-    fontSize: 200,
+    fontSize: 240,
     fontWeight: '900',
-    lineHeight: 200,
-    letterSpacing: -8,
+    lineHeight: 240,
+    letterSpacing: -12,
   },
   heroLabel: {
-    fontSize: 36,
+    fontSize: 40,
     fontWeight: '700',
     color: '#374151',
-    marginTop: 20,
+    marginTop: 12,
     letterSpacing: 0.5,
   },
   statusBadge: {
     paddingHorizontal: 48,
     paddingVertical: 20,
     borderRadius: 40,
-    marginTop: 28,
+    marginTop: 20,
   },
   statusText: {
     fontSize: 32,
@@ -289,22 +294,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // SECTION 2 — GOAL COMPLETION
+  // SECTION 2 — GOAL PROGRESS (SECONDARY HERO)
+  // Weight Goal Progress Ring
   goalSection: {
     alignItems: 'center',
-    marginTop: 40,
-  },
-  sectionTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 48,
-    letterSpacing: 0.5,
+    marginBottom: 24,
   },
   progressRingContainer: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
   progressRing: {
     // SVG styles handled inline
@@ -315,154 +315,164 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   progressPercent: {
-    fontSize: 88,
+    fontSize: 72,
     fontWeight: '900',
     color: '#1F2937',
     letterSpacing: -3,
   },
   progressLabel: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '600',
     color: '#6B7280',
-    marginTop: 8,
+    marginTop: 4,
+  },
+  goalSectionSubtitle: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.3,
   },
   progressStartedContainer: {
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: 32,
   },
   progressStartedEmoji: {
-    fontSize: 80,
-    marginBottom: 24,
+    fontSize: 64,
+    marginBottom: 16,
   },
   progressStartedText: {
-    fontSize: 40,
+    fontSize: 32,
     fontWeight: '700',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  progressStartedSubtext: {
-    fontSize: 24,
-    fontWeight: '500',
     color: '#6B7280',
   },
 
-  // SECTION 3 — KEY STATS
+  // SECTION 3 — PROOF STATS (CLEAN + BALANCED)
+  // Weight Lost + Day Streak (Side by Side)
   statsSection: {
     flexDirection: 'row',
-    gap: 40,
+    gap: 32,
     width: '100%',
     justifyContent: 'center',
-    marginTop: 40,
+    marginBottom: 32,
+    paddingHorizontal: 40,
   },
   statCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 36,
-    padding: 56,
+    borderRadius: 28,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.1)',
-    elevation: 5,
+    boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.08)',
+    elevation: 4,
   },
   statIcon: {
-    fontSize: 72,
-    marginBottom: 28,
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
   },
   statValue: {
-    fontSize: 48,
-    fontWeight: '800',
+    fontSize: 72,
+    fontWeight: '900',
     color: '#1F2937',
-    marginBottom: 16,
-    letterSpacing: -1.5,
-    textAlign: 'center',
+    letterSpacing: -3,
+    lineHeight: 76,
   },
-  statLabel: {
+  statUnit: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#9CA3AF',
   },
 
-  // SECTION 4 — PROGRESS PHOTO
+  // SECTION 4 — TRANSFORMATION (EMOTIONAL ANCHOR)
+  // Before → Now photos
   photoSection: {
     width: '100%',
-    marginTop: 40,
+    marginBottom: 36,
   },
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 40,
+    gap: 28,
   },
   photoContainer: {
     alignItems: 'center',
   },
   photo: {
-    width: 380,
-    height: 500,
+    width: 420,
+    height: 560,
     borderRadius: 28,
     backgroundColor: '#E5E7EB',
-    boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.15)',
-    elevation: 5,
+    boxShadow: '0px 8px 28px rgba(0, 0, 0, 0.14)',
+    elevation: 6,
   },
   photoLabel: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginTop: 20,
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginTop: 14,
   },
   photoArrow: {
-    paddingHorizontal: 28,
+    paddingHorizontal: 16,
   },
   photoArrowText: {
-    fontSize: 56,
-    fontWeight: '700',
-    color: '#5B9AA8',
+    fontSize: 40,
+    fontWeight: '400',
+    color: '#D1D5DB',
   },
   singlePhotoContainer: {
     alignItems: 'center',
   },
   singlePhoto: {
-    width: 760,
-    height: 500,
+    width: 840,
+    height: 560,
     borderRadius: 28,
     backgroundColor: '#E5E7EB',
-    boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.15)',
-    elevation: 5,
+    boxShadow: '0px 8px 28px rgba(0, 0, 0, 0.14)',
+    elevation: 6,
   },
 
-  // SECTION 5 — MOTIVATIONAL LINE
+  // SECTION 5 — SHARE HOOK (HUMAN)
+  // Motivational line
   motivationalSection: {
-    marginTop: 40,
     paddingHorizontal: 80,
+    marginBottom: 40,
+    marginTop: 8,
   },
   motivationalText: {
     fontSize: 44,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
     letterSpacing: -0.5,
-    lineHeight: 58,
+    lineHeight: 56,
   },
 
-  // FOOTER — BRANDING
+  // SECTION 6 — BRANDING (PROMOTION WITHOUT BEING SALESY)
+  // Footer
   footer: {
     alignItems: 'center',
-    marginTop: 40,
-    paddingTop: 40,
-    borderTopWidth: 2,
-    borderTopColor: '#E5E7EB',
+    marginTop: 'auto',
+    paddingTop: 24,
+    paddingBottom: 60,
     width: '100%',
   },
   footerBrand: {
-    fontSize: 40,
+    fontSize: 38,
     fontWeight: '900',
     color: '#5B9AA8',
     letterSpacing: 1.5,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   footerTagline: {
-    fontSize: 24,
+    fontSize: 19,
     fontWeight: '500',
     color: '#9CA3AF',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });

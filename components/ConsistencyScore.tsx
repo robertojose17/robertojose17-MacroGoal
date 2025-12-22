@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -50,17 +50,15 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     if (userId) {
       loadJourneyStartDate();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, loadJourneyStartDate]);
 
   useEffect(() => {
     if (userId && journeyStartDate && rangeStartDate && rangeEndDate) {
       calculateConsistencyScore();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate]);
+  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate, calculateConsistencyScore]);
 
-  const loadJourneyStartDate = async () => {
+  const loadJourneyStartDate = useCallback(async () => {
     try {
       console.log('[ConsistencyScore] Loading journey start date for user:', userId);
       
@@ -119,9 +117,9 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       setRangeStartDate(today);
       setRangeEndDate(today);
     }
-  };
+  }, []);
 
-  const calculateConsistencyScore = async () => {
+  const calculateConsistencyScore = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -317,7 +315,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       console.error('[ConsistencyScore] Error calculating score:', error);
       setLoading(false);
     }
-  };
+  }, [userId, rangeStartDate, rangeEndDate]);
 
   const calculateProteinAccuracyScore = (proteinLogged: number, proteinTarget: number): number => {
     if (proteinTarget === 0) {

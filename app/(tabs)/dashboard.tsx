@@ -157,7 +157,7 @@ export default function DashboardScreen() {
     }
 
     return currentStreak;
-  }, []);
+  }, []); // No dependencies needed - pure function
 
   const loadNutritionTrends = useCallback(async (userId: string) => {
     try {

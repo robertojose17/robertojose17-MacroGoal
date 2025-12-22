@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -42,9 +42,9 @@ export default function ShareProgressScreen() {
 
   useEffect(() => {
     loadCardData();
-  }, []);
+  }, [loadCardData]);
 
-  const loadCardData = async () => {
+  const loadCardData = useCallback(async () => {
     try {
       setLoading(true);
       console.log('[ShareProgress] Loading card data...');
@@ -133,7 +133,7 @@ export default function ShareProgressScreen() {
       console.error('[ShareProgress] Error loading card data:', error);
       setLoading(false);
     }
-  };
+  }, []);
 
   /**
    * Calculate Consistency Score based on check-in data
@@ -507,17 +507,17 @@ export default function ShareProgressScreen() {
 
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
+      if (isAvailable) {
+        // Share the image
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Share your progress',
+        });
+      } else {
         Alert.alert('Sharing not available', 'Sharing is not available on this device');
         setSharing(false);
         return;
       }
-
-      // Share the image
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        dialogTitle: 'Share your progress',
-      });
 
       console.log('[ShareProgress] Card shared successfully');
       setSharing(false);

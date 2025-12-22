@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -53,10 +53,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   useEffect(() => {
     loadProfileData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, loadProfileData]);
 
-  const loadProfileData = async () => {
+  const loadProfileData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -319,7 +318,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setError('Failed to load progress data');
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   const loadCalorieLogs = async (userId: string, startDate: Date) => {
     try {
