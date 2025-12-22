@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/app/integrations/supabase/client';
 import { TouchableOpacity } from 'react-native-gesture-handler';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 
 export default function ShareProgressScreen() {
   const router = useRouter();
@@ -23,8 +26,10 @@ export default function ShareProgressScreen() {
   const isDark = colorScheme === 'dark';
 
   const [loading, setLoading] = useState(true);
+  const [sharing, setSharing] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [cardData, setCardData] = useState<any>(null);
+  const viewShotRef = useRef<ViewShot>(null);
 
   useEffect(() => {
     loadCardData();
@@ -50,7 +55,7 @@ export default function ShareProgressScreen() {
         .eq('id', authUser.id)
         .maybeSingle();
 
-      const userName = userData?.name || 'Alex';
+      const userName = userData?.name || 'You';
       setUser({ ...authUser, ...userData, displayName: userName });
 
       // Get active goal
@@ -224,6 +229,43 @@ export default function ShareProgressScreen() {
     }
   };
 
+  const handleShare = async () => {
+    if (!viewShotRef.current) {
+      console.log('[ShareProgress] ViewShot ref not available');
+      return;
+    }
+
+    try {
+      setSharing(true);
+      console.log('[ShareProgress] Capturing card...');
+
+      // Capture the card as an image
+      const uri = await viewShotRef.current.capture();
+      console.log('[ShareProgress] Card captured:', uri);
+
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Sharing not available', 'Sharing is not available on this device');
+        setSharing(false);
+        return;
+      }
+
+      // Share the image
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: 'Share your progress',
+      });
+
+      console.log('[ShareProgress] Card shared successfully');
+      setSharing(false);
+    } catch (error) {
+      console.error('[ShareProgress] Error sharing card:', error);
+      Alert.alert('Error', 'Failed to share progress card');
+      setSharing(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView
@@ -318,36 +360,76 @@ export default function ShareProgressScreen() {
       >
         <View style={styles.infoCard}>
           <IconSymbol
-            ios_icon_name="info.circle.fill"
-            android_material_icon_name="info"
+            ios_icon_name="sparkles"
+            android_material_icon_name="auto_awesome"
             size={24}
             color={colors.primary}
           />
           <Text style={[styles.infoText, { color: isDark ? colors.textDark : colors.text }]}>
-            Your shareable progress card is ready! This card is optimized for Instagram (1080x1080) and other social platforms.
+            Your shareable progress card is ready! Designed to look amazing on Instagram, Stories, and all social platforms.
           </Text>
         </View>
 
         <View style={styles.cardPreview}>
-          <ShareableProgressCard {...cardData} />
+          <ShareableProgressCard
+            {...cardData}
+            onCapture={(ref) => {
+              viewShotRef.current = ref.current;
+            }}
+          />
         </View>
+
+        <TouchableOpacity
+          style={[
+            styles.shareButton,
+            sharing && styles.shareButtonDisabled,
+          ]}
+          onPress={handleShare}
+          disabled={sharing}
+        >
+          {sharing ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <IconSymbol
+                ios_icon_name="square.and.arrow.up"
+                android_material_icon_name="share"
+                size={24}
+                color="#FFFFFF"
+              />
+              <Text style={styles.shareButtonText}>Share Your Progress</Text>
+            </>
+          )}
+        </TouchableOpacity>
 
         <View style={styles.tipsCard}>
           <Text style={[styles.tipsTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Sharing Tips:
+            Perfect for:
           </Text>
-          <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            - Perfect for Instagram posts and stories
-          </Text>
-          <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            - Share to TikTok, X (Twitter), or Snapchat
-          </Text>
-          <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            - Send to friends in group chats
-          </Text>
-          <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            - Motivate others with your progress!
-          </Text>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipEmoji}>📸</Text>
+            <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Instagram posts and stories
+            </Text>
+          </View>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipEmoji}>💬</Text>
+            <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              WhatsApp and iMessage group chats
+            </Text>
+          </View>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipEmoji}>🎯</Text>
+            <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Motivating friends and accountability partners
+            </Text>
+          </View>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipEmoji}>🔥</Text>
+            <Text style={[styles.tipText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Celebrating your wins
+            </Text>
+          </View>
         </View>
 
         <View style={styles.bottomSpacer} />
@@ -417,8 +499,29 @@ const styles = StyleSheet.create({
   cardPreview: {
     alignItems: 'center',
     marginBottom: spacing.lg,
-    transform: [{ scale: 0.35 }],
-    marginVertical: -300,
+    transform: [{ scale: 0.28 }],
+    marginVertical: -420,
+  },
+  shareButton: {
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
+    boxShadow: '0px 4px 12px rgba(91, 154, 168, 0.3)',
+    elevation: 4,
+  },
+  shareButtonDisabled: {
+    opacity: 0.6,
+  },
+  shareButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
   },
   tipsCard: {
     backgroundColor: colors.card,
@@ -426,14 +529,23 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   tipsTitle: {
     ...typography.h3,
     fontSize: 18,
     marginBottom: spacing.xs,
   },
+  tipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  tipEmoji: {
+    fontSize: 20,
+  },
   tipText: {
+    flex: 1,
     ...typography.body,
     fontSize: 14,
   },

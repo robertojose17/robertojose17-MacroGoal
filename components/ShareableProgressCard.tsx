@@ -4,10 +4,10 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 interface ShareableProgressCardProps {
   userName: string;
@@ -65,12 +65,105 @@ export default function ShareableProgressCard({
     }
   }, [onCapture]);
 
-  const getScoreColor = (score: number): string => {
-    if (score >= 90) return '#10B981';
-    if (score >= 80) return '#5CB97B';
-    if (score >= 70) return '#5B9AA8';
-    if (score >= 60) return '#F59E0B';
-    return '#EF4444';
+  // Determine hero metric (auto-select best signal)
+  const getHeroMetric = () => {
+    // Priority: Streak > Consistency > Calories
+    if (streakDays >= 7) {
+      return {
+        value: streakDays,
+        label: 'Day Streak',
+        status: 'Consistent',
+        color: '#10B981',
+      };
+    }
+    if (disciplineScore >= 80) {
+      return {
+        value: disciplineScore,
+        label: 'Consistency Score',
+        status: 'On Track',
+        color: '#10B981',
+      };
+    }
+    const caloriePercent = Math.round((caloriesConsumed / caloriesGoal) * 100);
+    return {
+      value: caloriePercent,
+      label: '% Goal Reached',
+      status: caloriePercent >= 95 && caloriePercent <= 105 ? 'Dialed In' : 'On Track',
+      color: caloriePercent >= 95 && caloriePercent <= 105 ? '#10B981' : '#F59E0B',
+    };
+  };
+
+  const heroMetric = getHeroMetric();
+
+  // Get motivational hook
+  const getShareHook = () => {
+    if (streakDays >= 14) return 'Still showing up 💪';
+    if (disciplineScore >= 90) return 'One step closer 🔥';
+    if (weightLost >= 5) return 'Progress over perfection';
+    return 'Small wins add up';
+  };
+
+  const shareHook = getShareHook();
+
+  // Calculate progress percentage for visual
+  const progressPercent = Math.min(100, Math.round((caloriesConsumed / caloriesGoal) * 100));
+
+  // Render streak dots (last 7 days)
+  const renderStreakDots = () => {
+    const dots = [];
+    for (let i = 0; i < 7; i++) {
+      const isActive = i < streakDays;
+      dots.push(
+        <View
+          key={i}
+          style={[
+            styles.streakDot,
+            {
+              backgroundColor: isActive ? heroMetric.color : '#E5E7EB',
+            },
+          ]}
+        />
+      );
+    }
+    return dots;
+  };
+
+  // Render progress ring
+  const renderProgressRing = () => {
+    const size = 180;
+    const strokeWidth = 16;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const progress = progressPercent / 100;
+    const strokeDashoffset = circumference * (1 - progress);
+
+    return (
+      <Svg width={size} height={size} style={styles.progressRing}>
+        {/* Background circle */}
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#E5E7EB"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        {/* Progress circle */}
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={heroMetric.color}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          rotation="-90"
+          origin={`${size / 2}, ${size / 2}`}
+        />
+      </Svg>
+    );
   };
 
   return (
@@ -83,73 +176,91 @@ export default function ShareableProgressCard({
       }}
       style={styles.captureWrapper}
     >
-      {/* Safe area container with padding */}
-      <View style={styles.safeAreaContainer}>
-        <LinearGradient
-          colors={['#FAFBFC', '#F0F2F7', '#E8EBF2']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.card}
-        >
-          {/* App Logo - Top Right Corner */}
-          <View style={styles.logoContainer}>
-            <Image
-              source={require('@/assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+      <LinearGradient
+        colors={['#FFFFFF', '#F9FAFB', '#F3F4F6']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.card}
+      >
+        {/* SECTION 1 — HEADER (IDENTITY) */}
+        <View style={styles.header}>
+          <View style={styles.iconCircle}>
+            <Text style={styles.iconEmoji}>🏆</Text>
           </View>
+          <Text style={styles.headerTitle}>Today&apos;s Progress</Text>
+          <Text style={styles.headerSubtitle}>Showing up, one day at a time</Text>
+        </View>
 
-          {/* User's Name - Prominent at Top */}
-          <Text style={styles.userName}>{userName}&apos;s Journey</Text>
+        {/* SECTION 2 — HERO METRIC (MAIN FLEX) */}
+        <View style={styles.heroSection}>
+          <View style={styles.heroMetricContainer}>
+            <Text style={[styles.heroValue, { color: heroMetric.color }]}>
+              {heroMetric.value}
+            </Text>
+            <Text style={styles.heroLabel}>{heroMetric.label}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: heroMetric.color + '20' }]}>
+            <Text style={[styles.statusText, { color: heroMetric.color }]}>
+              {heroMetric.status}
+            </Text>
+          </View>
+        </View>
 
-          {/* Consistency Score - Big, Bold, Visually Powerful */}
-          <View style={styles.scoreSection}>
-            <View
-              style={[
-                styles.scoreCircle,
-                { 
-                  borderColor: getScoreColor(disciplineScore),
-                  boxShadow: `0px 12px 32px ${getScoreColor(disciplineScore)}40`,
-                },
-              ]}
-            >
-              <Text style={[styles.scoreValue, { color: getScoreColor(disciplineScore) }]}>
-                {disciplineScore}
+        {/* SECTION 3 — QUICK VISUAL (1-SECOND READ) */}
+        <View style={styles.visualSection}>
+          <View style={styles.progressRingContainer}>
+            {renderProgressRing()}
+            <View style={styles.progressRingCenter}>
+              <Text style={styles.progressPercent}>{progressPercent}%</Text>
+              <Text style={styles.progressLabel}>Complete</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* SECTION 4 — KEY RESULT / ACHIEVEMENT */}
+        <View style={styles.achievementSection}>
+          <View style={styles.achievementCard}>
+            <Text style={styles.achievementIcon}>📉</Text>
+            <Text style={styles.achievementValue}>–{weightLost.toFixed(1)} lb</Text>
+            <Text style={styles.achievementLabel}>since start</Text>
+          </View>
+          <View style={styles.achievementCard}>
+            <Text style={styles.achievementIcon}>🔥</Text>
+            <Text style={styles.achievementValue}>{streakDays} days</Text>
+            <Text style={styles.achievementLabel}>streak</Text>
+          </View>
+        </View>
+
+        {/* SECTION 5 — EMOTIONAL PROOF (OPTIONAL) */}
+        {weightLost > 0 && (
+          <View style={styles.transformationSection}>
+            <View style={styles.transformationCard}>
+              <Text style={styles.transformationText}>
+                Progress in motion
               </Text>
-              <Text style={styles.scoreOutOf}>/100</Text>
-            </View>
-            <Text style={styles.scoreLabel}>Consistency Score</Text>
-          </View>
-
-          {/* Progress Metrics - Clean, Minimal */}
-          <View style={styles.metricsSection}>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricEmoji}>🔥</Text>
-              <Text style={styles.metricValue}>{streakDays}</Text>
-              <Text style={styles.metricLabel}>Day Streak</Text>
-            </View>
-
-            <View style={styles.metricCard}>
-              <Text style={styles.metricEmoji}>💪</Text>
-              <Text style={styles.metricValue}>{proteinAccuracy}%</Text>
-              <Text style={styles.metricLabel}>Protein Accuracy</Text>
-            </View>
-
-            <View style={styles.metricCard}>
-              <Text style={styles.metricEmoji}>⚖️</Text>
-              <Text style={styles.metricValue}>-{weightLost.toFixed(1)}</Text>
-              <Text style={styles.metricLabel}>lbs Lost</Text>
+              <Text style={styles.transformationStat}>
+                {weightLost.toFixed(1)} lb down and counting
+              </Text>
             </View>
           </View>
+        )}
 
-          {/* Bottom Tagline - Subtle */}
-          <View style={styles.taglineSection}>
-            <Text style={styles.tagline}>Track. Improve. Win.</Text>
-            <Text style={styles.appName}>Macro Goal</Text>
-          </View>
-        </LinearGradient>
-      </View>
+        {/* SECTION 6 — SHARE HOOK (MOTIVATION) */}
+        <View style={styles.shareHookSection}>
+          <Text style={styles.shareHookText}>{shareHook}</Text>
+        </View>
+
+        {/* Streak dots visualization */}
+        <View style={styles.streakDotsContainer}>
+          {renderStreakDots()}
+        </View>
+
+        {/* FOOTER — BRANDING (SUBTLE) */}
+        <View style={styles.footer}>
+          <Text style={styles.footerBrand}>Macro Goal</Text>
+          <Text style={styles.footerTagline}>Tracked with Macro Goal</Text>
+        </View>
+      </LinearGradient>
     </ViewShot>
   );
 }
@@ -157,135 +268,217 @@ export default function ShareableProgressCard({
 const styles = StyleSheet.create({
   captureWrapper: {
     width: 1080,
-    height: 1350,
-    backgroundColor: '#FAFBFC',
-  },
-  safeAreaContainer: {
-    width: 1080,
-    height: 1350,
-    padding: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 1920,
+    backgroundColor: '#FFFFFF',
   },
   card: {
-    width: '100%',
-    height: '100%',
-    padding: 50,
-    borderRadius: 32,
-    position: 'relative',
+    width: 1080,
+    height: 1920,
+    padding: 80,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  logoContainer: {
-    position: 'absolute',
-    top: 40,
-    right: 40,
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    overflow: 'hidden',
+  
+  // HEADER
+  header: {
+    alignItems: 'center',
+    marginTop: 40,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#FFFFFF',
-    boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.08)',
     elevation: 4,
   },
-  logo: {
-    width: '100%',
-    height: '100%',
+  iconEmoji: {
+    fontSize: 44,
   },
-  userName: {
-    fontSize: 42,
+  headerTitle: {
+    fontSize: 52,
     fontWeight: '800',
-    color: '#1A1C2E',
-    letterSpacing: -1,
-    marginTop: 10,
-    textAlign: 'center',
+    color: '#1F2937',
+    letterSpacing: -1.5,
+    marginBottom: 12,
   },
-  scoreSection: {
+  headerSubtitle: {
+    fontSize: 24,
+    fontWeight: '500',
+    color: '#6B7280',
+    letterSpacing: 0.3,
+  },
+
+  // HERO METRIC
+  heroSection: {
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 15,
+    marginTop: 60,
   },
-  scoreCircle: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    borderWidth: 14,
-    backgroundColor: '#FFFFFF',
+  heroMetricContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 8,
-    marginBottom: 16,
+    marginBottom: 24,
   },
-  scoreValue: {
-    fontSize: 100,
+  heroValue: {
+    fontSize: 140,
     fontWeight: '900',
-    lineHeight: 100,
-    letterSpacing: -3,
+    lineHeight: 140,
+    letterSpacing: -4,
   },
-  scoreOutOf: {
+  heroLabel: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#6B7280',
-    marginTop: -8,
-  },
-  scoreLabel: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#2B2D42',
+    color: '#374151',
+    marginTop: 8,
     letterSpacing: 0.5,
   },
-  metricsSection: {
-    flexDirection: 'row',
-    gap: 20,
-    marginVertical: 20,
-    width: '100%',
+  statusBadge: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  statusText: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
+  // VISUAL
+  visualSection: {
+    alignItems: 'center',
+    marginVertical: 60,
+  },
+  progressRingContainer: {
+    position: 'relative',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  metricCard: {
+  progressRing: {
+    // SVG styles handled inline
+  },
+  progressRingCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressPercent: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#1F2937',
+    letterSpacing: -1.5,
+  },
+  progressLabel: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 4,
+  },
+
+  // ACHIEVEMENT
+  achievementSection: {
+    flexDirection: 'row',
+    gap: 24,
+    width: '100%',
+    justifyContent: 'center',
+    marginTop: 40,
+  },
+  achievementCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 22,
+    borderRadius: 24,
+    padding: 32,
     alignItems: 'center',
     boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.06)',
     elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
   },
-  metricEmoji: {
-    fontSize: 38,
-    marginBottom: 10,
+  achievementIcon: {
+    fontSize: 48,
+    marginBottom: 16,
   },
-  metricValue: {
-    fontSize: 34,
+  achievementValue: {
+    fontSize: 36,
     fontWeight: '800',
-    color: '#1A1C2E',
-    marginBottom: 4,
+    color: '#1F2937',
+    marginBottom: 8,
   },
-  metricLabel: {
-    fontSize: 14,
+  achievementLabel: {
+    fontSize: 18,
     fontWeight: '600',
     color: '#6B7280',
-    textAlign: 'center',
   },
-  taglineSection: {
+
+  // TRANSFORMATION
+  transformationSection: {
+    width: '100%',
+    marginTop: 40,
+  },
+  transformationCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 32,
     alignItems: 'center',
-    paddingTop: 20,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.06)',
+    elevation: 3,
+  },
+  transformationText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  transformationStat: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+
+  // SHARE HOOK
+  shareHookSection: {
+    marginTop: 60,
+    paddingHorizontal: 40,
+  },
+  shareHookText: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#1F2937',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+
+  // STREAK DOTS
+  streakDotsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 40,
+  },
+  streakDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+
+  // FOOTER
+  footer: {
+    alignItems: 'center',
+    marginTop: 60,
+    paddingTop: 40,
     borderTopWidth: 2,
-    borderTopColor: 'rgba(0, 0, 0, 0.06)',
+    borderTopColor: '#E5E7EB',
     width: '100%',
   },
-  tagline: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#2B2D42',
-    marginBottom: 6,
-    letterSpacing: 0.5,
-  },
-  appName: {
-    fontSize: 24,
+  footerBrand: {
+    fontSize: 32,
     fontWeight: '900',
     color: '#5B9AA8',
     letterSpacing: 1,
+    marginBottom: 8,
+  },
+  footerTagline: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    letterSpacing: 0.3,
   },
 });
