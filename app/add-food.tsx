@@ -497,11 +497,13 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a recent food
+   * FIXED: This function now properly navigates to FoodDetails
    */
   const handleOpenRecentFoodDetails = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
     console.log('[AddFood] Food:', food.name);
-    console.log('[AddFood] Using router.push to keep add-food in navigation stack');
+    console.log('[AddFood] Food ID:', food.id);
+    console.log('[AddFood] Using router.push to navigate to FoodDetails');
 
     try {
       // Fetch the full food data from database to get per-100g values
@@ -516,6 +518,17 @@ export default function AddFoodScreen() {
         Alert.alert('Error', 'Failed to load food details');
         return;
       }
+
+      console.log('[AddFood] ✅ Food data fetched successfully');
+      console.log('[AddFood] Food data:', {
+        name: foodData.name,
+        brand: foodData.brand,
+        calories: foodData.calories,
+        protein: foodData.protein,
+        carbs: foodData.carbs,
+        fats: foodData.fats,
+        fiber: foodData.fiber,
+      });
 
       // Convert to OpenFoodFacts format for the food-details screen
       const offProduct = {
@@ -533,7 +546,14 @@ export default function AddFoodScreen() {
         },
       };
 
-      console.log('[AddFood] Navigating to food-details with OFF data');
+      console.log('[AddFood] ✅ Converted to OpenFoodFacts format');
+      console.log('[AddFood] Navigating to food-details with params:', {
+        meal: mealType,
+        date: date,
+        mode: mode,
+        returnTo: '/(tabs)/(home)/',
+        mealId: myMealId,
+      });
 
       router.push({
         pathname: '/food-details',
@@ -546,6 +566,8 @@ export default function AddFoodScreen() {
           mealId: myMealId,
         },
       });
+
+      console.log('[AddFood] ✅ Navigation triggered successfully');
     } catch (error) {
       console.error('[AddFood] Error opening recent food details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -949,33 +971,32 @@ export default function AddFoodScreen() {
     
     return (
       <React.Fragment key={food.id ?? `recent-food-${index}`}>
-        <View 
+        <TouchableOpacity 
           style={[
             styles.foodCard,
             { backgroundColor: isDark ? colors.cardDark : colors.card }
           ]}
+          onPress={() => handleOpenRecentFoodDetails(food)}
+          activeOpacity={0.7}
         >
-          <Pressable
-            style={styles.foodInfoPressable}
-            onPress={() => handleOpenRecentFoodDetails(food)}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-          >
-            <View style={styles.foodInfo}>
-              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                {food.name}
-              </Text>
-              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {food.brand ? `${food.brand} • ` : ''}{servingText} • {Math.round(food.calories)} cal
-              </Text>
-              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {macrosText}
-              </Text>
-            </View>
-          </Pressable>
+          <View style={styles.foodInfo}>
+            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+              {food.name}
+            </Text>
+            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {food.brand ? `${food.brand} • ` : ''}{servingText} • {Math.round(food.calories)} cal
+            </Text>
+            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {macrosText}
+            </Text>
+          </View>
           
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => handleAddRecentFood(food)}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleAddRecentFood(food);
+            }}
             activeOpacity={0.7}
           >
             <IconSymbol
@@ -985,7 +1006,7 @@ export default function AddFoodScreen() {
               color="#FFFFFF"
             />
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </React.Fragment>
     );
   }, [isDark, handleOpenRecentFoodDetails, handleAddRecentFood]);
@@ -1005,29 +1026,25 @@ export default function AddFoodScreen() {
     
     return (
       <React.Fragment key={product.code ?? `search-result-${index}`}>
-        <View 
+        <TouchableOpacity 
           style={[
             styles.foodCard,
             { backgroundColor: isDark ? colors.cardDark : colors.card }
           ]}
+          onPress={() => handleOpenSearchResultDetails(product)}
+          activeOpacity={0.7}
         >
-          <Pressable
-            style={styles.foodInfoPressable}
-            onPress={() => handleOpenSearchResultDetails(product)}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-          >
-            <View style={styles.foodInfo}>
-              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                {displayName}
-              </Text>
-              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {displayBrand ? `${displayBrand} • ` : ''}{servingText} • {calories} cal
-              </Text>
-              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {macrosText}
-              </Text>
-            </View>
-          </Pressable>
+          <View style={styles.foodInfo}>
+            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+              {displayName}
+            </Text>
+            <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {displayBrand ? `${displayBrand} • ` : ''}{servingText} • {calories} cal
+            </Text>
+            <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {macrosText}
+            </Text>
+          </View>
           
           <View style={styles.chevronContainer}>
             <IconSymbol
@@ -1037,7 +1054,7 @@ export default function AddFoodScreen() {
               color={isDark ? colors.textSecondaryDark : colors.textSecondary}
             />
           </View>
-        </View>
+        </TouchableOpacity>
       </React.Fragment>
     );
   }, [isDark, handleOpenSearchResultDetails]);
@@ -1057,33 +1074,32 @@ export default function AddFoodScreen() {
         <SwipeToDeleteRow
           onDelete={() => handleRemoveFavorite(favorite.id)}
         >
-          <View 
+          <TouchableOpacity 
             style={[
               styles.foodCard,
               { backgroundColor: isDark ? colors.cardDark : colors.card }
             ]}
+            onPress={() => handleOpenFavoriteDetails(favorite)}
+            activeOpacity={0.7}
           >
-            <Pressable
-              style={styles.foodInfoPressable}
-              onPress={() => handleOpenFavoriteDetails(favorite)}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-            >
-              <View style={styles.foodInfo}>
-                <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                  {favorite.food_name}
-                </Text>
-                <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
-                </Text>
-                <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {macrosText}
-                </Text>
-              </View>
-            </Pressable>
+            <View style={styles.foodInfo}>
+              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                {favorite.food_name}
+              </Text>
+              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {favorite.brand ? `${favorite.brand} • ` : ''}{servingText} • {calories} cal
+              </Text>
+              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {macrosText}
+              </Text>
+            </View>
             
             <TouchableOpacity
               style={styles.addButton}
-              onPress={() => handleAddFavorite(favorite)}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleAddFavorite(favorite);
+              }}
               activeOpacity={0.7}
             >
               <IconSymbol
@@ -1093,7 +1109,7 @@ export default function AddFoodScreen() {
                 color="#FFFFFF"
               />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </SwipeToDeleteRow>
       </React.Fragment>
     );
@@ -1683,9 +1699,6 @@ const styles = StyleSheet.create({
     boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
     elevation: 1,
     overflow: 'hidden',
-  },
-  foodInfoPressable: {
-    flex: 1,
     padding: spacing.md,
   },
   foodInfo: {
@@ -1712,12 +1725,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
-    marginVertical: spacing.md,
+    marginLeft: spacing.md,
   },
   chevronContainer: {
-    paddingRight: spacing.md,
-    paddingVertical: spacing.md,
+    paddingLeft: spacing.md,
   },
   emptyState: {
     alignItems: 'center',
