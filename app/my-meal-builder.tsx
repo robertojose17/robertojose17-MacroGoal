@@ -169,7 +169,9 @@ export default function MyMealBuilderScreen() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    console.log('[MyMealBuilder] Saving My Meal');
+    console.log('[MyMealBuilder] ========== SAVE HANDLER CALLED ==========');
+    console.log('[MyMealBuilder] Platform:', Platform.OS);
+    console.log('[MyMealBuilder] Is Editing:', isEditing);
 
     // Validation
     if (!mealName.trim()) {
@@ -261,13 +263,11 @@ export default function MyMealBuilderScreen() {
           return;
         }
 
-        console.log('[MyMealBuilder] Meal updated successfully');
-        Alert.alert('Success', 'Meal updated successfully', [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]);
+        console.log('[MyMealBuilder] ✅ Meal updated successfully');
+        console.log('[MyMealBuilder] 🔙 Navigating back using router.back()');
+        
+        // MOBILE FIX: Use router.back() without Alert to avoid navigation issues
+        router.back();
       } else {
         // Create new meal
         console.log('[MyMealBuilder] Creating new meal');
@@ -319,15 +319,12 @@ export default function MyMealBuilderScreen() {
           return;
         }
 
-        console.log('[MyMealBuilder] Meal created successfully');
+        console.log('[MyMealBuilder] ✅ Meal created successfully');
+        console.log('[MyMealBuilder] 🔙 Navigating back using router.back()');
         
-        // Return to Add Food screen (or previous screen)
-        Alert.alert('Success', 'Meal created successfully', [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]);
+        // MOBILE FIX: Use router.back() without Alert to avoid navigation issues
+        // The saved meal will appear in the inline list on the Add Food screen
+        router.back();
       }
     } catch (error) {
       console.error('[MyMealBuilder] Error in handleSave:', error);
