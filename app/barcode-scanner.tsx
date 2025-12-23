@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -87,15 +87,22 @@ export default function BarcodeScannerScreen() {
   
   // CRITICAL FIX: Use a ref to track if navigation has already been triggered
   const hasNavigatedRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
     console.log('[BarcodeScanner] Params:', { mode, mealType, date, myMealId });
+    isMountedRef.current = true;
+
+    return () => {
+      console.log('[BarcodeScanner] ========== COMPONENT UNMOUNTED ==========');
+      isMountedRef.current = false;
+    };
   }, [mode, mealType, date, myMealId]);
 
   // Reset state when screen gains focus
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       console.log('[BarcodeScanner] Screen focused → reset scan state');
       setScanned(false);
       setLoading(false);
@@ -136,6 +143,12 @@ export default function BarcodeScannerScreen() {
       return;
     }
 
+    // CRITICAL: Check if component is still mounted
+    if (!isMountedRef.current) {
+      console.log('[BarcodeScanner] ⚠️ Component unmounted, aborting navigation');
+      return;
+    }
+
     console.log('[BarcodeScanner] ========== NAVIGATING TO FOOD DETAILS ==========');
     console.log('[BarcodeScanner] Product:', product.product_name || 'Unknown');
     console.log('[BarcodeScanner] This is the ONLY navigation call');
@@ -152,6 +165,11 @@ export default function BarcodeScannerScreen() {
     // Navigate to food details
     // Use a small delay to ensure dismissTo completes
     setTimeout(() => {
+      if (!isMountedRef.current) {
+        console.log('[BarcodeScanner] ⚠️ Component unmounted during navigation delay');
+        return;
+      }
+
       console.log('[BarcodeScanner] Pushing Food Details screen');
       router.push({
         pathname: '/food-details',
@@ -181,6 +199,12 @@ export default function BarcodeScannerScreen() {
       return;
     }
 
+    // CRITICAL: Check if component is still mounted
+    if (!isMountedRef.current) {
+      console.log('[BarcodeScanner] Component unmounted, ignoring scan');
+      return;
+    }
+
     console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
     console.log('[SCAN] type:', type);
     console.log('[SCAN] raw data:', JSON.stringify(data));
@@ -199,8 +223,10 @@ export default function BarcodeScannerScreen() {
           {
             text: 'OK',
             onPress: () => {
-              setScanned(false);
-              setLoading(false);
+              if (isMountedRef.current) {
+                setScanned(false);
+                setLoading(false);
+              }
             },
           },
         ]
@@ -243,6 +269,12 @@ export default function BarcodeScannerScreen() {
 
       const result = await response.json();
       
+      // Check if component is still mounted after async operation
+      if (!isMountedRef.current) {
+        console.log('[BarcodeScanner] Component unmounted after API call');
+        return;
+      }
+
       // SPECIAL TEST: Log full result for test barcode
       if (cleanBarcode === '5059883177496') {
         console.log('[BarcodeScanner] Test 5059883177496 result:', JSON.stringify(result).slice(0, 500));
@@ -320,8 +352,10 @@ export default function BarcodeScannerScreen() {
         console.log('[BarcodeScanner] Result keys:', Object.keys(result));
         
         // CRITICAL: Reset states before showing alert
-        setLoading(false);
-        setScanned(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+          setScanned(false);
+        }
         
         // Show "not found" dialog with options
         Alert.alert(
@@ -332,16 +366,20 @@ export default function BarcodeScannerScreen() {
               text: 'Scan Again',
               onPress: () => {
                 console.log('[BarcodeScanner] User chose to scan again');
-                setScanned(false);
-                setLoading(false);
+                if (isMountedRef.current) {
+                  setScanned(false);
+                  setLoading(false);
+                }
               },
             },
             {
               text: 'Add Manually',
               onPress: () => {
                 console.log('[BarcodeScanner] User chose to add manually');
-                setScanned(false);
-                setLoading(false);
+                if (isMountedRef.current) {
+                  setScanned(false);
+                  setLoading(false);
+                }
                 
                 // Dismiss scanner and Add Food, then push quick-add
                 router.dismissTo('/(tabs)/(home)/');
@@ -364,8 +402,10 @@ export default function BarcodeScannerScreen() {
               style: 'cancel',
               onPress: () => {
                 console.log('[BarcodeScanner] User cancelled');
-                setScanned(false);
-                setLoading(false);
+                if (isMountedRef.current) {
+                  setScanned(false);
+                  setLoading(false);
+                }
                 router.back();
               },
             },
@@ -377,8 +417,10 @@ export default function BarcodeScannerScreen() {
       console.error('[BarcodeScanner] Error details:', error);
       
       // CRITICAL: Reset states before showing alert
-      setLoading(false);
-      setScanned(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setScanned(false);
+      }
       
       // Show error dialog with retry option
       Alert.alert(
@@ -389,16 +431,20 @@ export default function BarcodeScannerScreen() {
             text: 'Try Again',
             onPress: () => {
               console.log('[BarcodeScanner] User chose to retry');
-              setScanned(false);
-              setLoading(false);
+              if (isMountedRef.current) {
+                setScanned(false);
+                setLoading(false);
+              }
             },
           },
           {
             text: 'Add Manually',
             onPress: () => {
               console.log('[BarcodeScanner] User chose to add manually after error');
-              setScanned(false);
-              setLoading(false);
+              if (isMountedRef.current) {
+                setScanned(false);
+                setLoading(false);
+              }
               
               // Dismiss scanner and Add Food, then push quick-add
               router.dismissTo('/(tabs)/(home)/');
@@ -420,8 +466,10 @@ export default function BarcodeScannerScreen() {
             style: 'cancel',
             onPress: () => {
               console.log('[BarcodeScanner] User cancelled after error');
-              setScanned(false);
-              setLoading(false);
+              if (isMountedRef.current) {
+                setScanned(false);
+                setLoading(false);
+              }
               router.back();
             },
           },
