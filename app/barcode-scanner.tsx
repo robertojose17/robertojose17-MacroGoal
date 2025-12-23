@@ -21,7 +21,7 @@ export default function BarcodeScannerScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   
-  // CRITICAL FIX A: One-scan lock using ref (doesn't cause re-renders)
+  // CRITICAL: One-scan lock using ref (doesn't cause re-renders)
   const hasScannedRef = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -49,12 +49,12 @@ export default function BarcodeScannerScreen() {
   );
 
   /**
-   * CRITICAL FIX B & C: Close camera immediately and pass barcode to next screen
+   * CRITICAL FIX: Simplified navigation
    * This function is called ONCE when a barcode is scanned
-   * It immediately closes the camera and navigates to a lookup screen
+   * It immediately navigates to food-details with the barcode
    */
   const handleBarCodeScanned = useCallback(({ type, data }: { type: string; data: string }) => {
-    // CRITICAL FIX A: Check one-scan lock
+    // CRITICAL: Check one-scan lock
     if (hasScannedRef.current) {
       console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
       return;
@@ -67,8 +67,8 @@ export default function BarcodeScannerScreen() {
     }
 
     console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
+    console.log('[BarcodeScanner] SCANNED BARCODE:', data);
     console.log('[BarcodeScanner] Type:', type);
-    console.log('[BarcodeScanner] Data:', data);
 
     // Clean the barcode
     const cleanBarcode = data.trim();
@@ -79,38 +79,29 @@ export default function BarcodeScannerScreen() {
       return;
     }
 
-    // CRITICAL FIX A: Set one-scan lock IMMEDIATELY
+    // CRITICAL: Set one-scan lock IMMEDIATELY
     hasScannedRef.current = true;
     console.log('[BarcodeScanner] ✅ One-scan lock activated');
 
-    // CRITICAL FIX B: Close camera IMMEDIATELY by navigating away
-    // Do NOT wait for API response
-    console.log('[BarcodeScanner] 🚀 Closing camera and navigating to lookup screen');
+    // CRITICAL FIX: Direct navigation without dismissTo
+    // This ensures the navigation happens immediately and reliably
+    console.log('[BarcodeScanner] 🚀 NAVIGATING TO FOOD-DETAILS');
+    console.log('[BarcodeScanner] Barcode being passed:', cleanBarcode);
+    console.log('[BarcodeScanner] Meal:', mealType);
+    console.log('[BarcodeScanner] Date:', date);
+    console.log('[BarcodeScanner] Mode:', mode);
     
-    // Navigate back to home first
-    router.dismissTo('/(tabs)/(home)/');
-    
-    // CRITICAL FIX C: Navigate to food-details with barcode
-    // The food-details screen will handle the lookup
-    setTimeout(() => {
-      if (!isMountedRef.current) {
-        console.log('[BarcodeScanner] ⚠️ Component unmounted during navigation');
-        return;
-      }
-
-      console.log('[BarcodeScanner] ✅ Navigating to food-details with barcode:', cleanBarcode);
-      router.push({
-        pathname: '/food-details',
-        params: {
-          barcode: cleanBarcode, // Pass barcode instead of product data
-          meal: mealType,
-          date: date,
-          mode: mode,
-          returnTo: '/(tabs)/(home)/',
-          mealId: myMealId,
-        },
-      });
-    }, 100);
+    router.push({
+      pathname: '/food-details',
+      params: {
+        barcode: cleanBarcode,
+        meal: mealType,
+        date: date,
+        mode: mode,
+        returnTo: '/(tabs)/(home)/',
+        mealId: myMealId || '',
+      },
+    });
   }, [router, mealType, date, mode, myMealId]);
 
   // Show loading while checking permissions

@@ -10,7 +10,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
-// CRITICAL FIX D: Timeout constant
+// CRITICAL: Timeout constant
 const LOOKUP_TIMEOUT_MS = 10000; // 10 seconds
 
 /**
@@ -75,7 +75,7 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
-  const barcodeParam = params.barcode as string; // NEW: Barcode parameter
+  const barcodeParam = params.barcode as string;
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
@@ -91,7 +91,6 @@ export default function FoodDetailsScreen() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  // NEW: Loading state for barcode lookup
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
@@ -118,28 +117,30 @@ export default function FoodDetailsScreen() {
   }, []);
 
   /**
-   * CRITICAL FIX C & D: Lookup barcode with timeout
-   * This function is called when a barcode is passed as a parameter
+   * CRITICAL: Lookup barcode with comprehensive logging and timeout
    */
   const lookupBarcode = useCallback(async (barcode: string) => {
-    console.log('[FoodDetails] ========== LOOKING UP BARCODE ==========');
-    console.log('[FoodDetails] Barcode:', barcode);
+    console.log('[FoodDetails] ========== START LOOKUP ==========');
+    console.log('[FoodDetails] SCANNED BARCODE:', barcode);
+    console.log('[FoodDetails] Barcode length:', barcode.length);
+    console.log('[FoodDetails] Barcode type:', typeof barcode);
     
     setLookupLoading(true);
     setLookupError(null);
 
-    // CRITICAL FIX D: Create timeout promise
+    // CRITICAL: Create timeout promise
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
+        console.log('[FoodDetails] ⏱️ LOOKUP TIMEOUT REACHED');
         reject(new Error('Lookup timeout'));
       }, LOOKUP_TIMEOUT_MS);
     });
 
     try {
-      // CRITICAL FIX D: Race between fetch and timeout
-      // UPDATED: Using v2 endpoint as per OpenFoodFacts API documentation
+      // CRITICAL: Using v2 endpoint as per OpenFoodFacts API documentation
       const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-      console.log('[FoodDetails] Fetching from:', url);
+      console.log('[FoodDetails] LOOKUP URL:', url);
+      console.log('[FoodDetails] Starting fetch...');
 
       const fetchPromise = fetch(url, {
         headers: {
@@ -148,31 +149,40 @@ export default function FoodDetailsScreen() {
         },
       });
 
+      console.log('[FoodDetails] Waiting for response (max 10s)...');
       const response = await Promise.race([fetchPromise, timeoutPromise]);
 
       // Check if component is still mounted
       if (!isMountedRef.current) {
-        console.log('[FoodDetails] Component unmounted during lookup');
+        console.log('[FoodDetails] ⚠️ Component unmounted during lookup');
         return;
       }
 
-      console.log('[FoodDetails] Response status:', response.status);
+      console.log('[FoodDetails] HTTP STATUS:', response.status);
 
       if (!response.ok) {
+        console.log('[FoodDetails] ❌ HTTP error:', response.status);
         throw new Error(`HTTP error: ${response.status}`);
       }
 
+      console.log('[FoodDetails] Parsing JSON response...');
       const result = await response.json();
 
       // Check if component is still mounted after async operation
       if (!isMountedRef.current) {
-        console.log('[FoodDetails] Component unmounted after API call');
+        console.log('[FoodDetails] ⚠️ Component unmounted after API call');
         return;
       }
 
       const status = Number(result.status);
-      console.log('[FoodDetails] Status:', status);
+      console.log('[FoodDetails] OFF JSON status:', status, '(1=found, 0=not found)');
       console.log('[FoodDetails] Has product:', !!result.product);
+
+      if (result.product) {
+        console.log('[FoodDetails] Product name:', result.product.product_name || 'Unknown');
+        console.log('[FoodDetails] Product brand:', result.product.brands || 'Unknown');
+        console.log('[FoodDetails] Product code:', result.product.code || 'N/A');
+      }
 
       if (status === 1 && result.product) {
         console.log('[FoodDetails] ✅ PRODUCT FOUND');
@@ -182,8 +192,11 @@ export default function FoodDetailsScreen() {
         const bestProduct = selectBestProduct(result.product);
 
         if (!bestProduct) {
+          console.log('[FoodDetails] ❌ No valid product after selection');
           throw new Error('No valid product found');
         }
+
+        console.log('[FoodDetails] Processing product data...');
 
         // Process the product (same as offData flow)
         const productWithDefaults: OpenFoodFactsProduct = {
@@ -201,14 +214,17 @@ export default function FoodDetailsScreen() {
           },
         };
 
+        console.log('[FoodDetails] Setting product state...');
         setProduct(productWithDefaults);
 
+        console.log('[FoodDetails] Extracting serving size...');
         const serving = extractServingSize(productWithDefaults);
         setServingInfo(serving);
 
         setServings('1');
         setGrams(serving.grams.toString());
 
+        console.log('[FoodDetails] Extracting nutrition...');
         const nutritionData = extractNutrition(productWithDefaults);
         setNutrition(nutritionData);
 
@@ -222,6 +238,8 @@ export default function FoodDetailsScreen() {
         };
         setPerServingMacros(perServing);
 
+        console.log('[FoodDetails] ✅ Product data loaded successfully');
+        console.log('[FoodDetails] NAVIGATING TO: ProductDetail');
         setIsReady(true);
         setLookupLoading(false);
 
@@ -229,29 +247,36 @@ export default function FoodDetailsScreen() {
       } else {
         // Product not found
         console.log('[FoodDetails] ❌ PRODUCT NOT FOUND');
+        console.log('[FoodDetails] Barcode:', barcode);
         throw new Error('Product not found in database');
       }
     } catch (error: any) {
       console.error('[FoodDetails] ❌ LOOKUP ERROR:', error);
+      console.error('[FoodDetails] Error message:', error.message);
+      console.error('[FoodDetails] Error stack:', error.stack);
 
       // Check if component is still mounted
       if (!isMountedRef.current) {
-        console.log('[FoodDetails] Component unmounted during error handling');
+        console.log('[FoodDetails] ⚠️ Component unmounted during error handling');
         return;
       }
 
-      // CRITICAL FIX D: Set error state
+      // CRITICAL: Set error state
       setLookupLoading(false);
       
       if (error.message === 'Lookup timeout') {
+        console.log('[FoodDetails] Error type: TIMEOUT');
         setLookupError('Lookup timed out. The product database might be slow or unavailable.');
       } else if (error.message === 'Product not found in database') {
+        console.log('[FoodDetails] Error type: NOT FOUND');
         setLookupError(`Product not found (barcode: ${barcode}). You can add it manually.`);
       } else {
+        console.log('[FoodDetails] Error type: UNKNOWN');
         setLookupError('Failed to look up product. Please try again or add manually.');
       }
 
       // Show error dialog with options
+      console.log('[FoodDetails] Showing error alert to user');
       Alert.alert(
         'Product Lookup Failed',
         error.message === 'Lookup timeout' 
@@ -263,6 +288,7 @@ export default function FoodDetailsScreen() {
           {
             text: 'Try Again',
             onPress: () => {
+              console.log('[FoodDetails] User chose: Try Again');
               if (isMountedRef.current) {
                 setLookupError(null);
                 lookupBarcode(barcode);
@@ -272,8 +298,9 @@ export default function FoodDetailsScreen() {
           {
             text: 'Add Manually',
             onPress: () => {
+              console.log('[FoodDetails] User chose: Add Manually');
               if (isMountedRef.current) {
-                router.dismissTo('/(tabs)/(home)/');
+                router.back();
                 setTimeout(() => {
                   router.push({
                     pathname: '/quick-add',
@@ -293,6 +320,7 @@ export default function FoodDetailsScreen() {
             text: 'Cancel',
             style: 'cancel',
             onPress: () => {
+              console.log('[FoodDetails] User chose: Cancel');
               if (isMountedRef.current) {
                 router.back();
               }
@@ -313,9 +341,10 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] offDataString:', !!offDataString);
     console.log('[FoodDetails] barcodeParam:', barcodeParam);
 
-    // CRITICAL FIX C: Check if we have a barcode to lookup
+    // CRITICAL: Check if we have a barcode to lookup
     if (barcodeParam && !offDataString) {
-      console.log('[FoodDetails] Barcode provided, starting lookup...');
+      console.log('[FoodDetails] ✅ Barcode provided, starting lookup...');
+      console.log('[FoodDetails] Barcode value:', barcodeParam);
       lookupBarcode(barcodeParam);
       return;
     }
@@ -605,7 +634,7 @@ export default function FoodDetailsScreen() {
     }, 500);
   }, [bannerQueue, bannerOpacity]);
 
-  // CRITICAL FIX D: Show loading screen during barcode lookup
+  // CRITICAL: Show loading screen during barcode lookup
   if (lookupLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -636,7 +665,7 @@ export default function FoodDetailsScreen() {
     );
   }
 
-  // CRITICAL FIX D: Show error screen if lookup failed
+  // CRITICAL: Show error screen if lookup failed
   if (lookupError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -681,7 +710,7 @@ export default function FoodDetailsScreen() {
           <TouchableOpacity
             style={styles.manualButton}
             onPress={() => {
-              router.dismissTo('/(tabs)/(home)/');
+              router.back();
               setTimeout(() => {
                 router.push({
                   pathname: '/quick-add',
