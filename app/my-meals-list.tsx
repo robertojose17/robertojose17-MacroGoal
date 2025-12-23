@@ -17,6 +17,8 @@ export default function MyMealsListScreen() {
 
   const [myMeals, setMyMeals] = useState<MyMeal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleteToast, setShowDeleteToast] = useState(false);
+  const [deletedMealName, setDeletedMealName] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +78,9 @@ export default function MyMealsListScreen() {
     try {
       console.log('[MyMealsList] Deleting My Meal:', meal.id);
 
+      // Store meal name for toast
+      const mealName = meal.name;
+
       // IMMEDIATELY remove from UI for instant feedback
       setMyMeals(prevMeals => prevMeals.filter(m => m.id !== meal.id));
 
@@ -112,6 +117,13 @@ export default function MyMealsListScreen() {
       }
 
       console.log('[MyMealsList] ✅ My Meal deleted successfully');
+      
+      // Show success toast
+      setDeletedMealName(mealName);
+      setShowDeleteToast(true);
+      setTimeout(() => {
+        setShowDeleteToast(false);
+      }, 3000);
     } catch (error) {
       console.error('[MyMealsList] Error in handleDeleteMyMeal:', error);
       // Restore the meal if an unexpected error occurred
@@ -231,6 +243,21 @@ export default function MyMealsListScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Delete Success Toast */}
+      {showDeleteToast && (
+        <View style={[styles.toast, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <IconSymbol
+            ios_icon_name="checkmark.circle.fill"
+            android_material_icon_name="check_circle"
+            size={20}
+            color={colors.success || '#4CAF50'}
+          />
+          <Text style={[styles.toastText, { color: isDark ? colors.textDark : colors.text }]}>
+            &quot;{deletedMealName}&quot; deleted
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -327,5 +354,24 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 14,
     textAlign: 'center',
+  },
+  toast: {
+    position: 'absolute',
+    bottom: 100,
+    left: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    elevation: 5,
+  },
+  toastText: {
+    ...typography.body,
+    fontSize: 15,
+    flex: 1,
   },
 });
