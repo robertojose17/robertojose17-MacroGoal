@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -84,6 +84,14 @@ export default function MyMealsListScreen() {
   };
 
   const handleDeleteMyMeal = async (meal: MyMeal) => {
+    // 🔥 MOBILE FIX: Enhanced logging for mobile debugging
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`[MyMealsList] 🔥 DELETE TAP FIRED - Platform: ${Platform.OS}`);
+    console.log(`[MyMealsList] 🔥 DELETE TAP FIRED - Meal: "${meal.name}"`);
+    console.log(`[MyMealsList] 🔥 DELETE TAP FIRED - ID: ${meal.id}`);
+    console.log(`[MyMealsList] 🔥 DELETE TAP FIRED - User ID: ${meal.user_id}`);
+    console.log('═══════════════════════════════════════════════════════');
+    
     // 🔥 FIX: Set deleting flag to prevent refetch
     isDeletingRef.current = true;
     deleteCountRef.current += 1;
@@ -93,9 +101,20 @@ export default function MyMealsListScreen() {
     console.log(`[MyMealsList] 📊 BEFORE DELETE - Total meals: ${myMeals.length}`);
     
     try {
-      // Store meal name for toast
+      // Store meal info
       const mealName = meal.name;
       const mealId = meal.id;
+      const userId = meal.user_id;
+
+      // 🔥 MOBILE FIX: Verify auth before delete
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - No authenticated user found`);
+        Alert.alert('Error', 'You must be logged in to delete meals');
+        isDeletingRef.current = false;
+        return;
+      }
+      console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Auth verified: ${user.id}`);
 
       // 🔥 STEP 1: IMMEDIATELY remove from UI for instant feedback
       console.log(`[MyMealsList] 🎯 DELETE #${deleteNumber} - Removing from local state`);
@@ -107,41 +126,53 @@ export default function MyMealsListScreen() {
 
       // 🔥 STEP 2: Delete meal items first (foreign key constraint)
       console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Deleting meal items from backend...`);
-      const { error: itemsError } = await supabase
+      console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Request payload: { my_meal_id: ${mealId} }`);
+      
+      const { data: deletedItems, error: itemsError } = await supabase
         .from('my_meal_items')
         .delete()
-        .eq('my_meal_id', mealId);
+        .eq('my_meal_id', mealId)
+        .select();
 
       if (itemsError) {
-        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error deleting meal items:`, itemsError);
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error deleting meal items:`, JSON.stringify(itemsError, null, 2));
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error code: ${itemsError.code}`);
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error message: ${itemsError.message}`);
         // Restore the meal if deletion failed
         setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
-        Alert.alert('Error', 'Failed to delete meal items');
+        Alert.alert('Error', `Failed to delete meal items: ${itemsError.message}`);
         isDeletingRef.current = false;
         return;
       }
-      console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Meal items deleted successfully`);
+      console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Meal items deleted successfully (${deletedItems?.length || 0} items)`);
 
       // 🔥 STEP 3: Delete the meal
       console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Deleting meal from backend...`);
-      const { error: mealError } = await supabase
+      console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Request payload: { id: ${mealId}, user_id: ${userId} }`);
+      
+      const { data: deletedMeal, error: mealError } = await supabase
         .from('my_meals')
         .delete()
-        .eq('id', mealId);
+        .eq('id', mealId)
+        .eq('user_id', user.id)
+        .select();
 
       if (mealError) {
-        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error deleting meal:`, mealError);
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error deleting meal:`, JSON.stringify(mealError, null, 2));
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error code: ${mealError.code}`);
+        console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error message: ${mealError.message}`);
         // Restore the meal if deletion failed
         setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
-        Alert.alert('Error', 'Failed to delete meal');
+        Alert.alert('Error', `Failed to delete meal: ${mealError.message}`);
         isDeletingRef.current = false;
         return;
       }
       console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Meal deleted from backend successfully`);
+      console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Backend response:`, JSON.stringify(deletedMeal, null, 2));
 
       // Show success toast
       setDeletedMealName(mealName);
@@ -151,8 +182,10 @@ export default function MyMealsListScreen() {
       }, 3000);
 
       console.log(`[MyMealsList] 🎉 DELETE #${deleteNumber} COMPLETE - "${mealName}" deleted successfully`);
+      console.log('═══════════════════════════════════════════════════════');
     } catch (error) {
       console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Unexpected error:`, error);
+      console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error details:`, JSON.stringify(error, null, 2));
       // Restore the meal if an unexpected error occurred
       setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -174,10 +207,14 @@ export default function MyMealsListScreen() {
           { backgroundColor: isDark ? colors.cardDark : colors.card }
         ]}
       >
-        <TouchableOpacity
+        {/* 🔥 MOBILE FIX: Separate the touchable areas to avoid conflicts */}
+        <Pressable
           style={styles.mealContent}
-          onPress={() => handleOpenMyMeal(meal)}
-          activeOpacity={0.7}
+          onPress={() => {
+            console.log(`[MyMealsList] 👆 Meal card pressed: "${meal.name}"`);
+            handleOpenMyMeal(meal);
+          }}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
         >
           <View style={styles.mealInfo}>
             <Text style={[styles.mealName, { color: isDark ? colors.textDark : colors.text }]}>
@@ -203,16 +240,21 @@ export default function MyMealsListScreen() {
             size={20}
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
-        </TouchableOpacity>
+        </Pressable>
         
-        {/* Delete Button */}
-        <TouchableOpacity
+        {/* 🔥 MOBILE FIX: Delete button with enhanced touch handling */}
+        <Pressable
           style={styles.deleteButton}
           onPress={() => {
-            console.log(`[MyMealsList] 👆 Delete button pressed for: "${meal.name}"`);
+            console.log('═══════════════════════════════════════════════════════');
+            console.log(`[MyMealsList] 👆 DELETE BUTTON PRESSED - Platform: ${Platform.OS}`);
+            console.log(`[MyMealsList] 👆 DELETE BUTTON PRESSED - Meal: "${meal.name}"`);
+            console.log(`[MyMealsList] 👆 DELETE BUTTON PRESSED - ID: ${meal.id}`);
+            console.log('═══════════════════════════════════════════════════════');
             handleDeleteMyMeal(meal);
           }}
-          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          android_ripple={{ color: 'rgba(255, 59, 48, 0.2)', borderless: true, radius: 24 }}
         >
           <IconSymbol
             ios_icon_name="trash.fill"
@@ -220,7 +262,7 @@ export default function MyMealsListScreen() {
             size={22}
             color="#FF3B30"
           />
-        </TouchableOpacity>
+        </Pressable>
       </View>
     );
   };
@@ -397,6 +439,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     justifyContent: 'center',
     alignItems: 'center',
+    minWidth: 56,
+    minHeight: 56,
   },
   emptyState: {
     alignItems: 'center',
