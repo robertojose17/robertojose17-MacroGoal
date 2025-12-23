@@ -321,8 +321,13 @@ export default function MyMealBuilderScreen() {
 
         console.log('[MyMealBuilder] Meal created successfully');
         
-        // Navigate to My Meals list
-        router.dismissTo('/my-meals-list');
+        // Return to Add Food screen (or previous screen)
+        Alert.alert('Success', 'Meal created successfully', [
+          {
+            text: 'OK',
+            onPress: () => router.back(),
+          },
+        ]);
       }
     } catch (error) {
       console.error('[MyMealBuilder] Error in handleSave:', error);
