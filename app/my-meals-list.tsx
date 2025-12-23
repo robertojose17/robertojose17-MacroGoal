@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
 import { MyMeal } from '@/types';
 
@@ -144,11 +143,6 @@ export default function MyMealsListScreen() {
       }
       console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Meal deleted from backend successfully`);
 
-      // 🔥 STEP 4: Refetch to ensure consistency
-      console.log(`[MyMealsList] 🔄 DELETE #${deleteNumber} - Refetching meals to confirm deletion...`);
-      await loadMyMeals();
-      console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Refetch complete`);
-      
       // Show success toast
       setDeletedMealName(mealName);
       setShowDeleteToast(true);
@@ -173,18 +167,15 @@ export default function MyMealsListScreen() {
 
   const renderMyMealCard = (meal: MyMeal, index: number) => {
     return (
-      <SwipeToDeleteRow
+      <View
         key={meal.id || `meal-${index}`}
-        onDelete={() => {
-          console.log(`[MyMealsList] 👆 Swipe delete triggered for: "${meal.name}"`);
-          handleDeleteMyMeal(meal);
-        }}
+        style={[
+          styles.mealCard,
+          { backgroundColor: isDark ? colors.cardDark : colors.card }
+        ]}
       >
         <TouchableOpacity
-          style={[
-            styles.mealCard,
-            { backgroundColor: isDark ? colors.cardDark : colors.card }
-          ]}
+          style={styles.mealContent}
           onPress={() => handleOpenMyMeal(meal)}
           activeOpacity={0.7}
         >
@@ -213,7 +204,24 @@ export default function MyMealsListScreen() {
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
         </TouchableOpacity>
-      </SwipeToDeleteRow>
+        
+        {/* Delete Button */}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => {
+            console.log(`[MyMealsList] 👆 Delete button pressed for: "${meal.name}"`);
+            handleDeleteMyMeal(meal);
+          }}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="trash.fill"
+            android_material_icon_name="delete"
+            size={22}
+            color="#FF3B30"
+          />
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -348,10 +356,16 @@ const styles = StyleSheet.create({
   mealCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     borderRadius: borderRadius.md,
-    padding: spacing.md,
     marginBottom: spacing.xs,
+    overflow: 'hidden',
+  },
+  mealContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
   },
   mealInfo: {
     flex: 1,
@@ -378,6 +392,11 @@ const styles = StyleSheet.create({
   mealMacros: {
     ...typography.caption,
     fontSize: 12,
+  },
+  deleteButton: {
+    padding: spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyState: {
     alignItems: 'center',
