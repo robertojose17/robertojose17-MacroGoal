@@ -15,9 +15,9 @@ import { IconSymbol } from '@/components/IconSymbol';
  * 1. Open camera
  * 2. Scan barcode ONCE
  * 3. Immediately close camera
- * 4. Navigate DIRECTLY to Food Details (replacing the entire stack)
+ * 4. Navigate DIRECTLY to Food Details (dismissing ALL previous screens including Add Food Menu)
  * 
- * CRITICAL FIX: Use router.replace() to remove Add Food Menu from stack
+ * CRITICAL FIX: Use router.dismissTo() to dismiss ALL screens back to home, then push food-details
  */
 export default function BarcodeScannerScreen() {
   const router = useRouter();
@@ -61,7 +61,7 @@ export default function BarcodeScannerScreen() {
 
   /**
    * Handle barcode scan
-   * CRITICAL FIX: Use replace() to remove Add Food Menu from navigation stack
+   * CRITICAL FIX: Use dismissTo() to remove ALL screens including Add Food Menu
    */
   const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
     // Check one-scan lock
@@ -100,7 +100,7 @@ export default function BarcodeScannerScreen() {
 
   /**
    * Perform OpenFoodFacts lookup and navigate to Food Details
-   * CRITICAL FIX: Use router.replace() to remove Add Food Menu from stack
+   * CRITICAL FIX: Use router.dismissTo() to dismiss ALL screens back to home, then push food-details
    */
   const performLookupAndNavigate = async (barcode: string) => {
     console.log('[BarcodeScanner] ========== PERFORMING LOOKUP ==========');
@@ -131,26 +131,58 @@ export default function BarcodeScannerScreen() {
       if (status === 1 && result.product) {
         console.log('[BarcodeScanner] ✅ PRODUCT FOUND:', result.product.product_name);
         
-        // CRITICAL FIX: Use replace() to remove BOTH scanner AND Add Food Menu from stack
-        // This ensures the Add Food Menu is not left in the navigation stack
-        console.log('[BarcodeScanner] 🚀 USING REPLACE TO REMOVE ADD FOOD MENU FROM STACK');
-        router.replace({
-          pathname: '/food-details',
-          params: {
-            offData: JSON.stringify(result.product),
-            meal: mealType,
-            date: date,
-            mode: mode,
-            returnTo: '/(tabs)/(home)/',
-            mealId: myMealId || '',
-          },
-        });
+        // CRITICAL FIX: Dismiss ALL screens back to home, then push food-details
+        // This ensures Add Food Menu is completely removed from the stack
+        console.log('[BarcodeScanner] 🚀 DISMISSING ALL SCREENS BACK TO HOME');
+        
+        // First, dismiss back to home
+        router.dismissTo('/(tabs)/(home)/');
+        
+        // Then, after a brief moment, push food-details
+        // This ensures the dismiss completes before the push
+        setTimeout(() => {
+          console.log('[BarcodeScanner] 🚀 PUSHING FOOD DETAILS');
+          router.push({
+            pathname: '/food-details',
+            params: {
+              offData: JSON.stringify(result.product),
+              meal: mealType,
+              date: date,
+              mode: mode,
+              returnTo: '/(tabs)/(home)/',
+              mealId: myMealId || '',
+            },
+          });
+        }, 100);
       } else {
         console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
         
         // Navigate to barcode-lookup screen to show "Not Found" UI
-        // Also use replace() here to remove Add Food Menu
-        router.replace({
+        // Also dismiss back to home first
+        router.dismissTo('/(tabs)/(home)/');
+        
+        setTimeout(() => {
+          router.push({
+            pathname: '/barcode-lookup',
+            params: {
+              barcode: barcode,
+              meal: mealType,
+              date: date,
+              mode: mode,
+              mealId: myMealId || '',
+            },
+          });
+        }, 100);
+      }
+    } catch (error: any) {
+      console.error('[BarcodeScanner] ❌ LOOKUP ERROR:', error);
+      
+      // Navigate to barcode-lookup screen to show error UI
+      // Also dismiss back to home first
+      router.dismissTo('/(tabs)/(home)/');
+      
+      setTimeout(() => {
+        router.push({
           pathname: '/barcode-lookup',
           params: {
             barcode: barcode,
@@ -158,25 +190,10 @@ export default function BarcodeScannerScreen() {
             date: date,
             mode: mode,
             mealId: myMealId || '',
+            error: error.message || 'Lookup failed',
           },
         });
-      }
-    } catch (error: any) {
-      console.error('[BarcodeScanner] ❌ LOOKUP ERROR:', error);
-      
-      // Navigate to barcode-lookup screen to show error UI
-      // Also use replace() here to remove Add Food Menu
-      router.replace({
-        pathname: '/barcode-lookup',
-        params: {
-          barcode: barcode,
-          meal: mealType,
-          date: date,
-          mode: mode,
-          mealId: myMealId || '',
-          error: error.message || 'Lookup failed',
-        },
-      });
+      }, 100);
     }
   };
 
