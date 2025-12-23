@@ -19,6 +19,9 @@ export default function MyMealsListScreen() {
   const [showDeleteToast, setShowDeleteToast] = useState(false);
   const [deletedMealName, setDeletedMealName] = useState('');
   
+  // 🔥 FIX: Force re-render counter to ensure UI updates
+  const [renderKey, setRenderKey] = useState(0);
+  
   // 🔥 FIX: Prevent refetch during delete operations
   const isDeletingRef = useRef(false);
   const deleteCountRef = useRef(0);
@@ -59,7 +62,16 @@ export default function MyMealsListScreen() {
         Alert.alert('Error', 'Failed to load My Meals');
       } else {
         console.log('[MyMealsList] ✅ Loaded', mealsData?.length || 0, 'My Meals');
+        console.log('[MyMealsList] 📊 SavedMeals loaded count=', mealsData?.length || 0);
+        
+        // 🔥 FIX: Force state update and re-render
         setMyMeals(mealsData || []);
+        setRenderKey(prev => prev + 1);
+        
+        // 🔥 DEBUG: Log each meal to verify data
+        mealsData?.forEach((meal, idx) => {
+          console.log(`[MyMealsList] 📋 Rendering row id=${meal.id} canDelete=true index=${idx}`);
+        });
       }
     } catch (error) {
       console.error('[MyMealsList] ❌ Error in loadMyMeals:', error);
@@ -123,6 +135,9 @@ export default function MyMealsListScreen() {
         console.log(`[MyMealsList] 📊 DELETE #${deleteNumber} - Local state updated: ${prevMeals.length} → ${filtered.length} meals`);
         return filtered;
       });
+      
+      // 🔥 FIX: Force re-render after state update
+      setRenderKey(prev => prev + 1);
 
       // 🔥 STEP 2: Delete meal items first (foreign key constraint)
       console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Deleting meal items from backend...`);
@@ -142,6 +157,7 @@ export default function MyMealsListScreen() {
         setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
+        setRenderKey(prev => prev + 1);
         Alert.alert('Error', `Failed to delete meal items: ${itemsError.message}`);
         isDeletingRef.current = false;
         return;
@@ -167,6 +183,7 @@ export default function MyMealsListScreen() {
         setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
+        setRenderKey(prev => prev + 1);
         Alert.alert('Error', `Failed to delete meal: ${mealError.message}`);
         isDeletingRef.current = false;
         return;
@@ -190,6 +207,7 @@ export default function MyMealsListScreen() {
       setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ));
+      setRenderKey(prev => prev + 1);
       Alert.alert('Error', 'An error occurred while deleting');
     } finally {
       // 🔥 FIX: Clear deleting flag after operation completes
@@ -199,9 +217,12 @@ export default function MyMealsListScreen() {
   };
 
   const renderMyMealCard = (meal: MyMeal, index: number) => {
+    // 🔥 DEBUG: Log every render attempt
+    console.log(`[MyMealsList] 🎨 Rendering meal card: "${meal.name}" (ID: ${meal.id}) - Delete icon should be visible`);
+    
     return (
       <View
-        key={meal.id || `meal-${index}`}
+        key={`${meal.id}-${renderKey}`}
         style={[
           styles.mealCard,
           { backgroundColor: isDark ? colors.cardDark : colors.card }
@@ -242,7 +263,7 @@ export default function MyMealsListScreen() {
           />
         </Pressable>
         
-        {/* 🔥 MOBILE FIX: Delete button with enhanced touch handling */}
+        {/* 🔥 MOBILE FIX: Delete button with enhanced touch handling - ALWAYS VISIBLE */}
         <Pressable
           style={styles.deleteButton}
           onPress={() => {
@@ -266,6 +287,9 @@ export default function MyMealsListScreen() {
       </View>
     );
   };
+
+  // 🔥 DEBUG: Log render state
+  console.log(`[MyMealsList] 🎨 Component rendering - Meals count: ${myMeals.length}, Loading: ${loading}, RenderKey: ${renderKey}`);
 
   return (
     <SafeAreaView 
@@ -291,6 +315,7 @@ export default function MyMealsListScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        key={`scroll-${renderKey}`}
       >
         <TouchableOpacity
           style={[styles.createButton, { backgroundColor: colors.primary }]}
@@ -328,7 +353,9 @@ export default function MyMealsListScreen() {
             </Text>
           </View>
         ) : (
-          myMeals.map((meal, index) => renderMyMealCard(meal, index))
+          <>
+            {myMeals.map((meal, index) => renderMyMealCard(meal, index))}
+          </>
         )}
 
         <View style={{ height: 100 }} />
