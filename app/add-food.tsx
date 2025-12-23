@@ -409,13 +409,16 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a search result
+   * FIXED: Uses router.replace() to ensure FoodDetails opens on top
    */
   const handleOpenSearchResultDetails = useCallback((product: OpenFoodFactsProduct) => {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
     console.log('[AddFood] Product:', product.product_name);
-    console.log('[AddFood] Using router.push to keep add-food in navigation stack');
+    console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
 
-    router.push({
+    // CRITICAL FIX: Use router.replace() instead of router.push()
+    // This replaces the Add Food menu with FoodDetails, ensuring FoodDetails is on top
+    router.replace({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(product),
@@ -497,13 +500,13 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a recent food
-   * FIXED: This function now properly navigates to FoodDetails
+   * FIXED: Uses router.replace() to ensure FoodDetails opens on top
    */
   const handleOpenRecentFoodDetails = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
     console.log('[AddFood] Food:', food.name);
     console.log('[AddFood] Food ID:', food.id);
-    console.log('[AddFood] Using router.push to navigate to FoodDetails');
+    console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
 
     try {
       // Fetch the full food data from database to get per-100g values
@@ -555,7 +558,9 @@ export default function AddFoodScreen() {
         mealId: myMealId,
       });
 
-      router.push({
+      // CRITICAL FIX: Use router.replace() instead of router.push()
+      // This replaces the Add Food menu with FoodDetails, ensuring FoodDetails is on top
+      router.replace({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
@@ -567,7 +572,7 @@ export default function AddFoodScreen() {
         },
       });
 
-      console.log('[AddFood] ✅ Navigation triggered successfully');
+      console.log('[AddFood] ✅ Navigation triggered successfully (using replace)');
     } catch (error) {
       console.error('[AddFood] Error opening recent food details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -720,11 +725,12 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a favorite
+   * FIXED: Uses router.replace() to ensure FoodDetails opens on top
    */
   const handleOpenFavoriteDetails = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== OPENING FAVORITE DETAILS ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
-    console.log('[AddFood] Using router.push to keep add-food in navigation stack');
+    console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
 
     try {
       // Convert favorite to OpenFoodFacts format for the food-details screen
@@ -745,7 +751,9 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with favorite data');
 
-      router.push({
+      // CRITICAL FIX: Use router.replace() instead of router.push()
+      // This replaces the Add Food menu with FoodDetails, ensuring FoodDetails is on top
+      router.replace({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
