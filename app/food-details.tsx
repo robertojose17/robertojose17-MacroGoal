@@ -742,7 +742,7 @@ export default function FoodDetailsScreen() {
           </Text>
         </View>
 
-        {/* MACROS + CALORIES - COMPACT ROW */}
+        {/* MACROS + CALORIES - COMPACT ROW WITH IMPROVED SPACING */}
         <View style={[styles.macrosCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <View style={styles.macrosRow}>
             <View style={styles.caloriesSection}>
@@ -1028,12 +1028,14 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
   },
   macrosGrid: {
-    flex: 1,
+    flex: 1.5,
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xs,
   },
   macroItem: {
     alignItems: 'center',
+    minWidth: 60,
   },
   macroValue: {
     fontSize: 18,
