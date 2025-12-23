@@ -1065,8 +1065,9 @@ If the user provides both text and photo, use both sources to make the most accu
             {
               text: 'OK',
               onPress: () => {
-                // Navigate back to home/diary
-                router.replace('/(tabs)/(home)/');
+                // FIXED: Use router.back() to return to Add Food menu instead of navigating to Food Home
+                console.log('[Chatbot] Returning to Add Food menu using router.back()');
+                router.back();
               },
             },
           ]
@@ -1080,7 +1081,9 @@ If the user provides both text and photo, use both sources to make the most accu
             {
               text: 'OK',
               onPress: () => {
-                router.replace('/(tabs)/(home)/');
+                // FIXED: Use router.back() to return to Add Food menu instead of navigating to Food Home
+                console.log('[Chatbot] Returning to Add Food menu using router.back()');
+                router.back();
               },
             },
           ]
