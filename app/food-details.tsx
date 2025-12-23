@@ -585,6 +585,7 @@ export default function FoodDetailsScreen() {
         return;
       }
 
+      // NORMAL DIARY MODE: Log to diary
       console.log('[FoodDetails] Logging to diary...');
       
       const { data: existingMeal } = await supabase
@@ -655,13 +656,12 @@ export default function FoodDetailsScreen() {
       };
       showSuccessBanner(mealLabels[mealType] || mealType);
       
-      setServings('1');
-      setGrams(servingInfo.grams.toString());
-      
       setSaving(false);
       
-      console.log('[FoodDetails] Navigating back to add-food screen');
-      router.back();
+      // CRITICAL FIX: Navigate directly to Food Home using dismissTo
+      // This clears the entire navigation stack and goes back to the home screen
+      console.log('[FoodDetails] ✅ NAVIGATING TO FOOD HOME (dismissTo)');
+      router.dismissTo('/(tabs)/(home)/');
     } catch (error) {
       console.error('[FoodDetails] ❌ Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');

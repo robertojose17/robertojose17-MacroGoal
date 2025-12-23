@@ -14,8 +14,8 @@ import { IconSymbol } from '@/components/IconSymbol';
  * MyFitnessPal-style flow:
  * 1. Open camera
  * 2. Scan barcode ONCE
- * 3. Immediately close camera
- * 4. Navigate to lookup handler screen
+ * 3. Immediately close camera (using replace)
+ * 4. Navigate directly to lookup handler screen
  * 
  * NO API CALLS HERE - just scan and pass barcode to next screen
  */
@@ -62,7 +62,7 @@ export default function BarcodeScannerScreen() {
   /**
    * Handle barcode scan
    * This function is called ONCE when a barcode is scanned
-   * It immediately navigates to the lookup handler screen
+   * It immediately REPLACES the scanner screen with the lookup handler
    */
   const handleBarCodeScanned = useCallback(({ type, data }: { type: string; data: string }) => {
     // Check one-scan lock
@@ -94,14 +94,14 @@ export default function BarcodeScannerScreen() {
     hasScannedRef.current = true;
     console.log('[BarcodeScanner] ✅ One-scan lock activated');
 
-    // Navigate to lookup handler screen
-    console.log('[BarcodeScanner] 🚀 NAVIGATING TO BARCODE-LOOKUP');
+    // CRITICAL FIX: Use REPLACE instead of PUSH to immediately close scanner
+    console.log('[BarcodeScanner] 🚀 REPLACING SCANNER WITH BARCODE-LOOKUP (auto-close)');
     console.log('[BarcodeScanner] Barcode being passed:', cleanBarcode);
     console.log('[BarcodeScanner] Meal:', mealType);
     console.log('[BarcodeScanner] Date:', date);
     console.log('[BarcodeScanner] Mode:', mode);
     
-    router.push({
+    router.replace({
       pathname: '/barcode-lookup',
       params: {
         barcode: cleanBarcode,
