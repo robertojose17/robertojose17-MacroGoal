@@ -137,7 +137,8 @@ export default function FoodDetailsScreen() {
 
     try {
       // CRITICAL FIX D: Race between fetch and timeout
-      const url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
+      // UPDATED: Using v2 endpoint as per OpenFoodFacts API documentation
+      const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
       console.log('[FoodDetails] Fetching from:', url);
 
       const fetchPromise = fetch(url, {
