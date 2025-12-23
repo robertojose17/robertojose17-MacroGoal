@@ -13,13 +13,11 @@ const LOOKUP_TIMEOUT_MS = 10000; // 10 seconds
 /**
  * BARCODE LOOKUP HANDLER SCREEN
  * 
- * MyFitnessPal-style flow:
- * 1. Receives barcode from scanner
- * 2. Shows "Looking up product..." loading state
- * 3. Calls OpenFoodFacts API
- * 4. On success (status=1): Navigate to food-details with product data
- * 5. On not found (status=0): Show "Not Found" screen with options
- * 6. On error/timeout: Show error + retry
+ * This screen is ONLY shown when:
+ * 1. Product not found (status=0)
+ * 2. Lookup error/timeout
+ * 
+ * When product is found, scanner navigates DIRECTLY to food-details
  */
 export default function BarcodeLookupScreen() {
   const router = useRouter();
@@ -32,9 +30,10 @@ export default function BarcodeLookupScreen() {
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const mode = (params.mode as string) || 'diary';
   const myMealId = (params.mealId as string) || undefined;
+  const errorParam = (params.error as string) || undefined;
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!errorParam); // Only load if no error param
+  const [error, setError] = useState<string | null>(errorParam || null);
   const [notFound, setNotFound] = useState(false);
   const isMountedRef = useRef(true);
 
@@ -51,6 +50,7 @@ export default function BarcodeLookupScreen() {
     console.log('[BarcodeLookup] Meal:', mealType);
     console.log('[BarcodeLookup] Date:', date);
     console.log('[BarcodeLookup] Mode:', mode);
+    console.log('[BarcodeLookup] Error param:', errorParam);
 
     if (!barcode || barcode.length === 0) {
       console.error('[BarcodeLookup] ❌ No barcode provided');
@@ -63,7 +63,15 @@ export default function BarcodeLookupScreen() {
       return;
     }
 
-    // Start lookup immediately
+    // If error param is provided, show error immediately
+    if (errorParam) {
+      console.log('[BarcodeLookup] Error param provided, showing error UI');
+      setError(errorParam);
+      setLoading(false);
+      return;
+    }
+
+    // Otherwise, start lookup
     performLookup();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

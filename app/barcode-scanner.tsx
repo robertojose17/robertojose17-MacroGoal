@@ -14,10 +14,10 @@ import { IconSymbol } from '@/components/IconSymbol';
  * MyFitnessPal-style flow:
  * 1. Open camera
  * 2. Scan barcode ONCE
- * 3. Immediately close camera (using replace)
- * 4. Navigate directly to lookup handler screen
+ * 3. Immediately close camera (using goBack)
+ * 4. Trigger lookup and navigate to Food Details
  * 
- * NO API CALLS HERE - just scan and pass barcode to next screen
+ * CRITICAL FIX: Scanner must close IMMEDIATELY, then lookup happens
  */
 export default function BarcodeScannerScreen() {
   const router = useRouter();
@@ -61,10 +61,9 @@ export default function BarcodeScannerScreen() {
 
   /**
    * Handle barcode scan
-   * This function is called ONCE when a barcode is scanned
-   * It immediately REPLACES the scanner screen with the lookup handler
+   * CRITICAL FIX: Close scanner IMMEDIATELY, then navigate to lookup
    */
-  const handleBarCodeScanned = useCallback(({ type, data }: { type: string; data: string }) => {
+  const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
     // Check one-scan lock
     if (hasScannedRef.current) {
       console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
@@ -94,24 +93,94 @@ export default function BarcodeScannerScreen() {
     hasScannedRef.current = true;
     console.log('[BarcodeScanner] ✅ One-scan lock activated');
 
-    // CRITICAL FIX: Use REPLACE instead of PUSH to immediately close scanner
-    console.log('[BarcodeScanner] 🚀 REPLACING SCANNER WITH BARCODE-LOOKUP (auto-close)');
-    console.log('[BarcodeScanner] Barcode being passed:', cleanBarcode);
-    console.log('[BarcodeScanner] Meal:', mealType);
-    console.log('[BarcodeScanner] Date:', date);
-    console.log('[BarcodeScanner] Mode:', mode);
-    
-    router.replace({
-      pathname: '/barcode-lookup',
-      params: {
-        barcode: cleanBarcode,
-        meal: mealType,
-        date: date,
-        mode: mode,
-        mealId: myMealId || '',
-      },
-    });
+    // CRITICAL FIX: Close scanner IMMEDIATELY using goBack()
+    console.log('[BarcodeScanner] 🚀 CLOSING SCANNER (goBack)');
+    router.back();
+
+    // Small delay to ensure scanner is closed before starting lookup
+    setTimeout(() => {
+      console.log('[BarcodeScanner] 🚀 STARTING LOOKUP PROCESS');
+      performLookupAndNavigate(cleanBarcode);
+    }, 100);
   }, [router, mealType, date, mode, myMealId]);
+
+  /**
+   * Perform OpenFoodFacts lookup and navigate to Food Details
+   */
+  const performLookupAndNavigate = async (barcode: string) => {
+    console.log('[BarcodeScanner] ========== PERFORMING LOOKUP ==========');
+    console.log('[BarcodeScanner] Barcode:', barcode);
+
+    try {
+      const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
+      console.log('[BarcodeScanner] Lookup URL:', url);
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'EliteMacroTracker/1.0',
+          'Accept': 'application/json',
+        },
+      });
+
+      console.log('[BarcodeScanner] HTTP Status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const status = Number(result.status);
+      
+      console.log('[BarcodeScanner] OpenFoodFacts status:', status);
+
+      if (status === 1 && result.product) {
+        console.log('[BarcodeScanner] ✅ PRODUCT FOUND:', result.product.product_name);
+        
+        // CRITICAL FIX: Navigate DIRECTLY to Food Details (skip barcode-lookup screen)
+        console.log('[BarcodeScanner] 🚀 NAVIGATING DIRECTLY TO FOOD DETAILS');
+        router.push({
+          pathname: '/food-details',
+          params: {
+            offData: JSON.stringify(result.product),
+            meal: mealType,
+            date: date,
+            mode: mode,
+            returnTo: '/(tabs)/(home)/',
+            mealId: myMealId || '',
+          },
+        });
+      } else {
+        console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
+        
+        // Navigate to barcode-lookup screen to show "Not Found" UI
+        router.push({
+          pathname: '/barcode-lookup',
+          params: {
+            barcode: barcode,
+            meal: mealType,
+            date: date,
+            mode: mode,
+            mealId: myMealId || '',
+          },
+        });
+      }
+    } catch (error: any) {
+      console.error('[BarcodeScanner] ❌ LOOKUP ERROR:', error);
+      
+      // Navigate to barcode-lookup screen to show error UI
+      router.push({
+        pathname: '/barcode-lookup',
+        params: {
+          barcode: barcode,
+          meal: mealType,
+          date: date,
+          mode: mode,
+          mealId: myMealId || '',
+          error: error.message || 'Lookup failed',
+        },
+      });
+    }
+  };
 
   // Show loading while checking permissions
   if (!permission) {

@@ -658,10 +658,15 @@ export default function FoodDetailsScreen() {
       
       setSaving(false);
       
-      // CRITICAL FIX: Navigate directly to Food Home using dismissTo
-      // This clears the entire navigation stack and goes back to the home screen
-      console.log('[FoodDetails] ✅ NAVIGATING TO FOOD HOME (dismissTo)');
-      router.dismissTo('/(tabs)/(home)/');
+      // CRITICAL FIX: Navigate directly to Food Home
+      // Use router.push with a reset to clear the navigation stack
+      console.log('[FoodDetails] ✅ NAVIGATING TO FOOD HOME');
+      
+      // Small delay to show the success banner
+      setTimeout(() => {
+        // Navigate back to the home tab, which will trigger a refresh
+        router.push('/(tabs)/(home)/');
+      }, 600);
     } catch (error) {
       console.error('[FoodDetails] ❌ Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');
