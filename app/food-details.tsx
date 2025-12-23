@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, KeyboardAvoidingView, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -10,57 +10,17 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
-/**
- * Score a product based on the number of non-zero nutriments
- */
-function scoreProduct(p: any): number {
-  if (!p || !p.nutriments) return 0;
-  const n = p.nutriments;
-  const values = [
-    n['energy-kcal_100g'] ?? n['energy-kcal_serving'],
-    n['proteins_100g'] ?? n['proteins_serving'],
-    n['carbohydrates_100g'] ?? n['carbohydrates_serving'],
-    n['fat_100g'] ?? n['fat_serving'],
-    n['fiber_100g'] ?? n['fiber_serving'],
-  ];
-  return values.filter(v => typeof v === 'number' && v > 0).length;
-}
+// Unit conversion factors (grams as base)
+const UNIT_CONVERSIONS: Record<string, number> = {
+  'g': 1,
+  'oz': 28.3495,
+  'ml': 1, // Approximate for water-like liquids
+  'cup': 240,
+  'tbsp': 15,
+  'tsp': 5,
+};
 
-/**
- * Select the best product from multiple candidates based on nutrient completeness
- */
-function selectBestProduct(products: any): any {
-  console.log('[FoodDetails] ========== SELECTING BEST PRODUCT ==========');
-  
-  const candidates = Array.isArray(products) ? products : [products].filter(Boolean);
-  
-  console.log('[FoodDetails] Number of candidates:', candidates.length);
-  
-  if (candidates.length === 0) {
-    console.log('[FoodDetails] No candidates available');
-    return null;
-  }
-  
-  const sorted = candidates
-    .filter(p => !!p)
-    .sort((a, b) => scoreProduct(b) - scoreProduct(a));
-  
-  sorted.forEach((p, index) => {
-    const score = scoreProduct(p);
-    console.log(`[FoodDetails] Candidate ${index + 1}: score=${score}, name="${p.product_name || 'Unknown'}"`);
-  });
-  
-  const bestProduct = sorted[0] ?? candidates[0] ?? null;
-  
-  if (bestProduct) {
-    console.log('[FoodDetails] ✅ Best product selected:', bestProduct.product_name || 'Unknown');
-    console.log('[FoodDetails] Best product score:', scoreProduct(bestProduct));
-  } else {
-    console.log('[FoodDetails] ❌ No valid product found');
-  }
-  
-  return bestProduct;
-}
+type ServingUnit = 'g' | 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp';
 
 export default function FoodDetailsScreen() {
   const router = useRouter();
@@ -79,13 +39,19 @@ export default function FoodDetailsScreen() {
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
   const [nutrition, setNutrition] = useState<any>(null);
   
-  const [servings, setServings] = useState('1');
-  const [grams, setGrams] = useState('100');
+  // Base serving in grams (canonical reference)
+  const [baseServingGrams, setBaseServingGrams] = useState(100);
+  
+  // Current serving controls
+  const [servingAmount, setServingAmount] = useState('100');
+  const [servingUnit, setServingUnit] = useState<ServingUnit>('g');
+  const [numberOfServings, setNumberOfServings] = useState('1');
   
   const [saving, setSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [nutritionExpanded, setNutritionExpanded] = useState(false);
 
   const isMountedRef = useRef(true);
 
@@ -94,14 +60,6 @@ export default function FoodDetailsScreen() {
   const [bannerOpacity] = useState(new Animated.Value(0));
   const isShowingBannerRef = useRef(false);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [perServingMacros, setPerServingMacros] = useState({
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-    fiber: 0,
-  });
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -152,6 +110,8 @@ export default function FoodDetailsScreen() {
           'fat_100g': parsed.nutriments?.['fat_100g'] || 0,
           'fiber_100g': parsed.nutriments?.['fiber_100g'] || 0,
           'sugars_100g': parsed.nutriments?.['sugars_100g'] || 0,
+          'sodium_100g': parsed.nutriments?.['sodium_100g'] || 0,
+          'saturated-fat_100g': parsed.nutriments?.['saturated-fat_100g'] || 0,
         },
       };
       
@@ -169,9 +129,21 @@ export default function FoodDetailsScreen() {
       });
       
       setServingInfo(serving);
+      setBaseServingGrams(serving.grams);
       
-      setServings('1');
-      setGrams(serving.grams.toString());
+      // Determine default unit based on source
+      const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
+      setServingUnit(defaultUnit);
+      
+      // Set serving amount based on unit
+      if (defaultUnit === 'oz') {
+        const ozAmount = serving.grams / UNIT_CONVERSIONS['oz'];
+        setServingAmount(ozAmount.toFixed(1));
+      } else {
+        setServingAmount(serving.grams.toString());
+      }
+      
+      setNumberOfServings('1');
       
       console.log('[FoodDetails] Extracting nutrition...');
       const nutritionData = extractNutrition(productWithDefaults);
@@ -183,17 +155,6 @@ export default function FoodDetailsScreen() {
         fiber: nutritionData.fiber,
       });
       setNutrition(nutritionData);
-      
-      const servingMultiplier = serving.grams / 100;
-      const perServing = {
-        calories: nutritionData.calories * servingMultiplier,
-        protein: nutritionData.protein * servingMultiplier,
-        carbs: nutritionData.carbs * servingMultiplier,
-        fat: nutritionData.fat * servingMultiplier,
-        fiber: nutritionData.fiber * servingMultiplier,
-      };
-      console.log('[FoodDetails] Per-serving macros:', perServing);
-      setPerServingMacros(perServing);
       
       setIsReady(true);
       console.log('[FoodDetails] ✅ Screen ready to display');
@@ -232,15 +193,10 @@ export default function FoodDetailsScreen() {
         fiber: 0,
         sugars: 0,
       });
-      setPerServingMacros({
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        fiber: 0,
-      });
-      setServings('1');
-      setGrams('100');
+      setBaseServingGrams(100);
+      setServingAmount('100');
+      setServingUnit('g');
+      setNumberOfServings('1');
       setIsReady(true);
       
       Alert.alert(
@@ -317,8 +273,8 @@ export default function FoodDetailsScreen() {
           per100_fat: nutrition.fat,
           per100_fiber: nutrition.fiber,
           serving_size: servingInfo.displayText,
-          serving_unit: servingInfo.description.includes('g') ? 'g' : 'serving',
-          default_grams: servingInfo.grams,
+          serving_unit: servingUnit,
+          default_grams: baseServingGrams,
         }
       );
 
@@ -337,32 +293,68 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  const handleServingsChange = (newServings: string) => {
-    console.log('[FoodDetails] Servings changed to:', newServings);
-    setServings(newServings);
+  // Convert serving amount to grams
+  const convertToGrams = (amount: number, unit: ServingUnit): number => {
+    return amount * UNIT_CONVERSIONS[unit];
+  };
+
+  // Convert grams to target unit
+  const convertFromGrams = (grams: number, unit: ServingUnit): number => {
+    return grams / UNIT_CONVERSIONS[unit];
+  };
+
+  // Handle serving amount change
+  const handleServingAmountChange = (newAmount: string) => {
+    setServingAmount(newAmount);
     
-    if (!servingInfo) return;
-    
-    const servingsNum = parseFloat(newServings);
-    if (!isNaN(servingsNum) && servingsNum > 0) {
-      const newGrams = servingInfo.grams * servingsNum;
-      console.log('[FoodDetails] Updating grams to:', newGrams);
-      setGrams(newGrams.toFixed(1));
+    const amountNum = parseFloat(newAmount);
+    if (!isNaN(amountNum) && amountNum > 0) {
+      const gramsPerServing = convertToGrams(amountNum, servingUnit);
+      setBaseServingGrams(gramsPerServing);
+      console.log('[FoodDetails] Serving amount changed:', newAmount, servingUnit, '=', gramsPerServing, 'g');
     }
   };
 
-  const handleGramsChange = (newGrams: string) => {
-    console.log('[FoodDetails] Grams changed to:', newGrams);
-    setGrams(newGrams);
+  // Handle serving unit change
+  const handleServingUnitChange = (newUnit: ServingUnit) => {
+    console.log('[FoodDetails] Unit changed from', servingUnit, 'to', newUnit);
     
-    if (!servingInfo) return;
+    // Convert current amount to new unit
+    const currentGrams = convertToGrams(parseFloat(servingAmount) || baseServingGrams, servingUnit);
+    const newAmount = convertFromGrams(currentGrams, newUnit);
     
-    const gramsNum = parseFloat(newGrams);
-    if (!isNaN(gramsNum) && gramsNum > 0 && servingInfo.grams > 0) {
-      const newServings = gramsNum / servingInfo.grams;
-      console.log('[FoodDetails] Updating servings to:', newServings);
-      setServings(newServings.toFixed(2));
-    }
+    setServingUnit(newUnit);
+    setServingAmount(newAmount.toFixed(1));
+    
+    console.log('[FoodDetails] Converted:', servingAmount, servingUnit, '→', newAmount.toFixed(1), newUnit);
+  };
+
+  // Handle number of servings change
+  const handleNumberOfServingsChange = (newServings: string) => {
+    console.log('[FoodDetails] Number of servings changed to:', newServings);
+    setNumberOfServings(newServings);
+  };
+
+  // Calculate total grams
+  const getTotalGrams = (): number => {
+    const servings = parseFloat(numberOfServings) || 1;
+    return baseServingGrams * servings;
+  };
+
+  // Calculate macros based on total grams
+  const calculateMacros = () => {
+    if (!nutrition) return { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
+    
+    const totalGrams = getTotalGrams();
+    const multiplier = totalGrams / 100;
+    
+    return {
+      calories: nutrition.calories * multiplier,
+      protein: nutrition.protein * multiplier,
+      carbs: nutrition.carbs * multiplier,
+      fat: nutrition.fat * multiplier,
+      fiber: nutrition.fiber * multiplier,
+    };
   };
 
   const showSuccessBanner = useCallback((mealName: string) => {
@@ -417,55 +409,15 @@ export default function FoodDetailsScreen() {
     );
   }
 
-  const servingsNum = parseFloat(servings) || 1;
-  const gramsNum = parseFloat(grams) || servingInfo.grams;
-  
-  const calculatedCalories = perServingMacros.calories * servingsNum;
-  const calculatedProtein = perServingMacros.protein * servingsNum;
-  const calculatedCarbs = perServingMacros.carbs * servingsNum;
-  const calculatedFats = perServingMacros.fat * servingsNum;
-  const calculatedFiber = perServingMacros.fiber * servingsNum;
-
-  const getServingDescription = (): string => {
-    const currentGrams = parseFloat(grams) || servingInfo.grams;
-    const currentServings = parseFloat(servings) || 1;
-    
-    if (Math.abs(currentServings - 1) < 0.01) {
-      return servingInfo.displayText;
-    }
-    
-    if (servingInfo.description !== servingInfo.displayText && !servingInfo.description.match(/^\d+\s*g$/i)) {
-      const match = servingInfo.description.match(/^(\d+\.?\d*)\s+(.+)$/);
-      if (match) {
-        const originalCount = parseFloat(match[1]);
-        const unit = match[2];
-        const newCount = originalCount * currentServings;
-        
-        if (Math.abs(newCount - Math.round(newCount)) < 0.1) {
-          if (servingInfo.isEstimated) {
-            return `${Math.round(newCount)} ${unit} (≈ ${Math.round(currentGrams)} g)`;
-          } else {
-            return `${Math.round(newCount)} ${unit} (${Math.round(currentGrams)} g)`;
-          }
-        }
-        
-        if (servingInfo.isEstimated) {
-          return `${newCount.toFixed(1)} ${unit} (≈ ${Math.round(currentGrams)} g)`;
-        } else {
-          return `${newCount.toFixed(1)} ${unit} (${Math.round(currentGrams)} g)`;
-        }
-      }
-    }
-    
-    return `${Math.round(currentGrams)} g`;
-  };
+  const macros = calculateMacros();
+  const totalGrams = getTotalGrams();
 
   const handleSave = async () => {
-    const finalServings = parseFloat(servings);
-    const finalGrams = parseFloat(grams);
+    const finalServings = parseFloat(numberOfServings);
+    const finalGrams = totalGrams;
     
     if (!finalServings || finalServings <= 0 || !finalGrams || finalGrams <= 0) {
-      Alert.alert('Error', 'Please enter valid servings and grams');
+      Alert.alert('Error', 'Please enter valid servings');
       return;
     }
 
@@ -473,7 +425,7 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] Mode:', mode);
     console.log('[FoodDetails] Meal:', mealType);
     console.log('[FoodDetails] Servings:', finalServings);
-    console.log('[FoodDetails] Grams:', finalGrams);
+    console.log('[FoodDetails] Total Grams:', finalGrams);
     console.log('[FoodDetails] returnTo:', returnTo);
     console.log('[FoodDetails] mealId:', myMealId);
 
@@ -536,18 +488,12 @@ export default function FoodDetailsScreen() {
         console.log('[FoodDetails] ✅ Created new food:', foodId);
       }
 
-      const finalServingDescription = getServingDescription();
+      const servingDescription = `${servingAmount} ${servingUnit} (${Math.round(finalGrams)}g)`;
 
-      console.log('[FoodDetails] Serving description:', finalServingDescription);
+      console.log('[FoodDetails] Serving description:', servingDescription);
       console.log('[FoodDetails] Final servings:', finalServings);
       console.log('[FoodDetails] Final grams:', finalGrams);
-      console.log('[FoodDetails] Calculated nutrition:', {
-        calories: calculatedCalories,
-        protein: calculatedProtein,
-        carbs: calculatedCarbs,
-        fats: calculatedFats,
-        fiber: calculatedFiber,
-      });
+      console.log('[FoodDetails] Calculated nutrition:', macros);
 
       if (mode === 'mymeal') {
         console.log('[FoodDetails] Mode is mymeal, returning to My Meal screen');
@@ -562,16 +508,16 @@ export default function FoodDetailsScreen() {
           food_id: foodId,
           food: foodData,
           quantity: finalServings,
-          calories: calculatedCalories,
-          protein: calculatedProtein,
-          carbs: calculatedCarbs,
-          fats: calculatedFats,
-          fiber: calculatedFiber,
-          serving_description: finalServingDescription,
+          calories: macros.calories,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fats: macros.fat,
+          fiber: macros.fiber,
+          serving_description: servingDescription,
           grams: finalGrams,
         };
 
-        console.log('[FoodDetails] ✅ FIXED: Using returnTo parameter:', returnTo || '/my-meal-builder');
+        console.log('[FoodDetails] ✅ Using returnTo parameter:', returnTo || '/my-meal-builder');
         
         router.dismissTo({
           pathname: returnTo || '/my-meal-builder',
@@ -630,12 +576,12 @@ export default function FoodDetailsScreen() {
           meal_id: mealId,
           food_id: foodId,
           quantity: finalServings,
-          calories: calculatedCalories,
-          protein: calculatedProtein,
-          carbs: calculatedCarbs,
-          fats: calculatedFats,
-          fiber: calculatedFiber,
-          serving_description: finalServingDescription,
+          calories: macros.calories,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fats: macros.fat,
+          fiber: macros.fiber,
+          serving_description: servingDescription,
           grams: finalGrams,
         });
 
@@ -658,13 +604,9 @@ export default function FoodDetailsScreen() {
       
       setSaving(false);
       
-      // CRITICAL FIX: Navigate directly to Food Home
-      // Use router.push with a reset to clear the navigation stack
       console.log('[FoodDetails] ✅ NAVIGATING TO FOOD HOME');
       
-      // Small delay to show the success banner
       setTimeout(() => {
-        // Navigate back to the home tab, which will trigger a refresh
         router.push('/(tabs)/(home)/');
       }, 600);
     } catch (error) {
@@ -674,11 +616,6 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  const hasMissingData = 
-    product.product_name === 'Unknown Product' || 
-    !product.brands ||
-    (nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0);
-
   const mealLabels: Record<string, string> = {
     breakfast: 'Breakfast',
     lunch: 'Lunch',
@@ -686,317 +623,277 @@ export default function FoodDetailsScreen() {
     snack: 'Snacks',
   };
 
+  const availableUnits: ServingUnit[] = ['g', 'oz'];
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <IconSymbol
+            ios_icon_name="chevron.left"
+            android_material_icon_name="arrow_back"
+            size={24}
+            color={isDark ? colors.textDark : colors.text}
+          />
+        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
+        <TouchableOpacity 
+          onPress={handleToggleFavorite}
+          disabled={favoriteLoading}
+          style={styles.favoriteButton}
+        >
+          {favoriteLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
             <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
+              ios_icon_name={isFavorited ? "star.fill" : "star"}
+              android_material_icon_name={isFavorited ? "star" : "star_border"}
               size={24}
-              color={isDark ? colors.textDark : colors.text}
+              color={isFavorited ? "#FFD700" : (isDark ? colors.textDark : colors.text)}
             />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Food Details
+          )}
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* COMPACT HEADER */}
+        <View style={styles.foodHeader}>
+          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+            {product.product_name || 'Unknown Product'}
           </Text>
-          <TouchableOpacity 
-            onPress={handleToggleFavorite}
-            disabled={favoriteLoading}
-            style={styles.favoriteButton}
-          >
-            {favoriteLoading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <IconSymbol
-                ios_icon_name={isFavorited ? "star.fill" : "star"}
-                android_material_icon_name={isFavorited ? "star" : "star_border"}
-                size={24}
-                color={isFavorited ? "#FFD700" : (isDark ? colors.textDark : colors.text)}
-              />
-            )}
-          </TouchableOpacity>
+          {product.brands && (
+            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {product.brands}
+            </Text>
+          )}
         </View>
 
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+        {/* SERVING CONTROLS - COMPACT */}
+        <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          {/* Serving Size with Unit Selector */}
+          <View style={styles.servingRow}>
+            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Serving Size
+            </Text>
+            <View style={styles.servingInputRow}>
+              <TextInput
+                style={[styles.servingInput, { 
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                  borderColor: isDark ? colors.borderDark : colors.border, 
+                  color: isDark ? colors.textDark : colors.text 
+                }]}
+                placeholder="100"
+                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                keyboardType="decimal-pad"
+                value={servingAmount}
+                onChangeText={handleServingAmountChange}
+              />
+              <View style={styles.unitSelector}>
+                {availableUnits.map((unit) => (
+                  <TouchableOpacity
+                    key={unit}
+                    style={[
+                      styles.unitButton,
+                      servingUnit === unit && { backgroundColor: colors.primary },
+                    ]}
+                    onPress={() => handleServingUnitChange(unit)}
+                  >
+                    <Text style={[
+                      styles.unitButtonText,
+                      { color: servingUnit === unit ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }
+                    ]}>
+                      {unit}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* Number of Servings */}
+          <View style={styles.servingRow}>
+            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Number of Servings
+            </Text>
+            <View style={styles.servingInputRow}>
+              <TextInput
+                style={[styles.servingInput, { 
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                  borderColor: isDark ? colors.borderDark : colors.border, 
+                  color: isDark ? colors.textDark : colors.text 
+                }]}
+                placeholder="1"
+                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                keyboardType="decimal-pad"
+                value={numberOfServings}
+                onChangeText={handleNumberOfServingsChange}
+              />
+              <Text style={[styles.servingUnitText, { color: isDark ? colors.textDark : colors.text }]}>
+                × {servingAmount} {servingUnit}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[styles.totalGramsText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Total: {Math.round(totalGrams)}g
+          </Text>
+        </View>
+
+        {/* MACROS + CALORIES - COMPACT ROW */}
+        <View style={[styles.macrosCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <View style={styles.macrosRow}>
+            <View style={styles.caloriesSection}>
+              <Text style={[styles.caloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Calories
+              </Text>
+              <Text style={[styles.caloriesValue, { color: colors.calories }]}>
+                {Math.round(macros.calories)}
+              </Text>
+            </View>
+            <View style={styles.macrosDivider} />
+            <View style={styles.macrosGrid}>
+              <View style={styles.macroItem}>
+                <Text style={[styles.macroValue, { color: colors.carbs }]}>
+                  {macros.carbs.toFixed(1)}g
+                </Text>
+                <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Carbs
+                </Text>
+              </View>
+              <View style={styles.macroItem}>
+                <Text style={[styles.macroValue, { color: colors.fats }]}>
+                  {macros.fat.toFixed(1)}g
+                </Text>
+                <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Fat
+                </Text>
+              </View>
+              <View style={styles.macroItem}>
+                <Text style={[styles.macroValue, { color: colors.protein }]}>
+                  {macros.protein.toFixed(1)}g
+                </Text>
+                <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Protein
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* ADD BUTTON - DIRECTLY UNDER MACROS */}
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
+          onPress={handleSave}
+          disabled={saving}
         >
-          {hasMissingData && (
-            <View style={[styles.warningCard, { backgroundColor: 'rgba(255, 149, 0, 0.1)', borderColor: colors.warning || '#FF9500' }]}>
-              <IconSymbol
-                ios_icon_name="exclamationmark.triangle"
-                android_material_icon_name="warning"
-                size={24}
-                color={colors.warning || '#FF9500'}
-              />
-              <Text style={[styles.warningText, { color: colors.warning || '#FF9500' }]}>
-                Some product information is missing. You can still add this food and manually enter nutrition info later.
-              </Text>
-            </View>
+          {saving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.addButtonText}>Add to {mealLabels[mealType]}</Text>
           )}
+        </TouchableOpacity>
 
-          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-            <View style={styles.offBadgeContainer}>
-              <Text style={[styles.offBadge, { color: colors.primary }]}>
-                ✓ OpenFoodFacts
+        {/* NUTRITION FACTS - COLLAPSIBLE */}
+        <TouchableOpacity
+          style={[styles.nutritionHeader, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+          onPress={() => setNutritionExpanded(!nutritionExpanded)}
+        >
+          <Text style={[styles.nutritionHeaderText, { color: isDark ? colors.textDark : colors.text }]}>
+            Nutrition Facts
+          </Text>
+          <IconSymbol
+            ios_icon_name={nutritionExpanded ? "chevron.up" : "chevron.down"}
+            android_material_icon_name={nutritionExpanded ? "expand_less" : "expand_more"}
+            size={24}
+            color={isDark ? colors.textDark : colors.text}
+          />
+        </TouchableOpacity>
+
+        {nutritionExpanded && (
+          <View style={[styles.nutritionContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <View style={styles.nutritionRow}>
+              <Text style={[styles.nutritionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Fiber
+              </Text>
+              <Text style={[styles.nutritionValue, { color: isDark ? colors.textDark : colors.text }]}>
+                {macros.fiber.toFixed(1)}g
               </Text>
             </View>
-            
-            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {product.product_name || 'Unknown Product'}
-            </Text>
-            
-            {product.brands && (
-              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {product.brands}
-              </Text>
-            )}
-            
-            <View style={styles.servingSizeInfo}>
-              <Text style={[styles.servingSizeLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Label serving size:
-              </Text>
-              <Text style={[styles.servingSize, { color: colors.primary }]}>
-                {servingInfo.displayText}
-              </Text>
-              {servingInfo.isEstimated && !servingInfo.hasValidGrams && (
-                <Text style={[styles.servingWarning, { color: colors.warning || '#FF9500' }]}>
-                  ⚠️ Estimated - no gram value found, using 100g for calculations
+            {nutrition.sugars > 0 && (
+              <View style={styles.nutritionRow}>
+                <Text style={[styles.nutritionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Sugars
                 </Text>
-              )}
-              {servingInfo.isEstimated && servingInfo.hasValidGrams && (
-                <Text style={[styles.servingInfo, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  ℹ️ Converted using estimated density
-                </Text>
-              )}
-            </View>
-            
-            {product.code && (
-              <Text style={[styles.barcode, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Barcode: {product.code}
-              </Text>
-            )}
-          </View>
-
-          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              Your Portion
-            </Text>
-            <Text style={[styles.servingInfoText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Adjust servings or grams - both are synchronized
-            </Text>
-            
-            <View style={styles.servingPreview}>
-              <Text style={[styles.servingPreviewLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Will be logged as:
-              </Text>
-              <Text style={[styles.servingPreviewText, { color: colors.primary }]}>
-                {getServingDescription()}
-              </Text>
-            </View>
-
-            <View style={styles.servingInput}>
-              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-                Servings:
-              </Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-                  placeholder="1"
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  keyboardType="decimal-pad"
-                  value={servings}
-                  onChangeText={handleServingsChange}
-                />
-                <Text style={[styles.unitLabel, { color: isDark ? colors.textDark : colors.text }]}>servings</Text>
-              </View>
-            </View>
-
-            <View style={styles.servingInput}>
-              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-                Grams:
-              </Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-                  placeholder={servingInfo.grams.toString()}
-                  placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  keyboardType="decimal-pad"
-                  value={grams}
-                  onChangeText={handleGramsChange}
-                />
-                <Text style={[styles.unitLabel, { color: isDark ? colors.textDark : colors.text }]}>g</Text>
-              </View>
-            </View>
-            
-            <View style={styles.quickButtons}>
-              <TouchableOpacity
-                style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => handleServingsChange('0.5')}
-              >
-                <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>½</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => handleServingsChange('1')}
-              >
-                <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>1x</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => handleServingsChange('1.5')}
-              >
-                <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>1.5x</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-                onPress={() => handleServingsChange('2')}
-              >
-                <Text style={[styles.quickButtonText, { color: isDark ? colors.textDark : colors.text }]}>2x</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              Nutrition Facts
-            </Text>
-            <Text style={[styles.nutritionNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              For {servingsNum.toFixed(2)} servings ({Math.round(gramsNum)}g)
-            </Text>
-
-            {nutrition.calories === 0 && nutrition.protein === 0 && nutrition.carbs === 0 && nutrition.fat === 0 ? (
-              <View style={styles.noNutritionContainer}>
-                <Text style={[styles.noNutritionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  ⚠️ No nutrient data available for this food
-                </Text>
-                <Text style={[styles.noNutritionSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  You can still add this food and manually enter nutrition info later
+                <Text style={[styles.nutritionValue, { color: isDark ? colors.textDark : colors.text }]}>
+                  {(nutrition.sugars * (totalGrams / 100)).toFixed(1)}g
                 </Text>
               </View>
-            ) : (
-              <React.Fragment>
-                <View style={styles.nutritionGrid}>
-                  <View style={styles.nutritionItem}>
-                    <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Calories
-                    </Text>
-                    <Text style={[styles.nutritionValue, { color: colors.calories }]}>
-                      {Math.round(calculatedCalories)} kcal
-                    </Text>
-                  </View>
-
-                  <View style={styles.nutritionItem}>
-                    <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Protein
-                    </Text>
-                    <Text style={[styles.nutritionValue, { color: colors.protein }]}>
-                      {calculatedProtein.toFixed(1)}g
-                    </Text>
-                  </View>
-
-                  <View style={styles.nutritionItem}>
-                    <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Carbs
-                    </Text>
-                    <Text style={[styles.nutritionValue, { color: colors.carbs }]}>
-                      {calculatedCarbs.toFixed(1)}g
-                    </Text>
-                  </View>
-
-                  <View style={styles.nutritionItem}>
-                    <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Fats
-                    </Text>
-                    <Text style={[styles.nutritionValue, { color: colors.fats }]}>
-                      {calculatedFats.toFixed(1)}g
-                    </Text>
-                  </View>
-
-                  <View style={styles.nutritionItem}>
-                    <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Fiber
-                    </Text>
-                    <Text style={[styles.nutritionValue, { color: colors.fiber }]}>
-                      {calculatedFiber.toFixed(1)}g
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.per100gInfo}>
-                  <Text style={[styles.per100gTitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Per 100g:
-                  </Text>
-                  <Text style={[styles.per100gText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {Math.round(nutrition.calories)} kcal • P: {nutrition.protein.toFixed(1)}g • C: {nutrition.carbs.toFixed(1)}g • F: {nutrition.fat.toFixed(1)}g
-                  </Text>
-                </View>
-
-                <View style={styles.perServingInfo}>
-                  <Text style={[styles.perServingTitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Per serving ({servingInfo.displayText}):
-                  </Text>
-                  <Text style={[styles.perServingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {Math.round(perServingMacros.calories)} kcal • P: {perServingMacros.protein.toFixed(1)}g • C: {perServingMacros.carbs.toFixed(1)}g • F: {perServingMacros.fat.toFixed(1)}g
-                  </Text>
-                </View>
-              </React.Fragment>
             )}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.saveButton, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.saveButtonText}>Add to {mealLabels[mealType]}</Text>
+            {nutrition.sodium > 0 && (
+              <View style={styles.nutritionRow}>
+                <Text style={[styles.nutritionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Sodium
+                </Text>
+                <Text style={[styles.nutritionValue, { color: isDark ? colors.textDark : colors.text }]}>
+                  {(nutrition.sodium * (totalGrams / 100) * 1000).toFixed(0)}mg
+                </Text>
+              </View>
             )}
-          </TouchableOpacity>
-
-          <View style={styles.bottomSpacer} />
-        </ScrollView>
-
-        {currentBanner && (
-          <Animated.View 
-            style={[
-              styles.bannerContainer,
-              { 
-                opacity: bannerOpacity,
-              }
-            ]}
-          >
-            <View style={styles.banner}>
-              <IconSymbol
-                ios_icon_name="checkmark.circle.fill"
-                android_material_icon_name="check_circle"
-                size={20}
-                color="#FFFFFF"
-              />
-              <Text style={styles.bannerText}>
-                {currentBanner}
+            {nutrition['saturated-fat'] > 0 && (
+              <View style={styles.nutritionRow}>
+                <Text style={[styles.nutritionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  Saturated Fat
+                </Text>
+                <Text style={[styles.nutritionValue, { color: isDark ? colors.textDark : colors.text }]}>
+                  {(nutrition['saturated-fat'] * (totalGrams / 100)).toFixed(1)}g
+                </Text>
+              </View>
+            )}
+            <View style={[styles.nutritionRow, { borderTopWidth: 1, borderTopColor: isDark ? colors.borderDark : colors.border, paddingTop: spacing.sm, marginTop: spacing.sm }]}>
+              <Text style={[styles.nutritionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, fontSize: 12 }]}>
+                Per 100g
+              </Text>
+              <Text style={[styles.nutritionValue, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, fontSize: 12 }]}>
+                {Math.round(nutrition.calories)} kcal • P: {nutrition.protein.toFixed(1)}g • C: {nutrition.carbs.toFixed(1)}g • F: {nutrition.fat.toFixed(1)}g
               </Text>
             </View>
-          </Animated.View>
+          </View>
         )}
-      </KeyboardAvoidingView>
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+
+      {currentBanner && (
+        <Animated.View 
+          style={[
+            styles.bannerContainer,
+            { 
+              opacity: bannerOpacity,
+            }
+          ]}
+        >
+          <View style={styles.banner}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check_circle"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.bannerText}>
+              {currentBanner}
+            </Text>
+          </View>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  keyboardView: {
     flex: 1,
   },
   loadingContainer: {
@@ -1017,12 +914,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
-  title: {
-    ...typography.h3,
+  headerSpacer: {
     flex: 1,
-    textAlign: 'center',
   },
   favoriteButton: {
     width: 24,
@@ -1034,207 +929,166 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xxl,
   },
-  warningCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
+  foodHeader: {
     marginBottom: spacing.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  card: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  offBadgeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  offBadge: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   foodName: {
     ...typography.h2,
+    fontSize: 24,
     marginBottom: spacing.xs,
   },
   foodBrand: {
     ...typography.body,
-    marginBottom: spacing.sm,
+    fontSize: 14,
   },
-  servingSizeInfo: {
-    marginBottom: spacing.sm,
-  },
-  servingSizeLabel: {
-    ...typography.caption,
-    marginBottom: 2,
-  },
-  servingSize: {
-    ...typography.bodyBold,
-    fontSize: 16,
-  },
-  servingWarning: {
-    ...typography.caption,
-    marginTop: spacing.xs,
-    fontStyle: 'italic',
-  },
-  servingInfo: {
-    ...typography.caption,
-    marginTop: spacing.xs,
-    fontStyle: 'italic',
-  },
-  barcode: {
-    ...typography.caption,
-    fontStyle: 'italic',
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    marginBottom: spacing.sm,
-  },
-  servingInfoText: {
-    ...typography.caption,
-    marginBottom: spacing.md,
-  },
-  servingPreview: {
-    backgroundColor: 'rgba(0, 122, 255, 0.1)',
-    borderRadius: borderRadius.md,
+  servingCard: {
+    borderRadius: borderRadius.lg,
     padding: spacing.md,
+    marginBottom: spacing.sm,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  servingRow: {
     marginBottom: spacing.md,
   },
-  servingPreviewLabel: {
+  servingLabel: {
     ...typography.caption,
-    marginBottom: 4,
+    fontSize: 12,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  servingPreviewText: {
-    ...typography.bodyBold,
-    fontSize: 18,
-  },
-  servingInput: {
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  label: {
-    ...typography.bodyBold,
-  },
-  inputRow: {
+  servingInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  input: {
+  servingInput: {
     flex: 1,
     borderWidth: 1,
     borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     fontSize: 18,
     fontWeight: '600',
   },
-  unitLabel: {
-    ...typography.h3,
-    fontSize: 18,
-  },
-  quickButtons: {
+  unitSelector: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
-  quickButton: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
+  unitButton: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  quickButtonText: {
-    ...typography.bodyBold,
+  unitButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  servingUnitText: {
+    ...typography.body,
     fontSize: 14,
   },
-  nutritionNote: {
+  totalGramsText: {
     ...typography.caption,
-    marginBottom: spacing.md,
-    fontStyle: 'italic',
+    fontSize: 12,
+    textAlign: 'right',
+    marginTop: spacing.xs,
   },
-  noNutritionContainer: {
-    paddingVertical: spacing.xl,
+  macrosCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  macrosRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  noNutritionText: {
-    ...typography.body,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
+  caloriesSection: {
+    flex: 1,
+    alignItems: 'center',
   },
-  noNutritionSubtext: {
+  caloriesLabel: {
     ...typography.caption,
-    textAlign: 'center',
+    fontSize: 12,
+    marginBottom: spacing.xs,
   },
-  nutritionGrid: {
-    gap: spacing.md,
+  caloriesValue: {
+    fontSize: 36,
+    fontWeight: '700',
   },
-  nutritionItem: {
+  macrosDivider: {
+    width: 1,
+    height: 60,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
+  },
+  macrosGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  macroItem: {
+    alignItems: 'center',
+  },
+  macroValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  macroLabel: {
+    ...typography.caption,
+    fontSize: 11,
+  },
+  addButton: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  nutritionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.xs,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  nutritionHeaderText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+  },
+  nutritionContent: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  nutritionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   nutritionLabel: {
     ...typography.body,
+    fontSize: 14,
   },
   nutritionValue: {
     ...typography.bodyBold,
-    fontSize: 18,
-  },
-  per100gInfo: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  per100gTitle: {
-    ...typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  per100gText: {
-    ...typography.caption,
-  },
-  perServingInfo: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  perServingTitle: {
-    ...typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  perServingText: {
-    ...typography.caption,
-  },
-  saveButton: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 14,
   },
   bottomSpacer: {
     height: 100,
