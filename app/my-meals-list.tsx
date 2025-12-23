@@ -20,12 +20,14 @@ export default function MyMealsListScreen() {
   const [showDeleteToast, setShowDeleteToast] = useState(false);
   const [deletedMealName, setDeletedMealName] = useState('');
   
+  // 🔥 FIX: Prevent refetch during delete operations
   const isDeletingRef = useRef(false);
   const deleteCountRef = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
       console.log('[MyMealsList] 🔄 Screen focused');
+      // 🔥 FIX: Only load if not currently deleting
       if (!isDeletingRef.current) {
         console.log('[MyMealsList] ✅ Loading meals (not deleting)');
         loadMyMeals();
@@ -83,6 +85,7 @@ export default function MyMealsListScreen() {
   };
 
   const handleDeleteMyMeal = async (meal: MyMeal) => {
+    // 🔥 FIX: Set deleting flag to prevent refetch
     isDeletingRef.current = true;
     deleteCountRef.current += 1;
     const deleteNumber = deleteCountRef.current;
@@ -91,10 +94,11 @@ export default function MyMealsListScreen() {
     console.log(`[MyMealsList] 📊 BEFORE DELETE - Total meals: ${myMeals.length}`);
     
     try {
+      // Store meal name for toast
       const mealName = meal.name;
       const mealId = meal.id;
 
-      // STEP 1: Remove from UI immediately
+      // 🔥 STEP 1: IMMEDIATELY remove from UI for instant feedback
       console.log(`[MyMealsList] 🎯 DELETE #${deleteNumber} - Removing from local state`);
       setMyMeals(prevMeals => {
         const filtered = prevMeals.filter(m => m.id !== mealId);
@@ -102,7 +106,7 @@ export default function MyMealsListScreen() {
         return filtered;
       });
 
-      // STEP 2: Delete meal items first (foreign key constraint)
+      // 🔥 STEP 2: Delete meal items first (foreign key constraint)
       console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Deleting meal items from backend...`);
       const { error: itemsError } = await supabase
         .from('my_meal_items')
@@ -111,6 +115,7 @@ export default function MyMealsListScreen() {
 
       if (itemsError) {
         console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error deleting meal items:`, itemsError);
+        // Restore the meal if deletion failed
         setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
@@ -120,7 +125,7 @@ export default function MyMealsListScreen() {
       }
       console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Meal items deleted successfully`);
 
-      // STEP 3: Delete the meal
+      // 🔥 STEP 3: Delete the meal
       console.log(`[MyMealsList] 🗑️ DELETE #${deleteNumber} - Deleting meal from backend...`);
       const { error: mealError } = await supabase
         .from('my_meals')
@@ -129,6 +134,7 @@ export default function MyMealsListScreen() {
 
       if (mealError) {
         console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Error deleting meal:`, mealError);
+        // Restore the meal if deletion failed
         setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ));
@@ -138,6 +144,11 @@ export default function MyMealsListScreen() {
       }
       console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Meal deleted from backend successfully`);
 
+      // 🔥 STEP 4: Refetch to ensure consistency
+      console.log(`[MyMealsList] 🔄 DELETE #${deleteNumber} - Refetching meals to confirm deletion...`);
+      await loadMyMeals();
+      console.log(`[MyMealsList] ✅ DELETE #${deleteNumber} - Refetch complete`);
+      
       // Show success toast
       setDeletedMealName(mealName);
       setShowDeleteToast(true);
@@ -148,11 +159,13 @@ export default function MyMealsListScreen() {
       console.log(`[MyMealsList] 🎉 DELETE #${deleteNumber} COMPLETE - "${mealName}" deleted successfully`);
     } catch (error) {
       console.error(`[MyMealsList] ❌ DELETE #${deleteNumber} - Unexpected error:`, error);
+      // Restore the meal if an unexpected error occurred
       setMyMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ));
       Alert.alert('Error', 'An error occurred while deleting');
     } finally {
+      // 🔥 FIX: Clear deleting flag after operation completes
       isDeletingRef.current = false;
       console.log(`[MyMealsList] 🏁 DELETE #${deleteNumber} - Deleting flag cleared`);
     }
@@ -271,6 +284,7 @@ export default function MyMealsListScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* Delete Success Toast */}
       {showDeleteToast && (
         <View style={[styles.toast, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <IconSymbol

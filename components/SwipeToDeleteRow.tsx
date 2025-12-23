@@ -1,6 +1,6 @@
 
 import React, { ReactNode, useCallback, useRef } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -9,15 +9,13 @@ import Animated, {
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
-import { colors } from '@/styles/commonStyles';
 
 interface SwipeToDeleteRowProps {
   children: ReactNode;
   onDelete: () => void;
 }
 
-const SWIPE_THRESHOLD = -100;
-const DELETE_BUTTON_WIDTH = 80;
+const SWIPE_THRESHOLD = -80;
 
 export default function SwipeToDeleteRow({
   children,
@@ -29,20 +27,20 @@ export default function SwipeToDeleteRow({
   const handleDelete = useCallback(() => {
     if (isDeleting.current) return;
     isDeleting.current = true;
-    console.log('[SwipeToDeleteRow] 🗑️ Delete triggered - calling onDelete');
+    console.log('[SwipeToDeleteRow] Delete triggered - calling onDelete IMMEDIATELY');
+    // Call onDelete IMMEDIATELY - no delays, no animations
     onDelete();
   }, [onDelete]);
 
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-5, 5])
-    .failOffsetY([-15, 15])
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-10, 10])
     .onUpdate((event) => {
       'worklet';
       if (isDeleting.current) return;
       
-      // Only allow left swipe
       if (event.translationX < 0) {
-        translateX.value = Math.max(event.translationX, -DELETE_BUTTON_WIDTH);
+        translateX.value = Math.max(event.translationX, -200);
       } else {
         translateX.value = 0;
       }
@@ -54,14 +52,14 @@ export default function SwipeToDeleteRow({
       const translation = translateX.value;
       const velocity = event.velocityX;
       
-      // Trigger delete if swiped far enough or fast enough
-      if (translation < SWIPE_THRESHOLD || velocity < -800) {
-        console.log('[SwipeToDeleteRow] ✅ Swipe threshold reached - deleting');
+      if (translation < SWIPE_THRESHOLD || velocity < -500) {
+        console.log('[SwipeToDeleteRow] Swipe threshold reached - deleting IMMEDIATELY');
+        // Delete IMMEDIATELY - no animation delay
         runOnJS(handleDelete)();
       } else {
-        // Snap back if not deleted
+        // Only animate back if NOT deleting
         translateX.value = withTiming(0, {
-          duration: 250,
+          duration: 200,
           easing: Easing.out(Easing.ease),
         });
       }
@@ -71,50 +69,17 @@ export default function SwipeToDeleteRow({
     transform: [{ translateX: translateX.value }],
   }));
 
-  const deleteButtonStyle = useAnimatedStyle(() => ({
-    opacity: translateX.value < -20 ? 1 : 0,
-  }));
-
   return (
-    <View style={styles.container}>
-      {/* Delete button background */}
-      <Animated.View style={[styles.deleteButton, deleteButtonStyle]}>
-        <Text style={styles.deleteText}>Delete</Text>
+    <GestureDetector gesture={panGesture}>
+      <Animated.View style={[styles.content, animatedStyle]}>
+        {children}
       </Animated.View>
-      
-      {/* Swipeable content */}
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.content, animatedStyle]}>
-          {children}
-        </Animated.View>
-      </GestureDetector>
-    </View>
+    </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'relative',
-    width: '100%',
-  },
   content: {
     width: '100%',
-    backgroundColor: 'transparent',
-  },
-  deleteButton: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: DELETE_BUTTON_WIDTH,
-    backgroundColor: colors.error || '#FF3B30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 12,
-  },
-  deleteText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });
