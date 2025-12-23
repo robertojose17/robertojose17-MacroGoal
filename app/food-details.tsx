@@ -10,6 +10,61 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
+// CRITICAL FIX D: Timeout constant
+const LOOKUP_TIMEOUT_MS = 10000; // 10 seconds
+
+/**
+ * Score a product based on the number of non-zero nutriments
+ */
+function scoreProduct(p: any): number {
+  if (!p || !p.nutriments) return 0;
+  const n = p.nutriments;
+  const values = [
+    n['energy-kcal_100g'] ?? n['energy-kcal_serving'],
+    n['proteins_100g'] ?? n['proteins_serving'],
+    n['carbohydrates_100g'] ?? n['carbohydrates_serving'],
+    n['fat_100g'] ?? n['fat_serving'],
+    n['fiber_100g'] ?? n['fiber_serving'],
+  ];
+  return values.filter(v => typeof v === 'number' && v > 0).length;
+}
+
+/**
+ * Select the best product from multiple candidates based on nutrient completeness
+ */
+function selectBestProduct(products: any): any {
+  console.log('[FoodDetails] ========== SELECTING BEST PRODUCT ==========');
+  
+  const candidates = Array.isArray(products) ? products : [products].filter(Boolean);
+  
+  console.log('[FoodDetails] Number of candidates:', candidates.length);
+  
+  if (candidates.length === 0) {
+    console.log('[FoodDetails] No candidates available');
+    return null;
+  }
+  
+  const sorted = candidates
+    .filter(p => !!p)
+    .sort((a, b) => scoreProduct(b) - scoreProduct(a));
+  
+  sorted.forEach((p, index) => {
+    const score = scoreProduct(p);
+    console.log(`[FoodDetails] Candidate ${index + 1}: score=${score}, name="${p.product_name || 'Unknown'}"`);
+  });
+  
+  const bestProduct = sorted[0] ?? candidates[0] ?? null;
+  
+  if (bestProduct) {
+    console.log('[FoodDetails] ✅ Best product selected:', bestProduct.product_name || 'Unknown');
+    console.log('[FoodDetails] Best product score:', scoreProduct(bestProduct));
+  } else {
+    console.log('[FoodDetails] ❌ No valid product found');
+  }
+  
+  return bestProduct;
+}
+
 export default function FoodDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -20,6 +75,7 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
+  const barcodeParam = params.barcode as string; // NEW: Barcode parameter
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
@@ -27,7 +83,6 @@ export default function FoodDetailsScreen() {
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
   const [nutrition, setNutrition] = useState<any>(null);
   
-  // NEW: Separate state for servings and grams
   const [servings, setServings] = useState('1');
   const [grams, setGrams] = useState('100');
   
@@ -36,14 +91,17 @@ export default function FoodDetailsScreen() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  // FIXED: Queue-based banner system with 500ms duration
+  // NEW: Loading state for barcode lookup
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
   const [bannerQueue, setBannerQueue] = useState<string[]>([]);
   const [currentBanner, setCurrentBanner] = useState<string | null>(null);
   const [bannerOpacity] = useState(new Animated.Value(0));
   const isShowingBannerRef = useRef(false);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // NEW: Per-serving macros (derived from per-100g data)
   const [perServingMacros, setPerServingMacros] = useState({
     calories: 0,
     protein: 0,
@@ -53,16 +111,216 @@ export default function FoodDetailsScreen() {
   });
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  /**
+   * CRITICAL FIX C & D: Lookup barcode with timeout
+   * This function is called when a barcode is passed as a parameter
+   */
+  const lookupBarcode = useCallback(async (barcode: string) => {
+    console.log('[FoodDetails] ========== LOOKING UP BARCODE ==========');
+    console.log('[FoodDetails] Barcode:', barcode);
+    
+    setLookupLoading(true);
+    setLookupError(null);
+
+    // CRITICAL FIX D: Create timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Lookup timeout'));
+      }, LOOKUP_TIMEOUT_MS);
+    });
+
+    try {
+      // CRITICAL FIX D: Race between fetch and timeout
+      const url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
+      console.log('[FoodDetails] Fetching from:', url);
+
+      const fetchPromise = fetch(url, {
+        headers: {
+          'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
+          'Accept': 'application/json',
+        },
+      });
+
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+      // Check if component is still mounted
+      if (!isMountedRef.current) {
+        console.log('[FoodDetails] Component unmounted during lookup');
+        return;
+      }
+
+      console.log('[FoodDetails] Response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // Check if component is still mounted after async operation
+      if (!isMountedRef.current) {
+        console.log('[FoodDetails] Component unmounted after API call');
+        return;
+      }
+
+      const status = Number(result.status);
+      console.log('[FoodDetails] Status:', status);
+      console.log('[FoodDetails] Has product:', !!result.product);
+
+      if (status === 1 && result.product) {
+        console.log('[FoodDetails] ✅ PRODUCT FOUND');
+        console.log('[FoodDetails] Product name:', result.product.product_name || 'Unknown');
+
+        // Select best product
+        const bestProduct = selectBestProduct(result.product);
+
+        if (!bestProduct) {
+          throw new Error('No valid product found');
+        }
+
+        // Process the product (same as offData flow)
+        const productWithDefaults: OpenFoodFactsProduct = {
+          code: bestProduct.code || barcode,
+          product_name: bestProduct.product_name || 'Unknown Product',
+          brands: bestProduct.brands || '',
+          serving_size: bestProduct.serving_size || '100 g',
+          nutriments: {
+            'energy-kcal_100g': bestProduct.nutriments?.['energy-kcal_100g'] || 0,
+            'proteins_100g': bestProduct.nutriments?.['proteins_100g'] || 0,
+            'carbohydrates_100g': bestProduct.nutriments?.['carbohydrates_100g'] || 0,
+            'fat_100g': bestProduct.nutriments?.['fat_100g'] || 0,
+            'fiber_100g': bestProduct.nutriments?.['fiber_100g'] || 0,
+            'sugars_100g': bestProduct.nutriments?.['sugars_100g'] || 0,
+          },
+        };
+
+        setProduct(productWithDefaults);
+
+        const serving = extractServingSize(productWithDefaults);
+        setServingInfo(serving);
+
+        setServings('1');
+        setGrams(serving.grams.toString());
+
+        const nutritionData = extractNutrition(productWithDefaults);
+        setNutrition(nutritionData);
+
+        const servingMultiplier = serving.grams / 100;
+        const perServing = {
+          calories: nutritionData.calories * servingMultiplier,
+          protein: nutritionData.protein * servingMultiplier,
+          carbs: nutritionData.carbs * servingMultiplier,
+          fat: nutritionData.fat * servingMultiplier,
+          fiber: nutritionData.fiber * servingMultiplier,
+        };
+        setPerServingMacros(perServing);
+
+        setIsReady(true);
+        setLookupLoading(false);
+
+        checkFavoriteStatus(productWithDefaults);
+      } else {
+        // Product not found
+        console.log('[FoodDetails] ❌ PRODUCT NOT FOUND');
+        throw new Error('Product not found in database');
+      }
+    } catch (error: any) {
+      console.error('[FoodDetails] ❌ LOOKUP ERROR:', error);
+
+      // Check if component is still mounted
+      if (!isMountedRef.current) {
+        console.log('[FoodDetails] Component unmounted during error handling');
+        return;
+      }
+
+      // CRITICAL FIX D: Set error state
+      setLookupLoading(false);
+      
+      if (error.message === 'Lookup timeout') {
+        setLookupError('Lookup timed out. The product database might be slow or unavailable.');
+      } else if (error.message === 'Product not found in database') {
+        setLookupError(`Product not found (barcode: ${barcode}). You can add it manually.`);
+      } else {
+        setLookupError('Failed to look up product. Please try again or add manually.');
+      }
+
+      // Show error dialog with options
+      Alert.alert(
+        'Product Lookup Failed',
+        error.message === 'Lookup timeout' 
+          ? 'The lookup took too long. Would you like to try again or add the food manually?'
+          : error.message === 'Product not found in database'
+          ? `This barcode (${barcode}) was not found. Would you like to add it manually?`
+          : 'There was a problem looking up this product. Would you like to try again or add manually?',
+        [
+          {
+            text: 'Try Again',
+            onPress: () => {
+              if (isMountedRef.current) {
+                setLookupError(null);
+                lookupBarcode(barcode);
+              }
+            },
+          },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              if (isMountedRef.current) {
+                router.dismissTo('/(tabs)/(home)/');
+                setTimeout(() => {
+                  router.push({
+                    pathname: '/quick-add',
+                    params: {
+                      meal: mealType,
+                      date: date,
+                      mode: mode,
+                      mealId: myMealId,
+                      barcode: barcode,
+                    },
+                  });
+                }, 100);
+              }
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              if (isMountedRef.current) {
+                router.back();
+              }
+            },
+          },
+        ]
+      );
+    }
+  }, [router, mealType, date, mode, myMealId]);
+
+  useEffect(() => {
     console.log('[FoodDetails] ========== COMPONENT MOUNTED ==========');
     console.log('[FoodDetails] Mode:', mode);
     console.log('[FoodDetails] Meal:', mealType);
     console.log('[FoodDetails] Date:', date);
     console.log('[FoodDetails] returnTo:', returnTo);
     console.log('[FoodDetails] mealId:', myMealId);
-    console.log('[FoodDetails] offDataString length:', offDataString?.length || 0);
+    console.log('[FoodDetails] offDataString:', !!offDataString);
+    console.log('[FoodDetails] barcodeParam:', barcodeParam);
+
+    // CRITICAL FIX C: Check if we have a barcode to lookup
+    if (barcodeParam && !offDataString) {
+      console.log('[FoodDetails] Barcode provided, starting lookup...');
+      lookupBarcode(barcodeParam);
+      return;
+    }
     
     if (!offDataString) {
-      console.error('[FoodDetails] ❌ No offData provided');
+      console.error('[FoodDetails] ❌ No offData or barcode provided');
       Alert.alert('Error', 'No product data available', [
         {
           text: 'OK',
@@ -82,7 +340,6 @@ export default function FoodDetailsScreen() {
       console.log('[FoodDetails] Code:', parsed.code || 'N/A');
       console.log('[FoodDetails] Has nutriments:', !!parsed.nutriments);
       
-      // Apply defaults for missing fields - NEVER block the UI
       const productWithDefaults: OpenFoodFactsProduct = {
         code: parsed.code || '',
         product_name: parsed.product_name || 'Unknown Product',
@@ -101,7 +358,6 @@ export default function FoodDetailsScreen() {
       console.log('[FoodDetails] Product with defaults applied');
       setProduct(productWithDefaults);
       
-      // Extract serving size information from OpenFoodFacts
       console.log('[FoodDetails] Extracting serving size...');
       const serving = extractServingSize(productWithDefaults);
       console.log('[FoodDetails] Serving info:', {
@@ -114,11 +370,9 @@ export default function FoodDetailsScreen() {
       
       setServingInfo(serving);
       
-      // NEW: Initialize servings to 1.0 and grams to base serving size
       setServings('1');
       setGrams(serving.grams.toString());
       
-      // Extract nutrition information (per 100g)
       console.log('[FoodDetails] Extracting nutrition...');
       const nutritionData = extractNutrition(productWithDefaults);
       console.log('[FoodDetails] Nutrition (per 100g):', {
@@ -130,7 +384,6 @@ export default function FoodDetailsScreen() {
       });
       setNutrition(nutritionData);
       
-      // NEW: Calculate per-serving macros
       const servingMultiplier = serving.grams / 100;
       const perServing = {
         calories: nutritionData.calories * servingMultiplier,
@@ -142,16 +395,13 @@ export default function FoodDetailsScreen() {
       console.log('[FoodDetails] Per-serving macros:', perServing);
       setPerServingMacros(perServing);
       
-      // Mark as ready immediately - never block the UI
       setIsReady(true);
       console.log('[FoodDetails] ✅ Screen ready to display');
 
-      // Check if this food is favorited
       checkFavoriteStatus(productWithDefaults);
     } catch (error) {
       console.error('[FoodDetails] ❌ Error parsing OpenFoodFacts data:', error);
       
-      // Even on error, show something to the user with defaults
       console.log('[FoodDetails] Using complete defaults due to parse error');
       setProduct({
         code: '',
@@ -200,9 +450,8 @@ export default function FoodDetailsScreen() {
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offDataString]);
+  }, [offDataString, barcodeParam]);
 
-  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (bannerTimerRef.current) {
@@ -276,7 +525,6 @@ export default function FoodDetailsScreen() {
       setIsFavorited(newFavoriteStatus);
       console.log('[FoodDetails] Favorite toggled successfully, new status:', newFavoriteStatus);
       
-      // Show success message
       Alert.alert(
         'Success',
         newFavoriteStatus ? 'Added to favorites' : 'Removed from favorites'
@@ -289,7 +537,6 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  // NEW: Handle servings change
   const handleServingsChange = (newServings: string) => {
     console.log('[FoodDetails] Servings changed to:', newServings);
     setServings(newServings);
@@ -298,14 +545,12 @@ export default function FoodDetailsScreen() {
     
     const servingsNum = parseFloat(newServings);
     if (!isNaN(servingsNum) && servingsNum > 0) {
-      // Update grams based on servings
       const newGrams = servingInfo.grams * servingsNum;
       console.log('[FoodDetails] Updating grams to:', newGrams);
       setGrams(newGrams.toFixed(1));
     }
   };
 
-  // NEW: Handle grams change
   const handleGramsChange = (newGrams: string) => {
     console.log('[FoodDetails] Grams changed to:', newGrams);
     setGrams(newGrams);
@@ -314,17 +559,12 @@ export default function FoodDetailsScreen() {
     
     const gramsNum = parseFloat(newGrams);
     if (!isNaN(gramsNum) && gramsNum > 0 && servingInfo.grams > 0) {
-      // Update servings based on grams
       const newServings = gramsNum / servingInfo.grams;
       console.log('[FoodDetails] Updating servings to:', newServings);
       setServings(newServings.toFixed(2));
     }
   };
 
-  /**
-   * FIXED: Queue-based banner system
-   * Adds a banner event to the queue
-   */
   const showSuccessBanner = useCallback((mealName: string) => {
     console.log('[FoodDetails] ========== ADDING BANNER TO QUEUE ==========');
     setBannerQueue(prev => {
@@ -334,12 +574,7 @@ export default function FoodDetailsScreen() {
     });
   }, []);
 
-  /**
-   * FIXED: Process banner queue
-   * Shows banners consecutively with 500ms duration each
-   */
   useEffect(() => {
-    // If no banners in queue or already showing one, do nothing
     if (bannerQueue.length === 0 || isShowingBannerRef.current) {
       return;
     }
@@ -347,26 +582,20 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] ========== SHOWING NEXT BANNER ==========');
     console.log('[FoodDetails] Queue length:', bannerQueue.length);
     
-    // Mark as showing
     isShowingBannerRef.current = true;
     
-    // Get next banner from queue
     const nextBanner = bannerQueue[0];
     setCurrentBanner(nextBanner);
     
-    // Show immediately (no fade in)
     bannerOpacity.setValue(1);
     
     console.log('[FoodDetails] Banner visible, will hide after 500ms');
     
-    // Auto-hide after EXACTLY 500ms
     bannerTimerRef.current = setTimeout(() => {
       console.log('[FoodDetails] Hiding banner');
       
-      // Hide immediately (no fade out)
       bannerOpacity.setValue(0);
       
-      // Remove from queue
       setBannerQueue(prev => prev.slice(1));
       setCurrentBanner(null);
       isShowingBannerRef.current = false;
@@ -375,7 +604,106 @@ export default function FoodDetailsScreen() {
     }, 500);
   }, [bannerQueue, bannerOpacity]);
 
-  // Show loading only briefly while parsing
+  // CRITICAL FIX D: Show loading screen during barcode lookup
+  if (lookupLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
+            Looking Up Product
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
+            Looking up product...
+          </Text>
+          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            This may take a few seconds
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // CRITICAL FIX D: Show error screen if lookup failed
+  if (lookupError) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
+            Lookup Failed
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={64}
+            color={colors.warning || '#FF9500'}
+          />
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Couldn&apos;t Find Product
+          </Text>
+          <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {lookupError}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              if (barcodeParam) {
+                setLookupError(null);
+                lookupBarcode(barcodeParam);
+              }
+            }}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.manualButton}
+            onPress={() => {
+              router.dismissTo('/(tabs)/(home)/');
+              setTimeout(() => {
+                router.push({
+                  pathname: '/quick-add',
+                  params: {
+                    meal: mealType,
+                    date: date,
+                    mode: mode,
+                    mealId: myMealId,
+                    barcode: barcodeParam,
+                  },
+                });
+              }, 100);
+            }}
+          >
+            <Text style={[styles.manualButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+              Add Manually
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!isReady || !product || !servingInfo || !nutrition) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -389,37 +717,30 @@ export default function FoodDetailsScreen() {
     );
   }
 
-  // Calculate nutrition for the specified servings/grams
   const servingsNum = parseFloat(servings) || 1;
   const gramsNum = parseFloat(grams) || servingInfo.grams;
   
-  // Calculate macros based on servings (more accurate)
   const calculatedCalories = perServingMacros.calories * servingsNum;
   const calculatedProtein = perServingMacros.protein * servingsNum;
   const calculatedCarbs = perServingMacros.carbs * servingsNum;
   const calculatedFats = perServingMacros.fat * servingsNum;
   const calculatedFiber = perServingMacros.fiber * servingsNum;
 
-  // Generate serving description for display
   const getServingDescription = (): string => {
     const currentGrams = parseFloat(grams) || servingInfo.grams;
     const currentServings = parseFloat(servings) || 1;
     
-    // If exactly 1 serving, use the original serving description
     if (Math.abs(currentServings - 1) < 0.01) {
       return servingInfo.displayText;
     }
     
-    // If the original serving had a unit description (not just grams)
     if (servingInfo.description !== servingInfo.displayText && !servingInfo.description.match(/^\d+\s*g$/i)) {
-      // Try to scale the serving (e.g., "1 cup" -> "2 cups", "2 slices" -> "3 slices")
       const match = servingInfo.description.match(/^(\d+\.?\d*)\s+(.+)$/);
       if (match) {
         const originalCount = parseFloat(match[1]);
         const unit = match[2];
         const newCount = originalCount * currentServings;
         
-        // If it's close to a whole number, use that
         if (Math.abs(newCount - Math.round(newCount)) < 0.1) {
           if (servingInfo.isEstimated) {
             return `${Math.round(newCount)} ${unit} (≈ ${Math.round(currentGrams)} g)`;
@@ -428,7 +749,6 @@ export default function FoodDetailsScreen() {
           }
         }
         
-        // Otherwise show decimal
         if (servingInfo.isEstimated) {
           return `${newCount.toFixed(1)} ${unit} (≈ ${Math.round(currentGrams)} g)`;
         } else {
@@ -437,7 +757,6 @@ export default function FoodDetailsScreen() {
       }
     }
     
-    // Fallback: just show grams
     return `${Math.round(currentGrams)} g`;
   };
 
@@ -470,7 +789,6 @@ export default function FoodDetailsScreen() {
 
       console.log('[FoodDetails] User ID:', user.id);
 
-      // Check if this food already exists in our database (by barcode)
       let foodId: string | null = null;
 
       if (product.code) {
@@ -487,7 +805,6 @@ export default function FoodDetailsScreen() {
         }
       }
 
-      // If food doesn't exist, create it
       if (!foodId) {
         console.log('[FoodDetails] Creating new food in database...');
         const { data: newFood, error: foodError } = await supabase
@@ -495,7 +812,7 @@ export default function FoodDetailsScreen() {
           .insert({
             name: product.product_name || 'Unknown Product',
             brand: product.brands || null,
-            serving_amount: 100, // OpenFoodFacts uses per 100g for calculations
+            serving_amount: 100,
             serving_unit: 'g',
             calories: nutrition.calories,
             protein: nutrition.protein,
@@ -519,7 +836,6 @@ export default function FoodDetailsScreen() {
         console.log('[FoodDetails] ✅ Created new food:', foodId);
       }
 
-      // Generate the serving description for storage
       const finalServingDescription = getServingDescription();
 
       console.log('[FoodDetails] Serving description:', finalServingDescription);
@@ -533,11 +849,9 @@ export default function FoodDetailsScreen() {
         fiber: calculatedFiber,
       });
 
-      // If mode is "mymeal", return to builder/details instead of logging to diary
       if (mode === 'mymeal') {
         console.log('[FoodDetails] Mode is mymeal, returning to My Meal screen');
 
-        // Get the full food data for the builder/details
         const { data: foodData } = await supabase
           .from('foods')
           .select('*')
@@ -547,7 +861,7 @@ export default function FoodDetailsScreen() {
         const newFoodItem = {
           food_id: foodId,
           food: foodData,
-          quantity: finalServings, // Store servings as quantity
+          quantity: finalServings,
           calories: calculatedCalories,
           protein: calculatedProtein,
           carbs: calculatedCarbs,
@@ -559,8 +873,6 @@ export default function FoodDetailsScreen() {
 
         console.log('[FoodDetails] ✅ FIXED: Using returnTo parameter:', returnTo || '/my-meal-builder');
         
-        // FIXED: Use the returnTo parameter to go back to the correct screen
-        // This will be either /my-meal-details or /my-meal-builder
         router.dismissTo({
           pathname: returnTo || '/my-meal-builder',
           params: {
@@ -573,10 +885,8 @@ export default function FoodDetailsScreen() {
         return;
       }
 
-      // Normal diary mode - log to diary
       console.log('[FoodDetails] Logging to diary...');
       
-      // Find or create meal for the date and meal type
       const { data: existingMeal } = await supabase
         .from('meals')
         .select('id')
@@ -612,14 +922,13 @@ export default function FoodDetailsScreen() {
         console.log('[FoodDetails] ✅ Using existing meal:', mealId);
       }
 
-      // ALWAYS INSERT a new meal item (never update existing ones)
       console.log('[FoodDetails] Inserting NEW meal item');
       const { error: mealItemError } = await supabase
         .from('meal_items')
         .insert({
           meal_id: mealId,
           food_id: foodId,
-          quantity: finalServings, // Store servings as quantity
+          quantity: finalServings,
           calories: calculatedCalories,
           protein: calculatedProtein,
           carbs: calculatedCarbs,
@@ -638,7 +947,6 @@ export default function FoodDetailsScreen() {
 
       console.log('[FoodDetails] ✅ Food added successfully!');
       
-      // Show success banner IMMEDIATELY
       const mealLabels: Record<string, string> = {
         breakfast: 'Breakfast',
         lunch: 'Lunch',
@@ -647,13 +955,11 @@ export default function FoodDetailsScreen() {
       };
       showSuccessBanner(mealLabels[mealType] || mealType);
       
-      // Reset inputs for next add
       setServings('1');
       setGrams(servingInfo.grams.toString());
       
       setSaving(false);
       
-      // Navigate back immediately (don't wait for toast)
       console.log('[FoodDetails] Navigating back to add-food screen');
       router.back();
     } catch (error) {
@@ -663,7 +969,6 @@ export default function FoodDetailsScreen() {
     }
   };
 
-  // Check if product has missing data
   const hasMissingData = 
     product.product_name === 'Unknown Product' || 
     !product.brands ||
@@ -791,7 +1096,6 @@ export default function FoodDetailsScreen() {
               </Text>
             </View>
 
-            {/* NEW: Servings input */}
             <View style={styles.servingInput}>
               <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
                 Servings:
@@ -809,7 +1113,6 @@ export default function FoodDetailsScreen() {
               </View>
             </View>
 
-            {/* Existing grams input */}
             <View style={styles.servingInput}>
               <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
                 Grams:
@@ -957,7 +1260,6 @@ export default function FoodDetailsScreen() {
           <View style={styles.bottomSpacer} />
         </ScrollView>
 
-        {/* FIXED: Queue-based banner - shows for 500ms each */}
         {currentBanner && (
           <Animated.View 
             style={[
@@ -1003,6 +1305,47 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: spacing.lg,
     textAlign: 'center',
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorTitle: {
+    ...typography.h2,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  errorText: {
+    ...typography.body,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  retryButton: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  manualButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  manualButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

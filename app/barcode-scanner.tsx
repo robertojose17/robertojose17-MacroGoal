@@ -1,74 +1,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-
-// Toggle between API versions
-const USE_API_V2 = false; // Set to true to use v2 API
-
-/**
- * Score a product based on the number of non-zero nutriments
- * This is the EXACT scoring function requested by the user
- */
-function scoreProduct(p: any): number {
-  if (!p || !p.nutriments) return 0;
-  const n = p.nutriments;
-  const values = [
-    n['energy-kcal_100g'] ?? n['energy-kcal_serving'],
-    n['proteins_100g'] ?? n['proteins_serving'],
-    n['carbohydrates_100g'] ?? n['carbohydrates_serving'],
-    n['fat_100g'] ?? n['fat_serving'],
-    n['fiber_100g'] ?? n['fiber_serving'],
-  ];
-  return values.filter(v => typeof v === 'number' && v > 0).length;
-}
-
-/**
- * Select the best product from multiple candidates based on nutrient completeness
- * Returns the product with the most non-zero nutrient values
- * Uses the EXACT logic requested by the user
- */
-function selectBestProduct(products: any): any {
-  console.log('[BarcodeScanner] ========== SELECTING BEST PRODUCT ==========');
-  
-  // Convert to array if needed
-  const candidates = Array.isArray(products) ? products : [products].filter(Boolean);
-  
-  console.log('[BarcodeScanner] Number of candidates:', candidates.length);
-  
-  if (candidates.length === 0) {
-    console.log('[BarcodeScanner] No candidates available');
-    return null;
-  }
-  
-  // Sort by score (highest first)
-  const sorted = candidates
-    .filter(p => !!p)
-    .sort((a, b) => scoreProduct(b) - scoreProduct(a));
-  
-  // Log scores for debugging
-  sorted.forEach((p, index) => {
-    const score = scoreProduct(p);
-    console.log(`[BarcodeScanner] Candidate ${index + 1}: score=${score}, name="${p.product_name || 'Unknown'}"`);
-  });
-  
-  // Select best product
-  const bestProduct = sorted[0] ?? candidates[0] ?? null;
-  
-  if (bestProduct) {
-    console.log('[BarcodeScanner] ✅ Best product selected:', bestProduct.product_name || 'Unknown');
-    console.log('[BarcodeScanner] Best product score:', scoreProduct(bestProduct));
-  } else {
-    console.log('[BarcodeScanner] ❌ No valid product found');
-  }
-  
-  return bestProduct;
-}
 
 export default function BarcodeScannerScreen() {
   const router = useRouter();
@@ -82,11 +20,9 @@ export default function BarcodeScannerScreen() {
   const myMealId = (params.mealId as string) || undefined;
 
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
-  const [loading, setLoading] = useState(false);
   
-  // CRITICAL FIX: Use a ref to track if navigation has already been triggered
-  const hasNavigatedRef = useRef(false);
+  // CRITICAL FIX A: One-scan lock using ref (doesn't cause re-renders)
+  const hasScannedRef = useRef(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -104,9 +40,7 @@ export default function BarcodeScannerScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('[BarcodeScanner] Screen focused → reset scan state');
-      setScanned(false);
-      setLoading(false);
-      hasNavigatedRef.current = false; // CRITICAL: Reset navigation flag
+      hasScannedRef.current = false; // Reset the one-scan lock
 
       return () => {
         console.log('[BarcodeScanner] Screen unfocused');
@@ -114,67 +48,61 @@ export default function BarcodeScannerScreen() {
     }, [])
   );
 
-  // Handle permission request
-  useEffect(() => {
-    if (permission && !permission.granted && !permission.canAskAgain) {
-      console.log('[BarcodeScanner] Camera permission denied permanently');
-      Alert.alert(
-        'Camera Permission Required',
-        'Please enable camera access in your device settings to scan barcodes.',
-        [
-          {
-            text: 'Go Back',
-            onPress: () => router.back(),
-          },
-        ]
-      );
-    }
-  }, [permission, router]);
-
   /**
-   * SINGLE NAVIGATION FUNCTION
-   * This is the ONLY place where navigation to food-details happens
-   * Prevents duplicate navigation by checking hasNavigatedRef
+   * CRITICAL FIX B & C: Close camera immediately and pass barcode to next screen
+   * This function is called ONCE when a barcode is scanned
+   * It immediately closes the camera and navigates to a lookup screen
    */
-  const navigateToFoodDetails = useCallback((product: any) => {
-    // CRITICAL: Check if we've already navigated
-    if (hasNavigatedRef.current) {
-      console.log('[BarcodeScanner] ⚠️ Navigation already triggered, ignoring duplicate call');
+  const handleBarCodeScanned = useCallback(({ type, data }: { type: string; data: string }) => {
+    // CRITICAL FIX A: Check one-scan lock
+    if (hasScannedRef.current) {
+      console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
       return;
     }
 
     // CRITICAL: Check if component is still mounted
     if (!isMountedRef.current) {
-      console.log('[BarcodeScanner] ⚠️ Component unmounted, aborting navigation');
+      console.log('[BarcodeScanner] ⚠️ Component unmounted, ignoring scan');
       return;
     }
 
-    console.log('[BarcodeScanner] ========== NAVIGATING TO FOOD DETAILS ==========');
-    console.log('[BarcodeScanner] Product:', product.product_name || 'Unknown');
-    console.log('[BarcodeScanner] This is the ONLY navigation call');
+    console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
+    console.log('[BarcodeScanner] Type:', type);
+    console.log('[BarcodeScanner] Data:', data);
 
-    // CRITICAL: Mark that we've navigated
-    hasNavigatedRef.current = true;
+    // Clean the barcode
+    const cleanBarcode = data.trim();
+    
+    // Validate barcode
+    if (!cleanBarcode || cleanBarcode.length === 0) {
+      console.log('[BarcodeScanner] ❌ Empty barcode, ignoring');
+      return;
+    }
 
-    // CRITICAL: Set loading to false BEFORE navigation
-    setLoading(false);
+    // CRITICAL FIX A: Set one-scan lock IMMEDIATELY
+    hasScannedRef.current = true;
+    console.log('[BarcodeScanner] ✅ One-scan lock activated');
 
-    // Dismiss all screens back to home
+    // CRITICAL FIX B: Close camera IMMEDIATELY by navigating away
+    // Do NOT wait for API response
+    console.log('[BarcodeScanner] 🚀 Closing camera and navigating to lookup screen');
+    
+    // Navigate back to home first
     router.dismissTo('/(tabs)/(home)/');
-
-    // Navigate to food details
-    // Use a small delay to ensure dismissTo completes
+    
+    // CRITICAL FIX C: Navigate to food-details with barcode
+    // The food-details screen will handle the lookup
     setTimeout(() => {
       if (!isMountedRef.current) {
-        console.log('[BarcodeScanner] ⚠️ Component unmounted during navigation delay');
+        console.log('[BarcodeScanner] ⚠️ Component unmounted during navigation');
         return;
       }
 
-      console.log('[BarcodeScanner] Pushing Food Details screen');
+      console.log('[BarcodeScanner] ✅ Navigating to food-details with barcode:', cleanBarcode);
       router.push({
         pathname: '/food-details',
         params: {
-          offData: JSON.stringify(product),
+          barcode: cleanBarcode, // Pass barcode instead of product data
           meal: mealType,
           date: date,
           mode: mode,
@@ -182,308 +110,14 @@ export default function BarcodeScannerScreen() {
           mealId: myMealId,
         },
       });
-      console.log('[BarcodeScanner] ✅ Navigation completed - EXACTLY ONE Food Details screen');
     }, 100);
   }, [router, mealType, date, mode, myMealId]);
-
-  const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
-    // CRITICAL: Only process if not already scanned and not loading
-    if (scanned || loading) {
-      console.log('[BarcodeScanner] Already processing a scan, ignoring');
-      return;
-    }
-
-    // CRITICAL: Check if we've already navigated (extra safety)
-    if (hasNavigatedRef.current) {
-      console.log('[BarcodeScanner] Already navigated, ignoring scan');
-      return;
-    }
-
-    // CRITICAL: Check if component is still mounted
-    if (!isMountedRef.current) {
-      console.log('[BarcodeScanner] Component unmounted, ignoring scan');
-      return;
-    }
-
-    console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
-    console.log('[SCAN] type:', type);
-    console.log('[SCAN] raw data:', JSON.stringify(data));
-
-    // Clean the barcode
-    const cleanBarcode = data.trim();
-    console.log('[SCAN] cleanBarcode:', cleanBarcode);
-
-    // Validate barcode
-    if (!cleanBarcode || cleanBarcode.length === 0) {
-      console.log('[BarcodeScanner] ❌ Empty barcode after cleaning');
-      Alert.alert(
-        'Invalid Barcode',
-        'The scanned barcode appears to be empty. Please try again.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (isMountedRef.current) {
-                setScanned(false);
-                setLoading(false);
-              }
-            },
-          },
-        ]
-      );
-      return;
-    }
-
-    // SPECIAL TEST: Log if this is the test barcode
-    if (cleanBarcode === '5059883177496') {
-      console.log('[BarcodeScanner] ⭐ TEST BARCODE DETECTED: 5059883177496');
-    }
-
-    // CRITICAL: Set states immediately to prevent re-scanning
-    setLoading(true);
-    setScanned(true);
-
-    try {
-      // Construct URL based on API version
-      const url = USE_API_V2
-        ? `https://world.openfoodfacts.net/api/v2/product/${cleanBarcode}`
-        : `https://world.openfoodfacts.org/api/v0/product/${cleanBarcode}.json`;
-
-      console.log('[BarcodeScanner] API version:', USE_API_V2 ? 'v2' : 'v0');
-      console.log('[BarcodeScanner] Calling OpenFoodFacts API...');
-      console.log('[BarcodeScanner] URL:', url);
-
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
-          'Accept': 'application/json',
-        },
-      });
-
-      console.log('[BarcodeScanner] Response status:', response.status);
-
-      if (!response.ok) {
-        console.error('[BarcodeScanner] HTTP error:', response.status);
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      // Check if component is still mounted after async operation
-      if (!isMountedRef.current) {
-        console.log('[BarcodeScanner] Component unmounted after API call');
-        return;
-      }
-
-      // SPECIAL TEST: Log full result for test barcode
-      if (cleanBarcode === '5059883177496') {
-        console.log('[BarcodeScanner] Test 5059883177496 result:', JSON.stringify(result).slice(0, 500));
-        console.log('[BarcodeScanner] Full nutriments:', JSON.stringify(result.product?.nutriments || {}));
-      } else {
-        console.log('[BarcodeScanner] Full result:', JSON.stringify(result).slice(0, 500));
-      }
-
-      // Force status to number
-      const status = Number(result.status);
-      console.log('[BarcodeScanner] Status (as number):', status);
-      console.log('[BarcodeScanner] Has product:', !!result.product);
-
-      // Check if product exists and has basic info
-      if (status === 1 && result.product) {
-        console.log('[BarcodeScanner] ✅ PRODUCT FOUND');
-        console.log('[BarcodeScanner] Product name:', result.product.product_name || 'Unknown');
-        console.log('[BarcodeScanner] Brand:', result.product.brands || 'Unknown');
-        console.log('[BarcodeScanner] Barcode:', result.product.code || cleanBarcode);
-
-        // Log nutriments availability with multiple possible field names
-        const nutriments = result.product.nutriments || {};
-        console.log('[BarcodeScanner] Nutriments keys:', Object.keys(nutriments));
-        console.log('[BarcodeScanner] Nutriments available:', {
-          'energy-kcal_100g': nutriments['energy-kcal_100g'],
-          'energy-kcal': nutriments['energy-kcal'],
-          'energy_100g': nutriments['energy_100g'],
-          'energy': nutriments['energy'],
-          'proteins_100g': nutriments['proteins_100g'],
-          'proteins': nutriments['proteins'],
-          'carbohydrates_100g': nutriments['carbohydrates_100g'],
-          'carbohydrates': nutriments['carbohydrates'],
-          'fat_100g': nutriments['fat_100g'],
-          'fat': nutriments['fat'],
-          'fiber_100g': nutriments['fiber_100g'],
-          'fiber': nutriments['fiber'],
-        });
-
-        // Check if we have at least some nutrition data
-        const hasNutrition = 
-          nutriments['energy-kcal_100g'] !== undefined ||
-          nutriments['energy-kcal'] !== undefined ||
-          nutriments['energy_100g'] !== undefined ||
-          nutriments['proteins_100g'] !== undefined ||
-          nutriments['proteins'] !== undefined ||
-          nutriments['carbohydrates_100g'] !== undefined ||
-          nutriments['carbohydrates'] !== undefined ||
-          nutriments['fat_100g'] !== undefined ||
-          nutriments['fat'] !== undefined;
-
-        if (!hasNutrition) {
-          console.log('[BarcodeScanner] ⚠️ Product found but NO nutrition data available');
-        } else {
-          console.log('[BarcodeScanner] ✅ Product has nutrition data');
-        }
-
-        // CRITICAL FIX: Select best product using the exact scoring function
-        // This ensures only ONE product is chosen, even if the API returns multiple
-        const bestProduct = selectBestProduct(result.product);
-
-        if (!bestProduct) {
-          console.log('[BarcodeScanner] ❌ No valid product after selection');
-          throw new Error('No valid product found');
-        }
-
-        // CRITICAL FIX: Call the SINGLE navigation function
-        // This is the ONLY place where navigation happens
-        console.log('[BarcodeScanner] ⚠️ Calling navigateToFoodDetails (ONLY ONCE)');
-        navigateToFoodDetails(bestProduct);
-
-      } else {
-        // Product not found
-        console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
-        console.log('[BarcodeScanner] Status code:', status);
-        console.log('[BarcodeScanner] Result keys:', Object.keys(result));
-        
-        // CRITICAL: Reset states before showing alert
-        if (isMountedRef.current) {
-          setLoading(false);
-          setScanned(false);
-        }
-        
-        // Show "not found" dialog with options
-        Alert.alert(
-          'Product Not Found',
-          `This barcode (${cleanBarcode}) was not found in OpenFoodFacts.`,
-          [
-            {
-              text: 'Scan Again',
-              onPress: () => {
-                console.log('[BarcodeScanner] User chose to scan again');
-                if (isMountedRef.current) {
-                  setScanned(false);
-                  setLoading(false);
-                }
-              },
-            },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[BarcodeScanner] User chose to add manually');
-                if (isMountedRef.current) {
-                  setScanned(false);
-                  setLoading(false);
-                }
-                
-                // Dismiss scanner and Add Food, then push quick-add
-                router.dismissTo('/(tabs)/(home)/');
-                setTimeout(() => {
-                  router.push({
-                    pathname: '/quick-add',
-                    params: {
-                      meal: mealType,
-                      date: date,
-                      mode: mode,
-                      mealId: myMealId,
-                      barcode: cleanBarcode,
-                    },
-                  });
-                }, 100);
-              },
-            },
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => {
-                console.log('[BarcodeScanner] User cancelled');
-                if (isMountedRef.current) {
-                  setScanned(false);
-                  setLoading(false);
-                }
-                router.back();
-              },
-            },
-          ]
-        );
-      }
-    } catch (error) {
-      console.error('[BarcodeScanner] ❌ ERROR FETCHING PRODUCT');
-      console.error('[BarcodeScanner] Error details:', error);
-      
-      // CRITICAL: Reset states before showing alert
-      if (isMountedRef.current) {
-        setLoading(false);
-        setScanned(false);
-      }
-      
-      // Show error dialog with retry option
-      Alert.alert(
-        'Error',
-        'There was a problem looking up this barcode. Please try again or add the food manually.',
-        [
-          {
-            text: 'Try Again',
-            onPress: () => {
-              console.log('[BarcodeScanner] User chose to retry');
-              if (isMountedRef.current) {
-                setScanned(false);
-                setLoading(false);
-              }
-            },
-          },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[BarcodeScanner] User chose to add manually after error');
-              if (isMountedRef.current) {
-                setScanned(false);
-                setLoading(false);
-              }
-              
-              // Dismiss scanner and Add Food, then push quick-add
-              router.dismissTo('/(tabs)/(home)/');
-              setTimeout(() => {
-                router.push({
-                  pathname: '/quick-add',
-                  params: {
-                    meal: mealType,
-                    date: date,
-                    mode: mode,
-                    mealId: myMealId,
-                  },
-                });
-              }, 100);
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('[BarcodeScanner] User cancelled after error');
-              if (isMountedRef.current) {
-                setScanned(false);
-                setLoading(false);
-              }
-              router.back();
-            },
-          },
-        ]
-      );
-    }
-  }, [scanned, loading, navigateToFoodDetails, router, mealType, date, mode, myMealId]);
 
   // Show loading while checking permissions
   if (!permission) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Checking camera permissions...
           </Text>
@@ -553,7 +187,7 @@ export default function BarcodeScannerScreen() {
           barcodeScannerSettings={{
             barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
           }}
-          onBarcodeScanned={loading || scanned ? undefined : handleBarCodeScanned}
+          onBarcodeScanned={hasScannedRef.current ? undefined : handleBarCodeScanned}
         />
 
         {/* Overlay with scanning frame */}
@@ -564,9 +198,7 @@ export default function BarcodeScannerScreen() {
               style={styles.closeButton}
               onPress={() => {
                 console.log('[BarcodeScanner] Close button pressed');
-                setScanned(false);
-                setLoading(false);
-                hasNavigatedRef.current = false;
+                hasScannedRef.current = false;
                 router.back();
               }}
             >
@@ -593,21 +225,14 @@ export default function BarcodeScannerScreen() {
 
           {/* Bottom overlay with instructions */}
           <View style={styles.overlayBottom}>
-            {loading ? (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
-                <Text style={styles.loadingOverlayText}>Looking up product...</Text>
-              </View>
-            ) : (
-              <View style={styles.instructionsContainer}>
-                <Text style={styles.instructionsText}>
-                  Align the barcode within the frame
-                </Text>
-                <Text style={styles.instructionsSubtext}>
-                  The barcode will be scanned automatically
-                </Text>
-              </View>
-            )}
+            <View style={styles.instructionsContainer}>
+              <Text style={styles.instructionsText}>
+                Align the barcode within the frame
+              </Text>
+              <Text style={styles.instructionsSubtext}>
+                The barcode will be scanned automatically
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -778,14 +403,5 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 14,
     textAlign: 'center',
-  },
-  loadingOverlay: {
-    alignItems: 'center',
-  },
-  loadingOverlayText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: spacing.md,
   },
 });
