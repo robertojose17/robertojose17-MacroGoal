@@ -10,9 +10,6 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 
-// CRITICAL: Timeout constant
-const LOOKUP_TIMEOUT_MS = 10000; // 10 seconds
-
 /**
  * Score a product based on the number of non-zero nutriments
  */
@@ -75,7 +72,6 @@ export default function FoodDetailsScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
-  const barcodeParam = params.barcode as string;
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
@@ -91,8 +87,6 @@ export default function FoodDetailsScreen() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [lookupError, setLookupError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
 
   const [bannerQueue, setBannerQueue] = useState<string[]>([]);
@@ -116,221 +110,6 @@ export default function FoodDetailsScreen() {
     };
   }, []);
 
-  /**
-   * CRITICAL: Lookup barcode with comprehensive logging and timeout
-   */
-  const lookupBarcode = useCallback(async (barcode: string) => {
-    console.log('[FoodDetails] ========== START LOOKUP ==========');
-    console.log('[FoodDetails] SCANNED BARCODE:', barcode);
-    console.log('[FoodDetails] Barcode length:', barcode.length);
-    console.log('[FoodDetails] Barcode type:', typeof barcode);
-    
-    setLookupLoading(true);
-    setLookupError(null);
-
-    // CRITICAL: Create timeout promise
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        console.log('[FoodDetails] ⏱️ LOOKUP TIMEOUT REACHED');
-        reject(new Error('Lookup timeout'));
-      }, LOOKUP_TIMEOUT_MS);
-    });
-
-    try {
-      // CRITICAL: Using v2 endpoint as per OpenFoodFacts API documentation
-      const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-      console.log('[FoodDetails] LOOKUP URL:', url);
-      console.log('[FoodDetails] Starting fetch...');
-
-      const fetchPromise = fetch(url, {
-        headers: {
-          'User-Agent': 'EliteMacroTracker/1.0 (iOS)',
-          'Accept': 'application/json',
-        },
-      });
-
-      console.log('[FoodDetails] Waiting for response (max 10s)...');
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
-
-      // Check if component is still mounted
-      if (!isMountedRef.current) {
-        console.log('[FoodDetails] ⚠️ Component unmounted during lookup');
-        return;
-      }
-
-      console.log('[FoodDetails] HTTP STATUS:', response.status);
-
-      if (!response.ok) {
-        console.log('[FoodDetails] ❌ HTTP error:', response.status);
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-
-      console.log('[FoodDetails] Parsing JSON response...');
-      const result = await response.json();
-
-      // Check if component is still mounted after async operation
-      if (!isMountedRef.current) {
-        console.log('[FoodDetails] ⚠️ Component unmounted after API call');
-        return;
-      }
-
-      const status = Number(result.status);
-      console.log('[FoodDetails] OFF JSON status:', status, '(1=found, 0=not found)');
-      console.log('[FoodDetails] Has product:', !!result.product);
-
-      if (result.product) {
-        console.log('[FoodDetails] Product name:', result.product.product_name || 'Unknown');
-        console.log('[FoodDetails] Product brand:', result.product.brands || 'Unknown');
-        console.log('[FoodDetails] Product code:', result.product.code || 'N/A');
-      }
-
-      if (status === 1 && result.product) {
-        console.log('[FoodDetails] ✅ PRODUCT FOUND');
-        console.log('[FoodDetails] Product name:', result.product.product_name || 'Unknown');
-
-        // Select best product
-        const bestProduct = selectBestProduct(result.product);
-
-        if (!bestProduct) {
-          console.log('[FoodDetails] ❌ No valid product after selection');
-          throw new Error('No valid product found');
-        }
-
-        console.log('[FoodDetails] Processing product data...');
-
-        // Process the product (same as offData flow)
-        const productWithDefaults: OpenFoodFactsProduct = {
-          code: bestProduct.code || barcode,
-          product_name: bestProduct.product_name || 'Unknown Product',
-          brands: bestProduct.brands || '',
-          serving_size: bestProduct.serving_size || '100 g',
-          nutriments: {
-            'energy-kcal_100g': bestProduct.nutriments?.['energy-kcal_100g'] || 0,
-            'proteins_100g': bestProduct.nutriments?.['proteins_100g'] || 0,
-            'carbohydrates_100g': bestProduct.nutriments?.['carbohydrates_100g'] || 0,
-            'fat_100g': bestProduct.nutriments?.['fat_100g'] || 0,
-            'fiber_100g': bestProduct.nutriments?.['fiber_100g'] || 0,
-            'sugars_100g': bestProduct.nutriments?.['sugars_100g'] || 0,
-          },
-        };
-
-        console.log('[FoodDetails] Setting product state...');
-        setProduct(productWithDefaults);
-
-        console.log('[FoodDetails] Extracting serving size...');
-        const serving = extractServingSize(productWithDefaults);
-        setServingInfo(serving);
-
-        setServings('1');
-        setGrams(serving.grams.toString());
-
-        console.log('[FoodDetails] Extracting nutrition...');
-        const nutritionData = extractNutrition(productWithDefaults);
-        setNutrition(nutritionData);
-
-        const servingMultiplier = serving.grams / 100;
-        const perServing = {
-          calories: nutritionData.calories * servingMultiplier,
-          protein: nutritionData.protein * servingMultiplier,
-          carbs: nutritionData.carbs * servingMultiplier,
-          fat: nutritionData.fat * servingMultiplier,
-          fiber: nutritionData.fiber * servingMultiplier,
-        };
-        setPerServingMacros(perServing);
-
-        console.log('[FoodDetails] ✅ Product data loaded successfully');
-        console.log('[FoodDetails] NAVIGATING TO: ProductDetail');
-        setIsReady(true);
-        setLookupLoading(false);
-
-        checkFavoriteStatus(productWithDefaults);
-      } else {
-        // Product not found
-        console.log('[FoodDetails] ❌ PRODUCT NOT FOUND');
-        console.log('[FoodDetails] Barcode:', barcode);
-        throw new Error('Product not found in database');
-      }
-    } catch (error: any) {
-      console.error('[FoodDetails] ❌ LOOKUP ERROR:', error);
-      console.error('[FoodDetails] Error message:', error.message);
-      console.error('[FoodDetails] Error stack:', error.stack);
-
-      // Check if component is still mounted
-      if (!isMountedRef.current) {
-        console.log('[FoodDetails] ⚠️ Component unmounted during error handling');
-        return;
-      }
-
-      // CRITICAL: Set error state
-      setLookupLoading(false);
-      
-      if (error.message === 'Lookup timeout') {
-        console.log('[FoodDetails] Error type: TIMEOUT');
-        setLookupError('Lookup timed out. The product database might be slow or unavailable.');
-      } else if (error.message === 'Product not found in database') {
-        console.log('[FoodDetails] Error type: NOT FOUND');
-        setLookupError(`Product not found (barcode: ${barcode}). You can add it manually.`);
-      } else {
-        console.log('[FoodDetails] Error type: UNKNOWN');
-        setLookupError('Failed to look up product. Please try again or add manually.');
-      }
-
-      // Show error dialog with options
-      console.log('[FoodDetails] Showing error alert to user');
-      Alert.alert(
-        'Product Lookup Failed',
-        error.message === 'Lookup timeout' 
-          ? 'The lookup took too long. Would you like to try again or add the food manually?'
-          : error.message === 'Product not found in database'
-          ? `This barcode (${barcode}) was not found. Would you like to add it manually?`
-          : 'There was a problem looking up this product. Would you like to try again or add manually?',
-        [
-          {
-            text: 'Try Again',
-            onPress: () => {
-              console.log('[FoodDetails] User chose: Try Again');
-              if (isMountedRef.current) {
-                setLookupError(null);
-                lookupBarcode(barcode);
-              }
-            },
-          },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[FoodDetails] User chose: Add Manually');
-              if (isMountedRef.current) {
-                router.back();
-                setTimeout(() => {
-                  router.push({
-                    pathname: '/quick-add',
-                    params: {
-                      meal: mealType,
-                      date: date,
-                      mode: mode,
-                      mealId: myMealId,
-                      barcode: barcode,
-                    },
-                  });
-                }, 100);
-              }
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('[FoodDetails] User chose: Cancel');
-              if (isMountedRef.current) {
-                router.back();
-              }
-            },
-          },
-        ]
-      );
-    }
-  }, [router, mealType, date, mode, myMealId]);
-
   useEffect(() => {
     console.log('[FoodDetails] ========== COMPONENT MOUNTED ==========');
     console.log('[FoodDetails] Mode:', mode);
@@ -339,18 +118,9 @@ export default function FoodDetailsScreen() {
     console.log('[FoodDetails] returnTo:', returnTo);
     console.log('[FoodDetails] mealId:', myMealId);
     console.log('[FoodDetails] offDataString:', !!offDataString);
-    console.log('[FoodDetails] barcodeParam:', barcodeParam);
-
-    // CRITICAL: Check if we have a barcode to lookup
-    if (barcodeParam && !offDataString) {
-      console.log('[FoodDetails] ✅ Barcode provided, starting lookup...');
-      console.log('[FoodDetails] Barcode value:', barcodeParam);
-      lookupBarcode(barcodeParam);
-      return;
-    }
     
     if (!offDataString) {
-      console.error('[FoodDetails] ❌ No offData or barcode provided');
+      console.error('[FoodDetails] ❌ No offData provided');
       Alert.alert('Error', 'No product data available', [
         {
           text: 'OK',
@@ -480,7 +250,7 @@ export default function FoodDetailsScreen() {
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offDataString, barcodeParam]);
+  }, [offDataString]);
 
   useEffect(() => {
     return () => {
@@ -633,106 +403,6 @@ export default function FoodDetailsScreen() {
       console.log('[FoodDetails] Banner hidden, ready for next');
     }, 500);
   }, [bannerQueue, bannerOpacity]);
-
-  // CRITICAL: Show loading screen during barcode lookup
-  if (lookupLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Looking Up Product
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Looking up product...
-          </Text>
-          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            This may take a few seconds
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // CRITICAL: Show error screen if lookup failed
-  if (lookupError) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Lookup Failed
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-        <View style={styles.errorContainer}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle"
-            android_material_icon_name="warning"
-            size={64}
-            color={colors.warning || '#FF9500'}
-          />
-          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Couldn&apos;t Find Product
-          </Text>
-          <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {lookupError}
-          </Text>
-          <TouchableOpacity
-            style={[styles.retryButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              if (barcodeParam) {
-                setLookupError(null);
-                lookupBarcode(barcodeParam);
-              }
-            }}
-          >
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.manualButton}
-            onPress={() => {
-              router.back();
-              setTimeout(() => {
-                router.push({
-                  pathname: '/quick-add',
-                  params: {
-                    meal: mealType,
-                    date: date,
-                    mode: mode,
-                    mealId: myMealId,
-                    barcode: barcodeParam,
-                  },
-                });
-              }, 100);
-            }}
-          >
-            <Text style={[styles.manualButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-              Add Manually
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (!isReady || !product || !servingInfo || !nutrition) {
     return (
@@ -1335,47 +1005,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: spacing.lg,
     textAlign: 'center',
-  },
-  loadingSubtext: {
-    fontSize: 14,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  errorTitle: {
-    ...typography.h2,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  errorText: {
-    ...typography.body,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  retryButton: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  manualButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  manualButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

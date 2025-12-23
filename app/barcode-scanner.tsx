@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -8,6 +8,17 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 
+/**
+ * BARCODE SCANNER SCREEN
+ * 
+ * MyFitnessPal-style flow:
+ * 1. Open camera
+ * 2. Scan barcode ONCE
+ * 3. Immediately close camera
+ * 4. Navigate to lookup handler screen
+ * 
+ * NO API CALLS HERE - just scan and pass barcode to next screen
+ */
 export default function BarcodeScannerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -21,7 +32,7 @@ export default function BarcodeScannerScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   
-  // CRITICAL: One-scan lock using ref (doesn't cause re-renders)
+  // One-scan lock using ref (doesn't cause re-renders)
   const hasScannedRef = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -40,7 +51,7 @@ export default function BarcodeScannerScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('[BarcodeScanner] Screen focused → reset scan state');
-      hasScannedRef.current = false; // Reset the one-scan lock
+      hasScannedRef.current = false;
 
       return () => {
         console.log('[BarcodeScanner] Screen unfocused');
@@ -49,18 +60,18 @@ export default function BarcodeScannerScreen() {
   );
 
   /**
-   * CRITICAL FIX: Simplified navigation
+   * Handle barcode scan
    * This function is called ONCE when a barcode is scanned
-   * It immediately navigates to food-details with the barcode
+   * It immediately navigates to the lookup handler screen
    */
   const handleBarCodeScanned = useCallback(({ type, data }: { type: string; data: string }) => {
-    // CRITICAL: Check one-scan lock
+    // Check one-scan lock
     if (hasScannedRef.current) {
       console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
       return;
     }
 
-    // CRITICAL: Check if component is still mounted
+    // Check if component is still mounted
     if (!isMountedRef.current) {
       console.log('[BarcodeScanner] ⚠️ Component unmounted, ignoring scan');
       return;
@@ -79,26 +90,24 @@ export default function BarcodeScannerScreen() {
       return;
     }
 
-    // CRITICAL: Set one-scan lock IMMEDIATELY
+    // Set one-scan lock IMMEDIATELY
     hasScannedRef.current = true;
     console.log('[BarcodeScanner] ✅ One-scan lock activated');
 
-    // CRITICAL FIX: Direct navigation without dismissTo
-    // This ensures the navigation happens immediately and reliably
-    console.log('[BarcodeScanner] 🚀 NAVIGATING TO FOOD-DETAILS');
+    // Navigate to lookup handler screen
+    console.log('[BarcodeScanner] 🚀 NAVIGATING TO BARCODE-LOOKUP');
     console.log('[BarcodeScanner] Barcode being passed:', cleanBarcode);
     console.log('[BarcodeScanner] Meal:', mealType);
     console.log('[BarcodeScanner] Date:', date);
     console.log('[BarcodeScanner] Mode:', mode);
     
     router.push({
-      pathname: '/food-details',
+      pathname: '/barcode-lookup',
       params: {
         barcode: cleanBarcode,
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: '/(tabs)/(home)/',
         mealId: myMealId || '',
       },
     });
