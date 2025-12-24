@@ -1236,45 +1236,6 @@ export default function AddFoodScreen() {
                 <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Quick Actions
                 </Text>
-                
-                {/* TOP ROW: Quick Add + My Meals (only if NOT in my_meal_builder context) */}
-                <View style={styles.topRow}>
-                  <TouchableOpacity
-                    style={[styles.topRowButton, styles.topRowButtonBlue]}
-                    onPress={handleQuickAdd}
-                    activeOpacity={0.7}
-                  >
-                    <IconSymbol
-                      ios_icon_name="pencil"
-                      android_material_icon_name="edit"
-                      size={20}
-                      color="#0EA5E9"
-                    />
-                    <Text style={styles.topRowButtonText}>
-                      Quick Add
-                    </Text>
-                  </TouchableOpacity>
-
-                  {context !== 'my_meal_builder' && (
-                    <TouchableOpacity
-                      style={[styles.topRowButton, styles.topRowButtonOrange]}
-                      onPress={handleMyMeals}
-                      activeOpacity={0.7}
-                    >
-                      <IconSymbol
-                        ios_icon_name="fork.knife"
-                        android_material_icon_name="restaurant"
-                        size={20}
-                        color="#F97316"
-                      />
-                      <Text style={styles.topRowButtonText}>
-                        My Meals
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* SECOND ROW: AI Meal Estimator, Barcode Scan, Copy from Previous */}
                 <View style={styles.quickActionsRowCompact}>
                   <TouchableOpacity
                     style={[styles.quickActionButtonCompact, styles.quickActionButtonYellow]}
@@ -1324,6 +1285,43 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* MY MEALS - Only show if NOT in my_meal_builder context */}
+                {context !== 'my_meal_builder' && (
+                  <React.Fragment>
+                    <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Saved Meals
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.myMealsButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+                      onPress={handleMyMeals}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.myMealsIconContainer}>
+                        <IconSymbol
+                          ios_icon_name="fork.knife"
+                          android_material_icon_name="restaurant"
+                          size={24}
+                          color={colors.primary}
+                        />
+                      </View>
+                      <View style={styles.myMealsTextContainer}>
+                        <Text style={[styles.myMealsTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                          My Meals
+                        </Text>
+                        <Text style={[styles.myMealsSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                          Use saved meal combinations
+                        </Text>
+                      </View>
+                      <IconSymbol
+                        ios_icon_name="chevron.right"
+                        android_material_icon_name="chevron_right"
+                        size={20}
+                        color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </React.Fragment>
+                )}
               </React.Fragment>
             )}
 
@@ -1497,38 +1495,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
   },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  topRowButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
-    gap: spacing.xs,
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.06)',
-    elevation: 2,
-    minHeight: 56,
-  },
-  topRowButtonBlue: {
-    backgroundColor: '#E0F2FE',
-  },
-  topRowButtonOrange: {
-    backgroundColor: '#FFEDD5',
-  },
-  topRowButtonText: {
-    ...typography.bodyBold,
-    fontSize: 14,
-    color: '#1F2937',
-    textAlign: 'center',
-  },
   quickActionsRowCompact: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1672,5 +1638,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  myMealsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+    elevation: 1,
+  },
+  myMealsIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  myMealsTextContainer: {
+    flex: 1,
+  },
+  myMealsTitle: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  myMealsSubtitle: {
+    ...typography.caption,
+    fontSize: 13,
   },
 });
