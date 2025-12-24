@@ -532,6 +532,7 @@ export default function FoodDetailsLayout({
 
     console.log('[FoodDetailsLayout] ========== SAVING FOOD ==========');
     console.log('[FoodDetailsLayout] Mode:', mode);
+    console.log('[FoodDetailsLayout] Context:', context);
     console.log('[FoodDetailsLayout] Servings:', finalServings);
     console.log('[FoodDetailsLayout] Total Grams:', finalGrams);
 
@@ -589,8 +590,9 @@ export default function FoodDetailsLayout({
         return;
       }
 
-      // CHECK IF WE'RE IN MY MEAL BUILDER CONTEXT
-      if (context === 'my_meal_builder') {
+      // CRITICAL FIX: Check for my_meals_builder context (with 's')
+      if (context === 'my_meals_builder') {
+        console.log('[FoodDetailsLayout] ========== MY MEALS BUILDER CONTEXT ==========');
         console.log('[FoodDetailsLayout] Adding to My Meal draft');
         
         // First, ensure food exists in database
@@ -668,6 +670,7 @@ export default function FoodDetailsLayout({
       }
 
       // VIEW MODE: ADD NEW FOOD TO DIARY
+      console.log('[FoodDetailsLayout] ========== MEAL LOG CONTEXT ==========');
       console.log('[FoodDetailsLayout] Meal:', mealType);
       console.log('[FoodDetailsLayout] Date:', date);
       console.log('[FoodDetailsLayout] returnTo:', returnTo);
@@ -829,11 +832,15 @@ export default function FoodDetailsLayout({
 
   const availableUnits: ServingUnit[] = ['g', 'oz'];
 
-  // Determine button text based on mode
+  // CRITICAL FIX: Determine button text based on context
   let buttonText = 'Add to Meal';
   if (mode === 'edit') {
     buttonText = 'Save Changes';
+  } else if (context === 'my_meals_builder') {
+    // MY MEALS BUILDER CONTEXT
+    buttonText = 'Add to My Meal';
   } else {
+    // NORMAL MEAL LOG CONTEXT
     buttonText = `Add to ${mealLabels[mealType]}`;
   }
 
@@ -1081,7 +1088,7 @@ export default function FoodDetailsLayout({
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {currentBanner && mode === 'view' && (
+      {currentBanner && mode === 'view' && context !== 'my_meals_builder' && (
         <Animated.View 
           style={[
             styles.bannerContainer,
