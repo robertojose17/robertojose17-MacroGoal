@@ -13,7 +13,7 @@ import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/ut
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
 
-type TabType = 'all' | 'favorites' | 'quick-add';
+type TabType = 'all' | 'favorites' | 'quick-add' | 'my-meals';
 
 interface BannerEvent {
   id: number;
@@ -435,6 +435,18 @@ export default function AddFoodScreen() {
       },
     });
   }, [router, mealType, date, mode, context, returnTo]);
+
+  const handleMyMeals = useCallback(() => {
+    console.log('[AddFood] Navigating to My Meals');
+    router.push({
+      pathname: '/my-meals',
+      params: {
+        meal: mealType,
+        date: date,
+        returnTo: returnTo,
+      },
+    });
+  }, [router, mealType, date, returnTo]);
 
   const handleBarcodeScanner = useCallback(() => {
     console.log('[AddFood] Navigating to Barcode Scanner');
@@ -1206,6 +1218,24 @@ export default function AddFoodScreen() {
             </Text>
             {activeTab === 'quick-add' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
+
+          {/* MY MEALS TAB - Only show if NOT in my_meal_builder context */}
+          {context !== 'my_meal_builder' && (
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => setActiveTab('my-meals')}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'my-meals' && styles.tabTextActive,
+                { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+              ]}>
+                My Meals
+              </Text>
+              {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1323,6 +1353,42 @@ export default function AddFoodScreen() {
                   <Text style={styles.quickAddButtonText}>
                     Manually Enter Calories & Macros
                   </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {activeTab === 'my-meals' && (
+              <View style={styles.myMealsContainer}>
+                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Saved Meals
+                </Text>
+                <TouchableOpacity
+                  style={[styles.myMealsButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+                  onPress={handleMyMeals}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.myMealsIconContainer}>
+                    <IconSymbol
+                      ios_icon_name="fork.knife"
+                      android_material_icon_name="restaurant"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  </View>
+                  <View style={styles.myMealsTextContainer}>
+                    <Text style={[styles.myMealsTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                      My Meals
+                    </Text>
+                    <Text style={[styles.myMealsSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      Use saved meal combinations
+                    </Text>
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron_right"
+                    size={20}
+                    color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                  />
                 </TouchableOpacity>
               </View>
             )}
@@ -1589,5 +1655,38 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  myMealsContainer: {
+    paddingTop: spacing.md,
+  },
+  myMealsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+    elevation: 1,
+  },
+  myMealsIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  myMealsTextContainer: {
+    flex: 1,
+  },
+  myMealsTitle: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  myMealsSubtitle: {
+    ...typography.caption,
+    fontSize: 13,
   },
 });
