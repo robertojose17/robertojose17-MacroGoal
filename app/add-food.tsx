@@ -37,10 +37,15 @@ export default function AddFoodScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<any>() || {};
 
-  const mode = params.mode ?? "diary";
+  // CRITICAL: Extract context from params
   const context = params.context as string | undefined;
   const mealType = params.mealType ?? params.meal ?? "breakfast";
   const returnTo = params.returnTo as string | undefined;
+  
+  console.log('[AddFood] ========== SCREEN LOADED ==========');
+  console.log('[AddFood] Context:', context);
+  console.log('[AddFood] Meal Type:', mealType);
+  console.log('[AddFood] Return To:', returnTo);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -484,66 +489,71 @@ export default function AddFoodScreen() {
 
   /**
    * Open food details for a search result
-   * FIXED: Uses router.replace() to ensure FoodDetails opens on top
+   * CRITICAL: Pass context through to Food Details
    */
   const handleOpenSearchResultDetails = useCallback((product: OpenFoodFactsProduct) => {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
     console.log('[AddFood] Product:', product.product_name);
     console.log('[AddFood] Context:', context);
-    console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
+    console.log('[AddFood] CRITICAL: Passing context to Food Details');
 
-    // CRITICAL FIX: Use router.replace() instead of router.push()
-    // This replaces the Add Food menu with FoodDetails, ensuring FoodDetails is on top
     router.replace({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(product),
         meal: mealType,
         date: date,
-        mode: mode,
-        context: context,
+        context: context || '',
         returnTo: returnTo || '/(tabs)/(home)/',
       },
     });
-  }, [router, mealType, date, mode, context, returnTo]);
+  }, [router, mealType, date, context, returnTo]);
 
   const handleCopyFromPrevious = useCallback(() => {
     console.log('[AddFood] Navigating to copy-from-previous');
+    console.log('[AddFood] Context:', context);
+    
     router.push({
       pathname: '/copy-from-previous',
       params: {
         meal: mealType,
         date: date,
+        context: context || '',
+        returnTo: returnTo,
       },
     });
-  }, [router, mealType, date]);
+  }, [router, mealType, date, context, returnTo]);
 
   const handleQuickAdd = useCallback(() => {
     console.log('[AddFood] Navigating to quick-add');
+    console.log('[AddFood] Context:', context);
+    
     router.push({
       pathname: '/quick-add',
       params: {
         meal: mealType,
         date: date,
-        mode: mode,
+        context: context || '',
         returnTo: returnTo,
       },
     });
-  }, [router, mealType, date, mode, returnTo]);
+  }, [router, mealType, date, context, returnTo]);
 
   const handleAIMealEstimator = useCallback(() => {
-    console.log('[AddFood] Navigating to AI Meal Estimator');
+    console.log('[AddFood] ========== NAVIGATING TO AI MEAL ESTIMATOR ==========');
+    console.log('[AddFood] Context:', context);
+    console.log('[AddFood] CRITICAL: Passing context to AI Meal Estimator');
+    
     router.push({
       pathname: '/chatbot',
       params: {
         meal: mealType,
         date: date,
-        mode: mode,
-        context: context,
+        context: context || '',
         returnTo: returnTo,
       },
     });
-  }, [router, mealType, date, mode, context, returnTo]);
+  }, [router, mealType, date, context, returnTo]);
 
   const handleCreateMeal = useCallback(() => {
     console.log('[AddFood] Navigating to create meal');
@@ -598,28 +608,31 @@ export default function AddFoodScreen() {
   }, [savedMeals]);
 
   const handleBarcodeScanner = useCallback(() => {
-    console.log('[AddFood] Navigating to Barcode Scanner');
+    console.log('[AddFood] ========== NAVIGATING TO BARCODE SCANNER ==========');
+    console.log('[AddFood] Context:', context);
+    console.log('[AddFood] CRITICAL: Passing context to Barcode Scanner');
+    
     router.push({
       pathname: '/barcode-scanner',
       params: {
         meal: mealType,
         date: date,
-        mode: mode,
-        context: context,
+        context: context || '',
         returnTo: returnTo,
       },
     });
-  }, [router, mealType, date, mode, context, returnTo]);
+  }, [router, mealType, date, context, returnTo]);
 
   /**
    * Open food details for a recent food
-   * FIXED: Uses router.replace() to ensure FoodDetails opens on top
+   * CRITICAL: Pass context through to Food Details
    */
   const handleOpenRecentFoodDetails = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== OPENING RECENT FOOD DETAILS ==========');
     console.log('[AddFood] Food:', food.name);
     console.log('[AddFood] Food ID:', food.id);
-    console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
+    console.log('[AddFood] Context:', context);
+    console.log('[AddFood] CRITICAL: Passing context to Food Details');
 
     try {
       // Fetch the full food data from database to get per-100g values
@@ -636,15 +649,6 @@ export default function AddFoodScreen() {
       }
 
       console.log('[AddFood] ✅ Food data fetched successfully');
-      console.log('[AddFood] Food data:', {
-        name: foodData.name,
-        brand: foodData.brand,
-        calories: foodData.calories,
-        protein: foodData.protein,
-        carbs: foodData.carbs,
-        fats: foodData.fats,
-        fiber: foodData.fiber,
-      });
 
       // Convert to OpenFoodFacts format for the food-details screen
       const offProduct = {
@@ -662,44 +666,40 @@ export default function AddFoodScreen() {
         },
       };
 
-      console.log('[AddFood] ✅ Converted to OpenFoodFacts format');
-      console.log('[AddFood] Navigating to food-details with params:', {
-        meal: mealType,
-        date: date,
-        mode: mode,
-        context: context,
-        returnTo: returnTo || '/(tabs)/(home)/',
-      });
-
-      // CRITICAL FIX: Use router.replace() instead of router.push()
-      // This replaces the Add Food menu with FoodDetails, ensuring FoodDetails is on top
       router.replace({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
-          mode: mode,
-          context: context,
+          context: context || '',
           returnTo: returnTo || '/(tabs)/(home)/',
         },
       });
 
-      console.log('[AddFood] ✅ Navigation triggered successfully (using replace)');
+      console.log('[AddFood] ✅ Navigation triggered successfully');
     } catch (error) {
       console.error('[AddFood] Error opening recent food details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [router, mealType, date, mode, context, returnTo]);
+  }, [router, mealType, date, context, returnTo]);
 
   /**
    * Add a recent food directly
    * Shows success banner immediately after add
+   * CRITICAL: Only works in meal_log context, not in my_meals_builder
    */
   const handleAddRecentFood = useCallback(async (food: Food) => {
     console.log('[AddFood] ========== ADD RECENT FOOD ==========');
     console.log('[AddFood] Food:', food.name);
-    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Context:', context);
+
+    // CRITICAL: If in my_meals_builder context, don't allow quick add
+    if (context === 'my_meals_builder') {
+      console.log('[AddFood] ❌ Cannot quick-add in my_meals_builder context');
+      Alert.alert('Not Available', 'Please tap the food to view details and add it to your meal.');
+      return;
+    }
 
     try {
       // Get the food from database to get per-100g values
@@ -805,16 +805,17 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error adding recent food:', error);
       Alert.alert('Error', 'An unexpected error occurred while adding food');
     }
-  }, [mode, returnTo, date, mealType, router, showSuccessBanner]);
+  }, [context, date, mealType, showSuccessBanner]);
 
   /**
    * Open food details for a favorite
-   * FIXED: Uses router.replace() to ensure FoodDetails opens on top
+   * CRITICAL: Pass context through to Food Details
    */
   const handleOpenFavoriteDetails = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== OPENING FAVORITE DETAILS ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
-    console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
+    console.log('[AddFood] Context:', context);
+    console.log('[AddFood] CRITICAL: Passing context to Food Details');
 
     try {
       // Convert favorite to OpenFoodFacts format for the food-details screen
@@ -835,16 +836,13 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with favorite data');
 
-      // CRITICAL FIX: Use router.replace() instead of router.push()
-      // This replaces the Add Food menu with FoodDetails, ensuring FoodDetails is on top
       router.replace({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
           meal: mealType,
           date: date,
-          mode: mode,
-          context: context,
+          context: context || '',
           returnTo: returnTo || '/(tabs)/(home)/',
         },
       });
@@ -852,16 +850,24 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error opening favorite details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [router, mealType, date, mode, context, returnTo]);
+  }, [router, mealType, date, context, returnTo]);
 
   /**
    * Handle adding favorite
    * Shows success banner immediately after add
+   * CRITICAL: Only works in meal_log context, not in my_meals_builder
    */
   const handleAddFavorite = useCallback(async (favorite: Favorite) => {
     console.log('[AddFood] ========== ADD FAVORITE ==========');
     console.log('[AddFood] Favorite:', favorite.food_name);
-    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Context:', context);
+
+    // CRITICAL: If in my_meals_builder context, don't allow quick add
+    if (context === 'my_meals_builder') {
+      console.log('[AddFood] ❌ Cannot quick-add in my_meals_builder context');
+      Alert.alert('Not Available', 'Please tap the food to view details and add it to your meal.');
+      return;
+    }
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -987,7 +993,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error adding favorite:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [mode, returnTo, date, mealType, router, showSuccessBanner]);
+  }, [context, date, mealType, showSuccessBanner]);
 
   /**
    * Remove a favorite from the list
@@ -1047,25 +1053,28 @@ export default function AddFoodScreen() {
             </Text>
           </View>
           
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleAddRecentFood(food);
-            }}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="plus"
-              android_material_icon_name="add"
-              size={20}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
+          {/* Only show quick-add button if NOT in my_meals_builder context */}
+          {context !== 'my_meals_builder' && (
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleAddRecentFood(food);
+              }}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
       </React.Fragment>
     );
-  }, [isDark, handleOpenRecentFoodDetails, handleAddRecentFood]);
+  }, [isDark, context, handleOpenRecentFoodDetails, handleAddRecentFood]);
 
   const renderSearchResultItem = useCallback((product: OpenFoodFactsProduct, index: number) => {
     const nutrition = extractNutrition(product);
@@ -1150,26 +1159,29 @@ export default function AddFoodScreen() {
               </Text>
             </View>
             
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleAddFavorite(favorite);
-              }}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="plus"
-                android_material_icon_name="add"
-                size={20}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
+            {/* Only show quick-add button if NOT in my_meals_builder context */}
+            {context !== 'my_meals_builder' && (
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleAddFavorite(favorite);
+                }}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         </SwipeToDeleteRow>
       </React.Fragment>
     );
-  }, [isDark, handleRemoveFavorite, handleOpenFavoriteDetails, handleAddFavorite]);
+  }, [isDark, context, handleRemoveFavorite, handleOpenFavoriteDetails, handleAddFavorite]);
 
   const renderSavedMealItem = useCallback((meal: SavedMeal, index: number) => {
     return (
@@ -1302,7 +1314,7 @@ export default function AddFoodScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          {`Add to ${mealLabels[mealType]}`}
+          {context === 'my_meals_builder' ? 'Add to My Meal' : `Add to ${mealLabels[mealType]}`}
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -1400,8 +1412,8 @@ export default function AddFoodScreen() {
             {activeTab === 'quick-add' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
 
-          {/* MY MEALS TAB - Only show if NOT in my_meal_builder context */}
-          {context !== 'my_meal_builder' && (
+          {/* MY MEALS TAB - Only show if NOT in my_meals_builder context */}
+          {context !== 'my_meals_builder' && (
             <TouchableOpacity
               style={styles.tab}
               onPress={() => setActiveTab('my-meals')}
@@ -1468,21 +1480,24 @@ export default function AddFoodScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.quickActionButtonCompact, styles.quickActionButtonGreen]}
-                    onPress={handleCopyFromPrevious}
-                    activeOpacity={0.7}
-                  >
-                    <IconSymbol
-                      ios_icon_name="calendar"
-                      android_material_icon_name="event"
-                      size={20}
-                      color="#10B981"
-                    />
-                    <Text style={styles.quickActionButtonTextCompact}>
-                      Copy from{'\n'}Previous
-                    </Text>
-                  </TouchableOpacity>
+                  {/* Only show Copy from Previous if NOT in my_meals_builder context */}
+                  {context !== 'my_meals_builder' && (
+                    <TouchableOpacity
+                      style={[styles.quickActionButtonCompact, styles.quickActionButtonGreen]}
+                      onPress={handleCopyFromPrevious}
+                      activeOpacity={0.7}
+                    >
+                      <IconSymbol
+                        ios_icon_name="calendar"
+                        android_material_icon_name="event"
+                        size={20}
+                        color="#10B981"
+                      />
+                      <Text style={styles.quickActionButtonTextCompact}>
+                        Copy from{'\n'}Previous
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </React.Fragment>
             )}
@@ -1594,7 +1609,8 @@ export default function AddFoodScreen() {
       </ScrollView>
 
       {/* BANNER QUEUE SYSTEM - Each event gets unique key to force remount */}
-      {currentBanner && (
+      {/* Only show banner if NOT in my_meals_builder context */}
+      {currentBanner && context !== 'my_meals_builder' && (
         <Animated.View 
           key={bannerEventId}
           style={[

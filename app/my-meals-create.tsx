@@ -58,13 +58,15 @@ export default function MyMealsCreateScreen() {
   };
 
   const handleAddFood = () => {
-    console.log('[MyMealsCreate] Navigating to add food');
-    // Navigate to add-food with context="my_meal_builder"
+    console.log('[MyMealsCreate] ========== NAVIGATING TO ADD FOOD ==========');
+    console.log('[MyMealsCreate] Context: my_meals_builder');
+    console.log('[MyMealsCreate] This is CRITICAL - all add-food actions must respect this context');
+    
+    // CRITICAL: Pass context = "my_meals_builder" to ensure all add-food actions add to draft
     router.push({
       pathname: '/add-food',
       params: {
-        mode: 'my_meal_builder',
-        context: 'my_meal_builder',
+        context: 'my_meals_builder',
         meal: mealType,
         date: date,
         returnTo: '/my-meals-create',
