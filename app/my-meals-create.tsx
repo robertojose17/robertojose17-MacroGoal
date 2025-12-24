@@ -82,28 +82,55 @@ export default function MyMealsCreateScreen() {
   };
 
   const handleSave = async () => {
+    console.log('[MyMealsCreate] ========== SAVE MY MEAL PRESSED ==========');
+    console.log('[MyMealsCreate] Meal name:', mealName);
+    console.log('[MyMealsCreate] Items count:', draftItems.length);
+
+    // VALIDATION: Check meal name
     if (!mealName.trim()) {
+      console.log('[MyMealsCreate] ❌ VALIDATION FAILED: Meal name is empty');
       Alert.alert('Error', 'Please enter a meal name');
       return;
     }
 
+    // VALIDATION: Check items
     if (draftItems.length === 0) {
+      console.log('[MyMealsCreate] ❌ VALIDATION FAILED: No items in meal');
       Alert.alert('Error', 'Please add at least one food item');
       return;
     }
 
-    console.log('[MyMealsCreate] Saving meal:', mealName);
+    console.log('[MyMealsCreate] ✅ Validation passed');
+    console.log('[MyMealsCreate] Starting save process...');
     setSaving(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // STEP 1: Get user
+      console.log('[MyMealsCreate] STEP 1: Getting user...');
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('[MyMealsCreate] ❌ Error getting user:', userError);
+        Alert.alert('Error', 'Authentication error. Please log in again.');
+        setSaving(false);
+        return;
+      }
+
       if (!user) {
+        console.error('[MyMealsCreate] ❌ No user found');
         Alert.alert('Error', 'You must be logged in to save meals');
         setSaving(false);
         return;
       }
 
-      // Create saved meal
+      console.log('[MyMealsCreate] ✅ User found:', user.id);
+
+      // STEP 2: Create saved meal
+      console.log('[MyMealsCreate] STEP 2: Creating saved meal...');
+      console.log('[MyMealsCreate] Inserting into saved_meals table:');
+      console.log('[MyMealsCreate]   - user_id:', user.id);
+      console.log('[MyMealsCreate]   - name:', mealName.trim());
+
       const { data: savedMeal, error: mealError } = await supabase
         .from('saved_meals')
         .insert({
@@ -114,51 +141,114 @@ export default function MyMealsCreateScreen() {
         .single();
 
       if (mealError) {
-        console.error('[MyMealsCreate] Error creating saved meal:', mealError);
-        Alert.alert('Error', 'Failed to save meal');
+        console.error('[MyMealsCreate] ❌ ERROR CREATING SAVED MEAL:', mealError);
+        console.error('[MyMealsCreate] Error code:', mealError.code);
+        console.error('[MyMealsCreate] Error message:', mealError.message);
+        console.error('[MyMealsCreate] Error details:', mealError.details);
+        console.error('[MyMealsCreate] Error hint:', mealError.hint);
+        
+        // Check for common errors
+        if (mealError.code === '42501') {
+          Alert.alert('Error', 'Permission denied. Please check your account settings.');
+        } else if (mealError.code === '23505') {
+          Alert.alert('Error', 'A meal with this name already exists.');
+        } else {
+          Alert.alert('Error', `Failed to save meal: ${mealError.message}`);
+        }
+        
         setSaving(false);
         return;
       }
 
-      console.log('[MyMealsCreate] Saved meal created:', savedMeal.id);
+      if (!savedMeal) {
+        console.error('[MyMealsCreate] ❌ No saved meal returned from insert');
+        Alert.alert('Error', 'Failed to save meal (no data returned)');
+        setSaving(false);
+        return;
+      }
 
-      // Create saved meal items
-      const itemsToInsert = draftItems.map(item => ({
-        saved_meal_id: savedMeal.id,
-        food_id: item.food_id,
-        serving_amount: item.serving_amount,
-        serving_unit: item.serving_unit,
-        servings_count: item.servings_count,
-      }));
+      console.log('[MyMealsCreate] ✅ Saved meal created successfully!');
+      console.log('[MyMealsCreate] Saved meal ID:', savedMeal.id);
+      console.log('[MyMealsCreate] Saved meal name:', savedMeal.name);
 
-      const { error: itemsError } = await supabase
+      // STEP 3: Create saved meal items
+      console.log('[MyMealsCreate] STEP 3: Creating saved meal items...');
+      console.log('[MyMealsCreate] Number of items to insert:', draftItems.length);
+
+      const itemsToInsert = draftItems.map((item, index) => {
+        console.log(`[MyMealsCreate] Item ${index + 1}:`, {
+          food_id: item.food_id,
+          food_name: item.food_name,
+          serving_amount: item.serving_amount,
+          serving_unit: item.serving_unit,
+          servings_count: item.servings_count,
+        });
+
+        return {
+          saved_meal_id: savedMeal.id,
+          food_id: item.food_id,
+          serving_amount: item.serving_amount,
+          serving_unit: item.serving_unit,
+          servings_count: item.servings_count,
+        };
+      });
+
+      console.log('[MyMealsCreate] Inserting', itemsToInsert.length, 'items into saved_meal_items table');
+
+      const { data: insertedItems, error: itemsError } = await supabase
         .from('saved_meal_items')
-        .insert(itemsToInsert);
+        .insert(itemsToInsert)
+        .select();
 
       if (itemsError) {
-        console.error('[MyMealsCreate] Error creating saved meal items:', itemsError);
+        console.error('[MyMealsCreate] ❌ ERROR CREATING SAVED MEAL ITEMS:', itemsError);
+        console.error('[MyMealsCreate] Error code:', itemsError.code);
+        console.error('[MyMealsCreate] Error message:', itemsError.message);
+        console.error('[MyMealsCreate] Error details:', itemsError.details);
+        console.error('[MyMealsCreate] Error hint:', itemsError.hint);
+        
         // Rollback: delete the saved meal
+        console.log('[MyMealsCreate] Rolling back: deleting saved meal', savedMeal.id);
         await supabase.from('saved_meals').delete().eq('id', savedMeal.id);
-        Alert.alert('Error', 'Failed to save meal items');
+        
+        Alert.alert('Error', `Failed to save meal items: ${itemsError.message}`);
         setSaving(false);
         return;
       }
 
-      console.log('[MyMealsCreate] Meal saved successfully!');
-      
-      // Clear draft after successful save
+      console.log('[MyMealsCreate] ✅ Saved meal items created successfully!');
+      console.log('[MyMealsCreate] Inserted items count:', insertedItems?.length || 0);
+
+      // STEP 4: Clear draft
+      console.log('[MyMealsCreate] STEP 4: Clearing draft...');
       await clearDraft();
+      console.log('[MyMealsCreate] ✅ Draft cleared');
+
+      // STEP 5: Show success and navigate back
+      console.log('[MyMealsCreate] ========== SAVE COMPLETE ==========');
+      console.log('[MyMealsCreate] Meal saved successfully!');
+      console.log('[MyMealsCreate] Meal ID:', savedMeal.id);
+      console.log('[MyMealsCreate] Meal name:', savedMeal.name);
+      console.log('[MyMealsCreate] Items count:', insertedItems?.length || 0);
       
       Alert.alert('Success', 'Meal saved successfully!', [
         {
           text: 'OK',
-          onPress: () => router.back(),
+          onPress: () => {
+            console.log('[MyMealsCreate] Navigating back...');
+            router.back();
+          },
         },
       ]);
       setSaving(false);
     } catch (error) {
-      console.error('[MyMealsCreate] Error in handleSave:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('[MyMealsCreate] ❌ UNEXPECTED ERROR in handleSave:', error);
+      if (error instanceof Error) {
+        console.error('[MyMealsCreate] Error name:', error.name);
+        console.error('[MyMealsCreate] Error message:', error.message);
+        console.error('[MyMealsCreate] Error stack:', error.stack);
+      }
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
       setSaving(false);
     }
   };

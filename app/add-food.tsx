@@ -12,6 +12,7 @@ import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDat
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
+import { addToDraft } from '@/utils/myMealsDraft';
 
 type TabType = 'all' | 'favorites' | 'quick-add' | 'my-meals';
 
@@ -290,13 +291,13 @@ export default function AddFoodScreen() {
    * Add a new banner event to the queue
    * If a banner is currently showing, it will be INTERRUPTED and the new one shown immediately
    */
-  const showSuccessBanner = useCallback(() => {
+  const showSuccessBanner = useCallback((message: string = 'Food Added') => {
     console.log('[AddFood] ========== BANNER TRIGGERED ==========');
     
     // Create new event
     const newEvent: BannerEvent = {
       id: ++eventIdCounterRef.current,
-      message: 'Food Added',
+      message: message,
       timestamp: Date.now(),
     };
     
@@ -509,6 +510,98 @@ export default function AddFoodScreen() {
     });
   }, [router, mealType, date, context, returnTo]);
 
+  /**
+   * FAST ADD: Add search result directly to My Meal draft
+   * Only available in my_meals_builder context
+   */
+  const handleQuickAddSearchResult = useCallback(async (product: OpenFoodFactsProduct) => {
+    console.log('[AddFood] ========== QUICK ADD SEARCH RESULT ==========');
+    console.log('[AddFood] Product:', product.product_name);
+    console.log('[AddFood] Context:', context);
+
+    if (context !== 'my_meals_builder') {
+      console.log('[AddFood] ❌ Quick add only available in my_meals_builder context');
+      return;
+    }
+
+    try {
+      const servingInfo = extractServingSize(product);
+      const nutrition = extractNutrition(product);
+
+      // Calculate nutrition for default serving
+      const multiplier = servingInfo.grams / 100;
+      const calories = nutrition.calories * multiplier;
+      const protein = nutrition.protein * multiplier;
+      const carbs = nutrition.carbs * multiplier;
+      const fat = nutrition.fat * multiplier;
+      const fiber = nutrition.fiber * multiplier;
+
+      // Ensure food exists in database
+      let foodId: string | null = null;
+
+      if (product.code) {
+        const { data: existingFood } = await supabase
+          .from('foods')
+          .select('id')
+          .eq('barcode', product.code)
+          .maybeSingle();
+
+        if (existingFood) {
+          foodId = existingFood.id;
+        }
+      }
+
+      if (!foodId) {
+        const { data: newFood, error: foodError } = await supabase
+          .from('foods')
+          .insert({
+            name: product.product_name || 'Unknown Product',
+            brand: product.brands || null,
+            serving_amount: 100,
+            serving_unit: 'g',
+            calories: nutrition.calories,
+            protein: nutrition.protein,
+            carbs: nutrition.carbs,
+            fats: nutrition.fat,
+            fiber: nutrition.fiber,
+            barcode: product.code || null,
+            user_created: false,
+          })
+          .select()
+          .single();
+
+        if (foodError) {
+          console.error('[AddFood] Error creating food:', foodError);
+          Alert.alert('Error', 'Failed to add food');
+          return;
+        }
+
+        foodId = newFood.id;
+      }
+
+      // Add to draft
+      await addToDraft({
+        food_id: foodId,
+        food_name: product.product_name || 'Unknown Product',
+        food_brand: product.brands || undefined,
+        serving_amount: servingInfo.grams,
+        serving_unit: 'g',
+        servings_count: 1,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fats: fat,
+        fiber: fiber,
+      });
+
+      console.log('[AddFood] ✅ Quick added to My Meal draft!');
+      showSuccessBanner('Added');
+    } catch (error) {
+      console.error('[AddFood] Error quick adding search result:', error);
+      Alert.alert('Error', 'Failed to add food');
+    }
+  }, [context, showSuccessBanner]);
+
   const handleCopyFromPrevious = useCallback(() => {
     console.log('[AddFood] Navigating to copy-from-previous');
     console.log('[AddFood] Context:', context);
@@ -685,7 +778,69 @@ export default function AddFoodScreen() {
   }, [router, mealType, date, context, returnTo]);
 
   /**
-   * Add a recent food directly
+   * FAST ADD: Add recent food directly to My Meal draft
+   * Only available in my_meals_builder context
+   */
+  const handleQuickAddRecentFood = useCallback(async (food: Food) => {
+    console.log('[AddFood] ========== QUICK ADD RECENT FOOD ==========');
+    console.log('[AddFood] Food:', food.name);
+    console.log('[AddFood] Context:', context);
+
+    if (context !== 'my_meals_builder') {
+      console.log('[AddFood] ❌ Quick add only available in my_meals_builder context');
+      return;
+    }
+
+    try {
+      // Fetch the full food data from database to get per-100g values
+      const { data: foodData, error: foodError } = await supabase
+        .from('foods')
+        .select('*')
+        .eq('id', food.id)
+        .single();
+
+      if (foodError || !foodData) {
+        console.error('[AddFood] Error fetching food data:', foodError);
+        Alert.alert('Error', 'Failed to load food details');
+        return;
+      }
+
+      // Use the food's serving_amount as the default (this is the grams from last time)
+      const gramsToAdd = food.serving_amount;
+      const multiplier = gramsToAdd / 100;
+
+      // Calculate nutrition for the default serving
+      const calories = foodData.calories * multiplier;
+      const protein = foodData.protein * multiplier;
+      const carbs = foodData.carbs * multiplier;
+      const fats = foodData.fats * multiplier;
+      const fiber = foodData.fiber * multiplier;
+
+      // Add to draft
+      await addToDraft({
+        food_id: food.id,
+        food_name: food.name,
+        food_brand: food.brand || undefined,
+        serving_amount: gramsToAdd,
+        serving_unit: 'g',
+        servings_count: 1,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fats: fats,
+        fiber: fiber,
+      });
+
+      console.log('[AddFood] ✅ Quick added recent food to My Meal draft!');
+      showSuccessBanner('Added');
+    } catch (error) {
+      console.error('[AddFood] Error quick adding recent food:', error);
+      Alert.alert('Error', 'Failed to add food');
+    }
+  }, [context, showSuccessBanner]);
+
+  /**
+   * Add a recent food directly (for meal log context)
    * Shows success banner immediately after add
    * CRITICAL: Only works in meal_log context, not in my_meals_builder
    */
@@ -853,7 +1008,97 @@ export default function AddFoodScreen() {
   }, [router, mealType, date, context, returnTo]);
 
   /**
-   * Handle adding favorite
+   * FAST ADD: Add favorite directly to My Meal draft
+   * Only available in my_meals_builder context
+   */
+  const handleQuickAddFavorite = useCallback(async (favorite: Favorite) => {
+    console.log('[AddFood] ========== QUICK ADD FAVORITE ==========');
+    console.log('[AddFood] Favorite:', favorite.food_name);
+    console.log('[AddFood] Context:', context);
+
+    if (context !== 'my_meals_builder') {
+      console.log('[AddFood] ❌ Quick add only available in my_meals_builder context');
+      return;
+    }
+
+    try {
+      // Calculate nutrition for default serving
+      const multiplier = favorite.default_grams / 100;
+      const calories = favorite.per100_calories * multiplier;
+      const protein = favorite.per100_protein * multiplier;
+      const carbs = favorite.per100_carbs * multiplier;
+      const fat = favorite.per100_fat * multiplier;
+      const fiber = favorite.per100_fiber * multiplier;
+
+      // Check if food exists in database
+      let foodId: string | null = null;
+
+      if (favorite.food_code && favorite.food_source === 'barcode') {
+        const { data: existingFood } = await supabase
+          .from('foods')
+          .select('id')
+          .eq('barcode', favorite.food_code)
+          .maybeSingle();
+
+        if (existingFood) {
+          foodId = existingFood.id;
+        }
+      }
+
+      // Create food if it doesn't exist
+      if (!foodId) {
+        const { data: newFood, error: foodError } = await supabase
+          .from('foods')
+          .insert({
+            name: favorite.food_name,
+            brand: favorite.brand || null,
+            serving_amount: 100,
+            serving_unit: 'g',
+            calories: favorite.per100_calories,
+            protein: favorite.per100_protein,
+            carbs: favorite.per100_carbs,
+            fats: favorite.per100_fat,
+            fiber: favorite.per100_fiber,
+            barcode: favorite.food_source === 'barcode' ? favorite.food_code : null,
+            user_created: false,
+          })
+          .select()
+          .single();
+
+        if (foodError) {
+          console.error('[AddFood] Error creating food:', foodError);
+          Alert.alert('Error', 'Failed to add food');
+          return;
+        }
+
+        foodId = newFood.id;
+      }
+
+      // Add to draft
+      await addToDraft({
+        food_id: foodId,
+        food_name: favorite.food_name,
+        food_brand: favorite.brand || undefined,
+        serving_amount: favorite.default_grams,
+        serving_unit: 'g',
+        servings_count: 1,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fats: fat,
+        fiber: fiber,
+      });
+
+      console.log('[AddFood] ✅ Quick added favorite to My Meal draft!');
+      showSuccessBanner('Added');
+    } catch (error) {
+      console.error('[AddFood] Error quick adding favorite:', error);
+      Alert.alert('Error', 'Failed to add food');
+    }
+  }, [context, showSuccessBanner]);
+
+  /**
+   * Handle adding favorite (for meal log context)
    * Shows success banner immediately after add
    * CRITICAL: Only works in meal_log context, not in my_meals_builder
    */
@@ -1053,8 +1298,24 @@ export default function AddFoodScreen() {
             </Text>
           </View>
           
-          {/* Only show quick-add button if NOT in my_meals_builder context */}
-          {context !== 'my_meals_builder' && (
+          {/* Show quick-add button based on context */}
+          {context === 'my_meals_builder' ? (
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleQuickAddRecentFood(food);
+              }}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+          ) : (
             <TouchableOpacity
               style={styles.addButton}
               onPress={(e) => {
@@ -1074,7 +1335,7 @@ export default function AddFoodScreen() {
         </TouchableOpacity>
       </React.Fragment>
     );
-  }, [isDark, context, handleOpenRecentFoodDetails, handleAddRecentFood]);
+  }, [isDark, context, handleOpenRecentFoodDetails, handleQuickAddRecentFood, handleAddRecentFood]);
 
   const renderSearchResultItem = useCallback((product: OpenFoodFactsProduct, index: number) => {
     const nutrition = extractNutrition(product);
@@ -1111,18 +1372,37 @@ export default function AddFoodScreen() {
             </Text>
           </View>
           
-          <View style={styles.chevronContainer}>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            />
-          </View>
+          {/* Show quick-add button only in my_meals_builder context */}
+          {context === 'my_meals_builder' ? (
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleQuickAddSearchResult(product);
+              }}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.chevronContainer}>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron_right"
+                size={20}
+                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              />
+            </View>
+          )}
         </TouchableOpacity>
       </React.Fragment>
     );
-  }, [isDark, handleOpenSearchResultDetails]);
+  }, [isDark, context, handleOpenSearchResultDetails, handleQuickAddSearchResult]);
 
   const renderFavoriteItem = useCallback((favorite: Favorite, index: number) => {
     const multiplier = favorite.default_grams / 100;
@@ -1159,8 +1439,24 @@ export default function AddFoodScreen() {
               </Text>
             </View>
             
-            {/* Only show quick-add button if NOT in my_meals_builder context */}
-            {context !== 'my_meals_builder' && (
+            {/* Show quick-add button based on context */}
+            {context === 'my_meals_builder' ? (
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleQuickAddFavorite(favorite);
+                }}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            ) : (
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={(e) => {
@@ -1181,7 +1477,7 @@ export default function AddFoodScreen() {
         </SwipeToDeleteRow>
       </React.Fragment>
     );
-  }, [isDark, context, handleRemoveFavorite, handleOpenFavoriteDetails, handleAddFavorite]);
+  }, [isDark, context, handleRemoveFavorite, handleOpenFavoriteDetails, handleQuickAddFavorite, handleAddFavorite]);
 
   const renderSavedMealItem = useCallback((meal: SavedMeal, index: number) => {
     return (
@@ -1609,7 +1905,30 @@ export default function AddFoodScreen() {
       </ScrollView>
 
       {/* BANNER QUEUE SYSTEM - Each event gets unique key to force remount */}
-      {/* Only show banner if NOT in my_meals_builder context */}
+      {/* Only show banner if in my_meals_builder context */}
+      {currentBanner && context === 'my_meals_builder' && (
+        <Animated.View 
+          key={bannerEventId}
+          style={[
+            styles.bannerContainer,
+            { 
+              opacity: bannerOpacity,
+            }
+          ]}
+        >
+          <View style={styles.banner}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check_circle"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.bannerText}>{currentBanner.message}</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* BANNER FOR MEAL LOG CONTEXT */}
       {currentBanner && context !== 'my_meals_builder' && (
         <Animated.View 
           key={bannerEventId}
