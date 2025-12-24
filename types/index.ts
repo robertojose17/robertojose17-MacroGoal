@@ -119,3 +119,21 @@ export interface OnboardingData {
   preferred_units?: UnitSystem;
   target_weight?: number;
 }
+
+export interface SavedMeal {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedMealItem {
+  id: string;
+  saved_meal_id: string;
+  food_id: string;
+  serving_amount: number;
+  serving_unit: string;
+  servings_count: number;
+  created_at: string;
+}
