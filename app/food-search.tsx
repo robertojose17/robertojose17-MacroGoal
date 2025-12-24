@@ -144,6 +144,7 @@ export default function FoodSearchScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const mode = params.mode as string;
+  const context = params.context as string;
   const returnTo = params.returnTo as string;
   const targetMealId = params.mealId as string;
 
@@ -405,6 +406,7 @@ export default function FoodSearchScreen() {
   // OPTIMIZATION: Memoize handleSelectProduct to prevent recreation
   const handleSelectProduct = useCallback((item: SearchResultItem) => {
     console.log('[FoodSearch] Product selected:', item.product.product_name);
+    console.log('[FoodSearch] Context:', context);
     
     // Navigate to Food Details screen
     const detailsParams: any = {
@@ -414,8 +416,9 @@ export default function FoodSearchScreen() {
       source: 'search',
     };
     
-    if (mode === 'my_meal_builder') {
+    if (mode === 'my_meal_builder' || context === 'my_meal_builder') {
       detailsParams.mode = mode;
+      detailsParams.context = context;
       detailsParams.returnTo = returnTo;
       detailsParams.mealId = targetMealId;
     }
@@ -424,7 +427,7 @@ export default function FoodSearchScreen() {
       pathname: '/food-details',
       params: detailsParams,
     });
-  }, [mealType, date, mode, returnTo, targetMealId, router]);
+  }, [mealType, date, mode, context, returnTo, targetMealId, router]);
 
   // OPTIMIZATION: Memoize renderItem to prevent recreation
   const renderResultItem = useCallback(({ item }: { item: SearchResultItem }) => {

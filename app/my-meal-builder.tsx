@@ -154,7 +154,7 @@ export default function MyMealBuilderScreen() {
     router.push({
       pathname: '/add-food',
       params: {
-        mode: 'mymeal',
+        mode: 'my_meal_builder',
         context: 'my_meal_builder',
         builderSessionId: builderSessionIdRef.current,
         returnTo: '/my-meal-builder',

@@ -87,6 +87,7 @@ export default function ChatbotScreen() {
 
   // Extract context from params (passed from Add Food screen)
   const mode = (params.mode as string) || 'diary';
+  const context = (params.context as string) || undefined;
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const returnTo = (params.returnTo as string) || undefined;

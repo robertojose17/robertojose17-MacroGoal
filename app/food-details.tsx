@@ -7,6 +7,7 @@ export default function FoodDetailsScreen() {
   const params = useLocalSearchParams();
 
   const mode = (params.mode as string) || 'diary';
+  const context = (params.context as string) || undefined;
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
@@ -19,6 +20,7 @@ export default function FoodDetailsScreen() {
       offData={offDataString}
       mealType={mealType}
       date={date}
+      context={context}
       returnTo={returnTo}
       myMealId={myMealId}
     />

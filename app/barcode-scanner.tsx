@@ -26,8 +26,10 @@ export default function BarcodeScannerScreen() {
   const isDark = colorScheme === 'dark';
 
   const mode = (params.mode as string) || 'diary';
+  const context = (params.context as string) || undefined;
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -38,14 +40,14 @@ export default function BarcodeScannerScreen() {
 
   useEffect(() => {
     console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
-    console.log('[BarcodeScanner] Params:', { mode, mealType, date, myMealId });
+    console.log('[BarcodeScanner] Params:', { mode, context, mealType, date, returnTo, myMealId });
     isMountedRef.current = true;
 
     return () => {
       console.log('[BarcodeScanner] ========== COMPONENT UNMOUNTED ==========');
       isMountedRef.current = false;
     };
-  }, [mode, mealType, date, myMealId]);
+  }, [mode, context, mealType, date, returnTo, myMealId]);
 
   // Reset state when screen gains focus
   useFocusEffect(
@@ -96,7 +98,7 @@ export default function BarcodeScannerScreen() {
     // Start lookup process immediately (no delay needed)
     console.log('[BarcodeScanner] 🚀 STARTING LOOKUP PROCESS');
     performLookupAndNavigate(cleanBarcode);
-  }, [router, mealType, date, mode, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo, myMealId]);
 
   /**
    * Perform OpenFoodFacts lookup and navigate to Food Details
@@ -142,6 +144,8 @@ export default function BarcodeScannerScreen() {
         // This ensures the dismiss completes before the push
         setTimeout(() => {
           console.log('[BarcodeScanner] 🚀 PUSHING FOOD DETAILS');
+          console.log('[BarcodeScanner] Context:', context);
+          console.log('[BarcodeScanner] ReturnTo:', returnTo);
           router.push({
             pathname: '/food-details',
             params: {
@@ -149,7 +153,8 @@ export default function BarcodeScannerScreen() {
               meal: mealType,
               date: date,
               mode: mode,
-              returnTo: '/(tabs)/(home)/',
+              context: context,
+              returnTo: returnTo || '/(tabs)/(home)/',
               mealId: myMealId || '',
             },
           });
@@ -169,6 +174,8 @@ export default function BarcodeScannerScreen() {
               meal: mealType,
               date: date,
               mode: mode,
+              context: context,
+              returnTo: returnTo,
               mealId: myMealId || '',
             },
           });
@@ -189,6 +196,8 @@ export default function BarcodeScannerScreen() {
             meal: mealType,
             date: date,
             mode: mode,
+            context: context,
+            returnTo: returnTo,
             mealId: myMealId || '',
             error: error.message || 'Lookup failed',
           },

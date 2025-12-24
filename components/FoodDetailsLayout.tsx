@@ -28,6 +28,7 @@ interface FoodDetailsLayoutProps {
   offData?: string;
   mealType?: string;
   date?: string;
+  context?: string;
   returnTo?: string;
   myMealId?: string;
   // For edit mode (Full Edit)
@@ -40,6 +41,7 @@ export default function FoodDetailsLayout({
   offData,
   mealType = 'breakfast',
   date = new Date().toISOString().split('T')[0],
+  context,
   returnTo,
   myMealId,
   itemId,
@@ -197,6 +199,7 @@ export default function FoodDetailsLayout({
   const loadViewData = () => {
     console.log('[FoodDetailsLayout] ========== LOADING VIEW DATA ==========');
     console.log('[FoodDetailsLayout] Mode:', mode);
+    console.log('[FoodDetailsLayout] Context:', context);
     console.log('[FoodDetailsLayout] Meal:', mealType);
     console.log('[FoodDetailsLayout] Date:', date);
     console.log('[FoodDetailsLayout] returnTo:', returnTo);
@@ -641,8 +644,9 @@ export default function FoodDetailsLayout({
         console.log('[FoodDetailsLayout] ✅ Created new food:', foodId);
       }
 
-      if (returnTo === '/my-meal-builder' || myMealId) {
-        console.log('[FoodDetailsLayout] Mode is mymeal, returning to My Meal screen');
+      // CHECK CONTEXT: If my_meal_builder, return to builder instead of logging to diary
+      if (context === 'my_meal_builder' || returnTo === '/my-meal-builder' || myMealId) {
+        console.log('[FoodDetailsLayout] Context is my_meal_builder, returning to My Meal screen');
 
         const { data: foodData } = await supabase
           .from('foods')
@@ -787,7 +791,15 @@ export default function FoodDetailsLayout({
 
   const availableUnits: ServingUnit[] = ['g', 'oz'];
 
-  const buttonText = mode === 'edit' ? 'Save Changes' : `Add to ${mealLabels[mealType]}`;
+  // Determine button text based on context
+  let buttonText = 'Add to Meal';
+  if (mode === 'edit') {
+    buttonText = 'Save Changes';
+  } else if (context === 'my_meal_builder') {
+    buttonText = 'Add to My Meal';
+  } else {
+    buttonText = `Add to ${mealLabels[mealType]}`;
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>

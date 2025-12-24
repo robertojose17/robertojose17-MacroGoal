@@ -26,6 +26,7 @@ export default function AddFoodScreen() {
   const params = useLocalSearchParams<any>() || {};
 
   const mode = params.mode ?? "diary";
+  const context = params.context as string | undefined;
   const mealType = params.mealType ?? params.meal ?? "breakfast";
   const returnTo = params.returnTo as string | undefined;
   const myMealId = params.mealId as string | undefined;
@@ -411,6 +412,7 @@ export default function AddFoodScreen() {
   const handleOpenSearchResultDetails = useCallback((product: OpenFoodFactsProduct) => {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
     console.log('[AddFood] Product:', product.product_name);
+    console.log('[AddFood] Context:', context);
     console.log('[AddFood] Using router.replace() to dismiss Add Food menu and show FoodDetails');
 
     // CRITICAL FIX: Use router.replace() instead of router.push()
@@ -422,11 +424,12 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: '/(tabs)/(home)/',
+        context: context,
+        returnTo: returnTo || '/(tabs)/(home)/',
         mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo, myMealId]);
 
   const handleCopyFromPrevious = useCallback(() => {
     console.log('[AddFood] Navigating to copy-from-previous');
@@ -461,11 +464,12 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
+        context: context,
         returnTo: returnTo,
         mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, returnTo, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo, myMealId]);
 
   const handleBarcodeScanner = useCallback(() => {
     console.log('[AddFood] Navigating to Barcode Scanner');
@@ -475,10 +479,12 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
+        context: context,
+        returnTo: returnTo,
         mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo, myMealId]);
 
   const handleCreateMyMeal = useCallback(() => {
     console.log('[AddFood] Navigating to create My Meal');
@@ -630,7 +636,8 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         mode: mode,
-        returnTo: '/(tabs)/(home)/',
+        context: context,
+        returnTo: returnTo || '/(tabs)/(home)/',
         mealId: myMealId,
       });
 
@@ -643,7 +650,8 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: '/(tabs)/(home)/',
+          context: context,
+          returnTo: returnTo || '/(tabs)/(home)/',
           mealId: myMealId,
         },
       });
@@ -697,9 +705,9 @@ export default function AddFoodScreen() {
       const fats = foodData.fats * multiplier;
       const fiber = foodData.fiber * multiplier;
 
-      // CHECK MODE: If mymeal, return to builder instead of logging to diary
-      if (mode === 'mymeal') {
-        console.log('[AddFood] Mode is mymeal, returning to builder with food item');
+      // CHECK MODE: If my_meal_builder, return to builder instead of logging to diary
+      if (mode === 'my_meal_builder' || context === 'my_meal_builder') {
+        console.log('[AddFood] Mode is my_meal_builder, returning to builder with food item');
 
         const newFoodItem = {
           food_id: food.id,
@@ -836,7 +844,8 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           mode: mode,
-          returnTo: '/(tabs)/(home)/',
+          context: context,
+          returnTo: returnTo || '/(tabs)/(home)/',
           mealId: myMealId,
         },
       });
@@ -844,7 +853,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error opening favorite details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [router, mealType, date, mode, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo, myMealId]);
 
   /**
    * Handle adding favorite
@@ -921,9 +930,9 @@ export default function AddFoodScreen() {
         .eq('id', foodId)
         .single();
 
-      // CHECK MODE: If mymeal, return to builder instead of logging to diary
-      if (mode === 'mymeal') {
-        console.log('[AddFood] Mode is mymeal, returning to builder with food item');
+      // CHECK MODE: If my_meal_builder, return to builder instead of logging to diary
+      if (mode === 'my_meal_builder' || context === 'my_meal_builder') {
+        console.log('[AddFood] Mode is my_meal_builder, returning to builder with food item');
 
         const newFoodItem = {
           food_id: foodId,
@@ -1356,7 +1365,7 @@ export default function AddFoodScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          {mode === 'mymeal' ? 'Add to My Meal' : `Add to ${mealLabels[mealType]}`}
+          {mode === 'my_meal_builder' || context === 'my_meal_builder' ? 'Add to My Meal' : `Add to ${mealLabels[mealType]}`}
         </Text>
         <View style={{ width: 24 }} />
       </View>
