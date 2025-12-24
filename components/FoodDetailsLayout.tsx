@@ -9,7 +9,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
-import { addToDraft } from '@/utils/myMealsDraft';
 
 // Unit conversion factors (grams as base)
 const UNIT_CONVERSIONS: Record<string, number> = {
@@ -589,85 +588,7 @@ export default function FoodDetailsLayout({
         return;
       }
 
-      // CHECK IF WE'RE IN MY MEAL BUILDER CONTEXT
-      if (context === 'my_meal_builder') {
-        console.log('[FoodDetailsLayout] Adding to My Meal draft');
-        
-        // First, ensure food exists in database
-        let foodIdForDraft: string | null = null;
-
-        if (product?.code) {
-          console.log('[FoodDetailsLayout] Checking for existing food with barcode:', product.code);
-          const { data: existingFood } = await supabase
-            .from('foods')
-            .select('id')
-            .eq('barcode', product.code)
-            .maybeSingle();
-
-          if (existingFood) {
-            foodIdForDraft = existingFood.id;
-            console.log('[FoodDetailsLayout] ✅ Using existing food:', foodIdForDraft);
-          }
-        }
-
-        if (!foodIdForDraft) {
-          console.log('[FoodDetailsLayout] Creating new food in database...');
-          const { data: newFood, error: foodError } = await supabase
-            .from('foods')
-            .insert({
-              name: product?.product_name || 'Unknown Product',
-              brand: product?.brands || null,
-              serving_amount: 100,
-              serving_unit: 'g',
-              calories: nutrition?.calories || 0,
-              protein: nutrition?.protein || 0,
-              carbs: nutrition?.carbs || 0,
-              fats: nutrition?.fat || 0,
-              fiber: nutrition?.fiber || 0,
-              barcode: product?.code || null,
-              user_created: false,
-            })
-            .select()
-            .single();
-
-          if (foodError) {
-            console.error('[FoodDetailsLayout] ❌ Error creating food:', foodError);
-            Alert.alert('Error', 'Failed to save food');
-            setSaving(false);
-            return;
-          }
-
-          foodIdForDraft = newFood.id;
-          console.log('[FoodDetailsLayout] ✅ Created new food:', foodIdForDraft);
-        }
-        
-        // Add to draft
-        await addToDraft({
-          food_id: foodIdForDraft,
-          food_name: product?.product_name || 'Unknown Product',
-          food_brand: product?.brands || undefined,
-          serving_amount: baseServingGrams,
-          serving_unit: servingUnit,
-          servings_count: finalServings,
-          calories: macros.calories,
-          protein: macros.protein,
-          carbs: macros.carbs,
-          fats: macros.fat,
-          fiber: macros.fiber,
-        });
-
-        console.log('[FoodDetailsLayout] ✅ Added to My Meal draft!');
-        Alert.alert('Success', 'Food added to meal!', [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]);
-        setSaving(false);
-        return;
-      }
-
-      // VIEW MODE: ADD NEW FOOD TO DIARY
+      // VIEW MODE: ADD NEW FOOD
       console.log('[FoodDetailsLayout] Meal:', mealType);
       console.log('[FoodDetailsLayout] Date:', date);
       console.log('[FoodDetailsLayout] returnTo:', returnTo);
