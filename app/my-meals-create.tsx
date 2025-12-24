@@ -92,9 +92,13 @@ export default function MyMealsCreateScreen() {
   };
 
   const handleSave = async () => {
-    console.log('[MyMealsCreate] ========== SAVE MY MEAL PRESSED ==========');
-    console.log('[MyMealsCreate] Meal name:', mealName);
-    console.log('[MyMealsCreate] Items count:', draftItems.length);
+    console.log('[MyMealsCreate] ========== SAVE_MY_MEAL PRESSED ==========');
+    
+    // Get user first to log it
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || 'null';
+    
+    console.log('[MyMealsCreate] SAVE_MY_MEAL pressed userId=' + userId + ' name="' + mealName + '" itemsCount=' + draftItems.length);
 
     // VALIDATION: Check meal name
     if (!mealName.trim()) {
@@ -126,17 +130,9 @@ export default function MyMealsCreateScreen() {
     setSaving(true);
 
     try {
-      // STEP 1: Get user
+      // STEP 1: Get user (already done above for logging)
       console.log('[MyMealsCreate] STEP 1: Getting user...');
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
       
-      if (userError) {
-        console.error('[MyMealsCreate] ❌ Error getting user:', userError);
-        Alert.alert('Error', 'Authentication error. Please log in again.');
-        setSaving(false);
-        return;
-      }
-
       if (!user) {
         console.error('[MyMealsCreate] ❌ No user found');
         Alert.alert('Error', 'You must be logged in to save meals');
@@ -210,7 +206,7 @@ export default function MyMealsCreateScreen() {
         
         // Check for common errors
         if (mealError.code === '42501') {
-          Alert.alert('Error', 'Permission denied. Please check your account settings.');
+          Alert.alert('Error', 'Permission denied. RLS policy may be blocking the insert. Please check your database policies.');
         } else if (mealError.code === '23505') {
           Alert.alert('Error', 'A meal with this name already exists.');
         } else {
@@ -309,7 +305,7 @@ export default function MyMealsCreateScreen() {
         {
           text: 'OK',
           onPress: () => {
-            console.log('[MyMealsCreate] Navigating back...');
+            console.log('[MyMealsCreate] Navigating back to My Meals list...');
             router.back();
           },
         },

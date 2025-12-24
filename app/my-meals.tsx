@@ -38,14 +38,25 @@ export default function MyMealsScreen() {
   const loadSavedMeals = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      console.log('[MyMeals] ========== FETCH_SAVED_MEALS START ==========');
+      
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('[MyMeals] ❌ Error getting user:', userError);
+        setLoading(false);
+        return;
+      }
+      
       if (!user) {
-        console.log('[MyMeals] No user found');
+        console.log('[MyMeals] ❌ No user found - userId is null/undefined');
+        console.log('[MyMeals] FETCH_SAVED_MEALS userId=null returnedCount=0');
         setLoading(false);
         return;
       }
 
-      console.log('[MyMeals] Loading saved meals for user:', user.id);
+      console.log('[MyMeals] ✅ User found:', user.id);
+      console.log('[MyMeals] Fetching saved meals for user:', user.id);
 
       // Fetch saved meals with aggregated data
       const { data: meals, error } = await supabase
@@ -72,13 +83,40 @@ export default function MyMealsScreen() {
         .order('updated_at', { ascending: false });
 
       if (error) {
-        console.error('[MyMeals] Error loading saved meals:', error);
-        Alert.alert('Error', 'Failed to load saved meals');
+        console.error('[MyMeals] ❌ ERROR FETCHING SAVED MEALS:', error);
+        console.error('[MyMeals] Error code:', error.code);
+        console.error('[MyMeals] Error message:', error.message);
+        console.error('[MyMeals] Error details:', error.details);
+        console.error('[MyMeals] Error hint:', error.hint);
+        
+        // Log the final result
+        console.log('[MyMeals] FETCH_SAVED_MEALS userId=' + user.id + ' returnedCount=0 (ERROR)');
+        
+        Alert.alert('Error', 'Failed to load saved meals: ' + error.message);
         setLoading(false);
         return;
       }
 
-      console.log('[MyMeals] Loaded', meals?.length || 0, 'saved meals');
+      const mealsCount = meals?.length || 0;
+      console.log('[MyMeals] ✅ Query successful');
+      console.log('[MyMeals] FETCH_SAVED_MEALS userId=' + user.id + ' returnedCount=' + mealsCount);
+      
+      if (mealsCount === 0) {
+        console.log('[MyMeals] ⚠️ No saved meals found for this user');
+        console.log('[MyMeals] This could mean:');
+        console.log('[MyMeals]   1. User has not created any meals yet');
+        console.log('[MyMeals]   2. Meals were created but not saved properly');
+        console.log('[MyMeals]   3. RLS policies are filtering out the meals');
+      } else {
+        console.log('[MyMeals] ✅ Found', mealsCount, 'saved meals');
+        meals?.forEach((meal: any, index: number) => {
+          console.log(`[MyMeals] Meal ${index + 1}:`, {
+            id: meal.id,
+            name: meal.name,
+            items_count: meal.saved_meal_items?.length || 0,
+          });
+        });
+      }
 
       // Calculate totals for each meal
       const mealsWithTotals: SavedMeal[] = (meals || []).map((meal: any) => {
@@ -112,9 +150,15 @@ export default function MyMealsScreen() {
       });
 
       setSavedMeals(mealsWithTotals);
+      console.log('[MyMeals] ========== FETCH_SAVED_MEALS COMPLETE ==========');
       setLoading(false);
     } catch (error) {
-      console.error('[MyMeals] Error in loadSavedMeals:', error);
+      console.error('[MyMeals] ❌ UNEXPECTED ERROR in loadSavedMeals:', error);
+      if (error instanceof Error) {
+        console.error('[MyMeals] Error name:', error.name);
+        console.error('[MyMeals] Error message:', error.message);
+        console.error('[MyMeals] Error stack:', error.stack);
+      }
       Alert.alert('Error', 'An unexpected error occurred');
       setLoading(false);
     }
@@ -122,7 +166,8 @@ export default function MyMealsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[MyMeals] Screen focused, loading saved meals');
+      console.log('[MyMeals] ========== SCREEN FOCUSED ==========');
+      console.log('[MyMeals] Triggering loadSavedMeals...');
       loadSavedMeals();
     }, [loadSavedMeals])
   );
