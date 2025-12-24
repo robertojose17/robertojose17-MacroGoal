@@ -21,6 +21,18 @@ interface BannerEvent {
   timestamp: number;
 }
 
+interface SavedMeal {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  item_count?: number;
+  total_calories?: number;
+  total_protein?: number;
+  total_carbs?: number;
+  total_fats?: number;
+}
+
 export default function AddFoodScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<any>() || {};
@@ -39,7 +51,9 @@ export default function AddFoodScreen() {
   
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
 
   // INLINE SEARCH STATE
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,6 +92,89 @@ export default function AddFoodScreen() {
     }
   }, []);
 
+  const loadSavedMeals = useCallback(async () => {
+    try {
+      setLoadingSavedMeals(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('[AddFood] No user found');
+        setLoadingSavedMeals(false);
+        return;
+      }
+
+      console.log('[AddFood] Loading saved meals for user:', user.id);
+
+      // Fetch saved meals with aggregated data
+      const { data: meals, error } = await supabase
+        .from('saved_meals')
+        .select(`
+          id,
+          name,
+          created_at,
+          updated_at,
+          saved_meal_items (
+            id,
+            serving_amount,
+            serving_unit,
+            servings_count,
+            foods (
+              calories,
+              protein,
+              carbs,
+              fats
+            )
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('[AddFood] Error loading saved meals:', error);
+        setLoadingSavedMeals(false);
+        return;
+      }
+
+      console.log('[AddFood] Loaded', meals?.length || 0, 'saved meals');
+
+      // Calculate totals for each meal
+      const mealsWithTotals: SavedMeal[] = (meals || []).map((meal: any) => {
+        const items = meal.saved_meal_items || [];
+        let totalCalories = 0;
+        let totalProtein = 0;
+        let totalCarbs = 0;
+        let totalFats = 0;
+
+        items.forEach((item: any) => {
+          if (item.foods) {
+            const multiplier = (item.serving_amount / 100) * item.servings_count;
+            totalCalories += item.foods.calories * multiplier;
+            totalProtein += item.foods.protein * multiplier;
+            totalCarbs += item.foods.carbs * multiplier;
+            totalFats += item.foods.fats * multiplier;
+          }
+        });
+
+        return {
+          id: meal.id,
+          name: meal.name,
+          created_at: meal.created_at,
+          updated_at: meal.updated_at,
+          item_count: items.length,
+          total_calories: totalCalories,
+          total_protein: totalProtein,
+          total_carbs: totalCarbs,
+          total_fats: totalFats,
+        };
+      });
+
+      setSavedMeals(mealsWithTotals);
+      setLoadingSavedMeals(false);
+    } catch (error) {
+      console.error('[AddFood] Error in loadSavedMeals:', error);
+      setLoadingSavedMeals(false);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -100,8 +197,20 @@ export default function AddFoodScreen() {
     useCallback(() => {
       console.log('[AddFood] Screen focused, loading data');
       loadData();
-    }, [loadData])
+      
+      // Load saved meals if My Meals tab is active
+      if (activeTab === 'my-meals') {
+        loadSavedMeals();
+      }
+    }, [loadData, loadSavedMeals, activeTab])
   );
+
+  // Load saved meals when My Meals tab is selected
+  useEffect(() => {
+    if (activeTab === 'my-meals') {
+      loadSavedMeals();
+    }
+  }, [activeTab, loadSavedMeals]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -436,10 +545,10 @@ export default function AddFoodScreen() {
     });
   }, [router, mealType, date, mode, context, returnTo]);
 
-  const handleMyMeals = useCallback(() => {
-    console.log('[AddFood] Navigating to My Meals');
+  const handleCreateMeal = useCallback(() => {
+    console.log('[AddFood] Navigating to create meal');
     router.push({
-      pathname: '/my-meals',
+      pathname: '/my-meals-create',
       params: {
         meal: mealType,
         date: date,
@@ -447,6 +556,46 @@ export default function AddFoodScreen() {
       },
     });
   }, [router, mealType, date, returnTo]);
+
+  const handleSelectMeal = useCallback((meal: SavedMeal) => {
+    console.log('[AddFood] Selected meal:', meal.name);
+    router.push({
+      pathname: '/my-meals-details',
+      params: {
+        mealId: meal.id,
+        meal: mealType,
+        date: date,
+        returnTo: returnTo,
+      },
+    });
+  }, [router, mealType, date, returnTo]);
+
+  const handleDeleteMeal = useCallback(async (mealId: string) => {
+    console.log('[AddFood] Deleting meal:', mealId);
+
+    // Optimistic update
+    const previousMeals = [...savedMeals];
+    setSavedMeals(savedMeals.filter(m => m.id !== mealId));
+
+    try {
+      const { error } = await supabase
+        .from('saved_meals')
+        .delete()
+        .eq('id', mealId);
+
+      if (error) {
+        console.error('[AddFood] Error deleting meal:', error);
+        setSavedMeals(previousMeals);
+        Alert.alert('Error', 'Failed to delete meal');
+      } else {
+        console.log('[AddFood] Meal deleted successfully');
+      }
+    } catch (error) {
+      console.error('[AddFood] Error in handleDeleteMeal:', error);
+      setSavedMeals(previousMeals);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  }, [savedMeals]);
 
   const handleBarcodeScanner = useCallback(() => {
     console.log('[AddFood] Navigating to Barcode Scanner');
@@ -1022,6 +1171,38 @@ export default function AddFoodScreen() {
     );
   }, [isDark, handleRemoveFavorite, handleOpenFavoriteDetails, handleAddFavorite]);
 
+  const renderSavedMealItem = useCallback((meal: SavedMeal, index: number) => {
+    return (
+      <React.Fragment key={meal.id}>
+        <SwipeToDeleteRow onDelete={() => handleDeleteMeal(meal.id)}>
+          <TouchableOpacity
+            style={[styles.foodCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+            onPress={() => handleSelectMeal(meal)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.foodInfo}>
+              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                {meal.name}
+              </Text>
+              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {meal.item_count || 0} {meal.item_count === 1 ? 'item' : 'items'} • {Math.round(meal.total_calories || 0)} cal
+              </Text>
+              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                P: {Math.round(meal.total_protein || 0)}g • C: {Math.round(meal.total_carbs || 0)}g • F: {Math.round(meal.total_fats || 0)}g
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </SwipeToDeleteRow>
+      </React.Fragment>
+    );
+  }, [isDark, handleSelectMeal, handleDeleteMeal]);
+
   const renderListContent = useCallback(() => {
     if (searchQuery.trim().length > 0) {
       if (searchQuery.trim().length < 2) {
@@ -1358,39 +1539,53 @@ export default function AddFoodScreen() {
             )}
 
             {activeTab === 'my-meals' && (
-              <View style={styles.myMealsContainer}>
+              <React.Fragment>
+                {/* CREATE A NEW MEAL BUTTON */}
+                <TouchableOpacity
+                  style={[styles.createMealButton, { backgroundColor: colors.primary }]}
+                  onPress={handleCreateMeal}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus"
+                    android_material_icon_name="add"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.createMealButtonText}>Create a New Meal</Text>
+                </TouchableOpacity>
+
+                {/* SAVED MEALS LIST */}
                 <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Saved Meals
                 </Text>
-                <TouchableOpacity
-                  style={[styles.myMealsButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-                  onPress={handleMyMeals}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.myMealsIconContainer}>
+
+                {loadingSavedMeals ? (
+                  <View style={styles.emptyState}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+                      Loading saved meals...
+                    </Text>
+                  </View>
+                ) : savedMeals.length > 0 ? (
+                  savedMeals.map((meal, index) => renderSavedMealItem(meal, index))
+                ) : (
+                  <View style={styles.emptyState}>
                     <IconSymbol
                       ios_icon_name="fork.knife"
                       android_material_icon_name="restaurant"
-                      size={24}
-                      color={colors.primary}
+                      size={48}
+                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
                     />
-                  </View>
-                  <View style={styles.myMealsTextContainer}>
-                    <Text style={[styles.myMealsTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                      My Meals
+                    <Text style={[styles.emptyText, { color: isDark ? colors.textDark : colors.text, marginTop: spacing.md }]}>
+                      No saved meals yet
                     </Text>
-                    <Text style={[styles.myMealsSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Use saved meal combinations
+                    <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
+                      Create your first saved meal to reuse it anytime
                     </Text>
                   </View>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
-                    size={20}
-                    color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+                )}
+              </React.Fragment>
             )}
           </React.Fragment>
         )}
@@ -1656,37 +1851,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  myMealsContainer: {
-    paddingTop: spacing.md,
-  },
-  myMealsButton: {
+  createMealButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
-    elevation: 1,
-  },
-  myMealsIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.primary + '20',
-    alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
-  myMealsTextContainer: {
-    flex: 1,
-  },
-  myMealsTitle: {
+  createMealButtonText: {
     ...typography.bodyBold,
     fontSize: 16,
-    marginBottom: 2,
-  },
-  myMealsSubtitle: {
-    ...typography.caption,
-    fontSize: 13,
+    color: '#FFFFFF',
   },
 });
