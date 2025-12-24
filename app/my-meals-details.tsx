@@ -23,6 +23,8 @@ interface SavedMealItem {
     carbs: number;
     fats: number;
     fiber: number;
+    user_created: boolean;
+    created_by?: string;
   };
 }
 
@@ -61,7 +63,8 @@ export default function MyMealsDetailsScreen() {
 
     try {
       setLoading(true);
-      console.log('[MyMealsDetails] Loading saved meal:', mealId);
+      console.log('[MyMealsDetails] ========== LOADING SAVED MEAL ==========');
+      console.log('[MyMealsDetails] Meal ID:', mealId);
 
       const { data, error } = await supabase
         .from('saved_meals')
@@ -84,7 +87,9 @@ export default function MyMealsDetailsScreen() {
               protein,
               carbs,
               fats,
-              fiber
+              fiber,
+              user_created,
+              created_by
             )
           )
         `)
@@ -92,17 +97,85 @@ export default function MyMealsDetailsScreen() {
         .single();
 
       if (error) {
-        console.error('[MyMealsDetails] Error loading saved meal:', error);
+        console.error('[MyMealsDetails] ❌ Error loading saved meal:', error);
+        console.error('[MyMealsDetails] Error code:', error.code);
+        console.error('[MyMealsDetails] Error message:', error.message);
+        console.error('[MyMealsDetails] Error details:', error.details);
         Alert.alert('Error', 'Failed to load meal details');
         router.back();
         return;
       }
 
-      console.log('[MyMealsDetails] Loaded meal:', data.name);
+      console.log('[MyMealsDetails] ✅ Loaded meal:', data.name);
+      console.log('[MyMealsDetails] Items count:', data.saved_meal_items?.length || 0);
+      
+      // DEBUG: Log each item
+      console.log('[MyMealsDetails] ========== MEAL ITEMS ==========');
+      data.saved_meal_items?.forEach((item: any, index: number) => {
+        console.log(`[MyMealsDetails] Item ${index + 1}:`, {
+          id: item.id,
+          food_id: item.food_id,
+          food_name: item.foods?.name || 'MISSING',
+          food_user_created: item.foods?.user_created,
+          food_created_by: item.foods?.created_by,
+          serving_amount: item.serving_amount,
+          serving_unit: item.serving_unit,
+          servings_count: item.servings_count,
+        });
+        
+        if (!item.foods) {
+          console.error('[MyMealsDetails] ❌ MISSING FOOD DATA for item:', item.id);
+          console.error('[MyMealsDetails] food_id:', item.food_id);
+        }
+      });
+      
+      // Check for items with missing food data
+      const itemsWithMissingFood = data.saved_meal_items?.filter((item: any) => !item.foods) || [];
+      if (itemsWithMissingFood.length > 0) {
+        console.error('[MyMealsDetails] ❌ CRITICAL: Found', itemsWithMissingFood.length, 'items with missing food data');
+        itemsWithMissingFood.forEach((item: any) => {
+          console.error('[MyMealsDetails] Missing food for item:', {
+            item_id: item.id,
+            food_id: item.food_id,
+          });
+        });
+        
+        // Try to fetch the missing foods directly
+        console.log('[MyMealsDetails] Attempting to fetch missing foods directly...');
+        const missingFoodIds = itemsWithMissingFood.map((item: any) => item.food_id);
+        const { data: missingFoods, error: missingFoodsError } = await supabase
+          .from('foods')
+          .select('*')
+          .in('id', missingFoodIds);
+        
+        if (missingFoodsError) {
+          console.error('[MyMealsDetails] ❌ Error fetching missing foods:', missingFoodsError);
+        } else {
+          console.log('[MyMealsDetails] Missing foods query result:', missingFoods);
+          if (missingFoods && missingFoods.length > 0) {
+            console.log('[MyMealsDetails] ✅ Found', missingFoods.length, 'missing foods');
+            missingFoods.forEach((food: any) => {
+              console.log('[MyMealsDetails] Missing food:', {
+                id: food.id,
+                name: food.name,
+                user_created: food.user_created,
+                created_by: food.created_by,
+              });
+            });
+          } else {
+            console.error('[MyMealsDetails] ❌ Missing foods not found in database!');
+          }
+        }
+      }
+
       setSavedMeal(data as SavedMeal);
       setLoading(false);
     } catch (error) {
-      console.error('[MyMealsDetails] Error in loadSavedMeal:', error);
+      console.error('[MyMealsDetails] ❌ Error in loadSavedMeal:', error);
+      if (error instanceof Error) {
+        console.error('[MyMealsDetails] Error message:', error.message);
+        console.error('[MyMealsDetails] Error stack:', error.stack);
+      }
       Alert.alert('Error', 'An unexpected error occurred');
       router.back();
       setLoading(false);
@@ -127,6 +200,11 @@ export default function MyMealsDetailsScreen() {
     let totalFiber = 0;
 
     savedMeal.saved_meal_items.forEach(item => {
+      if (!item.foods) {
+        console.warn('[MyMealsDetails] Skipping item with missing food data:', item.id);
+        return;
+      }
+      
       const itemMultiplier = (item.serving_amount / 100) * item.servings_count * multiplier;
       totalCalories += item.foods.calories * itemMultiplier;
       totalProtein += item.foods.protein * itemMultiplier;
@@ -187,7 +265,10 @@ export default function MyMealsDetailsScreen() {
       return;
     }
 
-    console.log('[MyMealsDetails] Adding saved meal to', mealType);
+    console.log('[MyMealsDetails] ========== ADDING SAVED MEAL TO DIARY ==========');
+    console.log('[MyMealsDetails] Meal:', mealType);
+    console.log('[MyMealsDetails] Date:', date);
+    console.log('[MyMealsDetails] Multiplier:', multiplier);
     setAdding(true);
 
     try {
@@ -232,21 +313,25 @@ export default function MyMealsDetailsScreen() {
       }
 
       // Add all items from saved meal to the meal
-      const itemsToInsert = savedMeal.saved_meal_items.map(item => {
-        const itemMultiplier = (item.serving_amount / 100) * item.servings_count * multiplier;
-        return {
-          meal_id: mealIdForLog,
-          food_id: item.food_id,
-          quantity: item.servings_count * multiplier,
-          calories: item.foods.calories * itemMultiplier,
-          protein: item.foods.protein * itemMultiplier,
-          carbs: item.foods.carbs * itemMultiplier,
-          fats: item.foods.fats * itemMultiplier,
-          fiber: item.foods.fiber * itemMultiplier,
-          serving_description: `${item.servings_count * multiplier} × ${item.serving_amount} ${item.serving_unit}`,
-          grams: item.serving_amount * item.servings_count * multiplier,
-        };
-      });
+      const itemsToInsert = savedMeal.saved_meal_items
+        .filter(item => item.foods) // Skip items with missing food data
+        .map(item => {
+          const itemMultiplier = (item.serving_amount / 100) * item.servings_count * multiplier;
+          return {
+            meal_id: mealIdForLog,
+            food_id: item.food_id,
+            quantity: item.servings_count * multiplier,
+            calories: item.foods.calories * itemMultiplier,
+            protein: item.foods.protein * itemMultiplier,
+            carbs: item.foods.carbs * itemMultiplier,
+            fats: item.foods.fats * itemMultiplier,
+            fiber: item.foods.fiber * itemMultiplier,
+            serving_description: `${item.servings_count * multiplier} × ${item.serving_amount} ${item.serving_unit}`,
+            grams: item.serving_amount * item.servings_count * multiplier,
+          };
+        });
+
+      console.log('[MyMealsDetails] Inserting', itemsToInsert.length, 'items into meal_items');
 
       const { error: itemsError } = await supabase
         .from('meal_items')
@@ -259,7 +344,7 @@ export default function MyMealsDetailsScreen() {
         return;
       }
 
-      console.log('[MyMealsDetails] Saved meal added successfully!');
+      console.log('[MyMealsDetails] ✅ Saved meal added successfully!');
 
       const mealLabels: Record<string, string> = {
         breakfast: 'Breakfast',
@@ -305,6 +390,10 @@ export default function MyMealsDetailsScreen() {
     snack: 'Snacks',
   };
 
+  // Filter out items with missing food data for display
+  const validItems = savedMeal.saved_meal_items.filter(item => item.foods);
+  const missingItemsCount = savedMeal.saved_meal_items.length - validItems.length;
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -335,9 +424,24 @@ export default function MyMealsDetailsScreen() {
             {savedMeal.name}
           </Text>
           <Text style={[styles.mealMeta, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {savedMeal.saved_meal_items.length} {savedMeal.saved_meal_items.length === 1 ? 'item' : 'items'}
+            {validItems.length} {validItems.length === 1 ? 'item' : 'items'}
+            {missingItemsCount > 0 && ` (${missingItemsCount} missing)`}
           </Text>
         </View>
+
+        {missingItemsCount > 0 && (
+          <View style={[styles.warningCard, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={20}
+              color="#F59E0B"
+            />
+            <Text style={[styles.warningText, { color: '#92400E' }]}>
+              {missingItemsCount} {missingItemsCount === 1 ? 'food is' : 'foods are'} missing from this meal. They may have been deleted.
+            </Text>
+          </View>
+        )}
 
         <View style={[styles.servingsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.servingsLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -364,7 +468,7 @@ export default function MyMealsDetailsScreen() {
           Foods
         </Text>
 
-        {savedMeal.saved_meal_items.map((item, index) => {
+        {validItems.map((item, index) => {
           const multiplier = (item.serving_amount / 100) * item.servings_count * (parseFloat(servingsMultiplier) || 1);
           const itemCalories = item.foods.calories * multiplier;
           const itemProtein = item.foods.protein * multiplier;
@@ -379,6 +483,9 @@ export default function MyMealsDetailsScreen() {
               <View style={styles.itemInfo}>
                 <Text style={[styles.itemName, { color: isDark ? colors.textDark : colors.text }]}>
                   {item.foods.name}
+                  {item.foods.user_created && (
+                    <Text style={[styles.customBadge, { color: colors.primary }]}> (My Food)</Text>
+                  )}
                 </Text>
                 {item.foods.brand && (
                   <Text style={[styles.itemBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -443,7 +550,7 @@ export default function MyMealsDetailsScreen() {
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: colors.primary, opacity: adding ? 0.7 : 1 }]}
           onPress={handleAddToMeal}
-          disabled={adding}
+          disabled={adding || validItems.length === 0}
           activeOpacity={0.7}
         >
           {adding ? (
@@ -529,6 +636,20 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 14,
   },
+  warningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+  },
+  warningText: {
+    ...typography.body,
+    fontSize: 13,
+    flex: 1,
+  },
   servingsCard: {
     borderRadius: borderRadius.md,
     padding: spacing.md,
@@ -570,6 +691,11 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 16,
     marginBottom: 2,
+  },
+  customBadge: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '600',
   },
   itemBrand: {
     ...typography.caption,

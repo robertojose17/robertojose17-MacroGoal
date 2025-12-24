@@ -602,18 +602,35 @@ export default function FoodDetailsLayout({
           console.log('[FoodDetailsLayout] Checking for existing food with barcode:', product.code);
           const { data: existingFood } = await supabase
             .from('foods')
-            .select('id')
+            .select('id, user_created, created_by')
             .eq('barcode', product.code)
             .maybeSingle();
 
           if (existingFood) {
             foodIdForDraft = existingFood.id;
             console.log('[FoodDetailsLayout] ✅ Using existing food:', foodIdForDraft);
+            console.log('[FoodDetailsLayout] Food details:', {
+              id: existingFood.id,
+              user_created: existingFood.user_created,
+              created_by: existingFood.created_by,
+            });
           }
         }
 
         if (!foodIdForDraft) {
           console.log('[FoodDetailsLayout] Creating new food in database...');
+          console.log('[FoodDetailsLayout] Food data:', {
+            name: product?.product_name || 'Unknown Product',
+            brand: product?.brands || null,
+            calories: nutrition?.calories || 0,
+            protein: nutrition?.protein || 0,
+            carbs: nutrition?.carbs || 0,
+            fats: nutrition?.fat || 0,
+            fiber: nutrition?.fiber || 0,
+            barcode: product?.code || null,
+            user_created: false,
+          });
+          
           const { data: newFood, error: foodError } = await supabase
             .from('foods')
             .insert({
@@ -634,6 +651,9 @@ export default function FoodDetailsLayout({
 
           if (foodError) {
             console.error('[FoodDetailsLayout] ❌ Error creating food:', foodError);
+            console.error('[FoodDetailsLayout] Error code:', foodError.code);
+            console.error('[FoodDetailsLayout] Error message:', foodError.message);
+            console.error('[FoodDetailsLayout] Error details:', foodError.details);
             Alert.alert('Error', 'Failed to save food');
             setSaving(false);
             return;
@@ -641,9 +661,30 @@ export default function FoodDetailsLayout({
 
           foodIdForDraft = newFood.id;
           console.log('[FoodDetailsLayout] ✅ Created new food:', foodIdForDraft);
+          console.log('[FoodDetailsLayout] New food details:', {
+            id: newFood.id,
+            name: newFood.name,
+            user_created: newFood.user_created,
+            created_by: newFood.created_by,
+          });
         }
         
         // Add to draft
+        console.log('[FoodDetailsLayout] ========== ADDING TO DRAFT ==========');
+        console.log('[FoodDetailsLayout] Draft item data:', {
+          food_id: foodIdForDraft,
+          food_name: product?.product_name || 'Unknown Product',
+          food_brand: product?.brands || undefined,
+          serving_amount: baseServingGrams,
+          serving_unit: servingUnit,
+          servings_count: finalServings,
+          calories: macros.calories,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fats: macros.fat,
+          fiber: macros.fiber,
+        });
+        
         await addToDraft({
           food_id: foodIdForDraft,
           food_name: product?.product_name || 'Unknown Product',

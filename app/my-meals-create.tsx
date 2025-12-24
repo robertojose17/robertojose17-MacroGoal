@@ -51,6 +51,16 @@ export default function MyMealsCreateScreen() {
     try {
       const draft = await loadDraft();
       console.log('[MyMealsCreate] Loaded draft:', draft.length, 'items');
+      
+      // DEBUG: Log each item's food_id
+      draft.forEach((item, index) => {
+        console.log(`[MyMealsCreate] Draft item ${index + 1}:`, {
+          food_id: item.food_id,
+          food_name: item.food_name,
+          tempId: item.tempId,
+        });
+      });
+      
       setDraftItems(draft);
     } catch (error) {
       console.error('[MyMealsCreate] Error loading draft:', error);
@@ -102,6 +112,17 @@ export default function MyMealsCreateScreen() {
 
     console.log('[MyMealsCreate] ✅ Validation passed');
     console.log('[MyMealsCreate] Starting save process...');
+    
+    // DEBUG: Log all food_ids before save
+    console.log('[MyMealsCreate] ========== FOOD IDs IN DRAFT ==========');
+    draftItems.forEach((item, index) => {
+      console.log(`[MyMealsCreate] Item ${index + 1}:`, {
+        food_id: item.food_id,
+        food_name: item.food_name,
+        food_brand: item.food_brand,
+      });
+    });
+    
     setSaving(true);
 
     try {
@@ -125,8 +146,48 @@ export default function MyMealsCreateScreen() {
 
       console.log('[MyMealsCreate] ✅ User found:', user.id);
 
-      // STEP 2: Create saved meal
-      console.log('[MyMealsCreate] STEP 2: Creating saved meal...');
+      // STEP 2: Verify all foods exist in database
+      console.log('[MyMealsCreate] STEP 2: Verifying all foods exist in database...');
+      const foodIds = draftItems.map(item => item.food_id);
+      console.log('[MyMealsCreate] Food IDs to verify:', foodIds);
+      
+      const { data: existingFoods, error: foodsError } = await supabase
+        .from('foods')
+        .select('id, name, user_created, created_by')
+        .in('id', foodIds);
+      
+      if (foodsError) {
+        console.error('[MyMealsCreate] ❌ Error verifying foods:', foodsError);
+        Alert.alert('Error', 'Failed to verify foods in database');
+        setSaving(false);
+        return;
+      }
+      
+      console.log('[MyMealsCreate] ✅ Found', existingFoods?.length || 0, 'foods in database');
+      existingFoods?.forEach((food: any) => {
+        console.log('[MyMealsCreate] Food:', {
+          id: food.id,
+          name: food.name,
+          user_created: food.user_created,
+          created_by: food.created_by,
+        });
+      });
+      
+      // Check if any foods are missing
+      const existingFoodIds = new Set(existingFoods?.map((f: any) => f.id) || []);
+      const missingFoodIds = foodIds.filter(id => !existingFoodIds.has(id));
+      
+      if (missingFoodIds.length > 0) {
+        console.error('[MyMealsCreate] ❌ Missing foods:', missingFoodIds);
+        Alert.alert('Error', `Some foods are missing from the database. Please try adding them again.`);
+        setSaving(false);
+        return;
+      }
+      
+      console.log('[MyMealsCreate] ✅ All foods verified');
+
+      // STEP 3: Create saved meal
+      console.log('[MyMealsCreate] STEP 3: Creating saved meal...');
       console.log('[MyMealsCreate] Inserting into saved_meals table:');
       console.log('[MyMealsCreate]   - user_id:', user.id);
       console.log('[MyMealsCreate]   - name:', mealName.trim());
@@ -171,18 +232,18 @@ export default function MyMealsCreateScreen() {
       console.log('[MyMealsCreate] Saved meal ID:', savedMeal.id);
       console.log('[MyMealsCreate] Saved meal name:', savedMeal.name);
 
-      // STEP 3: Create saved meal items
-      console.log('[MyMealsCreate] STEP 3: Creating saved meal items...');
+      // STEP 4: Create saved meal items
+      console.log('[MyMealsCreate] STEP 4: Creating saved meal items...');
       console.log('[MyMealsCreate] Number of items to insert:', draftItems.length);
 
       const itemsToInsert = draftItems.map((item, index) => {
-        console.log(`[MyMealsCreate] Item ${index + 1}:`, {
-          food_id: item.food_id,
-          food_name: item.food_name,
-          serving_amount: item.serving_amount,
-          serving_unit: item.serving_unit,
-          servings_count: item.servings_count,
-        });
+        console.log(`[MyMealsCreate] ========== ITEM ${index + 1} ==========`);
+        console.log('[MyMealsCreate] food_id:', item.food_id);
+        console.log('[MyMealsCreate] food_name:', item.food_name);
+        console.log('[MyMealsCreate] food_brand:', item.food_brand);
+        console.log('[MyMealsCreate] serving_amount:', item.serving_amount);
+        console.log('[MyMealsCreate] serving_unit:', item.serving_unit);
+        console.log('[MyMealsCreate] servings_count:', item.servings_count);
 
         return {
           saved_meal_id: savedMeal.id,
@@ -193,7 +254,8 @@ export default function MyMealsCreateScreen() {
         };
       });
 
-      console.log('[MyMealsCreate] Inserting', itemsToInsert.length, 'items into saved_meal_items table');
+      console.log('[MyMealsCreate] ========== INSERTING ITEMS ==========');
+      console.log('[MyMealsCreate] Items to insert:', JSON.stringify(itemsToInsert, null, 2));
 
       const { data: insertedItems, error: itemsError } = await supabase
         .from('saved_meal_items')
@@ -218,13 +280,25 @@ export default function MyMealsCreateScreen() {
 
       console.log('[MyMealsCreate] ✅ Saved meal items created successfully!');
       console.log('[MyMealsCreate] Inserted items count:', insertedItems?.length || 0);
+      
+      // DEBUG: Log inserted items
+      insertedItems?.forEach((item: any, index: number) => {
+        console.log(`[MyMealsCreate] Inserted item ${index + 1}:`, {
+          id: item.id,
+          saved_meal_id: item.saved_meal_id,
+          food_id: item.food_id,
+          serving_amount: item.serving_amount,
+          serving_unit: item.serving_unit,
+          servings_count: item.servings_count,
+        });
+      });
 
-      // STEP 4: Clear draft
-      console.log('[MyMealsCreate] STEP 4: Clearing draft...');
+      // STEP 5: Clear draft
+      console.log('[MyMealsCreate] STEP 5: Clearing draft...');
       await clearDraft();
       console.log('[MyMealsCreate] ✅ Draft cleared');
 
-      // STEP 5: Show success and navigate back
+      // STEP 6: Show success and navigate back
       console.log('[MyMealsCreate] ========== SAVE COMPLETE ==========');
       console.log('[MyMealsCreate] Meal saved successfully!');
       console.log('[MyMealsCreate] Meal ID:', savedMeal.id);
