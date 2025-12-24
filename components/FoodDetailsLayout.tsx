@@ -30,7 +30,6 @@ interface FoodDetailsLayoutProps {
   date?: string;
   context?: string;
   returnTo?: string;
-  myMealId?: string;
   // For edit mode (Full Edit)
   itemId?: string;
   onSaveComplete?: () => void;
@@ -43,7 +42,6 @@ export default function FoodDetailsLayout({
   date = new Date().toISOString().split('T')[0],
   context,
   returnTo,
-  myMealId,
   itemId,
   onSaveComplete,
 }: FoodDetailsLayoutProps) {
@@ -203,7 +201,6 @@ export default function FoodDetailsLayout({
     console.log('[FoodDetailsLayout] Meal:', mealType);
     console.log('[FoodDetailsLayout] Date:', date);
     console.log('[FoodDetailsLayout] returnTo:', returnTo);
-    console.log('[FoodDetailsLayout] mealId:', myMealId);
     
     if (!offData) {
       console.error('[FoodDetailsLayout] ❌ No offData provided');
@@ -595,7 +592,6 @@ export default function FoodDetailsLayout({
       console.log('[FoodDetailsLayout] Meal:', mealType);
       console.log('[FoodDetailsLayout] Date:', date);
       console.log('[FoodDetailsLayout] returnTo:', returnTo);
-      console.log('[FoodDetailsLayout] mealId:', myMealId);
 
       let foodId: string | null = null;
 
@@ -642,43 +638,6 @@ export default function FoodDetailsLayout({
 
         foodId = newFood.id;
         console.log('[FoodDetailsLayout] ✅ Created new food:', foodId);
-      }
-
-      // CHECK CONTEXT: If my_meal_builder, return to builder instead of logging to diary
-      if (context === 'my_meal_builder' || returnTo === '/my-meal-builder' || myMealId) {
-        console.log('[FoodDetailsLayout] Context is my_meal_builder, returning to My Meal screen');
-
-        const { data: foodData } = await supabase
-          .from('foods')
-          .select('*')
-          .eq('id', foodId)
-          .single();
-
-        const newFoodItem = {
-          food_id: foodId,
-          food: foodData,
-          quantity: finalServings,
-          calories: macros.calories,
-          protein: macros.protein,
-          carbs: macros.carbs,
-          fats: macros.fat,
-          fiber: macros.fiber,
-          serving_description: servingDescription,
-          grams: finalGrams,
-        };
-
-        console.log('[FoodDetailsLayout] ✅ Using returnTo parameter:', returnTo || '/my-meal-builder');
-        
-        router.dismissTo({
-          pathname: returnTo || '/my-meal-builder',
-          params: {
-            mealId: myMealId || '',
-            newFoodItem: JSON.stringify(newFoodItem),
-          },
-        });
-
-        setSaving(false);
-        return;
       }
 
       // NORMAL DIARY MODE: Log to diary
@@ -791,12 +750,10 @@ export default function FoodDetailsLayout({
 
   const availableUnits: ServingUnit[] = ['g', 'oz'];
 
-  // Determine button text based on context
+  // Determine button text based on mode
   let buttonText = 'Add to Meal';
   if (mode === 'edit') {
     buttonText = 'Save Changes';
-  } else if (context === 'my_meal_builder') {
-    buttonText = 'Add to My Meal';
   } else {
     buttonText = `Add to ${mealLabels[mealType]}`;
   }

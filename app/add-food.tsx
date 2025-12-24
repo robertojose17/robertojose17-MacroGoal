@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Pressable, TextInput, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, TextInput, ActivityIndicator, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -11,9 +11,9 @@ import { getRecentFoods } from '@/utils/foodDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Food, MyMeal } from '@/types';
+import { Food } from '@/types';
 
-type TabType = 'all' | 'favorites' | 'my-meals' | 'quick-add';
+type TabType = 'all' | 'favorites' | 'quick-add';
 
 interface BannerEvent {
   id: number;
@@ -29,7 +29,6 @@ export default function AddFoodScreen() {
   const context = params.context as string | undefined;
   const mealType = params.mealType ?? params.meal ?? "breakfast";
   const returnTo = params.returnTo as string | undefined;
-  const myMealId = params.mealId as string | undefined;
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -40,7 +39,6 @@ export default function AddFoodScreen() {
   
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [savedMeals, setSavedMeals] = useState<MyMeal[]>([]);
   const [loading, setLoading] = useState(false);
 
   // INLINE SEARCH STATE
@@ -80,33 +78,6 @@ export default function AddFoodScreen() {
     }
   }, []);
 
-  const loadSavedMeals = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('[AddFood] No user found for saved meals');
-        return;
-      }
-
-      console.log('[AddFood] Loading saved meals for user:', user.id);
-
-      const { data: mealsData, error } = await supabase
-        .from('my_meals')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('[AddFood] Error loading saved meals:', error);
-      } else {
-        console.log('[AddFood] Loaded', mealsData?.length || 0, 'saved meals');
-        setSavedMeals(mealsData || []);
-      }
-    } catch (error) {
-      console.error('[AddFood] Error in loadSavedMeals:', error);
-    }
-  }, []);
-
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -116,16 +87,13 @@ export default function AddFoodScreen() {
       // Load favorites
       await loadFavorites();
 
-      // Load saved meals
-      await loadSavedMeals();
-
       console.log('[AddFood] Loaded data:', { recent: recent.length });
     } catch (error) {
       console.error('[AddFood] Error loading data:', error);
     } finally {
       setLoading(false);
     }
-  }, [loadFavorites, loadSavedMeals]);
+  }, [loadFavorites]);
 
   // Load data when screen comes into focus
   useFocusEffect(
@@ -426,10 +394,9 @@ export default function AddFoodScreen() {
         mode: mode,
         context: context,
         returnTo: returnTo || '/(tabs)/(home)/',
-        mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo]);
 
   const handleCopyFromPrevious = useCallback(() => {
     console.log('[AddFood] Navigating to copy-from-previous');
@@ -451,10 +418,9 @@ export default function AddFoodScreen() {
         date: date,
         mode: mode,
         returnTo: returnTo,
-        mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, returnTo, myMealId]);
+  }, [router, mealType, date, mode, returnTo]);
 
   const handleAIMealEstimator = useCallback(() => {
     console.log('[AddFood] Navigating to AI Meal Estimator');
@@ -466,10 +432,9 @@ export default function AddFoodScreen() {
         mode: mode,
         context: context,
         returnTo: returnTo,
-        mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo]);
 
   const handleBarcodeScanner = useCallback(() => {
     console.log('[AddFood] Navigating to Barcode Scanner');
@@ -481,104 +446,9 @@ export default function AddFoodScreen() {
         mode: mode,
         context: context,
         returnTo: returnTo,
-        mealId: myMealId,
       },
     });
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
-
-  const handleCreateMyMeal = useCallback(() => {
-    console.log('[AddFood] Navigating to create My Meal');
-    router.push('/my-meal-builder');
-  }, [router]);
-
-  const handleOpenMyMeal = useCallback((meal: MyMeal) => {
-    console.log('[AddFood] Opening My Meal details:', meal.id);
-    router.push({
-      pathname: '/my-meal-details',
-      params: {
-        mealId: meal.id,
-      },
-    });
-  }, [router]);
-
-  const handleDeleteMyMeal = useCallback(async (meal: MyMeal) => {
-    console.log('═══════════════════════════════════════════════════════');
-    console.log(`[AddFood] 🔥 DELETE TAP FIRED - Platform: ${Platform.OS}`);
-    console.log(`[AddFood] 🔥 DELETE TAP FIRED - Meal: "${meal.name}"`);
-    console.log(`[AddFood] 🔥 DELETE TAP FIRED - ID: ${meal.id}`);
-    console.log('═══════════════════════════════════════════════════════');
-    
-    try {
-      const mealName = meal.name;
-      const mealId = meal.id;
-
-      // Verify auth before delete
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('[AddFood] ❌ No authenticated user found');
-        Alert.alert('Error', 'You must be logged in to delete meals');
-        return;
-      }
-      console.log('[AddFood] ✅ Auth verified:', user.id);
-
-      // STEP 1: IMMEDIATELY remove from UI for instant feedback
-      console.log('[AddFood] 🎯 Removing from local state');
-      setSavedMeals(prevMeals => {
-        const filtered = prevMeals.filter(m => m.id !== mealId);
-        console.log(`[AddFood] 📊 Local state updated: ${prevMeals.length} → ${filtered.length} meals`);
-        return filtered;
-      });
-
-      // STEP 2: Delete meal items first (foreign key constraint)
-      console.log('[AddFood] 🗑️ Deleting meal items from backend...');
-      
-      const { error: itemsError } = await supabase
-        .from('my_meal_items')
-        .delete()
-        .eq('my_meal_id', mealId);
-
-      if (itemsError) {
-        console.error('[AddFood] ❌ Error deleting meal items:', itemsError);
-        // Restore the meal if deletion failed
-        setSavedMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
-        Alert.alert('Error', `Failed to delete meal items: ${itemsError.message}`);
-        return;
-      }
-      console.log('[AddFood] ✅ Meal items deleted successfully');
-
-      // STEP 3: Delete the meal
-      console.log('[AddFood] 🗑️ Deleting meal from backend...');
-      
-      const { error: mealError } = await supabase
-        .from('my_meals')
-        .delete()
-        .eq('id', mealId)
-        .eq('user_id', user.id);
-
-      if (mealError) {
-        console.error('[AddFood] ❌ Error deleting meal:', mealError);
-        // Restore the meal if deletion failed
-        setSavedMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
-        Alert.alert('Error', `Failed to delete meal: ${mealError.message}`);
-        return;
-      }
-      console.log('[AddFood] ✅ Meal deleted from backend successfully');
-
-      console.log(`[AddFood] 🎉 "${mealName}" deleted successfully`);
-      console.log('═══════════════════════════════════════════════════════');
-    } catch (error) {
-      console.error('[AddFood] ❌ Unexpected error:', error);
-      // Restore the meal if an unexpected error occurred
-      setSavedMeals(prevMeals => [...prevMeals, meal].sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ));
-      Alert.alert('Error', 'An error occurred while deleting');
-    }
-  }, []);
+  }, [router, mealType, date, mode, context, returnTo]);
 
   /**
    * Open food details for a recent food
@@ -638,7 +508,6 @@ export default function AddFoodScreen() {
         mode: mode,
         context: context,
         returnTo: returnTo || '/(tabs)/(home)/',
-        mealId: myMealId,
       });
 
       // CRITICAL FIX: Use router.replace() instead of router.push()
@@ -652,7 +521,6 @@ export default function AddFoodScreen() {
           mode: mode,
           context: context,
           returnTo: returnTo || '/(tabs)/(home)/',
-          mealId: myMealId,
         },
       });
 
@@ -661,7 +529,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error opening recent food details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [router, mealType, date, mode, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo]);
 
   /**
    * Add a recent food directly
@@ -704,35 +572,6 @@ export default function AddFoodScreen() {
       const carbs = foodData.carbs * multiplier;
       const fats = foodData.fats * multiplier;
       const fiber = foodData.fiber * multiplier;
-
-      // CHECK MODE: If my_meal_builder, return to builder instead of logging to diary
-      if (mode === 'my_meal_builder' || context === 'my_meal_builder') {
-        console.log('[AddFood] Mode is my_meal_builder, returning to builder with food item');
-
-        const newFoodItem = {
-          food_id: food.id,
-          food: foodData,
-          quantity: multiplier,
-          calories: calories,
-          protein: protein,
-          carbs: carbs,
-          fats: fats,
-          fiber: fiber,
-          serving_description: servingDescription,
-          grams: gramsToAdd,
-        };
-
-        // Use dismissTo to go directly back to the builder with params
-        router.dismissTo({
-          pathname: returnTo || '/my-meal-builder',
-          params: {
-            mealId: myMealId || '',
-            newFoodItem: JSON.stringify(newFoodItem),
-          },
-        });
-
-        return;
-      }
 
       // NORMAL DIARY MODE: Log to diary
       // Find or create meal for the date and meal type
@@ -805,7 +644,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error adding recent food:', error);
       Alert.alert('Error', 'An unexpected error occurred while adding food');
     }
-  }, [mode, returnTo, myMealId, date, mealType, router, showSuccessBanner]);
+  }, [mode, returnTo, date, mealType, router, showSuccessBanner]);
 
   /**
    * Open food details for a favorite
@@ -846,14 +685,13 @@ export default function AddFoodScreen() {
           mode: mode,
           context: context,
           returnTo: returnTo || '/(tabs)/(home)/',
-          mealId: myMealId,
         },
       });
     } catch (error) {
       console.error('[AddFood] Error opening favorite details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo]);
 
   /**
    * Handle adding favorite
@@ -923,42 +761,6 @@ export default function AddFoodScreen() {
         foodId = newFood.id;
       }
 
-      // Get full food data for builder
-      const { data: foodData } = await supabase
-        .from('foods')
-        .select('*')
-        .eq('id', foodId)
-        .single();
-
-      // CHECK MODE: If my_meal_builder, return to builder instead of logging to diary
-      if (mode === 'my_meal_builder' || context === 'my_meal_builder') {
-        console.log('[AddFood] Mode is my_meal_builder, returning to builder with food item');
-
-        const newFoodItem = {
-          food_id: foodId,
-          food: foodData,
-          quantity: multiplier,
-          calories: calories,
-          protein: protein,
-          carbs: carbs,
-          fats: fat,
-          fiber: fiber,
-          serving_description: favorite.serving_size || `${favorite.default_grams}g`,
-          grams: favorite.default_grams,
-        };
-
-        // Use dismissTo to go directly back to the builder with params
-        router.dismissTo({
-          pathname: returnTo || '/my-meal-builder',
-          params: {
-            mealId: myMealId || '',
-            newFoodItem: JSON.stringify(newFoodItem),
-          },
-        });
-
-        return;
-      }
-
       // NORMAL DIARY MODE: Log to diary
       // Find or create meal
       const { data: existingMeal } = await supabase
@@ -1024,7 +826,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error adding favorite:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [mode, returnTo, myMealId, date, mealType, router, showSuccessBanner]);
+  }, [mode, returnTo, date, mealType, router, showSuccessBanner]);
 
   /**
    * Remove a favorite from the list
@@ -1208,64 +1010,6 @@ export default function AddFoodScreen() {
     );
   }, [isDark, handleRemoveFavorite, handleOpenFavoriteDetails, handleAddFavorite]);
 
-  const renderSavedMealItem = useCallback((meal: MyMeal, index: number) => {
-    const macrosText = `P: ${Math.round(meal.total_protein)}g • C: ${Math.round(meal.total_carbs)}g • F: ${Math.round(meal.total_fats)}g`;
-    
-    return (
-      <React.Fragment key={meal.id ?? `saved-meal-${index}`}>
-        <View
-          style={[
-            styles.mealCard,
-            { backgroundColor: isDark ? colors.cardDark : colors.card }
-          ]}
-        >
-          <Pressable
-            style={styles.mealContent}
-            onPress={() => handleOpenMyMeal(meal)}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-          >
-            <View style={styles.foodInfo}>
-              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                {meal.name}
-              </Text>
-              {meal.note && (
-                <Text style={[styles.mealNote, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {meal.note}
-                </Text>
-              )}
-              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {Math.round(meal.total_calories)} cal
-              </Text>
-              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {macrosText}
-              </Text>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            />
-          </Pressable>
-          
-          <Pressable
-            style={styles.deleteButton}
-            onPress={() => handleDeleteMyMeal(meal)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            android_ripple={{ color: 'rgba(255, 59, 48, 0.2)', borderless: true, radius: 24 }}
-          >
-            <IconSymbol
-              ios_icon_name="trash.fill"
-              android_material_icon_name="delete"
-              size={22}
-              color="#FF3B30"
-            />
-          </Pressable>
-        </View>
-      </React.Fragment>
-    );
-  }, [isDark, handleOpenMyMeal, handleDeleteMyMeal]);
-
   const renderListContent = useCallback(() => {
     if (searchQuery.trim().length > 0) {
       if (searchQuery.trim().length < 2) {
@@ -1365,7 +1109,7 @@ export default function AddFoodScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          {mode === 'my_meal_builder' || context === 'my_meal_builder' ? 'Add to My Meal' : `Add to ${mealLabels[mealType]}`}
+          {`Add to ${mealLabels[mealType]}`}
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -1447,24 +1191,6 @@ export default function AddFoodScreen() {
             </Text>
             {activeTab === 'favorites' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
-
-          {/* HIDE "My Meals" tab when context is "my_meals_builder" to prevent infinite loop */}
-          {context !== 'my_meals_builder' && (
-            <TouchableOpacity
-              style={styles.tab}
-              onPress={() => setActiveTab('my-meals')}
-              activeOpacity={0.7}
-            >
-              <Text style={[
-                styles.tabText,
-                activeTab === 'my-meals' && styles.tabTextActive,
-                { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-              ]}>
-                My Meals
-              </Text>
-              {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
-            </TouchableOpacity>
-          )}
 
           <TouchableOpacity
             style={styles.tab}
@@ -1572,47 +1298,6 @@ export default function AddFoodScreen() {
                     </Text>
                     <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
                       Tap the star icon on any food to add it to your favorites
-                    </Text>
-                  </View>
-                )}
-              </React.Fragment>
-            )}
-
-            {activeTab === 'my-meals' && (
-              <React.Fragment>
-                <TouchableOpacity
-                  style={[styles.createButton, { backgroundColor: colors.primary }]}
-                  onPress={handleCreateMyMeal}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol
-                    ios_icon_name="plus.circle.fill"
-                    android_material_icon_name="add_circle"
-                    size={24}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.createButtonText}>Create My Meal</Text>
-                </TouchableOpacity>
-
-                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Saved Meals
-                </Text>
-
-                {savedMeals.length > 0 ? (
-                  savedMeals.map((meal, index) => renderSavedMealItem(meal, index))
-                ) : (
-                  <View style={styles.emptyState}>
-                    <IconSymbol
-                      ios_icon_name="fork.knife"
-                      android_material_icon_name="restaurant"
-                      size={48}
-                      color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                    />
-                    <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
-                      No saved meals yet
-                    </Text>
-                    <Text style={[styles.emptySubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.xs }]}>
-                      Create a meal template to quickly log your favorite meals
                     </Text>
                   </View>
                 )}
@@ -1825,11 +1510,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 12,
   },
-  mealNote: {
-    ...typography.caption,
-    fontSize: 13,
-    marginBottom: 2,
-  },
   addButton: {
     width: 36,
     height: 36,
@@ -1884,44 +1564,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
-  },
-  createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  createButtonText: {
-    ...typography.bodyBold,
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  mealCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
-    elevation: 1,
-  },
-  mealContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-  },
-  deleteButton: {
-    padding: spacing.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 56,
-    minHeight: 56,
   },
   bannerContainer: {
     position: 'absolute',

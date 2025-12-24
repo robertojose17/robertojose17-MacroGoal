@@ -12,7 +12,6 @@ export default function FoodDetailsScreen() {
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const offDataString = params.offData as string;
   const returnTo = (params.returnTo as string) || undefined;
-  const myMealId = (params.mealId as string) || undefined;
 
   return (
     <FoodDetailsLayout
@@ -22,7 +21,6 @@ export default function FoodDetailsScreen() {
       date={date}
       context={context}
       returnTo={returnTo}
-      myMealId={myMealId}
     />
   );
 }
