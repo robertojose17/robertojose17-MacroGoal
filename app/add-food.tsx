@@ -14,7 +14,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
 import { addToDraft } from '@/utils/myMealsDraft';
 
-type TabType = 'all' | 'favorites' | 'quick-add' | 'my-meals';
+type TabType = 'all' | 'favorites' | 'my-foods' | 'quick-add' | 'my-meals';
 
 interface BannerEvent {
   id: number;
@@ -1695,6 +1695,21 @@ export default function AddFoodScreen() {
 
           <TouchableOpacity
             style={styles.tab}
+            onPress={() => setActiveTab('my-foods')}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === 'my-foods' && styles.tabTextActive,
+              { color: activeTab === 'my-foods' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+            ]}>
+              My Foods
+            </Text>
+            {activeTab === 'my-foods' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tab}
             onPress={() => setActiveTab('quick-add')}
             activeOpacity={0.7}
           >
@@ -1824,6 +1839,37 @@ export default function AddFoodScreen() {
                   </View>
                 )}
               </React.Fragment>
+            )}
+
+            {activeTab === 'my-foods' && (
+              <View style={styles.myFoodsContainer}>
+                <TouchableOpacity
+                  style={[styles.viewMyFoodsButton, { backgroundColor: colors.primary }]}
+                  onPress={() => router.push({
+                    pathname: '/my-foods',
+                    params: {
+                      meal: mealType,
+                      date: date,
+                      context: context || '',
+                      returnTo: returnTo,
+                    },
+                  })}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="fork.knife"
+                    android_material_icon_name="restaurant"
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.viewMyFoodsButtonText}>
+                    View & Manage My Foods
+                  </Text>
+                </TouchableOpacity>
+                <Text style={[styles.myFoodsDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Create and save your own custom foods for quick access
+                </Text>
+              </View>
             )}
 
             {activeTab === 'quick-add' && (
@@ -2133,6 +2179,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
+  },
+  myFoodsContainer: {
+    paddingTop: spacing.md,
+  },
+  viewMyFoodsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  viewMyFoodsButtonText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  myFoodsDescription: {
+    ...typography.caption,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
   },
   quickAddContainer: {
     paddingTop: spacing.md,
