@@ -1448,20 +1448,23 @@ export default function AddFoodScreen() {
             {activeTab === 'favorites' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.tab}
-            onPress={() => setActiveTab('my-meals')}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'my-meals' && styles.tabTextActive,
-              { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
-            ]}>
-              My Meals
-            </Text>
-            {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
-          </TouchableOpacity>
+          {/* HIDE "My Meals" tab when context is "my_meals_builder" to prevent infinite loop */}
+          {context !== 'my_meals_builder' && (
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => setActiveTab('my-meals')}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'my-meals' && styles.tabTextActive,
+                { color: activeTab === 'my-meals' ? (isDark ? colors.textDark : colors.text) : (isDark ? colors.textSecondaryDark : colors.textSecondary) }
+              ]}>
+                My Meals
+              </Text>
+              {activeTab === 'my-meals' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.tab}
