@@ -1465,37 +1465,201 @@ export default function AddFoodScreen() {
     );
   }, [isDark, context, handleRemoveFavorite, handleOpenFavoriteDetails, handleQuickAddFavorite, handleAddFavorite]);
 
+  /**
+   * QUICK ADD: Add entire saved meal to meal log
+   * Adds all foods from the saved meal with 1 serving each
+   */
+  const handleQuickAddSavedMeal = useCallback(async (meal: SavedMeal) => {
+    console.log('[AddFood] ========== QUICK ADD SAVED MEAL ==========');
+    console.log('[AddFood] Meal:', meal.name);
+    console.log('[AddFood] Context:', context);
+
+    // CRITICAL: Only allow quick add in meal_log context
+    if (context === 'my_meals_builder') {
+      console.log('[AddFood] ❌ Cannot quick-add in my_meals_builder context');
+      Alert.alert('Not Available', 'Please tap the meal to view details and add it to your meal.');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to add meal');
+        return;
+      }
+
+      // Fetch the saved meal items
+      const { data: mealItems, error: itemsError } = await supabase
+        .from('saved_meal_items')
+        .select(`
+          id,
+          serving_amount,
+          serving_unit,
+          servings_count,
+          food_id,
+          foods (
+            id,
+            name,
+            brand,
+            calories,
+            protein,
+            carbs,
+            fats,
+            fiber
+          )
+        `)
+        .eq('saved_meal_id', meal.id);
+
+      if (itemsError || !mealItems || mealItems.length === 0) {
+        console.error('[AddFood] Error loading meal items:', itemsError);
+        Alert.alert('Error', 'Failed to load meal items');
+        return;
+      }
+
+      console.log('[AddFood] Loaded', mealItems.length, 'items from saved meal');
+
+      // Find or create meal for the date and meal type
+      const { data: existingMeal } = await supabase
+        .from('meals')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .eq('meal_type', mealType)
+        .maybeSingle();
+
+      let targetMealId = existingMeal?.id;
+
+      if (!targetMealId) {
+        console.log('[AddFood] Creating new meal for', mealType, 'on', date);
+        const { data: newMeal, error: mealError } = await supabase
+          .from('meals')
+          .insert({
+            user_id: user.id,
+            date: date,
+            meal_type: mealType,
+          })
+          .select()
+          .single();
+
+        if (mealError) {
+          console.error('[AddFood] Error creating meal:', mealError);
+          Alert.alert('Error', 'Failed to create meal');
+          return;
+        }
+
+        targetMealId = newMeal.id;
+        console.log('[AddFood] Created new meal:', targetMealId);
+      } else {
+        console.log('[AddFood] Using existing meal:', targetMealId);
+      }
+
+      // Add each food item from the saved meal
+      const itemsToInsert = mealItems.map((item: any) => {
+        const food = item.foods;
+        const multiplier = (item.serving_amount / 100) * item.servings_count;
+        
+        return {
+          meal_id: targetMealId,
+          food_id: item.food_id,
+          quantity: multiplier,
+          calories: food.calories * multiplier,
+          protein: food.protein * multiplier,
+          carbs: food.carbs * multiplier,
+          fats: food.fats * multiplier,
+          fiber: food.fiber * multiplier,
+          serving_description: `${item.serving_amount} ${item.serving_unit}`,
+          grams: item.serving_amount,
+        };
+      });
+
+      console.log('[AddFood] Inserting', itemsToInsert.length, 'meal items');
+
+      const { error: insertError } = await supabase
+        .from('meal_items')
+        .insert(itemsToInsert);
+
+      if (insertError) {
+        console.error('[AddFood] Error inserting meal items:', insertError);
+        Alert.alert('Error', 'Failed to add meal items');
+        return;
+      }
+
+      console.log('[AddFood] ✅ Saved meal added successfully!');
+      
+      // Show success banner
+      showSuccessBanner('Meal Added');
+      
+      console.log('[AddFood] Keeping modal open for multiple adds');
+    } catch (error) {
+      console.error('[AddFood] Error quick adding saved meal:', error);
+      Alert.alert('Error', 'An unexpected error occurred while adding meal');
+    }
+  }, [context, date, mealType, showSuccessBanner]);
+
   const renderSavedMealItem = useCallback((meal: SavedMeal, index: number) => {
     return (
       <React.Fragment key={meal.id}>
         <SwipeToDeleteRow onDelete={() => handleDeleteMeal(meal.id)}>
-          <TouchableOpacity
-            style={[styles.foodCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-            onPress={() => handleSelectMeal(meal)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.foodInfo}>
-              <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-                {meal.name}
-              </Text>
-              <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {meal.item_count || 0} {meal.item_count === 1 ? 'item' : 'items'} • {Math.round(meal.total_calories || 0)} cal
-              </Text>
-              <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                P: {Math.round(meal.total_protein || 0)}g • C: {Math.round(meal.total_carbs || 0)}g • F: {Math.round(meal.total_fats || 0)}g
-              </Text>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            />
-          </TouchableOpacity>
+          {(isSwiping: boolean) => (
+            <TouchableOpacity
+              style={[styles.foodCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+              onPress={() => {
+                if (!isSwiping) {
+                  handleSelectMeal(meal);
+                }
+              }}
+              activeOpacity={0.7}
+              disabled={isSwiping}
+            >
+              <View style={styles.foodInfo}>
+                <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+                  {meal.name}
+                </Text>
+                <Text style={[styles.foodServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {meal.item_count || 0} {meal.item_count === 1 ? 'item' : 'items'} • {Math.round(meal.total_calories || 0)} cal
+                </Text>
+                <Text style={[styles.foodMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  P: {Math.round(meal.total_protein || 0)}g • C: {Math.round(meal.total_carbs || 0)}g • F: {Math.round(meal.total_fats || 0)}g
+                </Text>
+              </View>
+              
+              {/* Show quick-add button only in meal_log context */}
+              {context !== 'my_meals_builder' && (
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (!isSwiping) {
+                      handleQuickAddSavedMeal(meal);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  disabled={isSwiping}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus"
+                    android_material_icon_name="add"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              )}
+              
+              {/* Show chevron in my_meals_builder context */}
+              {context === 'my_meals_builder' && (
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron_right"
+                  size={20}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+              )}
+            </TouchableOpacity>
+          )}
         </SwipeToDeleteRow>
       </React.Fragment>
     );
-  }, [isDark, handleSelectMeal, handleDeleteMeal]);
+  }, [isDark, context, handleSelectMeal, handleDeleteMeal, handleQuickAddSavedMeal]);
 
   const renderListContent = useCallback(() => {
     if (searchQuery.trim().length > 0) {
@@ -1820,6 +1984,7 @@ export default function AddFoodScreen() {
                 mode={context === 'my_meals_builder' ? 'mymeal' : 'diary'}
                 myMealId={params.myMealId as string | undefined}
                 context={context}
+                onQuickAdd={showSuccessBanner}
               />
             )}
 
