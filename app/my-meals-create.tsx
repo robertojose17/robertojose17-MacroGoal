@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS, initializeDatabase } from '@/app/integrations/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { loadDraft, saveDraft, clearDraft, DraftItem } from '@/utils/myMealsDraft';
 
@@ -25,12 +25,27 @@ export default function MyMealsCreateScreen() {
   const [saving, setSaving] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize: clear draft on first mount
+  // Initialize: clear draft on first mount and verify database
   React.useEffect(() => {
     const initializeScreen = async () => {
       if (!isInitialized) {
         console.log('[MyMealsCreate] Initializing screen, clearing old draft');
         await clearDraft();
+        
+        // Verify database tables exist
+        console.log('[MyMealsCreate] Verifying database tables...');
+        const dbReady = await initializeDatabase();
+        if (!dbReady) {
+          console.error('[MyMealsCreate] ❌ Database is not ready! Tables are missing.');
+          Alert.alert(
+            'Database Error',
+            'The required database tables are missing. Please contact support or check the console logs for migration instructions.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          console.log('[MyMealsCreate] ✅ Database is ready');
+        }
+        
         setIsInitialized(true);
       }
     };
@@ -189,7 +204,7 @@ export default function MyMealsCreateScreen() {
       console.log('[MyMealsCreate]   - name:', mealName.trim());
 
       const { data: savedMeal, error: mealError } = await supabase
-        .from('saved_meals')
+        .from(TABLE_SAVED_MEALS)
         .insert({
           user_id: user.id,
           name: mealName.trim(),
@@ -254,7 +269,7 @@ export default function MyMealsCreateScreen() {
       console.log('[MyMealsCreate] Items to insert:', JSON.stringify(itemsToInsert, null, 2));
 
       const { data: insertedItems, error: itemsError } = await supabase
-        .from('saved_meal_items')
+        .from(TABLE_SAVED_MEAL_ITEMS)
         .insert(itemsToInsert)
         .select();
 
@@ -267,7 +282,7 @@ export default function MyMealsCreateScreen() {
         
         // Rollback: delete the saved meal
         console.log('[MyMealsCreate] Rolling back: deleting saved meal', savedMeal.id);
-        await supabase.from('saved_meals').delete().eq('id', savedMeal.id);
+        await supabase.from(TABLE_SAVED_MEALS).delete().eq('id', savedMeal.id);
         
         Alert.alert('Error', `Failed to save meal items: ${itemsError.message}`);
         setSaving(false);

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS } from '@/app/integrations/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 
 interface SavedMeal {
@@ -60,7 +60,7 @@ export default function MyMealsScreen() {
 
       // Fetch saved meals with aggregated data
       const { data: meals, error } = await supabase
-        .from('saved_meals')
+        .from(TABLE_SAVED_MEALS)
         .select(`
           id,
           name,
@@ -206,7 +206,7 @@ export default function MyMealsScreen() {
 
     try {
       const { error } = await supabase
-        .from('saved_meals')
+        .from(TABLE_SAVED_MEALS)
         .delete()
         .eq('id', mealId);
 

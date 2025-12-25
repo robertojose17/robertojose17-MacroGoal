@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS } from '@/app/integrations/supabase/client';
 
 interface SavedMealItem {
   id: string;
@@ -67,7 +67,7 @@ export default function MyMealsDetailsScreen() {
       console.log('[MyMealsDetails] Meal ID:', mealId);
 
       const { data, error } = await supabase
-        .from('saved_meals')
+        .from(TABLE_SAVED_MEALS)
         .select(`
           id,
           name,
