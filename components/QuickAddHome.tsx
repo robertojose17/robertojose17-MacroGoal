@@ -85,15 +85,27 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
   );
 
   const handleQuickAddManual = () => {
-    console.log('[QuickAddHome] Opening manual entry form');
+    console.log('[QuickAddHome] ========== OPENING MANUAL ENTRY FORM ==========');
+    console.log('[QuickAddHome] Mode:', mode);
+    console.log('[QuickAddHome] Context:', context);
+    console.log('[QuickAddHome] Meal Type:', mealType);
+    console.log('[QuickAddHome] Date:', date);
+    console.log('[QuickAddHome] My Meal ID:', myMealId);
+    console.log('[QuickAddHome] Return To:', returnTo);
+
+    // Determine the correct mode based on context
+    const navigationMode = context === 'my_meals_builder' ? 'mymeal' : 'diary';
+    
+    console.log('[QuickAddHome] Navigation mode:', navigationMode);
+
     router.push({
       pathname: '/add-food-simple',
       params: {
-        mode: mode || 'diary',
+        mode: navigationMode,
         meal: mealType,
         date: date,
-        returnTo: returnTo,
-        mealId: myMealId,
+        returnTo: returnTo || '/(tabs)/(home)/',
+        mealId: myMealId || '',
       },
     });
   };
