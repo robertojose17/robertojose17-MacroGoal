@@ -1,8 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -23,35 +22,37 @@ interface MyFood {
   created_at: string;
 }
 
-export default function QuickAddScreen() {
+interface QuickAddHomeProps {
+  mealType: string;
+  date: string;
+  returnTo?: string;
+  mode?: string;
+  myMealId?: string;
+  context?: string;
+}
+
+export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId, context }: QuickAddHomeProps) {
   const router = useRouter();
-  const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-
-  const mode = (params.mode as string) || 'diary';
-  const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
-  const returnTo = (params.returnTo as string) || undefined;
-  const myMealId = (params.mealId as string) || undefined;
 
   const [myFoods, setMyFoods] = useState<MyFood[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const loadMyFoods = useCallback(async () => {
-    console.log('[QuickAdd] ========== LOADING SAVED FOODS ==========');
+    console.log('[QuickAddHome] ========== LOADING SAVED FOODS ==========');
     try {
       setLoading(true);
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('[QuickAdd] No user found');
+        console.log('[QuickAddHome] No user found');
         setLoading(false);
         return;
       }
 
-      console.log('[QuickAdd] Fetching user-created foods for user:', user.id);
+      console.log('[QuickAddHome] Fetching user-created foods for user:', user.id);
 
       const { data: foods, error } = await supabase
         .from('foods')
@@ -61,34 +62,34 @@ export default function QuickAddScreen() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('[QuickAdd] Error loading foods:', error);
+        console.error('[QuickAddHome] Error loading foods:', error);
         Alert.alert('Error', 'Failed to load your foods');
         setLoading(false);
         return;
       }
 
-      console.log('[QuickAdd] ✅ Loaded', foods?.length || 0, 'custom foods');
+      console.log('[QuickAddHome] ✅ Loaded', foods?.length || 0, 'custom foods');
       setMyFoods(foods || []);
       setLoading(false);
     } catch (error) {
-      console.error('[QuickAdd] Error in loadMyFoods:', error);
+      console.error('[QuickAddHome] Error in loadMyFoods:', error);
       setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[QuickAdd] Screen focused, loading saved foods');
+      console.log('[QuickAddHome] Component focused, loading saved foods');
       loadMyFoods();
     }, [loadMyFoods])
   );
 
   const handleQuickAddManual = () => {
-    console.log('[QuickAdd] Opening manual entry form');
+    console.log('[QuickAddHome] Opening manual entry form');
     router.push({
       pathname: '/add-food-simple',
       params: {
-        mode: mode,
+        mode: mode || 'diary',
         meal: mealType,
         date: date,
         returnTo: returnTo,
@@ -98,20 +99,20 @@ export default function QuickAddScreen() {
   };
 
   const handleCreateNewFood = () => {
-    console.log('[QuickAdd] Navigating to create new food');
+    console.log('[QuickAddHome] Navigating to create new food');
     router.push({
       pathname: '/my-foods-create',
       params: {
         meal: mealType,
         date: date,
-        context: 'quickadd',
+        context: context || 'quickadd',
         returnTo: returnTo,
       },
     });
   };
 
   const handleSelectFood = useCallback((food: MyFood) => {
-    console.log('[QuickAdd] Selected food:', food.name);
+    console.log('[QuickAddHome] Selected food:', food.name);
     
     // Convert to OpenFoodFacts format for food-details screen
     const offProduct = {
@@ -135,16 +136,16 @@ export default function QuickAddScreen() {
         offData: JSON.stringify(offProduct),
         meal: mealType,
         date: date,
-        context: 'quickadd',
+        context: context || 'quickadd',
         returnTo: returnTo || '/(tabs)/(home)/',
-        mode: mode,
+        mode: mode || 'diary',
         mealId: myMealId,
       },
     });
-  }, [router, mealType, date, returnTo, mode, myMealId]);
+  }, [router, mealType, date, returnTo, mode, myMealId, context]);
 
   const handleDeleteFood = useCallback(async (foodId: string) => {
-    console.log('[QuickAdd] Deleting food:', foodId);
+    console.log('[QuickAddHome] Deleting food:', foodId);
 
     // Optimistic update
     const previousFoods = [...myFoods];
@@ -157,14 +158,14 @@ export default function QuickAddScreen() {
         .eq('id', foodId);
 
       if (error) {
-        console.error('[QuickAdd] Error deleting food:', error);
+        console.error('[QuickAddHome] Error deleting food:', error);
         setMyFoods(previousFoods);
         Alert.alert('Error', 'Failed to delete food');
       } else {
-        console.log('[QuickAdd] ✅ Food deleted successfully');
+        console.log('[QuickAddHome] ✅ Food deleted successfully');
       }
     } catch (error) {
-      console.error('[QuickAdd] Error in handleDeleteFood:', error);
+      console.error('[QuickAddHome] Error in handleDeleteFood:', error);
       setMyFoods(previousFoods);
       Alert.alert('Error', 'An unexpected error occurred');
     }
@@ -210,167 +211,128 @@ export default function QuickAddScreen() {
   }, [isDark, handleSelectFood, handleDeleteFood]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+    <View style={styles.container}>
+      {/* Top Action Row - 2 Buttons Side-by-Side */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+          onPress={handleQuickAddManual}
+          activeOpacity={0.7}
+        >
           <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
+            ios_icon_name="plus.circle.fill"
+            android_material_icon_name="add_circle"
             size={24}
-            color={isDark ? colors.textDark : colors.text}
+            color={colors.primary}
           />
+          <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+            Quick Add{'\n'}(Calories & Macros)
+          </Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-          Quick Add
-        </Text>
-        <View style={{ width: 24 }} />
+
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+          onPress={handleCreateNewFood}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="fork.knife"
+            android_material_icon_name="restaurant"
+            size={24}
+            color={colors.primary}
+          />
+          <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+            Create New Food
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Top Action Row - 2 Buttons Side-by-Side */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-            onPress={handleQuickAddManual}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="plus.circle.fill"
-              android_material_icon_name="add_circle"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-              Quick Add{'\n'}(Calories & Macros)
-            </Text>
-          </TouchableOpacity>
+      {/* Saved Foods Section */}
+      <View style={styles.savedFoodsSection}>
+        <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+          Saved Foods
+        </Text>
 
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-            onPress={handleCreateNewFood}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="fork.knife"
-              android_material_icon_name="restaurant"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-              Create New Food
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Saved Foods Section */}
-        <View style={styles.savedFoodsSection}>
-          <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Saved Foods
-          </Text>
-
-          {/* Search Bar */}
-          <View
+        {/* Search Bar */}
+        <View
+          style={[
+            styles.searchBar,
+            {
+              backgroundColor: isDark ? colors.cardDark : colors.card,
+              borderColor: isDark ? colors.borderDark : colors.border,
+            }
+          ]}
+        >
+          <IconSymbol
+            ios_icon_name="magnifyingglass"
+            android_material_icon_name="search"
+            size={20}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+          <TextInput
             style={[
-              styles.searchBar,
-              {
-                backgroundColor: isDark ? colors.cardDark : colors.card,
-                borderColor: isDark ? colors.borderDark : colors.border,
-              }
+              styles.searchInput,
+              { color: isDark ? colors.textDark : colors.text }
             ]}
-          >
-            <IconSymbol
-              ios_icon_name="magnifyingglass"
-              android_material_icon_name="search"
-              size={20}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            />
-            <TextInput
-              style={[
-                styles.searchInput,
-                { color: isDark ? colors.textDark : colors.text }
-              ]}
-              placeholder="Search saved foods..."
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setSearchQuery('')}
-                style={styles.clearButton}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="cancel"
-                  size={20}
-                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Foods List */}
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Loading saved foods...
-              </Text>
-            </View>
-          ) : filteredFoods.length === 0 ? (
-            <View style={styles.emptyState}>
+            placeholder="Search saved foods..."
+            placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              style={styles.clearButton}
+              activeOpacity={0.7}
+            >
               <IconSymbol
-                ios_icon_name="fork.knife"
-                android_material_icon_name="restaurant"
-                size={48}
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="cancel"
+                size={20}
                 color={isDark ? colors.textSecondaryDark : colors.textSecondary}
               />
-              <Text style={[styles.emptyTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                {searchQuery ? 'No foods found' : 'No saved foods yet'}
-              </Text>
-              <Text style={[styles.emptyMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {searchQuery ? 'Try a different search term' : 'Create your first food to reuse it anytime'}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.foodsList}>
-              {filteredFoods.map((food, index) => renderFoodItem(food, index))}
-            </View>
+            </TouchableOpacity>
           )}
         </View>
 
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-    </SafeAreaView>
+        {/* Foods List */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Loading saved foods...
+            </Text>
+          </View>
+        ) : filteredFoods.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="fork.knife"
+              android_material_icon_name="restaurant"
+              size={48}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+            <Text style={[styles.emptyTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              {searchQuery ? 'No foods found' : 'No saved foods yet'}
+            </Text>
+            <Text style={[styles.emptyMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {searchQuery ? 'Try a different search term' : 'Create your first food to reuse it anytime'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.foodsList}>
+            {filteredFoods.map((food, index) => renderFoodItem(food, index))}
+          </View>
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
-    paddingBottom: spacing.md,
-  },
-  title: {
-    ...typography.h3,
-    flex: 1,
-    textAlign: 'center',
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
   },
   actionRow: {
     flexDirection: 'row',
@@ -479,8 +441,5 @@ const styles = StyleSheet.create({
   foodMacros: {
     ...typography.caption,
     fontSize: 12,
-  },
-  bottomSpacer: {
-    height: 100,
   },
 });

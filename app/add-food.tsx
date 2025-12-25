@@ -13,6 +13,7 @@ import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/ut
 import { supabase } from '@/app/integrations/supabase/client';
 import { Food } from '@/types';
 import { addToDraft } from '@/utils/myMealsDraft';
+import QuickAddHome from '@/components/QuickAddHome';
 
 type TabType = 'all' | 'favorites' | 'quick-add' | 'my-meals';
 
@@ -608,36 +609,6 @@ export default function AddFoodScreen() {
     
     router.push({
       pathname: '/copy-from-previous',
-      params: {
-        meal: mealType,
-        date: date,
-        context: context || '',
-        returnTo: returnTo,
-      },
-    });
-  }, [router, mealType, date, context, returnTo]);
-
-  const handleQuickAdd = useCallback(() => {
-    console.log('[AddFood] Navigating to quick-add');
-    console.log('[AddFood] Context:', context);
-    
-    router.push({
-      pathname: '/quick-add',
-      params: {
-        meal: mealType,
-        date: date,
-        context: context || '',
-        returnTo: returnTo,
-      },
-    });
-  }, [router, mealType, date, context, returnTo]);
-
-  const handleMyFoods = useCallback(() => {
-    console.log('[AddFood] Navigating to my-foods');
-    console.log('[AddFood] Context:', context);
-    
-    router.push({
-      pathname: '/my-foods',
       params: {
         meal: mealType,
         date: date,
@@ -1842,52 +1813,14 @@ export default function AddFoodScreen() {
             )}
 
             {activeTab === 'quick-add' && (
-              <View style={styles.quickAddContainer}>
-                <Text style={[styles.sectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Quick Add Calories
-                </Text>
-                
-                {/* Button #1: Manually Enter Calories & Macros */}
-                <TouchableOpacity
-                  style={[styles.quickAddButton, { backgroundColor: colors.primary }]}
-                  onPress={handleQuickAdd}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol
-                    ios_icon_name="pencil"
-                    android_material_icon_name="edit"
-                    size={24}
-                    color="#FFFFFF"
-                  />
-                  <View style={styles.quickAddButtonTextContainer}>
-                    <Text style={styles.quickAddButtonText}>
-                      Manually Enter Calories & Macros
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Button #2: My Foods */}
-                <TouchableOpacity
-                  style={[styles.quickAddButton, { backgroundColor: colors.primary, marginTop: spacing.md }]}
-                  onPress={handleMyFoods}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol
-                    ios_icon_name="fork.knife"
-                    android_material_icon_name="restaurant"
-                    size={24}
-                    color="#FFFFFF"
-                  />
-                  <View style={styles.quickAddButtonTextContainer}>
-                    <Text style={styles.quickAddButtonText}>
-                      My Foods
-                    </Text>
-                    <Text style={styles.quickAddButtonSubtext}>
-                      Use your custom foods
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
+              <QuickAddHome
+                mealType={mealType}
+                date={date}
+                returnTo={returnTo}
+                mode={mode}
+                myMealId={myMealId}
+                context={context}
+              />
             )}
 
             {activeTab === 'my-meals' && (
@@ -2174,32 +2107,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
-  },
-  quickAddContainer: {
-    paddingTop: spacing.md,
-  },
-  quickAddButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    gap: spacing.sm,
-  },
-  quickAddButtonTextContainer: {
-    flex: 1,
-  },
-  quickAddButtonText: {
-    ...typography.bodyBold,
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  quickAddButtonSubtext: {
-    ...typography.caption,
-    fontSize: 13,
-    color: '#FFFFFF',
-    opacity: 0.9,
-    marginTop: 2,
   },
   retryButton: {
     borderRadius: borderRadius.md,
