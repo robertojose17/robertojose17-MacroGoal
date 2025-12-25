@@ -1817,8 +1817,8 @@ export default function AddFoodScreen() {
                 mealType={mealType}
                 date={date}
                 returnTo={returnTo}
-                mode={mode}
-                myMealId={myMealId}
+                mode={context === 'my_meals_builder' ? 'mymeal' : 'diary'}
+                myMealId={params.myMealId as string | undefined}
                 context={context}
               />
             )}
