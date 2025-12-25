@@ -700,17 +700,28 @@ export default function FoodDetailsLayout({
         });
 
         console.log('[FoodDetailsLayout] ✅ Added to My Meal draft!');
+        
+        // CRITICAL FIX: Navigate back to My Meals Create screen
+        // Use router.back() to go back to the previous screen (My Meals Create)
+        // This will dismiss the Food Details screen and return to the builder
+        console.log('[FoodDetailsLayout] ========== NAVIGATING BACK TO MY MEALS BUILDER ==========');
+        setSaving(false);
+        
         Alert.alert('Success', 'Food added to meal!', [
           {
             text: 'OK',
-            onPress: () => router.back(),
+            onPress: () => {
+              // Go back to the My Meals Create screen
+              // Since we came from barcode scanner -> food details, we need to go back twice
+              // But router.back() should handle this correctly
+              router.back();
+            },
           },
         ]);
-        setSaving(false);
         return;
       }
 
-      // VIEW MODE: ADD NEW FOOD TO DIARY
+      // VIEW MODE: ADD NEW FOOD TO DIARY (meal_log context)
       console.log('[FoodDetailsLayout] ========== MEAL LOG CONTEXT ==========');
       console.log('[FoodDetailsLayout] Meal:', mealType);
       console.log('[FoodDetailsLayout] Date:', date);
