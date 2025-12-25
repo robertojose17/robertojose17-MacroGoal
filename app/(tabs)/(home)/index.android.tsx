@@ -261,8 +261,12 @@ export default function HomeScreen() {
     router.push(`/add-food?meal=${mealType}&date=${dateString}`);
   };
 
-  const handleEditFood = (item: FoodItem) => {
-    console.log('[Home Android] Opening edit food:', item.id);
+  const handleEditFood = (item: FoodItem, isSwiping: boolean) => {
+    if (isSwiping) {
+      console.log('[Home Android] ❌ Blocked edit - swipe gesture is active');
+      return;
+    }
+    console.log('[Home Android] ✅ Opening edit food:', item.id);
     const dateString = formatDateForStorage(selectedDate);
     router.push({
       pathname: '/edit-food',
@@ -403,33 +407,36 @@ export default function HomeScreen() {
 
   const renderFoodItem = ({ item }: { item: FoodItem }) => (
     <SwipeToDeleteRow onDelete={() => handleDeleteFood(item.id)}>
-      <TouchableOpacity 
-        style={styles.foodItem}
-        onPress={() => handleEditFood(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.foodInfo}>
-          <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-            {item.foods?.name || 'Unknown Food'}
-          </Text>
-          {item.foods?.brand && (
-            <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {item.foods.brand}
+      {(isSwiping: boolean) => (
+        <TouchableOpacity 
+          style={styles.foodItem}
+          onPress={() => handleEditFood(item, isSwiping)}
+          activeOpacity={0.7}
+          disabled={isSwiping}
+        >
+          <View style={styles.foodInfo}>
+            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
+              {item.foods?.name || 'Unknown Food'}
             </Text>
-          )}
-          <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {getServingDisplayText(item)}
-          </Text>
-        </View>
-        <View style={styles.foodCalories}>
-          <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-            {Math.round(item.calories)}
-          </Text>
-          <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            kcal
-          </Text>
-        </View>
-      </TouchableOpacity>
+            {item.foods?.brand && (
+              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {item.foods.brand}
+              </Text>
+            )}
+            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {getServingDisplayText(item)}
+            </Text>
+          </View>
+          <View style={styles.foodCalories}>
+            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+              {Math.round(item.calories)}
+            </Text>
+            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              kcal
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
     </SwipeToDeleteRow>
   );
 
