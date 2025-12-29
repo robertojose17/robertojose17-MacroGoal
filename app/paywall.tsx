@@ -399,9 +399,6 @@ export default function PaywallScreen() {
           <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             • Secure payment powered by Stripe
           </Text>
-          <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            • Test mode - no real charges will be made
-          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
