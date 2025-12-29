@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Macro Goal",
@@ -15,9 +16,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.elitemacrotracker.app",
+      "deploymentTarget": "13.4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator"
+      },
+      "entitlements": {
+        "com.apple.developer.in-app-payments": [
+          "merchant.com.elitemacrotracker.app"
+        ]
       }
     },
     "android": {
