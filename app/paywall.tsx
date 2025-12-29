@@ -27,13 +27,17 @@ export default function PaywallScreen() {
 
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [configValid, setConfigValid] = useState(true);
+  const [configErrors, setConfigErrors] = useState<string[]>([]);
 
   useEffect(() => {
     // Log configuration on mount
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Paywall] 🎬 Screen mounted');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    logStripeConfig();
+    const validation = logStripeConfig();
+    setConfigValid(validation.ok);
+    setConfigErrors(validation.errors);
   }, []);
 
   const handleSubscribe = async () => {
@@ -46,7 +50,7 @@ export default function PaywallScreen() {
 
       // Validate configuration before attempting
       const validation = validateStripeConfig();
-      if (!validation.isValid) {
+      if (!validation.ok) {
         console.error('[Paywall] ❌ Invalid Stripe configuration:', validation.errors);
         Alert.alert(
           'Configuration Error',
@@ -60,6 +64,16 @@ export default function PaywallScreen() {
       console.log('[Paywall] ✅ Stripe configuration is valid');
 
       const priceId = selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID;
+
+      if (!priceId) {
+        console.error('[Paywall] ❌ Price ID is undefined for plan:', selectedPlan);
+        Alert.alert(
+          'Configuration Error',
+          `Price ID for ${selectedPlan} plan is not configured. Please check your Stripe configuration.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
       console.log('[Paywall] 📋 Subscription details:');
       console.log('[Paywall]   - Plan:', selectedPlan);
@@ -121,6 +135,59 @@ export default function PaywallScreen() {
   };
 
   const isLoading = subscriptionLoading || checkoutLoading;
+
+  // Show configuration error UI if config is invalid
+  if (!configValid) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+        edges={['top']}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="xmark"
+              android_material_icon_name="close"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.errorContainer}>
+          <View style={[styles.errorIconContainer, { backgroundColor: '#FF3B3020' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={48}
+              color="#FF3B30"
+            />
+          </View>
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Configuration Error
+          </Text>
+          <Text style={[styles.errorMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Stripe is not configured correctly. Please check the following issues:
+          </Text>
+          <View style={styles.errorList}>
+            {configErrors.map((error, index) => (
+              <Text key={index} style={[styles.errorItem, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                • {error}
+              </Text>
+            ))}
+          </View>
+          {__DEV__ && (
+            <View style={[styles.devNote, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+              <Text style={[styles.devNoteText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700' }}>Developer Note:</Text> Update the PRICE_IDS in utils/stripeConfig.ts with your Stripe price IDs.
+              </Text>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -385,6 +452,52 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 120,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  errorTitle: {
+    ...typography.h1,
+    fontSize: 28,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  errorMessage: {
+    ...typography.body,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  errorList: {
+    alignSelf: 'stretch',
+    marginBottom: spacing.xl,
+  },
+  errorItem: {
+    ...typography.body,
+    fontSize: 14,
+    marginBottom: spacing.xs,
+    paddingLeft: spacing.md,
+  },
+  devNote: {
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.lg,
+  },
+  devNoteText: {
+    ...typography.caption,
+    fontSize: 13,
+    textAlign: 'center',
   },
   heroSection: {
     alignItems: 'center',
