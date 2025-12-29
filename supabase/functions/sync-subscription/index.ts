@@ -22,6 +22,17 @@ if (SUPABASE_URL && !SUPABASE_URL.includes("esgptfiofoaeguslgvcq")) {
   console.warn("[SyncSubscription] ⚠️ Using hardcoded correct URL instead");
 }
 
+// CRITICAL: Check if we're using TEST or LIVE keys
+if (STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
+  console.error("[SyncSubscription] ❌❌❌ CRITICAL ERROR: Using TEST Stripe key in production!");
+  console.error("[SyncSubscription] ❌ Key starts with: sk_test_");
+  console.error("[SyncSubscription] ❌ You MUST update STRIPE_SECRET_KEY to your LIVE key (sk_live_...)");
+} else if (STRIPE_SECRET_KEY?.startsWith('sk_live_')) {
+  console.log("[SyncSubscription] ✅ Using LIVE Stripe key");
+} else {
+  console.error("[SyncSubscription] ⚠️ Unknown Stripe key format");
+}
+
 const stripe = new Stripe(STRIPE_SECRET_KEY!, {
   apiVersion: "2024-12-18.acacia",
   httpClient: Stripe.createFetchHttpClient(),
@@ -95,9 +106,47 @@ Deno.serve(async (req) => {
         console.log("[SyncSubscription] 🔍 User has customer ID, checking Stripe for subscriptions...");
         
         try {
+          // Verify customer exists in Stripe
+          let customerId = subData.stripe_customer_id;
+          
+          try {
+            const customer = await stripe.customers.retrieve(customerId);
+            if (customer.deleted) {
+              throw new Error("Customer deleted");
+            }
+            console.log("[SyncSubscription] ✅ Customer exists in Stripe");
+          } catch (customerError: any) {
+            console.error("[SyncSubscription] ❌ Customer not found in Stripe:", customerError.message);
+            console.log("[SyncSubscription] 🔧 Creating new customer in LIVE Stripe...");
+            
+            // Create new customer in LIVE Stripe
+            const newCustomer = await stripe.customers.create({
+              email: user.email,
+              metadata: {
+                supabase_user_id: user.id,
+                migrated_from_test: "true",
+                original_customer_id: customerId,
+              },
+            });
+            
+            console.log("[SyncSubscription] ✅ New customer created:", newCustomer.id);
+            customerId = newCustomer.id;
+            
+            // Update database with new customer ID
+            await supabase
+              .from("subscriptions")
+              .update({ 
+                stripe_customer_id: newCustomer.id,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", user.id);
+            
+            console.log("[SyncSubscription] ✅ Database updated with new customer ID");
+          }
+          
           // List all subscriptions for this customer
           const subscriptions = await stripe.subscriptions.list({
-            customer: subData.stripe_customer_id,
+            customer: customerId,
             limit: 10,
           });
 
@@ -172,8 +221,10 @@ Deno.serve(async (req) => {
           } else {
             console.log("[SyncSubscription] ℹ️ No subscriptions found in Stripe for this customer");
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("[SyncSubscription] ⚠️ Error checking Stripe subscriptions:", error);
+          console.error("[SyncSubscription] ⚠️ Error message:", error.message);
+          console.error("[SyncSubscription] ⚠️ Error type:", error.type);
         }
       }
 
@@ -190,9 +241,47 @@ Deno.serve(async (req) => {
     console.log("[SyncSubscription] 📊 Found subscription:", subData.stripe_subscription_id);
 
     // Fetch latest subscription data from Stripe
-    const stripeSubscription = await stripe.subscriptions.retrieve(subData.stripe_subscription_id);
-    
-    console.log("[SyncSubscription] 💳 Stripe subscription status:", stripeSubscription.status);
+    let stripeSubscription;
+    try {
+      stripeSubscription = await stripe.subscriptions.retrieve(subData.stripe_subscription_id);
+      console.log("[SyncSubscription] 💳 Stripe subscription status:", stripeSubscription.status);
+    } catch (stripeError: any) {
+      console.error("[SyncSubscription] ❌ Error retrieving subscription from Stripe:", stripeError.message);
+      console.error("[SyncSubscription] ❌ Error type:", stripeError.type);
+      console.error("[SyncSubscription] ❌ Error code:", stripeError.code);
+      
+      // If subscription not found in Stripe, mark as inactive
+      if (stripeError.code === 'resource_missing') {
+        console.log("[SyncSubscription] 🔧 Subscription not found in Stripe, marking as inactive");
+        
+        await supabase
+          .from("subscriptions")
+          .update({
+            status: 'canceled',
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id);
+        
+        await supabase
+          .from("users")
+          .update({
+            user_type: 'free',
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id);
+        
+        return new Response(
+          JSON.stringify({ 
+            message: "Subscription not found in Stripe, marked as canceled",
+            subscription: null,
+            isPremium: false
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      throw stripeError;
+    }
 
     // Determine plan type
     const priceId = stripeSubscription.items.data[0].price.id;
@@ -277,13 +366,17 @@ Deno.serve(async (req) => {
     );
   } catch (error: any) {
     console.error("[SyncSubscription] ❌ Error:", error);
-    console.error("[SyncSubscription] Error message:", error.message);
-    console.error("[SyncSubscription] Error stack:", error.stack);
+    console.error("[SyncSubscription] ❌ Error message:", error.message);
+    console.error("[SyncSubscription] ❌ Error stack:", error.stack);
+    console.error("[SyncSubscription] ❌ Error type:", error.type);
+    console.error("[SyncSubscription] ❌ Error code:", error.code);
     
     return new Response(
       JSON.stringify({
         error: error.message || "Internal server error",
         details: error.toString(),
+        error_type: error.type,
+        error_code: error.code,
       }),
       {
         status: 500,

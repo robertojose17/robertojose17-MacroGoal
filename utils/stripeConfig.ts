@@ -13,11 +13,11 @@
 // LIVE MODE CONFIGURATION
 // ============================================
 // Replace these with your LIVE Stripe keys
-export const STRIPE_PUBLISHABLE_KEY = 'pk_live_YOUR_LIVE_PUBLISHABLE_KEY'; // TODO: Replace with live key
+export const STRIPE_PUBLISHABLE_KEY = 'pk_live_51SZK7g7srrOKlxJ1UOLSMuXKrzygctxiHiTnEzuH5AqcU2WNEjxuhLochFQqUWSmVBDWlhbmQIR9q95YXZiB9keG00tqZCYrJn'; // TODO: Replace with live key
 
 export const PRICE_IDS = {
-  monthly: 'price_YOUR_LIVE_MONTHLY_PRICE_ID', // TODO: Replace with live monthly price ID
-  annual: 'price_YOUR_LIVE_ANNUAL_PRICE_ID',   // TODO: Replace with live annual price ID (if applicable)
+  monthly: 'price_1SjTCm7srrOKlxJ1lI1gsjwN', // TODO: Replace with live monthly price ID
+  annual: 'price_1SjTM17srrOKlxJ14i5bhDTx',   // TODO: Replace with live annual price ID (if applicable)
 };
 
 // ============================================

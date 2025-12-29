@@ -26,10 +26,10 @@
 
 **What to copy:**
 ```
-✅ price_1QqPxSDsUf4JA97FZvN8Ks3M  (Monthly)
-✅ price_1QqPySDsUf4JA97FXvM9Kt4N  (Yearly)
+✅  (Monthly)
+✅  (Yearly)
 
-❌ prod_TWVql2YFPhAszU  (This is wrong!)
+❌   (This is wrong!)
 ```
 
 ---
@@ -43,14 +43,14 @@
 
 **Before:**
 ```typescript
-MONTHLY_PRICE_ID: 'prod_TWVql2YFPhAszU',  // ❌ Wrong
-YEARLY_PRICE_ID: 'prod_TWVpf5UQoEF0jw',   // ❌ Wrong
+MONTHLY_PRICE_ID: '',  // ❌ Wrong
+YEARLY_PRICE_ID: '',   // ❌ Wrong
 ```
 
 **After:**
 ```typescript
-MONTHLY_PRICE_ID: 'price_1QqPxSDsUf4JA97FZvN8Ks3M',  // ✅ Correct
-YEARLY_PRICE_ID: 'price_1QqPySDsUf4JA97FXvM9Kt4N',   // ✅ Correct
+MONTHLY_PRICE_ID: '',  // ✅ Correct
+YEARLY_PRICE_ID: '',   // ✅ Correct
 ```
 
 ---
