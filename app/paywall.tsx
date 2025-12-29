@@ -86,6 +86,13 @@ export default function PaywallScreen() {
       await createCheckoutSession(priceId, selectedPlan);
 
       console.log('[Paywall] ✅ Checkout session created successfully');
+      console.log('[Paywall] 🔄 User returned from checkout, navigating back...');
+      
+      // CRITICAL FIX: After checkout completes (user returns), navigate back
+      // The subscription sync happens in useSubscription hook and _layout.tsx
+      // Just close the paywall and let the app refresh
+      router.back();
+      
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (error: any) {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
