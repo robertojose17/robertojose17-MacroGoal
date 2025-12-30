@@ -16,6 +16,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/hooks/useSubscription';
+import { router } from 'expo-router';
 import { STRIPE_CONFIG } from '@/utils/stripeConfig';
 import { logStripeConfig, logSubscriptionAttempt, validateStripeConfig } from '@/utils/stripeDebug';
 
@@ -23,7 +24,7 @@ export default function PaywallScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { createCheckoutSession, loading: subscriptionLoading } = useSubscription();
+  const { createCheckoutSession, syncSubscription, loading: subscriptionLoading } = useSubscription();
 
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -132,13 +133,35 @@ export default function PaywallScreen() {
     }
   };
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     console.log('[Paywall] ℹ️ Restore subscription button pressed');
-    Alert.alert(
-      'Restore Subscription',
-      'If you already have an active subscription, it will be automatically detected when you log in. Please make sure you are logged in with the same account you used to subscribe.',
-      [{ text: 'OK' }]
-    );
+    
+    try {
+      setCheckoutLoading(true);
+      
+      // Sync subscription to check for existing subscription
+      await syncSubscription();
+      
+      Alert.alert(
+        'Subscription Check',
+        'If you have an active subscription, it will be detected automatically. Please wait a moment...',
+        [{ text: 'OK' }]
+      );
+      
+      // Navigate back to let the app refresh
+      setTimeout(() => {
+        router.back();
+      }, 1000);
+    } catch (error) {
+      console.error('[Paywall] Error restoring subscription:', error);
+      Alert.alert(
+        'Restore Failed',
+        'Could not check subscription status. Please try again or contact support.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   const isLoading = subscriptionLoading || checkoutLoading;

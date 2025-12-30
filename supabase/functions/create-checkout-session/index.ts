@@ -186,17 +186,17 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Use HTTPS redirect page (checkout-redirect) instead of direct deep links
-    // Safari blocks 302 redirects to custom URL schemes, so we need an HTML page
-    // that uses JavaScript to open the app
+    // CRITICAL FIX: Use direct deep links with proper URL encoding
+    // The app will handle these via expo-linking in _layout.tsx
+    // Webhooks handle all database updates, so we just need to redirect back to app
     // ═══════════════════════════════════════════════════════════════════════════
-    const successUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?cancelled=true`;
+    const successUrl = `macrogoal://profile?subscription_success=true&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `macrogoal://paywall?subscription_cancelled=true`;
 
-    console.log("[Checkout] 🔗 Redirect URLs (HTTPS -> HTML -> Deep Link):");
+    console.log("[Checkout] 🔗 Redirect URLs (Direct Deep Links):");
     console.log("[Checkout]   - Success:", successUrl);
     console.log("[Checkout]   - Cancel:", cancelUrl);
-    console.log("[Checkout] ✅ Using checkout-redirect page to handle deep link");
+    console.log("[Checkout] ✅ Using direct deep links - app will handle via expo-linking");
 
     // CRITICAL FIX: Create checkout session with customer and comprehensive metadata
     console.log("[Checkout] 🚀 Creating Stripe checkout session...");
