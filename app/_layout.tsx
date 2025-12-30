@@ -154,17 +154,17 @@ export default function RootLayout() {
         // Show immediate feedback
         Alert.alert(
           '✅ Payment Successful!',
-          'Processing your subscription... This will take just a moment.',
+          'Your payment has been processed. We\'re activating your premium features now...',
           [{ text: 'OK' }]
         );
         
         // Navigate to profile immediately
         router.replace('/(tabs)/profile');
         
-        // Sync subscription in background with retries
+        // Sync subscription in background with aggressive retries
         console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
         
-        const syncWithRetries = async (maxRetries = 10, delayMs = 2000) => {
+        const syncWithRetries = async (maxRetries = 15, delayMs = 2000) => {
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
               console.log(`[DeepLink] 🔄 Sync attempt ${attempt}/${maxRetries}`);
@@ -221,8 +221,8 @@ export default function RootLayout() {
           // If we get here, all retries failed
           console.log('[DeepLink] ⚠️ Premium status not confirmed after all retries');
           Alert.alert(
-            'Processing...',
-            'Your payment is being processed. Premium features will be unlocked shortly. If this takes more than a few minutes, please contact support.',
+            'Almost There!',
+            'Your payment was successful, but premium activation is taking longer than expected. Please wait a few minutes and check your subscription status in your profile. If the issue persists, contact support.',
             [{ text: 'OK' }]
           );
         };
