@@ -149,15 +149,18 @@ export default function RootLayout() {
       if (queryParams?.subscription_success === 'true') {
         console.log('[DeepLink] ✅ Checkout success detected!');
         console.log('[DeepLink] Session ID:', queryParams.session_id);
+        console.log('[DeepLink] Premium activated:', queryParams.premium_activated);
         
-        // Wait a moment for webhook to process
+        const premiumActivated = queryParams.premium_activated === 'true';
+        
+        // Wait a moment for any remaining processing
         setTimeout(async () => {
           console.log('[DeepLink] Syncing subscription after checkout...');
           
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-              // Call sync-subscription Edge Function
+              // Call sync-subscription Edge Function to ensure everything is up to date
               const { data, error } = await supabase.functions.invoke('sync-subscription', {
                 headers: {
                   Authorization: `Bearer ${session.access_token}`,
@@ -178,18 +181,42 @@ export default function RootLayout() {
           router.replace('/(tabs)/profile');
           
           // Show success message
-          Alert.alert(
-            '🎉 Welcome to Premium!',
-            'Your subscription is now active. Enjoy unlimited AI-powered meal estimates!',
-            [{ text: 'OK' }]
-          );
-        }, 2000);
+          if (premiumActivated) {
+            Alert.alert(
+              '🎉 Welcome to Premium!',
+              'Your subscription is now active. Enjoy unlimited AI-powered meal estimates and all premium features!',
+              [{ text: 'Awesome!' }]
+            );
+          } else {
+            Alert.alert(
+              '✅ Payment Successful',
+              'Your payment has been processed. Premium features will be unlocked shortly.',
+              [{ text: 'OK' }]
+            );
+          }
+        }, 1000);
       }
 
       // Handle checkout cancel
       if (queryParams?.subscription_cancelled === 'true') {
         console.log('[DeepLink] ❌ Checkout cancelled');
         router.replace('/paywall');
+        Alert.alert(
+          'Checkout Cancelled',
+          'You can subscribe anytime to unlock premium features.',
+          [{ text: 'OK' }]
+        );
+      }
+
+      // Handle subscription error
+      if (queryParams?.subscription_error === 'true') {
+        console.log('[DeepLink] ⚠️ Subscription error detected');
+        router.replace('/(tabs)/profile');
+        Alert.alert(
+          'Processing Issue',
+          'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
       console.error('[DeepLink] Error handling deep link:', error);
