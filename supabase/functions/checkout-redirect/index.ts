@@ -244,8 +244,8 @@ Deno.serve(async (req) => {
 
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    // Build deep link URL
-    let deepLinkUrl = "elitemacrotracker://";
+    // Build deep link URL - FIXED: Use correct app scheme "macrogoal"
+    let deepLinkUrl = "macrogoal://";
     
     if (success === "true") {
       console.log("[CheckoutRedirect] ✅ Redirecting to app with success...");
@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Redirecting...</title>
+          <title>${success === "true" ? "Payment Successful" : cancelled === "true" ? "Checkout Cancelled" : "Redirecting"}</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -288,15 +288,22 @@ Deno.serve(async (req) => {
             .icon {
               font-size: 64px;
               margin-bottom: 20px;
+              animation: bounce 1s ease-in-out infinite;
+            }
+            @keyframes bounce {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-10px); }
             }
             h1 {
-              font-size: 24px;
+              font-size: 28px;
               margin-bottom: 10px;
+              font-weight: 600;
             }
             p {
               font-size: 16px;
               opacity: 0.9;
               margin-bottom: 30px;
+              line-height: 1.5;
             }
             .spinner {
               border: 3px solid rgba(255, 255, 255, 0.3);
@@ -316,9 +323,21 @@ Deno.serve(async (req) => {
               font-size: 14px;
               opacity: 0.8;
             }
-            .fallback a {
+            .fallback-button {
+              display: inline-block;
+              margin-top: 15px;
+              padding: 12px 24px;
+              background: rgba(255, 255, 255, 0.2);
+              border: 2px solid white;
+              border-radius: 8px;
               color: white;
-              text-decoration: underline;
+              text-decoration: none;
+              font-weight: 600;
+              transition: all 0.3s ease;
+            }
+            .fallback-button:hover {
+              background: rgba(255, 255, 255, 0.3);
+              transform: scale(1.05);
             }
             .success-badge {
               background: rgba(34, 197, 94, 0.2);
@@ -327,6 +346,7 @@ Deno.serve(async (req) => {
               padding: 12px 20px;
               margin-top: 20px;
               font-weight: 600;
+              display: inline-block;
             }
           </style>
         </head>
@@ -334,23 +354,30 @@ Deno.serve(async (req) => {
           <div class="container">
             <div class="icon">${success === "true" ? "🎉" : cancelled === "true" ? "❌" : "🔄"}</div>
             <h1>${success === "true" ? "Payment Successful!" : cancelled === "true" ? "Checkout Cancelled" : "Redirecting..."}</h1>
-            <p>${success === "true" ? (premiumActivated ? "Premium activated! Returning to the app..." : "Processing payment... Returning to the app...") : cancelled === "true" ? "Returning to the app..." : "Please wait..."}</p>
+            <p>${success === "true" ? "Returning to Macro Goal..." : cancelled === "true" ? "Returning to the app..." : "Please wait..."}</p>
             ${premiumActivated ? '<div class="success-badge">✅ Premium Unlocked</div>' : ''}
             <div class="spinner"></div>
             <div class="fallback">
-              <p>If you&apos;re not redirected automatically, <a href="${deepLinkUrl}">click here</a></p>
+              <p>Not redirected automatically?</p>
+              <a href="${deepLinkUrl}" class="fallback-button">Open Macro Goal</a>
             </div>
           </div>
           <script>
-            // Attempt to redirect to the app
+            // Attempt to redirect to the app immediately
             console.log('Redirecting to:', '${deepLinkUrl}');
+            
+            // Trigger deep link
             window.location.href = "${deepLinkUrl}";
             
-            // Fallback: close the window after a delay
+            // Attempt to close the window after a delay
             setTimeout(function() {
               console.log('Attempting to close window...');
-              window.close();
-            }, 3000);
+              try {
+                window.close();
+              } catch (e) {
+                console.log('Could not close window:', e);
+              }
+            }, 2000);
           </script>
         </body>
       </html>
@@ -373,7 +400,7 @@ Deno.serve(async (req) => {
     console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     // Even on error, redirect to app with error flag
-    const deepLinkUrl = "elitemacrotracker://profile?subscription_error=true";
+    const deepLinkUrl = "macrogoal://profile?subscription_error=true";
     
     const html = `
       <!DOCTYPE html>
@@ -381,7 +408,7 @@ Deno.serve(async (req) => {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Error</title>
+          <title>Processing Error</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -406,15 +433,29 @@ Deno.serve(async (req) => {
             h1 {
               font-size: 24px;
               margin-bottom: 10px;
+              font-weight: 600;
             }
             p {
               font-size: 16px;
               opacity: 0.9;
               margin-bottom: 30px;
+              line-height: 1.5;
             }
-            .fallback a {
+            .fallback-button {
+              display: inline-block;
+              margin-top: 15px;
+              padding: 12px 24px;
+              background: rgba(255, 255, 255, 0.2);
+              border: 2px solid white;
+              border-radius: 8px;
               color: white;
-              text-decoration: underline;
+              text-decoration: none;
+              font-weight: 600;
+              transition: all 0.3s ease;
+            }
+            .fallback-button:hover {
+              background: rgba(255, 255, 255, 0.3);
+              transform: scale(1.05);
             }
           </style>
         </head>
@@ -423,14 +464,20 @@ Deno.serve(async (req) => {
             <div class="icon">⚠️</div>
             <h1>Processing Error</h1>
             <p>There was an issue processing your payment. Please check your subscription status in the app.</p>
-            <div class="fallback">
-              <p><a href="${deepLinkUrl}">Return to app</a></p>
-            </div>
+            <a href="${deepLinkUrl}" class="fallback-button">Return to Macro Goal</a>
           </div>
           <script>
             setTimeout(function() {
               window.location.href = "${deepLinkUrl}";
             }, 2000);
+            
+            setTimeout(function() {
+              try {
+                window.close();
+              } catch (e) {
+                console.log('Could not close window:', e);
+              }
+            }, 3000);
           </script>
         </body>
       </html>
