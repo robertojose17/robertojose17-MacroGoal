@@ -261,15 +261,142 @@ Deno.serve(async (req) => {
     }
 
     console.log("[CheckoutRedirect] 🔗 Deep link URL:", deepLinkUrl);
-    console.log("[CheckoutRedirect] 🔄 Returning 302 redirect (NO HTML PAGE)");
+    console.log("[CheckoutRedirect] 📄 Returning HTML page with auto-redirect");
 
-    // CRITICAL FIX: Return 302 redirect instead of HTML page
-    // This prevents raw HTML/CSS/JS from being displayed in the webview
-    return new Response(null, {
-      status: 302,
+    // CRITICAL FIX: Return HTML page that auto-opens the app
+    // Safari blocks 302 redirects to custom URL schemes, so we use JavaScript instead
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecting...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(135deg, #0F4C81 0%, #1a5f9e 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+    .button {
+      display: inline-block;
+      background: white;
+      color: #0F4C81;
+      padding: 16px 32px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+    .button:active {
+      transform: translateY(0);
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">${success === "true" ? "✅" : cancelled === "true" ? "❌" : "🔄"}</div>
+    <h1>${success === "true" ? "Payment Successful!" : cancelled === "true" ? "Checkout Cancelled" : "Processing..."}</h1>
+    <p id="message">
+      ${success === "true" 
+        ? premiumActivated 
+          ? "Your premium subscription is now active! Opening the app..." 
+          : "Payment processed successfully. Opening the app..."
+        : cancelled === "true"
+          ? "You can subscribe anytime. Opening the app..."
+          : "Redirecting you back to the app..."}
+    </p>
+    <div style="margin-bottom: 24px;">
+      <span class="spinner"></span>
+      <span style="opacity: 0.8;">Redirecting...</span>
+    </div>
+    <a href="${deepLinkUrl}" class="button" id="openButton">Open App Manually</a>
+  </div>
+
+  <script>
+    // Attempt to open the app immediately
+    console.log('[CheckoutRedirect] Attempting to open app:', '${deepLinkUrl}');
+    
+    // Try to open the app
+    window.location.href = '${deepLinkUrl}';
+    
+    // Fallback: If the app doesn't open within 2 seconds, show the manual button more prominently
+    setTimeout(function() {
+      document.getElementById('message').textContent = 'If the app doesn\\'t open automatically, tap the button below:';
+      document.getElementById('openButton').style.animation = 'pulse 2s ease-in-out infinite';
+    }, 2000);
+    
+    // Make the button work
+    document.getElementById('openButton').addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('[CheckoutRedirect] Manual button clicked');
+      window.location.href = '${deepLinkUrl}';
+    });
+  </script>
+</body>
+</html>
+    `;
+
+    return new Response(html, {
+      status: 200,
       headers: {
         ...corsHeaders,
-        "Location": deepLinkUrl,
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
 
@@ -282,17 +409,100 @@ Deno.serve(async (req) => {
     console.error("[CheckoutRedirect] Error stack:", error.stack);
     console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
-    // Even on error, redirect to app with error flag using 302
+    // Even on error, redirect to app with error flag using HTML page
     const deepLinkUrl = "macrogoal://profile?subscription_error=true";
     
     console.log("[CheckoutRedirect] 🔗 Error redirect URL:", deepLinkUrl);
-    console.log("[CheckoutRedirect] 🔄 Returning 302 redirect (NO HTML PAGE)");
+    console.log("[CheckoutRedirect] 📄 Returning HTML error page");
     
-    return new Response(null, {
-      status: 302,
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(135deg, #0F4C81 0%, #1a5f9e 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+    .button {
+      display: inline-block;
+      background: white;
+      color: #0F4C81;
+      padding: 16px 32px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">⚠️</div>
+    <h1>Processing Issue</h1>
+    <p>There was an issue processing your payment. Opening the app to check your subscription status...</p>
+    <a href="${deepLinkUrl}" class="button" id="openButton">Open App</a>
+  </div>
+
+  <script>
+    // Attempt to open the app immediately
+    window.location.href = '${deepLinkUrl}';
+    
+    // Make the button work
+    document.getElementById('openButton').addEventListener('click', function(e) {
+      e.preventDefault();
+      window.location.href = '${deepLinkUrl}';
+    });
+  </script>
+</body>
+</html>
+    `;
+    
+    return new Response(html, {
+      status: 200,
       headers: {
         ...corsHeaders,
-        "Location": deepLinkUrl,
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
   }

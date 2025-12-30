@@ -186,16 +186,17 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Use DIRECT DEEP LINKS instead of checkout-redirect page
-    // This eliminates the intermediate redirect page entirely
+    // CRITICAL FIX: Use HTTPS redirect page (checkout-redirect) instead of direct deep links
+    // Safari blocks 302 redirects to custom URL schemes, so we need an HTML page
+    // that uses JavaScript to open the app
     // ═══════════════════════════════════════════════════════════════════════════
-    const successUrl = "macrogoal://profile?subscription_success=true";
-    const cancelUrl = "macrogoal://paywall?subscription_cancelled=true";
+    const successUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?cancelled=true`;
 
-    console.log("[Checkout] 🔗 Redirect URLs (DIRECT DEEP LINKS):");
+    console.log("[Checkout] 🔗 Redirect URLs (HTTPS -> HTML -> Deep Link):");
     console.log("[Checkout]   - Success:", successUrl);
     console.log("[Checkout]   - Cancel:", cancelUrl);
-    console.log("[Checkout] ✅ NO INTERMEDIATE REDIRECT PAGE - Direct to app!");
+    console.log("[Checkout] ✅ Using checkout-redirect page to handle deep link");
 
     // CRITICAL FIX: Create checkout session with customer and comprehensive metadata
     console.log("[Checkout] 🚀 Creating Stripe checkout session...");
