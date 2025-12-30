@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Macro Goal",
@@ -29,6 +30,21 @@
       "package": "com.elitemacrotracker.app",
       "permissions": [
         "android.permission.RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "macrogoal"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
@@ -60,6 +76,5 @@
       "router": {},
       "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW"
     }
-  },
-  "scheme": "Macro Goal"
+  }
 }
