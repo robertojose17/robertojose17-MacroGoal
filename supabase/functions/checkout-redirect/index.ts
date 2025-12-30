@@ -48,6 +48,8 @@ console.log("[CheckoutRedirect] Using project URL:", CORRECT_PROJECT_URL);
  * CRITICAL: This function is PUBLIC and does NOT require authentication
  * It's called by Stripe after checkout, which happens in a browser/webview
  * Browser redirects NEVER include Authorization headers
+ * 
+ * NEW: Returns 302 redirect instead of HTML to avoid raw code display
  */
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -259,137 +261,18 @@ Deno.serve(async (req) => {
     }
 
     console.log("[CheckoutRedirect] 🔗 Deep link URL:", deepLinkUrl);
+    console.log("[CheckoutRedirect] 🔄 Returning 302 redirect (NO HTML PAGE)");
 
-    // Return HTML that redirects to the deep link
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>${success === "true" ? "Payment Successful" : cancelled === "true" ? "Checkout Cancelled" : "Redirecting"}</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #0F4C81 0%, #1e3a8a 100%);
-              color: white;
-              text-align: center;
-              padding: 20px;
-            }
-            .container {
-              max-width: 400px;
-            }
-            .icon {
-              font-size: 64px;
-              margin-bottom: 20px;
-              animation: bounce 1s ease-in-out infinite;
-            }
-            @keyframes bounce {
-              0%, 100% { transform: translateY(0); }
-              50% { transform: translateY(-10px); }
-            }
-            h1 {
-              font-size: 28px;
-              margin-bottom: 10px;
-              font-weight: 600;
-            }
-            p {
-              font-size: 16px;
-              opacity: 0.9;
-              margin-bottom: 30px;
-              line-height: 1.5;
-            }
-            .spinner {
-              border: 3px solid rgba(255, 255, 255, 0.3);
-              border-top: 3px solid white;
-              border-radius: 50%;
-              width: 40px;
-              height: 40px;
-              animation: spin 1s linear infinite;
-              margin: 0 auto;
-            }
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-            .fallback {
-              margin-top: 30px;
-              font-size: 14px;
-              opacity: 0.8;
-            }
-            .fallback-button {
-              display: inline-block;
-              margin-top: 15px;
-              padding: 12px 24px;
-              background: rgba(255, 255, 255, 0.2);
-              border: 2px solid white;
-              border-radius: 8px;
-              color: white;
-              text-decoration: none;
-              font-weight: 600;
-              transition: all 0.3s ease;
-            }
-            .fallback-button:hover {
-              background: rgba(255, 255, 255, 0.3);
-              transform: scale(1.05);
-            }
-            .success-badge {
-              background: rgba(34, 197, 94, 0.2);
-              border: 2px solid #22c55e;
-              border-radius: 12px;
-              padding: 12px 20px;
-              margin-top: 20px;
-              font-weight: 600;
-              display: inline-block;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="icon">${success === "true" ? "🎉" : cancelled === "true" ? "❌" : "🔄"}</div>
-            <h1>${success === "true" ? "Payment Successful!" : cancelled === "true" ? "Checkout Cancelled" : "Redirecting..."}</h1>
-            <p>${success === "true" ? "Returning to Macro Goal..." : cancelled === "true" ? "Returning to the app..." : "Please wait..."}</p>
-            ${premiumActivated ? '<div class="success-badge">✅ Premium Unlocked</div>' : ''}
-            <div class="spinner"></div>
-            <div class="fallback">
-              <p>Not redirected automatically?</p>
-              <a href="${deepLinkUrl}" class="fallback-button">Open Macro Goal</a>
-            </div>
-          </div>
-          <script>
-            // Attempt to redirect to the app immediately
-            console.log('Redirecting to:', '${deepLinkUrl}');
-            
-            // Trigger deep link
-            window.location.href = "${deepLinkUrl}";
-            
-            // Attempt to close the window after a delay
-            setTimeout(function() {
-              console.log('Attempting to close window...');
-              try {
-                window.close();
-              } catch (e) {
-                console.log('Could not close window:', e);
-              }
-            }, 2000);
-          </script>
-        </body>
-      </html>
-    `;
-
-    return new Response(html, {
-      status: 200,
+    // CRITICAL FIX: Return 302 redirect instead of HTML page
+    // This prevents raw HTML/CSS/JS from being displayed in the webview
+    return new Response(null, {
+      status: 302,
       headers: {
         ...corsHeaders,
-        "Content-Type": "text/html; charset=utf-8",
+        "Location": deepLinkUrl,
       },
     });
+
   } catch (error: any) {
     console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.error("[CheckoutRedirect] ❌ CRITICAL ERROR");
@@ -399,95 +282,17 @@ Deno.serve(async (req) => {
     console.error("[CheckoutRedirect] Error stack:", error.stack);
     console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
-    // Even on error, redirect to app with error flag
+    // Even on error, redirect to app with error flag using 302
     const deepLinkUrl = "macrogoal://profile?subscription_error=true";
     
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Processing Error</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #0F4C81 0%, #1e3a8a 100%);
-              color: white;
-              text-align: center;
-              padding: 20px;
-            }
-            .container {
-              max-width: 400px;
-            }
-            .icon {
-              font-size: 64px;
-              margin-bottom: 20px;
-            }
-            h1 {
-              font-size: 24px;
-              margin-bottom: 10px;
-              font-weight: 600;
-            }
-            p {
-              font-size: 16px;
-              opacity: 0.9;
-              margin-bottom: 30px;
-              line-height: 1.5;
-            }
-            .fallback-button {
-              display: inline-block;
-              margin-top: 15px;
-              padding: 12px 24px;
-              background: rgba(255, 255, 255, 0.2);
-              border: 2px solid white;
-              border-radius: 8px;
-              color: white;
-              text-decoration: none;
-              font-weight: 600;
-              transition: all 0.3s ease;
-            }
-            .fallback-button:hover {
-              background: rgba(255, 255, 255, 0.3);
-              transform: scale(1.05);
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="icon">⚠️</div>
-            <h1>Processing Error</h1>
-            <p>There was an issue processing your payment. Please check your subscription status in the app.</p>
-            <a href="${deepLinkUrl}" class="fallback-button">Return to Macro Goal</a>
-          </div>
-          <script>
-            setTimeout(function() {
-              window.location.href = "${deepLinkUrl}";
-            }, 2000);
-            
-            setTimeout(function() {
-              try {
-                window.close();
-              } catch (e) {
-                console.log('Could not close window:', e);
-              }
-            }, 3000);
-          </script>
-        </body>
-      </html>
-    `;
+    console.log("[CheckoutRedirect] 🔗 Error redirect URL:", deepLinkUrl);
+    console.log("[CheckoutRedirect] 🔄 Returning 302 redirect (NO HTML PAGE)");
     
-    return new Response(html, {
-      status: 200,
+    return new Response(null, {
+      status: 302,
       headers: {
         ...corsHeaders,
-        "Content-Type": "text/html; charset=utf-8",
+        "Location": deepLinkUrl,
       },
     });
   }
