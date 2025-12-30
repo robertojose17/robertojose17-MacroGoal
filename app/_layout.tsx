@@ -115,21 +115,23 @@ export default function RootLayout() {
     }
   };
 
-  // Handle deep links for Stripe checkout success/cancel
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Enhanced deep link handling for iOS Stripe checkout redirect
+  // ═══════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    console.log('[DeepLink] Setting up deep link listener');
+    console.log('[DeepLink] 🔗 Setting up deep link listener for iOS Stripe redirect');
 
     // Handle initial URL (app opened via deep link)
     Linking.getInitialURL().then((url) => {
       if (url) {
-        console.log('[DeepLink] Initial URL:', url);
+        console.log('[DeepLink] 📱 Initial URL detected:', url);
         handleDeepLink(url);
       }
     });
 
     // Handle deep links while app is running
     const subscription = Linking.addEventListener('url', (event) => {
-      console.log('[DeepLink] Received URL:', event.url);
+      console.log('[DeepLink] 📱 Deep link received:', event.url);
       handleDeepLink(event.url);
     });
 
@@ -141,41 +143,50 @@ export default function RootLayout() {
   const handleDeepLink = async (url: string) => {
     try {
       console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[DeepLink] Processing URL:', url);
+      console.log('[DeepLink] 🔍 Processing deep link URL:', url);
       
       const { hostname, path, queryParams } = Linking.parse(url);
-      console.log('[DeepLink] Parsed:', { hostname, path, queryParams });
+      console.log('[DeepLink] 📊 Parsed components:', { hostname, path, queryParams });
 
-      // Handle checkout success
-      if (queryParams?.subscription_success === 'true') {
-        console.log('[DeepLink] ✅ Checkout success detected!');
-        console.log('[DeepLink] Session ID:', queryParams.session_id);
+      // ═══════════════════════════════════════════════════════════════════════
+      // HANDLE CHECKOUT SUCCESS
+      // ═══════════════════════════════════════════════════════════════════════
+      if (queryParams?.payment_success === 'true') {
+        console.log('[DeepLink] ✅ CHECKOUT SUCCESS DETECTED!');
+        console.log('[DeepLink] 📋 Session ID:', queryParams.session_id);
         
-        // Show immediate feedback
+        // Show immediate feedback to user
         Alert.alert(
           '✅ Payment Successful!',
           'Your payment has been processed. We\'re activating your premium features now...',
           [{ text: 'OK' }]
         );
         
-        // Navigate to profile immediately
+        // Navigate to profile immediately (don't wait for sync)
+        console.log('[DeepLink] 🚀 Navigating to profile...');
         router.replace('/(tabs)/profile');
         
-        // Sync subscription in background with aggressive retries
-        console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
+        // ═══════════════════════════════════════════════════════════════════
+        // CRITICAL: Aggressive retry logic to sync subscription status
+        // Webhooks should have already updated the database, but we need to
+        // handle race conditions where the webhook hasn't fired yet
+        // ═══════════════════════════════════════════════════════════════════
+        console.log('[DeepLink] 🔄 Starting aggressive subscription sync with retries...');
         
-        const syncWithRetries = async (maxRetries = 15, delayMs = 2000) => {
+        const syncWithRetries = async (maxRetries = 20, delayMs = 2000) => {
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
               console.log(`[DeepLink] 🔄 Sync attempt ${attempt}/${maxRetries}`);
               
+              // Get current session
               const { data: { session } } = await supabase.auth.getSession();
               if (!session) {
-                console.error('[DeepLink] ❌ No session found');
+                console.error('[DeepLink] ❌ No session found, cannot sync');
                 break;
               }
 
               // Call sync-subscription Edge Function
+              console.log('[DeepLink] 📡 Calling sync-subscription Edge Function...');
               const { data, error } = await supabase.functions.invoke('sync-subscription', {
                 headers: {
                   Authorization: `Bearer ${session.access_token}`,
@@ -189,14 +200,17 @@ export default function RootLayout() {
               }
 
               // Check if user is now premium
+              console.log('[DeepLink] 🔍 Checking user premium status...');
               const { data: userData } = await supabase
                 .from('users')
                 .select('user_type')
                 .eq('id', session.user.id)
                 .maybeSingle();
 
+              console.log('[DeepLink] 📊 User type:', userData?.user_type);
+
               if (userData?.user_type === 'premium') {
-                console.log('[DeepLink] 🎉 Premium status confirmed!');
+                console.log('[DeepLink] 🎉 PREMIUM STATUS CONFIRMED!');
                 
                 // Show success message
                 Alert.alert(
@@ -222,20 +236,22 @@ export default function RootLayout() {
           console.log('[DeepLink] ⚠️ Premium status not confirmed after all retries');
           Alert.alert(
             'Almost There!',
-            'Your payment was successful, but premium activation is taking longer than expected. Please wait a few minutes and check your subscription status in your profile. If the issue persists, contact support.',
+            'Your payment was successful, but premium activation is taking longer than expected. Please wait a few minutes and check your subscription status in your profile. If the issue persists, contact support with your payment confirmation.',
             [{ text: 'OK' }]
           );
         };
 
-        // Run sync in background
+        // Run sync in background (don't block UI)
         syncWithRetries().catch(error => {
           console.error('[DeepLink] ❌ Error in syncWithRetries:', error);
         });
       }
 
-      // Handle checkout cancel
-      else if (queryParams?.subscription_cancelled === 'true') {
-        console.log('[DeepLink] ❌ Checkout cancelled');
+      // ═══════════════════════════════════════════════════════════════════════
+      // HANDLE CHECKOUT CANCEL
+      // ═══════════════════════════════════════════════════════════════════════
+      else if (queryParams?.payment_cancelled === 'true') {
+        console.log('[DeepLink] ❌ Checkout cancelled by user');
         router.replace('/paywall');
         Alert.alert(
           'Checkout Cancelled',
@@ -244,7 +260,9 @@ export default function RootLayout() {
         );
       }
 
-      // Handle subscription error
+      // ═══════════════════════════════════════════════════════════════════════
+      // HANDLE SUBSCRIPTION ERROR
+      // ═══════════════════════════════════════════════════════════════════════
       else if (queryParams?.subscription_error === 'true') {
         console.log('[DeepLink] ⚠️ Subscription error detected');
         router.replace('/(tabs)/profile');
@@ -263,11 +281,11 @@ export default function RootLayout() {
 
   // Listen for app state changes to sync subscription when returning from background
   useEffect(() => {
-    console.log('[AppState] Setting up app state listener');
+    console.log('[AppState] 📱 Setting up app state listener');
     
     const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
-        console.log('[AppState] App became active, checking for subscription updates...');
+        console.log('[AppState] ✅ App became active, checking for subscription updates...');
         
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -280,13 +298,13 @@ export default function RootLayout() {
             });
 
             if (error) {
-              console.error('[AppState] Error syncing subscription:', error);
+              console.error('[AppState] ❌ Error syncing subscription:', error);
             } else {
               console.log('[AppState] ✅ Subscription synced:', data);
             }
           }
         } catch (error) {
-          console.error('[AppState] Error in sync:', error);
+          console.error('[AppState] ❌ Error in sync:', error);
         }
       }
     });
