@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -44,6 +44,9 @@ export interface UseSubscriptionReturn {
 export function useSubscription(): UseSubscriptionReturn {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Track if we're currently syncing to avoid duplicate syncs
+  const isSyncingRef = useRef(false);
 
   const fetchSubscription = useCallback(async () => {
     try {
@@ -88,6 +91,14 @@ export function useSubscription(): UseSubscriptionReturn {
   }, []);
 
   const syncSubscription = useCallback(async () => {
+    // Prevent duplicate syncs
+    if (isSyncingRef.current) {
+      console.log('[useSubscription] 🔄 Sync already in progress, skipping...');
+      return;
+    }
+
+    isSyncingRef.current = true;
+
     try {
       console.log('[useSubscription] 🔄 Syncing subscription with Stripe...');
       
@@ -112,6 +123,8 @@ export function useSubscription(): UseSubscriptionReturn {
       }
     } catch (error) {
       console.error('[useSubscription] ❌ Error in syncSubscription:', error);
+    } finally {
+      isSyncingRef.current = false;
     }
   }, [fetchSubscription]);
 
@@ -228,7 +241,11 @@ export function useSubscription(): UseSubscriptionReturn {
         console.log('[useSubscription] 🌐 Opening checkout URL:', data.url);
         console.log('[useSubscription] 🔗 URL length:', data.url.length);
         
-        // Open the Stripe checkout in the browser
+        // ═══════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Open Stripe checkout with proper iOS configuration
+        // The success_url in the checkout session contains a deep link that
+        // will automatically redirect back to the app after payment
+        // ═══════════════════════════════════════════════════════════════════
         const result = await WebBrowser.openBrowserAsync(data.url, {
           // Dismiss button style
           dismissButtonStyle: 'close',
@@ -238,43 +255,23 @@ export function useSubscription(): UseSubscriptionReturn {
           controlsColor: '#FFFFFF',
           // Show title
           showTitle: true,
+          // CRITICAL: Enable bar collapsing for better UX
+          enableBarCollapsing: false,
+          // CRITICAL: Show in-app browser (not external Safari)
+          presentationStyle: 'pageSheet',
         });
         
         console.log('[useSubscription] 📱 WebBrowser result:', result);
+        console.log('[useSubscription] ℹ️ After payment, iOS will redirect to app via deep link');
+        console.log('[useSubscription] ℹ️ Deep link handler in _layout.tsx will handle the rest');
         
-        // CRITICAL FIX: After the browser closes, sync subscription with multiple retries
-        // The webhook should have already updated the database if payment succeeded
-        console.log('[useSubscription] 🔄 Browser closed, syncing subscription with retries...');
-        
-        // Retry sync multiple times to ensure we catch the webhook update
-        const maxRetries = 5;
-        const retryDelay = 2000; // 2 seconds between retries
-        
-        for (let i = 0; i < maxRetries; i++) {
-          console.log(`[useSubscription] 🔄 Sync attempt ${i + 1}/${maxRetries}`);
-          
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-          await syncSubscription();
-          
-          // Check if subscription is now active
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('user_type')
-              .eq('id', user.id)
-              .maybeSingle();
-            
-            if (userData?.user_type === 'premium') {
-              console.log('[useSubscription] ✅ Premium status confirmed!');
-              break;
-            }
-          }
-          
-          if (i === maxRetries - 1) {
-            console.log('[useSubscription] ⚠️ Premium status not confirmed after all retries');
-          }
-        }
+        // ═══════════════════════════════════════════════════════════════════
+        // IMPORTANT: Do NOT sync here!
+        // The deep link handler in _layout.tsx will handle the sync with
+        // aggressive retry logic. This prevents duplicate syncs.
+        // ═══════════════════════════════════════════════════════════════════
+        console.log('[useSubscription] ✅ Checkout flow complete');
+        console.log('[useSubscription] ℹ️ Waiting for deep link to trigger subscription sync...');
       } else {
         console.error('[useSubscription] ❌ No checkout URL in response');
         console.error('[useSubscription] Response data:', JSON.stringify(data, null, 2));
@@ -292,7 +289,7 @@ export function useSubscription(): UseSubscriptionReturn {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       throw error;
     }
-  }, [syncSubscription]);
+  }, []);
 
   const openCustomerPortal = useCallback(async () => {
     try {
@@ -327,6 +324,8 @@ export function useSubscription(): UseSubscriptionReturn {
           toolbarColor: '#0F4C81',
           controlsColor: '#FFFFFF',
           showTitle: true,
+          enableBarCollapsing: false,
+          presentationStyle: 'pageSheet',
         });
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
