@@ -20,8 +20,8 @@ The Stripe subscription flow was failing because **PRODUCT IDs** were being used
 
 You provided these values:
 ```
-STRIPE_MONTHLY_PRICE_ID = 
-STRIPE_YEARLY_PRICE_ID = 
+STRIPE_MONTHLY_PRICE_ID = prod_TWVql2YFPhAszU
+STRIPE_YEARLY_PRICE_ID = prod_TWVpf5UQoEF0jw
 ```
 
 These are **PRODUCT IDs** (they start with `prod_`), but Stripe Checkout requires **PRICE IDs** (which start with `price_`).
@@ -99,8 +99,8 @@ The Edge Functions now:
 
 **Example:**
 ```
-Monthly: 
-Yearly: 
+Monthly: price_1QqPxSDsUf4JA97FZvN8Ks3M
+Yearly: price_1QqPySDsUf4JA97FXvM9Kt4N
 ```
 
 ### Step 2: Update Configuration

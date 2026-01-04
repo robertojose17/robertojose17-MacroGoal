@@ -5,8 +5,8 @@
 You provided **PRODUCT IDs** instead of **PRICE IDs**:
 
 ```
-❌  ← PRODUCT ID (wrong!)
-❌  ← PRODUCT ID (wrong!)
+❌ prod_TWVql2YFPhAszU  ← PRODUCT ID (wrong!)
+❌ prod_TWVpf5UQoEF0jw  ← PRODUCT ID (wrong!)
 ```
 
 ## The Solution

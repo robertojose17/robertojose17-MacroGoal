@@ -7,11 +7,19 @@ const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// CRITICAL FIX: Hardcode the correct project URL
+// CRITICAL FIX: Hardcode the correct project URL to avoid environment variable issues
 const CORRECT_PROJECT_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
 
 if (!STRIPE_SECRET_KEY) {
-  console.error("[Sync] ❌ STRIPE_SECRET_KEY not configured");
+  console.error("[SyncSubscription] ❌ STRIPE_SECRET_KEY not configured");
+}
+
+// Validate SUPABASE_URL and warn if incorrect
+if (SUPABASE_URL && !SUPABASE_URL.includes("esgptfiofoaeguslgvcq")) {
+  console.warn("[SyncSubscription] ⚠️ WARNING: SUPABASE_URL environment variable has incorrect project ref!");
+  console.warn("[SyncSubscription] ⚠️ Expected: https://esgptfiofoaeguslgvcq.supabase.co");
+  console.warn("[SyncSubscription] ⚠️ Got:", SUPABASE_URL);
+  console.warn("[SyncSubscription] ⚠️ Using hardcoded correct URL instead");
 }
 
 const stripe = new Stripe(STRIPE_SECRET_KEY!, {
@@ -28,8 +36,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-console.log("[Sync] ✅ Edge Function initialized");
-console.log("[Sync] Using project URL:", CORRECT_PROJECT_URL);
+console.log("[SyncSubscription] ✅ Edge Function initialized");
+console.log("[SyncSubscription] Using project URL:", CORRECT_PROJECT_URL);
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -38,12 +46,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log("[Sync] 📥 Syncing subscription...");
+    console.log("[SyncSubscription] 📥 Processing sync request...");
 
     // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      console.error("[Sync] ❌ No authorization header");
+      console.error("[SyncSubscription] ❌ No authorization header");
       return new Response(
         JSON.stringify({ error: "Unauthorized - No auth header" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -54,59 +62,57 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      console.error("[Sync] ❌ Auth error:", authError);
+      console.error("[SyncSubscription] ❌ Auth error:", authError);
       return new Response(
         JSON.stringify({ error: "Unauthorized - Invalid token" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("[Sync] ✅ User authenticated:", user.id);
+    console.log("[SyncSubscription] ✅ User authenticated:", user.id);
 
     // Get user's subscription from database
-    const { data: subscription, error: subError } = await supabase
+    const { data: subData, error: subError } = await supabase
       .from("subscriptions")
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (subError) {
-      console.error("[Sync] ❌ Error fetching subscription:", subError);
+      console.error("[SyncSubscription] ❌ Error fetching subscription:", subError);
       return new Response(
-        JSON.stringify({ error: "Error fetching subscription" }),
+        JSON.stringify({ error: "Failed to fetch subscription" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (!subscription || !subscription.stripe_subscription_id) {
-      console.log("[Sync] ℹ️ No active subscription found in database");
+    if (!subData || !subData.stripe_subscription_id) {
+      console.log("[SyncSubscription] ℹ️ No subscription found for user");
       
-      // Check if user has a customer ID
-      if (subscription?.stripe_customer_id) {
-        console.log("[Sync] 🔍 Checking Stripe for subscriptions...");
+      // CRITICAL: Check if user has a customer ID but no subscription
+      // This can happen if payment succeeded but webhook failed
+      if (subData?.stripe_customer_id) {
+        console.log("[SyncSubscription] 🔍 User has customer ID, checking Stripe for subscriptions...");
         
         try {
           // List all subscriptions for this customer
           const subscriptions = await stripe.subscriptions.list({
-            customer: subscription.stripe_customer_id,
+            customer: subData.stripe_customer_id,
             limit: 10,
           });
 
-          console.log("[Sync] 📊 Found", subscriptions.data.length, "subscriptions in Stripe");
-
-          // Find the first active or trialing subscription
-          const activeSubscription = subscriptions.data.find(
-            sub => sub.status === 'active' || sub.status === 'trialing'
-          );
-
-          if (activeSubscription) {
-            console.log("[Sync] ✅ Found active subscription in Stripe:", activeSubscription.id);
+          if (subscriptions.data.length > 0) {
+            console.log("[SyncSubscription] ✅ Found", subscriptions.data.length, "subscription(s) in Stripe");
             
-            // Update database with the subscription
-            const priceId = activeSubscription.items.data[0].price.id;
-            const status = activeSubscription.status;
-            const isPremium = status === 'active' || status === 'trialing';
+            // Get the most recent active or trialing subscription
+            const activeSubscription = subscriptions.data.find(
+              sub => sub.status === 'active' || sub.status === 'trialing'
+            ) || subscriptions.data[0];
 
+            console.log("[SyncSubscription] 💾 Syncing subscription from Stripe:", activeSubscription.id);
+
+            // Determine plan type
+            const priceId = activeSubscription.items.data[0].price.id;
             let planType = activeSubscription.metadata?.plan_type || 'monthly';
             if (!activeSubscription.metadata?.plan_type) {
               if (priceId.toLowerCase().includes('year') || priceId.toLowerCase().includes('annual')) {
@@ -114,12 +120,13 @@ Deno.serve(async (req) => {
               }
             }
 
+            // Update subscription in database
             const { error: updateError } = await supabase
               .from("subscriptions")
               .update({
                 stripe_subscription_id: activeSubscription.id,
                 stripe_price_id: priceId,
-                status: status,
+                status: activeSubscription.status,
                 plan_type: planType,
                 current_period_start: new Date(activeSubscription.current_period_start * 1000).toISOString(),
                 current_period_end: new Date(activeSubscription.current_period_end * 1000).toISOString(),
@@ -130,79 +137,67 @@ Deno.serve(async (req) => {
               .eq("user_id", user.id);
 
             if (updateError) {
-              console.error("[Sync] ❌ Error updating subscription:", updateError);
+              console.error("[SyncSubscription] ❌ Error updating subscription:", updateError);
             } else {
-              console.log("[Sync] ✅ Subscription updated in database");
+              console.log("[SyncSubscription] ✅ Subscription synced from Stripe");
+
+              // Update user_type
+              const isPremium = activeSubscription.status === 'active' || activeSubscription.status === 'trialing';
+              const newUserType = isPremium ? 'premium' : 'free';
+
+              await supabase
+                .from("users")
+                .update({
+                  user_type: newUserType,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", user.id);
+
+              // Fetch updated subscription
+              const { data: updatedSub } = await supabase
+                .from("subscriptions")
+                .select("*")
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+              return new Response(
+                JSON.stringify({ 
+                  message: "Subscription synced from Stripe successfully",
+                  subscription: updatedSub,
+                  isPremium: isPremium
+                }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
             }
-
-            // Update user_type
-            const newUserType = isPremium ? 'premium' : 'free';
-            const { error: userError } = await supabase
-              .from("users")
-              .update({
-                user_type: newUserType,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", user.id);
-
-            if (userError) {
-              console.error("[Sync] ❌ Error updating user_type:", userError);
-            } else {
-              console.log("[Sync] ✅ User type updated to:", newUserType);
-            }
-
-            return new Response(
-              JSON.stringify({
-                success: true,
-                subscription: {
-                  status: status,
-                  plan_type: planType,
-                  is_premium: isPremium,
-                },
-              }),
-              {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
-            );
           } else {
-            console.log("[Sync] ℹ️ No active subscriptions found in Stripe");
+            console.log("[SyncSubscription] ℹ️ No subscriptions found in Stripe for this customer");
           }
-        } catch (stripeError: any) {
-          console.error("[Sync] ❌ Error fetching from Stripe:", stripeError);
+        } catch (error) {
+          console.error("[SyncSubscription] ⚠️ Error checking Stripe subscriptions:", error);
         }
       }
 
       return new Response(
-        JSON.stringify({
-          success: true,
+        JSON.stringify({ 
+          message: "No subscription found",
           subscription: null,
-          message: "No active subscription found",
+          isPremium: false
         }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("[Sync] 🔍 Fetching subscription from Stripe:", subscription.stripe_subscription_id);
+    console.log("[SyncSubscription] 📊 Found subscription:", subData.stripe_subscription_id);
 
-    // Fetch the latest subscription data from Stripe
-    const stripeSubscription = await stripe.subscriptions.retrieve(
-      subscription.stripe_subscription_id
-    );
+    // Fetch latest subscription data from Stripe
+    const stripeSubscription = await stripe.subscriptions.retrieve(subData.stripe_subscription_id);
+    
+    console.log("[SyncSubscription] 💳 Stripe subscription status:", stripeSubscription.status);
 
-    console.log("[Sync] ✅ Stripe subscription retrieved");
-    console.log("[Sync]   - Status:", stripeSubscription.status);
-    console.log("[Sync]   - Current period end:", new Date(stripeSubscription.current_period_end * 1000).toISOString());
-
+    // Determine plan type
     const priceId = stripeSubscription.items.data[0].price.id;
-    const status = stripeSubscription.status;
-    const isPremium = status === 'active' || status === 'trialing';
-
-    let planType = stripeSubscription.metadata?.plan_type || subscription.plan_type || 'monthly';
-    if (!stripeSubscription.metadata?.plan_type && !subscription.plan_type) {
+    let planType = stripeSubscription.metadata?.plan_type || subData.plan_type || 'monthly';
+    if (!stripeSubscription.metadata?.plan_type && !subData.plan_type) {
       if (priceId.toLowerCase().includes('year') || priceId.toLowerCase().includes('annual')) {
         planType = 'yearly';
       }
@@ -212,8 +207,8 @@ Deno.serve(async (req) => {
     const { error: updateError } = await supabase
       .from("subscriptions")
       .update({
+        status: stripeSubscription.status,
         stripe_price_id: priceId,
-        status: status,
         plan_type: planType,
         current_period_start: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
         current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
@@ -224,15 +219,20 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id);
 
     if (updateError) {
-      console.error("[Sync] ❌ Error updating subscription:", updateError);
-      throw updateError;
+      console.error("[SyncSubscription] ❌ Error updating subscription:", updateError);
+      return new Response(
+        JSON.stringify({ error: "Failed to update subscription" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log("[Sync] ✅ Subscription updated in database");
+    console.log("[SyncSubscription] ✅ Subscription updated in database");
 
-    // Update user_type
+    // Update user_type based on subscription status
+    const isPremium = stripeSubscription.status === 'active' || stripeSubscription.status === 'trialing';
     const newUserType = isPremium ? 'premium' : 'free';
-    console.log("[Sync] 🔄 Updating user_type to:", newUserType);
+
+    console.log("[SyncSubscription] 🔄 Updating user_type to:", newUserType);
 
     const { error: userError } = await supabase
       .from("users")
@@ -243,32 +243,43 @@ Deno.serve(async (req) => {
       .eq("id", user.id);
 
     if (userError) {
-      console.error("[Sync] ❌ Error updating user_type:", userError);
-      throw userError;
+      console.error("[SyncSubscription] ❌ Error updating user_type:", userError);
+    } else {
+      console.log("[SyncSubscription] ✅ User type updated to:", newUserType);
     }
 
-    console.log("[Sync] ✅ User type updated to:", newUserType);
+    // CRITICAL: Ensure customer mapping exists
+    if (subData.stripe_customer_id) {
+      console.log("[SyncSubscription] 💾 Ensuring customer mapping exists...");
+      await supabase
+        .from("user_stripe_customers")
+        .upsert({
+          user_id: user.id,
+          stripe_customer_id: subData.stripe_customer_id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+    }
+
+    // Fetch updated subscription
+    const { data: updatedSub } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        subscription: {
-          status: status,
-          plan_type: planType,
-          is_premium: isPremium,
-          current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
-        },
+      JSON.stringify({ 
+        message: "Subscription synced successfully",
+        subscription: updatedSub,
+        isPremium: isPremium
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
-    console.error("[Sync] ❌ Error:", error);
-    console.error("[Sync] Error message:", error.message);
-    console.error("[Sync] Error stack:", error.stack);
-
+    console.error("[SyncSubscription] ❌ Error:", error);
+    console.error("[SyncSubscription] Error message:", error.message);
+    console.error("[SyncSubscription] Error stack:", error.stack);
+    
     return new Response(
       JSON.stringify({
         error: error.message || "Internal server error",

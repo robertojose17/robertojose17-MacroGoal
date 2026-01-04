@@ -22,17 +22,6 @@ if (SUPABASE_URL && !SUPABASE_URL.includes("esgptfiofoaeguslgvcq")) {
   console.warn("[Portal] ⚠️ Using hardcoded correct URL instead");
 }
 
-// CRITICAL: Check if we're using TEST or LIVE keys
-if (STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
-  console.error("[Portal] ❌❌❌ CRITICAL ERROR: Using TEST Stripe key in production!");
-  console.error("[Portal] ❌ Key starts with: sk_test_");
-  console.error("[Portal] ❌ You MUST update STRIPE_SECRET_KEY to your LIVE key (sk_live_...)");
-} else if (STRIPE_SECRET_KEY?.startsWith('sk_live_')) {
-  console.log("[Portal] ✅ Using LIVE Stripe key");
-} else {
-  console.error("[Portal] ⚠️ Unknown Stripe key format");
-}
-
 const stripe = new Stripe(STRIPE_SECRET_KEY!, {
   apiVersion: "2024-12-18.acacia",
   httpClient: Stripe.createFetchHttpClient(),
@@ -80,141 +69,38 @@ Deno.serve(async (req) => {
     }
 
     console.log("[Portal] ✅ User authenticated:", user.id);
-    console.log("[Portal] User email:", user.email);
 
     // Get user's Stripe customer ID
     const { data: subscription } = await supabase
       .from("subscriptions")
-      .select("stripe_customer_id, stripe_subscription_id")
+      .select("stripe_customer_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    console.log("[Portal] 📊 Subscription data:", subscription);
-
     if (!subscription?.stripe_customer_id) {
-      console.error("[Portal] ❌ No Stripe customer ID found in database");
-      console.error("[Portal] ❌ User needs to complete checkout first");
+      console.error("[Portal] ❌ No Stripe customer ID found");
       return new Response(
-        JSON.stringify({ 
-          error: "No subscription found. Please subscribe first.",
-          details: "No stripe_customer_id in database"
-        }),
+        JSON.stringify({ error: "No subscription found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("[Portal] 💳 Found customer ID:", subscription.stripe_customer_id);
-
-    // CRITICAL FIX: Verify customer exists in Stripe LIVE
-    // If customer doesn't exist (e.g., was created in TEST mode), create a new one
-    let customerId = subscription.stripe_customer_id;
-    
-    try {
-      console.log("[Portal] 🔍 Verifying customer exists in Stripe...");
-      const customer = await stripe.customers.retrieve(customerId);
-      
-      if (customer.deleted) {
-        console.error("[Portal] ❌ Customer was deleted in Stripe");
-        throw new Error("Customer deleted");
-      }
-      
-      console.log("[Portal] ✅ Customer exists in Stripe:", customer.id);
-    } catch (error: any) {
-      console.error("[Portal] ❌ Customer not found in Stripe:", error.message);
-      console.log("[Portal] 🔧 Creating new customer in LIVE Stripe...");
-      
-      // Create new customer in LIVE Stripe
-      try {
-        const newCustomer = await stripe.customers.create({
-          email: user.email,
-          metadata: {
-            supabase_user_id: user.id,
-            migrated_from_test: "true",
-            original_customer_id: customerId,
-          },
-        });
-        
-        console.log("[Portal] ✅ New customer created:", newCustomer.id);
-        customerId = newCustomer.id;
-        
-        // Update database with new customer ID
-        await supabase
-          .from("subscriptions")
-          .update({ 
-            stripe_customer_id: newCustomer.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", user.id);
-        
-        console.log("[Portal] ✅ Database updated with new customer ID");
-      } catch (createError: any) {
-        console.error("[Portal] ❌ Failed to create new customer:", createError);
-        return new Response(
-          JSON.stringify({ 
-            error: "Failed to create customer in Stripe",
-            details: createError.message,
-          }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    // Check if customer has any active subscriptions
-    console.log("[Portal] 🔍 Checking for active subscriptions...");
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customerId,
-      limit: 10,
-    });
-    
-    console.log("[Portal] 📊 Found", subscriptions.data.length, "subscription(s)");
-    
-    if (subscriptions.data.length === 0) {
-      console.error("[Portal] ❌ No subscriptions found in Stripe");
-      return new Response(
-        JSON.stringify({ 
-          error: "No active subscription found. Please subscribe first.",
-          details: "Customer exists but has no subscriptions"
-        }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    console.log("[Portal] 💳 Creating portal session for customer:", subscription.stripe_customer_id);
 
     // For mobile apps, use deep link for return URL
     const appScheme = "elitemacrotracker://";
     const returnUrl = `${appScheme}profile?portal_return=true`;
 
     console.log("[Portal] 🔗 Return URL:", returnUrl);
-    console.log("[Portal] 💳 Creating portal session for customer:", customerId);
 
     // Create portal session
-    let session;
-    try {
-      session = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: returnUrl,
-      });
-      
-      console.log("[Portal] ✅ Session created:", session.id);
-      console.log("[Portal] 🔗 Portal URL:", session.url);
-    } catch (stripeError: any) {
-      console.error("[Portal] ❌ Stripe API error:", stripeError.message);
-      console.error("[Portal] ❌ Error type:", stripeError.type);
-      console.error("[Portal] ❌ Error code:", stripeError.code);
-      console.error("[Portal] ❌ Full error:", JSON.stringify(stripeError, null, 2));
-      
-      return new Response(
-        JSON.stringify({
-          error: "Failed to create portal session",
-          details: stripeError.message,
-          stripe_error_type: stripeError.type,
-          stripe_error_code: stripeError.code,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+    const session = await stripe.billingPortal.sessions.create({
+      customer: subscription.stripe_customer_id,
+      return_url: returnUrl,
+    });
+
+    console.log("[Portal] ✅ Session created:", session.id);
+    console.log("[Portal] 🔗 Portal URL:", session.url);
 
     return new Response(
       JSON.stringify({ url: session.url }),
@@ -224,15 +110,11 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
-    console.error("[Portal] ❌ Unexpected error:", error);
-    console.error("[Portal] ❌ Error message:", error.message);
-    console.error("[Portal] ❌ Error stack:", error.stack);
-    
+    console.error("[Portal] ❌ Error:", error);
     return new Response(
       JSON.stringify({
         error: error.message || "Internal server error",
         details: error.toString(),
-        stack: error.stack,
       }),
       {
         status: 500,

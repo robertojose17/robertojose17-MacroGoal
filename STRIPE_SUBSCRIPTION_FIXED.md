@@ -9,8 +9,8 @@ The Stripe subscription flow has been **completely fixed and deployed**. The iss
 
 ### What You Provided:
 ```
-STRIPE_MONTHLY_PRICE_ID =   ❌ PRODUCT ID
-STRIPE_YEARLY_PRICE_ID =   ❌ PRODUCT ID
+STRIPE_MONTHLY_PRICE_ID = prod_TWVql2YFPhAszU  ❌ PRODUCT ID
+STRIPE_YEARLY_PRICE_ID = prod_TWVpf5UQoEF0jw  ❌ PRODUCT ID
 ```
 
 ### What Stripe Needs:
@@ -54,10 +54,10 @@ All three Edge Functions are now deployed and working correctly.
 **Example:**
 ```
 Monthly Price: $9.99/month
-Price ID:  ← Copy this!
+Price ID: price_1QqPxSDsUf4JA97FZvN8Ks3M  ← Copy this!
 
 Yearly Price: $99.99/year  
-Price ID:  ← Copy this!
+Price ID: price_1QqPySDsUf4JA97FXvM9Kt4N  ← Copy this!
 ```
 
 ### Step 2: Update Configuration
@@ -165,11 +165,11 @@ If something goes wrong, check the Supabase Edge Function logs:
 
 ### "Invalid API Key"
 **Cause:** Stripe Secret Key not set in Supabase  
-**Solution:** Already set! ✅ `...`
+**Solution:** Already set! ✅ `sk_test_51SZKI8DsUf4JA97F...`
 
 ### "Webhook signature verification failed"
 **Cause:** Webhook secret is incorrect  
-**Solution:** Already set! ✅ ``
+**Solution:** Already set! ✅ `whsec_EuaTsQ3bDtr9GEel10BLGb0JDqoOvIQ7`
 
 ### "Configuration Error" alert in app
 **Cause:** Price IDs not updated in config file  

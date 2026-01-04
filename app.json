@@ -29,21 +29,6 @@
       "package": "com.elitemacrotracker.app",
       "permissions": [
         "android.permission.RECORD_AUDIO"
-      ],
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "macrogoal"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
       ]
     },
     "web": {
@@ -67,7 +52,7 @@
         }
       ]
     ],
-    "scheme": "macrogoal",
+    "scheme": "elitemacrotracker",
     "experiments": {
       "typedRoutes": true
     },

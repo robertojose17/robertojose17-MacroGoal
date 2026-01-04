@@ -8,6 +8,8 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
+import { useSubscription } from '@/hooks/useSubscription';
+import { logSubscriptionStatus } from '@/utils/subscriptionDebug';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -22,6 +24,7 @@ export default function ProfileScreen() {
   const [goal, setGoal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   // Edit modal state
   const [editingField, setEditingField] = useState<EditField>(null);
@@ -36,11 +39,16 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
+  const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription, syncSubscription } = useSubscription();
+
   useFocusEffect(
     useCallback(() => {
-      console.log('[Profile] Screen focused, loading data');
+      console.log('[Profile] Screen focused, loading data and syncing subscription');
       loadUserData();
-    }, [])
+      // Sync subscription from Stripe when screen is focused
+      syncSubscription();
+      logSubscriptionStatus();
+    }, [syncSubscription])
   );
 
   const loadUserData = async () => {
@@ -103,7 +111,24 @@ export default function ProfileScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadUserData();
+    await Promise.all([loadUserData(), syncSubscription()]);
+  };
+
+  const handleManageSubscription = async () => {
+    if (!isSubscribed) {
+      router.push('/paywall');
+      return;
+    }
+
+    try {
+      setPortalLoading(true);
+      await openCustomerPortal();
+    } catch (error: any) {
+      console.error('[Profile] Error opening customer portal:', error);
+      Alert.alert('Error', error.message || 'Failed to open subscription management. Please try again.');
+    } finally {
+      setPortalLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -524,6 +549,94 @@ export default function ProfileScreen() {
           <Text style={[styles.email, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {user.email || 'Guest User'}
           </Text>
+          
+          <View style={[styles.badge, { backgroundColor: user.user_type === 'premium' ? colors.accent : colors.primary }]}>
+            <Text style={styles.badgeText}>
+              {user.user_type === 'premium' ? '⭐ Premium' : user.user_type === 'free' ? 'Free' : 'Guest'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Subscription Card */}
+        <View style={[styles.subscriptionCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <View style={styles.subscriptionHeader}>
+            <View style={styles.subscriptionTitleContainer}>
+              <IconSymbol
+                ios_icon_name={isSubscribed ? 'checkmark.seal.fill' : 'lock.fill'}
+                android_material_icon_name={isSubscribed ? 'verified' : 'lock'}
+                size={24}
+                color={isSubscribed ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
+              />
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text, marginBottom: 0 }]}>
+                Subscription
+              </Text>
+            </View>
+            {isSubscribed && (
+              <View style={[styles.activeBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.activeBadgeText}>Active</Text>
+              </View>
+            )}
+          </View>
+
+          {isSubscribed ? (
+            <React.Fragment>
+              <View style={styles.subscriptionInfo}>
+                <Text style={[styles.subscriptionPlan, { color: isDark ? colors.textDark : colors.text }]}>
+                  {planType === 'monthly' ? 'Monthly Plan' : planType === 'yearly' ? 'Yearly Plan' : 'Active Plan'}
+                </Text>
+                {subscription?.current_period_end && (
+                  <Text style={[styles.subscriptionRenewal, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {subscription.cancel_at_period_end ? 'Expires' : 'Renews'} on{' '}
+                    {new Date(subscription.current_period_end).toLocaleDateString()}
+                  </Text>
+                )}
+                <Text style={[styles.subscriptionStatus, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Status: {subscription?.status || 'unknown'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.manageButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                onPress={handleManageSubscription}
+                disabled={portalLoading}
+                activeOpacity={0.7}
+              >
+                {portalLoading ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <React.Fragment>
+                    <Text style={[styles.manageButtonText, { color: colors.primary }]}>
+                      Manage Subscription
+                    </Text>
+                    <IconSymbol
+                      ios_icon_name="arrow.up.right"
+                      android_material_icon_name="open_in_new"
+                      size={16}
+                      color={colors.primary}
+                    />
+                  </React.Fragment>
+                )}
+              </TouchableOpacity>
+            </React.Fragment>
+          ) : (
+            <React.Fragment>
+              <Text style={[styles.subscriptionDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Unlock AI-powered meal estimation and future AI features
+              </Text>
+              <TouchableOpacity
+                style={[styles.upgradeButton, { backgroundColor: colors.primary }]}
+                onPress={handleManageSubscription}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="sparkles"
+                  android_material_icon_name="auto_awesome"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+              </TouchableOpacity>
+            </React.Fragment>
+          )}
         </View>
 
         {/* Calorie & Goals Settings Card */}
@@ -1051,6 +1164,16 @@ const styles = StyleSheet.create({
     ...typography.body,
     marginBottom: spacing.sm,
   },
+  badge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   goalsCard: {
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
@@ -1182,6 +1305,82 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   logoutText: {
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  subscriptionCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  subscriptionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  activeBadge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  activeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  subscriptionInfo: {
+    marginBottom: spacing.md,
+  },
+  subscriptionPlan: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    marginBottom: spacing.xs,
+  },
+  subscriptionRenewal: {
+    ...typography.caption,
+    fontSize: 13,
+    marginBottom: spacing.xs,
+  },
+  subscriptionStatus: {
+    ...typography.caption,
+    fontSize: 12,
+  },
+  subscriptionDescription: {
+    ...typography.body,
+    fontSize: 14,
+    marginBottom: spacing.md,
+    lineHeight: 20,
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    gap: spacing.xs,
+  },
+  manageButtonText: {
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  upgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+  },
+  upgradeButtonText: {
+    color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 16,
   },

@@ -8,6 +8,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 // CRITICAL FIX: Hardcode the correct project URL to avoid environment variable issues
+// The SUPABASE_URL env var was set to the wrong project ref (ofoaeguslgvcq instead of esgptfiofoaeguslgvcq)
 const CORRECT_PROJECT_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
 
 if (!STRIPE_SECRET_KEY) {
@@ -184,19 +185,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX FOR iOS: Use direct deep links that iOS Safari will recognize
-    // The {CHECKOUT_SESSION_ID} placeholder will be replaced by Stripe
-    // ═══════════════════════════════════════════════════════════════════════════
-    const successUrl = `macrogoal://profile?payment_success=true&session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `macrogoal://profile?payment_cancelled=true`;
+    // CRITICAL FIX: Use the correct hardcoded project URL instead of environment variable
+    // This fixes the NOT_FOUND error caused by incorrect SUPABASE_URL env var
+    const successUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?cancelled=true`;
 
-    console.log("[Checkout] 🔗 Redirect URLs (Direct Deep Links for iOS):");
+    console.log("[Checkout] 🔗 Redirect URLs:");
     console.log("[Checkout]   - Success:", successUrl);
     console.log("[Checkout]   - Cancel:", cancelUrl);
-    console.log("[Checkout] ✅ iOS Safari will automatically redirect to app via deep link");
 
-    // CRITICAL FIX: Create checkout session with comprehensive metadata
+    // CRITICAL FIX: Create checkout session with customer and comprehensive metadata
     console.log("[Checkout] 🚀 Creating Stripe checkout session...");
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -209,22 +207,18 @@ Deno.serve(async (req) => {
       mode: "subscription",
       success_url: successUrl,
       cancel_url: cancelUrl,
-      // CRITICAL: Add user_id to session metadata for webhook lookup
+      // CRITICAL: Add user_id to session metadata
       metadata: {
         supabase_user_id: user.id,
         plan_type: planType,
       },
-      // CRITICAL: Add user_id to subscription metadata for webhook lookup
+      // CRITICAL: Add user_id to subscription metadata
       subscription_data: {
         metadata: {
           supabase_user_id: user.id,
           plan_type: planType,
         },
       },
-      // CRITICAL FOR iOS: Set payment method types to ensure smooth flow
-      payment_method_types: ['card'],
-      // CRITICAL FOR iOS: Allow promotion codes
-      allow_promotion_codes: true,
     });
 
     console.log("[Checkout] ✅ Session created successfully!");
@@ -232,7 +226,6 @@ Deno.serve(async (req) => {
     console.log("[Checkout]   - Customer ID:", customerId);
     console.log("[Checkout]   - User ID in metadata:", session.metadata?.supabase_user_id);
     console.log("[Checkout]   - Checkout URL:", session.url);
-    console.log("[Checkout] 🎯 After payment, iOS Safari will redirect DIRECTLY to app!");
 
     return new Response(
       JSON.stringify({ 

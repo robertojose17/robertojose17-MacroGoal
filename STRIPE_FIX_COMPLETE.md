@@ -7,14 +7,14 @@ The subscription flow was failing because **PRODUCT IDs** were being used instea
 
 ### What was wrong:
 ```
-❌ MONTHLY_PRICE_ID = ''  // This is a PRODUCT ID!
-❌ YEARLY_PRICE_ID = ''   // This is a PRODUCT ID!
+❌ MONTHLY_PRICE_ID = 'prod_TWVql2YFPhAszU'  // This is a PRODUCT ID!
+❌ YEARLY_PRICE_ID = 'prod_TWVpf5UQoEF0jw'   // This is a PRODUCT ID!
 ```
 
 ### What it should be:
 ```
-✅ MONTHLY_PRICE_ID = '..'  // This is a PRICE ID!
-✅ YEARLY_PRICE_ID = '...'   // This is a PRICE ID!
+✅ MONTHLY_PRICE_ID = 'price_1ABC123...'  // This is a PRICE ID!
+✅ YEARLY_PRICE_ID = 'price_1XYZ789...'   // This is a PRICE ID!
 ```
 
 ## 🔧 What Was Fixed
@@ -57,8 +57,8 @@ In the **Pricing** section, you'll see your prices listed:
 
 **Example:**
 ```
-✅   ← This is what you need!
-❌   ← This is the PRODUCT ID (wrong!)
+✅ price_1QqPxSDsUf4JA97FZvN8Ks3M  ← This is what you need!
+❌ prod_TWVql2YFPhAszU            ← This is the PRODUCT ID (wrong!)
 ```
 
 ### Step 4: Update Configuration
