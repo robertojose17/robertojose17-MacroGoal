@@ -1,44 +1,38 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Stripe from 'https://esm.sh/stripe@14.21.0'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
-  apiVersion: '2024-11-20.acacia',
+  apiVersion: '2023-10-16',
 })
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
-
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-// Safe date conversion helper
-function toISOStringOrNull(value: any): string | null {
-  if (!value) return null
-  if (typeof value === 'number') {
-    return new Date(value * 1000).toISOString()
-  }
-  if (typeof value === 'string') {
-    const date = new Date(value)
-    return isNaN(date.getTime()) ? null : date.toISOString()
-  }
-  return null
-}
+const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
 
 serve(async (req) => {
-  try {
-    const signature = req.headers.get('stripe-signature')
-    if (!signature) {
-      return new Response('No signature', { status: 400 })
-    }
+  const signature = req.headers.get('stripe-signature')
+  
+  if (!signature) {
+    console.error('[Webhook] No signature header')
+    return new Response('No signature', { status: 400 })
+  }
 
+  try {
+    // Get RAW body BEFORE any parsing
     const body = await req.text()
     
-    // ✅ FIX: Use constructEventAsync instead of constructEvent
-    const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret)
+    // Use ASYNC verification for Supabase Edge runtime
+    const event = await stripe.webhooks.constructEventAsync(
+      body,
+      signature,
+      webhookSecret
+    )
 
-    console.log('Webhook event:', event.type)
+    console.log('[Webhook] Event received:', event.type, 'ID:', event.id)
 
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -46,76 +40,187 @@ serve(async (req) => {
         const userId = session.client_reference_id || session.metadata?.user_id
 
         if (!userId) {
-          console.error('No user_id in session')
-          return new Response('No user_id', { status: 400 })
+          console.error('[Webhook] No user_id found in session')
+          break
         }
 
-        const { error } = await supabase
-          .from('profiles')
+        console.log('[Webhook] Processing checkout.session.completed for user:', userId)
+
+        // First, ensure subscription record exists
+        const { data: existingSub } = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (!existingSub) {
+          // Create new subscription record
+          const { error: insertError } = await supabase
+            .from('subscriptions')
+            .insert({
+              user_id: userId,
+              stripe_customer_id: session.customer as string,
+              stripe_subscription_id: session.subscription as string,
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            })
+
+          if (insertError) {
+            console.error('[Webhook] Error inserting subscription:', insertError)
+            throw insertError
+          }
+        } else {
+          // Update existing subscription record
+          const { error: updateError } = await supabase
+            .from('subscriptions')
+            .update({
+              stripe_customer_id: session.customer as string,
+              stripe_subscription_id: session.subscription as string,
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('user_id', userId)
+
+          if (updateError) {
+            console.error('[Webhook] Error updating subscription:', updateError)
+            throw updateError
+          }
+        }
+
+        // Update user_type to premium
+        const { error: userError } = await supabase
+          .from('users')
           .update({
-            is_premium: true,
-            stripe_customer_id: session.customer as string,
-            stripe_subscription_id: session.subscription as string,
+            user_type: 'premium',
             updated_at: new Date().toISOString(),
           })
           .eq('id', userId)
 
-        if (error) {
-          console.error('DB update error:', error)
-          return new Response('DB error', { status: 500 })
+        if (userError) {
+          console.error('[Webhook] Error updating user:', userError)
+          throw userError
         }
 
-        console.log('✅ User marked premium:', userId)
+        console.log('[Webhook] User', userId, 'upgraded to premium')
         break
       }
 
-      case 'customer.subscription.updated':
       case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription
+        const customerId = subscription.customer as string
+        const isPremium = ['active', 'trialing'].includes(subscription.status)
+
+        console.log('[Webhook] Processing subscription update:', subscription.id, 'status:', subscription.status)
+
+        // Convert timestamps safely (Stripe uses Unix seconds)
+        const currentPeriodStart = subscription.current_period_start 
+          ? new Date(subscription.current_period_start * 1000).toISOString()
+          : null
+
+        const currentPeriodEnd = subscription.current_period_end
+          ? new Date(subscription.current_period_end * 1000).toISOString()
+          : null
+
+        const trialEnd = subscription.trial_end
+          ? new Date(subscription.trial_end * 1000).toISOString()
+          : null
+
+        // Update subscription record
+        const { error: subError } = await supabase
+          .from('subscriptions')
+          .update({
+            stripe_subscription_id: subscription.id,
+            status: subscription.status,
+            current_period_start: currentPeriodStart,
+            current_period_end: currentPeriodEnd,
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            trial_end: trialEnd,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('stripe_customer_id', customerId)
+
+        if (subError) {
+          console.error('[Webhook] Error updating subscription:', subError)
+          throw subError
+        }
+
+        // Update user_type based on subscription status
+        const newUserType = isPremium ? 'premium' : 'free'
+        
+        const { error: userError } = await supabase
+          .from('users')
+          .update({
+            user_type: newUserType,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', (await supabase
+            .from('subscriptions')
+            .select('user_id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+          ).data?.user_id)
+
+        if (userError) {
+          console.error('[Webhook] Error updating user_type:', userError)
+        }
+
+        console.log('[Webhook] Subscription', subscription.id, 'updated to:', subscription.status)
+        break
+      }
+
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('stripe_customer_id', customerId)
-          .single()
+        console.log('[Webhook] Processing subscription deletion:', subscription.id)
 
-        if (!profile) {
-          console.error('No profile for customer:', customerId)
-          return new Response('No profile', { status: 404 })
-        }
-
-        const isPremium = subscription.status === 'active' || subscription.status === 'trialing'
-
-        const { error } = await supabase
-          .from('profiles')
+        // Update subscription status
+        const { error: subError } = await supabase
+          .from('subscriptions')
           .update({
-            is_premium: isPremium,
-            stripe_subscription_id: subscription.id,
-            subscription_status: subscription.status,
-            current_period_end: toISOStringOrNull(subscription.current_period_end),
-            current_period_start: toISOStringOrNull(subscription.current_period_start),
+            status: 'canceled',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', profile.id)
+          .eq('stripe_customer_id', customerId)
 
-        if (error) {
-          console.error('DB update error:', error)
-          return new Response('DB error', { status: 500 })
+        if (subError) {
+          console.error('[Webhook] Error updating subscription:', subError)
+          throw subError
         }
 
-        console.log('✅ Subscription synced:', profile.id, isPremium)
+        // Downgrade user to free
+        const { error: userError } = await supabase
+          .from('users')
+          .update({
+            user_type: 'free',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', (await supabase
+            .from('subscriptions')
+            .select('user_id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+          ).data?.user_id)
+
+        if (userError) {
+          console.error('[Webhook] Error downgrading user:', userError)
+        }
+
+        console.log('[Webhook] Subscription', subscription.id, 'canceled')
         break
       }
     }
 
     return new Response(JSON.stringify({ received: true }), {
-      status: 200,
       headers: { 'Content-Type': 'application/json' },
+      status: 200,
     })
-  } catch (err: any) {
-    console.error('Webhook error:', err.message)
-    return new Response(err.message, { status: 400 })
+  } catch (error) {
+    console.error('[Webhook] Error:', error.message)
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 400 }
+    )
   }
 })
