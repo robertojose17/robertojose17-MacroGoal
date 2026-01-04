@@ -167,7 +167,36 @@ Deno.serve(async (req) => {
     }
 
     console.log("[Chatbot] ✅ User authenticated:", user.user.id);
-    console.log("[Chatbot] ✅ Chatbot is now free for all authenticated users");
+
+    // CRITICAL: Check subscription status
+    console.log("[Chatbot] 🔍 Checking subscription status...");
+    const { data: subscription, error: subError } = await supabase
+      .from("subscriptions")
+      .select("status")
+      .eq("user_id", user.user.id)
+      .maybeSingle();
+
+    if (subError) {
+      console.error("[Chatbot] ⚠️ Error checking subscription:", subError);
+      // Continue anyway - don't block on subscription check errors
+    } else if (!subscription || (subscription.status !== 'active' && subscription.status !== 'trialing')) {
+      console.error("[Chatbot] ❌ User does not have active subscription");
+      console.error("[Chatbot] User ID:", user.user.id);
+      console.error("[Chatbot] Subscription status:", subscription?.status || 'none');
+      return new Response(JSON.stringify({
+        error: "Subscription Required",
+        detail: "An active subscription is required to use the AI chatbot. Please subscribe to continue.",
+        subscription_status: subscription?.status || 'none'
+      }), {
+        status: 403,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      });
+    }
+
+    console.log("[Chatbot] ✅ Subscription verified:", subscription.status);
 
     // Parse request body
     let body;
