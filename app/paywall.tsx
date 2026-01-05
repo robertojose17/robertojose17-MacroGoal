@@ -50,7 +50,7 @@ export default function PaywallScreen() {
         console.error('[Paywall] ❌ Invalid Stripe configuration:', validation.errors);
         Alert.alert(
           'Configuration Error',
-          'Stripe is not configured correctly. Please check the console for details.\n\n' +
+          'Stripe is not configured correctly. Please check the logs for details.\n\n' +
           validation.errors.join('\n'),
           [{ text: 'OK' }]
         );
@@ -80,29 +80,94 @@ export default function PaywallScreen() {
       console.error('[Paywall] Error type:', error.constructor?.name || 'Unknown');
       console.error('[Paywall] Error message:', error.message);
       console.error('[Paywall] Error stack:', error.stack);
+      
+      // Log additional error details if available
+      if (error.statusCode) {
+        console.error('[Paywall] HTTP Status Code:', error.statusCode);
+      }
+      if (error.responseBody) {
+        console.error('[Paywall] Response Body:', error.responseBody);
+      }
+      
       console.error('[Paywall] Full error:', JSON.stringify(error, null, 2));
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       let errorMessage = 'Failed to start checkout. Please try again.';
+      let errorTitle = 'Subscription Error';
       
-      // Provide more specific error messages
-      if (error.message?.includes('FunctionsFetchError')) {
-        errorMessage = 'Unable to connect to the payment service. Please check your internet connection and try again.\n\n' +
+      // Provide more specific error messages based on the error details
+      if (error.statusCode === 400 || error.message?.includes('400')) {
+        errorTitle = 'Invalid Request';
+        
+        if (error.responseBody) {
+          // Try to extract the actual error from the response body
+          try {
+            const bodyStr = typeof error.responseBody === 'string' ? error.responseBody : JSON.stringify(error.responseBody);
+            
+            if (bodyStr.includes('No such price')) {
+              errorMessage = '❌ Invalid Price ID\n\n' +
+                'The Stripe Price ID is not valid or does not exist in your Stripe account.\n\n' +
+                'Please verify:\n' +
+                '• You are using PRICE IDs (price_...) not PRODUCT IDs (prod_...)\n' +
+                '• The Price IDs exist in your Stripe Dashboard\n' +
+                '• You are using TEST mode Price IDs for testing\n\n' +
+                `Current Price ID: ${selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID}`;
+            } else if (bodyStr.includes('Missing priceId or planType')) {
+              errorMessage = '❌ Missing Required Data\n\n' +
+                'The request is missing required information (priceId or planType).\n\n' +
+                'This is likely a bug in the app. Please contact support.';
+            } else if (bodyStr.includes('Invalid price ID format')) {
+              errorMessage = '❌ Invalid Price ID Format\n\n' +
+                'You are using a PRODUCT ID instead of a PRICE ID.\n\n' +
+                'Price IDs start with "price_" not "prod_".\n\n' +
+                'Please update your Stripe configuration in utils/stripeConfig.ts';
+            } else {
+              errorMessage = `❌ Bad Request (400)\n\n${bodyStr}\n\nPlease check the logs for more details.`;
+            }
+          } catch (parseError) {
+            console.error('[Paywall] Could not parse error response body');
+            errorMessage = `❌ Bad Request (400)\n\n${error.responseBody}\n\nPlease check the logs for more details.`;
+          }
+        } else {
+          errorMessage = '❌ Bad Request (400)\n\n' +
+            'The server rejected the request. This could be due to:\n' +
+            '• Invalid Price ID\n' +
+            '• Missing required data\n' +
+            '• Stripe configuration error\n\n' +
+            'Please check the logs for more details.';
+        }
+      } else if (error.statusCode === 401 || error.message?.includes('Unauthorized') || error.message?.includes('Not authenticated')) {
+        errorTitle = 'Authentication Required';
+        errorMessage = '❌ Not Authenticated\n\n' +
+          'You must be logged in to subscribe.\n\n' +
+          'Please log in and try again.';
+      } else if (error.statusCode === 500 || error.message?.includes('500')) {
+        errorTitle = 'Server Error';
+        errorMessage = '❌ Server Error (500)\n\n' +
+          'The payment service encountered an error.\n\n' +
+          'This could be due to:\n' +
+          '• Stripe API error\n' +
+          '• Invalid Stripe Secret Key\n' +
+          '• Database connection issue\n\n' +
+          'Please check the Edge Function logs for more details.';
+      } else if (error.message?.includes('FunctionsFetchError')) {
+        errorTitle = 'Connection Error';
+        errorMessage = '❌ Unable to Connect\n\n' +
+          'Could not connect to the payment service.\n\n' +
+          'Please check your internet connection and try again.\n\n' +
           'If the problem persists, the payment service may be temporarily unavailable.';
-      } else if (error.message?.includes('No such price')) {
-        errorMessage = 'Invalid Price ID. Please check your Stripe configuration.\n\n' +
-          'Make sure you are using PRICE IDs (starting with "price_") and not PRODUCT IDs (starting with "prod_").';
-      } else if (error.message?.includes('Unauthorized') || error.message?.includes('Not authenticated')) {
-        errorMessage = 'You must be logged in to subscribe. Please log in and try again.';
       } else if (error.message?.includes('No checkout URL')) {
-        errorMessage = 'Failed to create checkout session. The payment service did not return a valid checkout URL.\n\n' +
-          'Please try again or contact support if the problem persists.';
+        errorTitle = 'Checkout Error';
+        errorMessage = '❌ No Checkout URL\n\n' +
+          'The payment service did not return a valid checkout URL.\n\n' +
+          'This could be due to a Stripe API error or configuration issue.\n\n' +
+          'Please check the Edge Function logs for more details.';
       } else if (error.message) {
         errorMessage = error.message;
       }
 
       Alert.alert(
-        'Subscription Error',
+        errorTitle,
         errorMessage,
         [{ text: 'OK' }]
       );

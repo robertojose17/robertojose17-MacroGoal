@@ -93,15 +93,65 @@ export function useSubscription() {
       });
 
       if (error) {
-        console.error('[Subscription] ❌ Edge Function error:', error);
-        throw error;
+        console.error('[Subscription] ❌ Edge Function error object:', error);
+        console.error('[Subscription] ❌ Error name:', error.name);
+        console.error('[Subscription] ❌ Error message:', error.message);
+        console.error('[Subscription] ❌ Error context:', (error as any).context);
+        
+        // CRITICAL FIX: Try to extract the actual response body from the error
+        let errorDetails = 'Unknown error';
+        let statusCode = 'unknown';
+        
+        // FunctionsHttpError contains the response in context
+        if ((error as any).context) {
+          const context = (error as any).context;
+          console.error('[Subscription] ❌ Error context details:', JSON.stringify(context, null, 2));
+          
+          if (context.status) {
+            statusCode = context.status;
+            console.error('[Subscription] ❌ HTTP Status Code:', statusCode);
+          }
+          
+          if (context.body) {
+            errorDetails = typeof context.body === 'string' ? context.body : JSON.stringify(context.body);
+            console.error('[Subscription] ❌ Response Body:', errorDetails);
+          }
+        }
+        
+        // Try to parse the error message for more details
+        if (error.message) {
+          console.error('[Subscription] ❌ Full error message:', error.message);
+          
+          // Check if the message contains JSON
+          try {
+            const jsonMatch = error.message.match(/\{.*\}/);
+            if (jsonMatch) {
+              const parsedError = JSON.parse(jsonMatch[0]);
+              console.error('[Subscription] ❌ Parsed error from message:', parsedError);
+              errorDetails = parsedError.error || parsedError.message || errorDetails;
+            }
+          } catch (parseError) {
+            console.error('[Subscription] ⚠️ Could not parse error message as JSON');
+          }
+        }
+        
+        // Create a detailed error message
+        const detailedError = new Error(
+          `Edge Function failed (${statusCode}): ${errorDetails}\n\nOriginal error: ${error.message}`
+        );
+        (detailedError as any).statusCode = statusCode;
+        (detailedError as any).responseBody = errorDetails;
+        (detailedError as any).originalError = error;
+        
+        throw detailedError;
       }
 
       console.log('[Subscription] ✅ Edge Function response:', data);
 
       if (!data?.url) {
         console.error('[Subscription] ❌ No checkout URL in response');
-        throw new Error('No checkout URL returned');
+        console.error('[Subscription] ❌ Full response data:', JSON.stringify(data, null, 2));
+        throw new Error('No checkout URL returned from Edge Function');
       }
 
       console.log('[Subscription] 🔗 Opening checkout URL:', data.url);
@@ -129,7 +179,20 @@ export function useSubscription() {
       console.error('[Subscription] ❌ Checkout failed:', error);
       console.error('[Subscription] Error type:', error.constructor?.name);
       console.error('[Subscription] Error message:', error.message);
-      console.error('[Subscription] Error details:', JSON.stringify(error, null, 2));
+      console.error('[Subscription] Error stack:', error.stack);
+      
+      // Log additional details if available
+      if (error.statusCode) {
+        console.error('[Subscription] HTTP Status Code:', error.statusCode);
+      }
+      if (error.responseBody) {
+        console.error('[Subscription] Response Body:', error.responseBody);
+      }
+      if (error.originalError) {
+        console.error('[Subscription] Original Error:', error.originalError);
+      }
+      
+      console.error('[Subscription] Full error object:', JSON.stringify(error, null, 2));
       
       Alert.alert(
         'Checkout Error',
