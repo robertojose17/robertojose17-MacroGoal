@@ -70,14 +70,29 @@ Deno.serve(async (req) => {
 
     console.log("[Portal] ✅ User authenticated:", user.id);
 
-    // Get user's Stripe customer ID
-    const { data: subscription } = await supabase
-      .from("subscriptions")
+    // Get user's Stripe customer ID from user_stripe_customers table first
+    console.log("[Portal] 🔍 Checking user_stripe_customers table...");
+    const { data: customerMapping } = await supabase
+      .from("user_stripe_customers")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!subscription?.stripe_customer_id) {
+    let customerId = customerMapping?.stripe_customer_id;
+
+    // Fallback to subscriptions table if not found
+    if (!customerId) {
+      console.log("[Portal] 🔍 Checking subscriptions table...");
+      const { data: subscription } = await supabase
+        .from("subscriptions")
+        .select("stripe_customer_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      customerId = subscription?.stripe_customer_id;
+    }
+
+    if (!customerId) {
       console.error("[Portal] ❌ No Stripe customer ID found");
       return new Response(
         JSON.stringify({ error: "No subscription found" }),
@@ -85,7 +100,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("[Portal] 💳 Creating portal session for customer:", subscription.stripe_customer_id);
+    console.log("[Portal] 💳 Creating portal session for customer:", customerId);
 
     // For mobile apps, use deep link for return URL
     const appScheme = "elitemacrotracker://";
@@ -95,7 +110,7 @@ Deno.serve(async (req) => {
 
     // Create portal session
     const session = await stripe.billingPortal.sessions.create({
-      customer: subscription.stripe_customer_id,
+      customer: customerId,
       return_url: returnUrl,
     });
 

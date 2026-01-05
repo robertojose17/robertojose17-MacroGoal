@@ -1,62 +1,45 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
+import { Alert, Platform, Linking } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
-import { AppState, AppStateStatus } from 'react-native';
 
-export type SubscriptionStatus = 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid';
-export type PlanType = 'monthly' | 'yearly' | null;
-
-export interface Subscription {
+interface Subscription {
   id: string;
   user_id: string;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  stripe_price_id: string | null;
-  status: SubscriptionStatus;
-  plan_type: PlanType;
-  current_period_start: string | null;
-  current_period_end: string | null;
-  cancel_at_period_end: boolean;
-  trial_end: string | null;
-  created_at: string;
-  updated_at: string;
+  status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete' | 'inactive';
+  plan_name?: string;
+  plan_type?: 'monthly' | 'yearly';
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  current_period_end?: string;
+  cancel_at_period_end?: boolean;
 }
 
-export interface UseSubscriptionReturn {
-  subscription: Subscription | null;
-  loading: boolean;
-  isSubscribed: boolean;
-  hasActiveSubscription: boolean;
-  planType: PlanType;
-  refreshSubscription: () => Promise<void>;
-  syncSubscription: () => Promise<void>;
-  createCheckoutSession: (priceId: string, planType: 'monthly' | 'yearly') => Promise<void>;
-  openCustomerPortal: () => Promise<void>;
-}
-
-/**
- * Hook to manage user subscription state
- * Automatically fetches subscription on mount and provides helper methods
- */
-export function useSubscription(): UseSubscriptionReturn {
+export function useSubscription() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [planType, setPlanType] = useState<'monthly' | 'yearly' | null>(null);
 
-  const fetchSubscription = useCallback(async () => {
+  useEffect(() => {
+    loadSubscription();
+  }, []);
+
+  const loadSubscription = async () => {
     try {
-      console.log('[useSubscription] 🔄 Fetching subscription...');
-      
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (!user) {
-        console.log('[useSubscription] ❌ No user found');
+        console.log('[Subscription] No authenticated user');
         setSubscription(null);
-        setLoading(false);
+        setIsSubscribed(false);
+        setPlanType(null);
         return;
       }
 
-      console.log('[useSubscription] ✅ User found:', user.id);
+      console.log('[Subscription] Loading subscription for user:', user.id);
 
       const { data, error } = await supabase
         .from('subscriptions')
@@ -64,247 +47,207 @@ export function useSubscription(): UseSubscriptionReturn {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (error) {
-        console.error('[useSubscription] ❌ Error fetching subscription:', error);
-        setSubscription(null);
-      } else {
-        console.log('[useSubscription] ✅ Subscription fetched:', data?.status || 'none');
-        if (data) {
-          console.log('[useSubscription] 📊 Subscription details:', {
-            status: data.status,
-            plan_type: data.plan_type,
-            stripe_subscription_id: data.stripe_subscription_id,
-          });
-        }
+      if (error && error.code !== 'PGRST116') {
+        console.error('[Subscription] Error loading:', error);
+      }
+
+      if (data) {
+        console.log('[Subscription] Subscription data:', data);
         setSubscription(data);
+        setIsSubscribed(data.status === 'active' || data.status === 'trialing');
+        setPlanType(data.plan_type || null);
+      } else {
+        console.log('[Subscription] No subscription found');
+        setSubscription(null);
+        setIsSubscribed(false);
+        setPlanType(null);
       }
     } catch (error) {
-      console.error('[useSubscription] ❌ Error in fetchSubscription:', error);
+      console.error('[Subscription] Load failed:', error);
       setSubscription(null);
+      setIsSubscribed(false);
+      setPlanType(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  const syncSubscription = useCallback(async () => {
+  const createCheckoutSession = async (priceId: string, planType: 'monthly' | 'yearly') => {
     try {
-      console.log('[useSubscription] 🔄 Syncing subscription with Stripe...');
+      console.log('[Subscription] 🚀 Creating checkout session...');
+      console.log('[Subscription]   - Price ID:', priceId);
+      console.log('[Subscription]   - Plan Type:', planType);
+
+      const { data: { user } } = await supabase.auth.getUser();
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('[useSubscription] ❌ Not authenticated');
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('[Subscription] ✅ User authenticated:', user.id);
+
+      // Call backend to create Stripe checkout session
+      console.log('[Subscription] 📡 Calling create-checkout-session Edge Function...');
+      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+        body: { priceId, planType }
+      });
+
+      if (error) {
+        console.error('[Subscription] ❌ Edge Function error:', error);
+        throw error;
+      }
+
+      console.log('[Subscription] ✅ Edge Function response:', data);
+
+      if (!data?.url) {
+        console.error('[Subscription] ❌ No checkout URL in response');
+        throw new Error('No checkout URL returned');
+      }
+
+      console.log('[Subscription] 🔗 Opening checkout URL:', data.url);
+
+      // Open checkout URL
+      if (Platform.OS === 'web') {
+        window.location.href = data.url;
+      } else {
+        // Use WebBrowser for better mobile experience
+        const result = await WebBrowser.openBrowserAsync(data.url, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        });
+        
+        console.log('[Subscription] WebBrowser result:', result);
+        
+        // Refresh subscription status after browser closes
+        if (result.type === 'dismiss' || result.type === 'cancel') {
+          console.log('[Subscription] Browser closed, refreshing subscription status...');
+          await loadSubscription();
+        }
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('[Subscription] ❌ Checkout failed:', error);
+      console.error('[Subscription] Error type:', error.constructor?.name);
+      console.error('[Subscription] Error message:', error.message);
+      console.error('[Subscription] Error details:', JSON.stringify(error, null, 2));
+      
+      Alert.alert(
+        'Checkout Error',
+        error.message || 'Failed to start checkout. Please try again.'
+      );
+      throw error;
+    }
+  };
+
+  const openCustomerPortal = async () => {
+    try {
+      console.log('[Subscription] 🚀 Opening customer portal...');
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('[Subscription] ✅ User authenticated:', user.id);
+
+      // Call backend to create customer portal session
+      console.log('[Subscription] 📡 Calling create-portal-session Edge Function...');
+      const { data, error } = await supabase.functions.invoke('create-portal-session', {
+        body: { userId: user.id }
+      });
+
+      if (error) {
+        console.error('[Subscription] ❌ Edge Function error:', error);
+        throw error;
+      }
+
+      console.log('[Subscription] ✅ Edge Function response:', data);
+
+      if (!data?.url) {
+        console.error('[Subscription] ❌ No portal URL in response');
+        throw new Error('No portal URL returned');
+      }
+
+      console.log('[Subscription] 🔗 Opening portal URL:', data.url);
+
+      // Open portal URL
+      if (Platform.OS === 'web') {
+        window.location.href = data.url;
+      } else {
+        // Use WebBrowser for better mobile experience
+        const result = await WebBrowser.openBrowserAsync(data.url, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        });
+        
+        console.log('[Subscription] WebBrowser result:', result);
+        
+        // Refresh subscription status after browser closes
+        if (result.type === 'dismiss' || result.type === 'cancel') {
+          console.log('[Subscription] Browser closed, refreshing subscription status...');
+          await loadSubscription();
+        }
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('[Subscription] ❌ Portal failed:', error);
+      console.error('[Subscription] Error type:', error.constructor?.name);
+      console.error('[Subscription] Error message:', error.message);
+      
+      Alert.alert(
+        'Portal Error',
+        error.message || 'Failed to open subscription management. Please try again.'
+      );
+      throw error;
+    }
+  };
+
+  const syncSubscription = async () => {
+    console.log('[Subscription] 🔄 Syncing subscription from Stripe...');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        console.log('[Subscription] No authenticated user for sync');
         return;
       }
 
+      // Call sync-subscription Edge Function
       const { data, error } = await supabase.functions.invoke('sync-subscription', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        body: { userId: user.id }
       });
 
       if (error) {
-        console.error('[useSubscription] ❌ Error syncing subscription:', error);
+        console.error('[Subscription] ❌ Sync error:', error);
       } else {
-        console.log('[useSubscription] ✅ Subscription synced:', data);
-        // Refresh local subscription data
-        await fetchSubscription();
+        console.log('[Subscription] ✅ Sync complete:', data);
+        // Reload subscription data
+        await loadSubscription();
       }
     } catch (error) {
-      console.error('[useSubscription] ❌ Error in syncSubscription:', error);
+      console.error('[Subscription] ❌ Sync failed:', error);
     }
-  }, [fetchSubscription]);
+  };
 
-  useEffect(() => {
-    fetchSubscription();
-  }, [fetchSubscription]);
+  const refreshSubscription = async () => {
+    console.log('[Subscription] 🔄 Refreshing subscription...');
+    await loadSubscription();
+  };
 
-  // Set up real-time subscription to subscription changes
-  useEffect(() => {
-    console.log('[useSubscription] 📡 Setting up real-time subscription listener');
-    
-    const channel = supabase
-      .channel('subscription-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'subscriptions',
-        },
-        (payload) => {
-          console.log('[useSubscription] 🔔 Subscription changed:', payload);
-          fetchSubscription();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      console.log('[useSubscription] 🔌 Cleaning up real-time subscription listener');
-      supabase.removeChannel(channel);
-    };
-  }, [fetchSubscription]);
-
-  // Listen for app state changes to sync when returning from background
-  useEffect(() => {
-    console.log('[useSubscription] 📱 Setting up app state listener');
-    
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        console.log('[useSubscription] 🔄 App became active, syncing subscription...');
-        // Sync subscription when app comes to foreground (e.g., after returning from Stripe checkout)
-        syncSubscription();
-      }
-    });
-
-    return () => {
-      console.log('[useSubscription] 🔌 Cleaning up app state listener');
-      subscription.remove();
-    };
-  }, [syncSubscription]);
-
-  const createCheckoutSession = useCallback(async (priceId: string, planType: 'monthly' | 'yearly') => {
-    try {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[useSubscription] 💳 Creating checkout session');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[useSubscription] Plan:', planType);
-      console.log('[useSubscription] Price ID:', priceId);
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('[useSubscription] ❌ Not authenticated');
-        throw new Error('Not authenticated');
-      }
-
-      console.log('[useSubscription] ✅ User authenticated');
-      console.log('[useSubscription] 🚀 Calling Edge Function: create-checkout-session');
-      console.log('[useSubscription] 📦 Request body:', { priceId, planType });
-
-      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-        body: { priceId, planType },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      console.log('[useSubscription] 📥 Edge Function response received');
-
-      if (error) {
-        console.error('[useSubscription] ❌ Error from Edge Function:', error);
-        console.error('[useSubscription] Error details:', JSON.stringify(error, null, 2));
-        throw error;
-      }
-
-      console.log('[useSubscription] ✅ Edge Function response:', data);
-
-      if (data?.url) {
-        console.log('[useSubscription] 🌐 Opening checkout URL:', data.url);
-        console.log('[useSubscription] 🔗 URL length:', data.url.length);
-        
-        // Open the Stripe checkout in the browser
-        const result = await WebBrowser.openBrowserAsync(data.url, {
-          // Dismiss button style
-          dismissButtonStyle: 'close',
-          // Toolbar color
-          toolbarColor: '#0F4C81',
-          // Control bar color
-          controlsColor: '#FFFFFF',
-          // Show title
-          showTitle: true,
-        });
-        
-        console.log('[useSubscription] 📱 WebBrowser result:', result);
-        
-        // After the browser closes (regardless of reason), sync the subscription
-        // The webhook should have already updated the database if payment succeeded
-        console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-        
-        // Wait a moment for webhook to process, then sync
-        setTimeout(() => {
-          syncSubscription();
-        }, 2000);
-      } else {
-        console.error('[useSubscription] ❌ No checkout URL in response');
-        console.error('[useSubscription] Response data:', JSON.stringify(data, null, 2));
-        throw new Error('No checkout URL returned from Edge Function');
-      }
-
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    } catch (error: any) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('[useSubscription] ❌ Error in createCheckoutSession');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('[useSubscription] Error type:', error.constructor.name);
-      console.error('[useSubscription] Error message:', error.message);
-      console.error('[useSubscription] Error details:', JSON.stringify(error, null, 2));
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      throw error;
-    }
-  }, [syncSubscription]);
-
-  const openCustomerPortal = useCallback(async () => {
-    try {
-      console.log('[useSubscription] 🏪 Opening customer portal...');
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('[useSubscription] ❌ Not authenticated');
-        throw new Error('Not authenticated');
-      }
-
-      console.log('[useSubscription] ✅ User authenticated');
-      console.log('[useSubscription] 🚀 Calling Edge Function: create-portal-session');
-
-      const { data, error } = await supabase.functions.invoke('create-portal-session', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) {
-        console.error('[useSubscription] ❌ Error creating portal session:', error);
-        throw error;
-      }
-
-      console.log('[useSubscription] ✅ Portal session created');
-
-      if (data?.url) {
-        console.log('[useSubscription] 🌐 Opening portal URL:', data.url);
-        const result = await WebBrowser.openBrowserAsync(data.url, {
-          dismissButtonStyle: 'close',
-          toolbarColor: '#0F4C81',
-          controlsColor: '#FFFFFF',
-          showTitle: true,
-        });
-        console.log('[useSubscription] 📱 WebBrowser result:', result);
-        
-        // After the browser closes, sync the subscription
-        console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-        setTimeout(() => {
-          syncSubscription();
-        }, 1000);
-      } else {
-        console.error('[useSubscription] ❌ No portal URL returned');
-        throw new Error('No portal URL returned');
-      }
-    } catch (error) {
-      console.error('[useSubscription] ❌ Error in openCustomerPortal:', error);
-      throw error;
-    }
-  }, [syncSubscription]);
-
-  const isSubscribed = subscription?.status === 'active' || subscription?.status === 'trialing';
-  const hasActiveSubscription = isSubscribed;
+  // Alias for backward compatibility
+  const manageSubscription = openCustomerPortal;
 
   return {
     subscription,
     loading,
     isSubscribed,
-    hasActiveSubscription,
-    planType: subscription?.plan_type || null,
-    refreshSubscription: fetchSubscription,
-    syncSubscription,
+    planType,
     createCheckoutSession,
     openCustomerPortal,
+    manageSubscription,
+    syncSubscription,
+    refreshSubscription,
+    refresh: loadSubscription,
   };
 }

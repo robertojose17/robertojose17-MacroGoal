@@ -8,7 +8,6 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 // CRITICAL FIX: Hardcode the correct project URL to avoid environment variable issues
-// The SUPABASE_URL env var was set to the wrong project ref (ofoaeguslgvcq instead of esgptfiofoaeguslgvcq)
 const CORRECT_PROJECT_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
 
 if (!STRIPE_SECRET_KEY) {
@@ -186,7 +185,6 @@ Deno.serve(async (req) => {
     }
 
     // CRITICAL FIX: Use the correct hardcoded project URL instead of environment variable
-    // This fixes the NOT_FOUND error caused by incorrect SUPABASE_URL env var
     const successUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?cancelled=true`;
 
