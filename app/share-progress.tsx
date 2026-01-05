@@ -40,8 +40,13 @@ export default function ShareProgressScreen() {
   const [cardData, setCardData] = useState<CardData | null>(null);
   const viewShotRef = useRef<ViewShot>(null);
 
-  const calculateProteinAccuracyScore = useCallback((proteinLogged: number, proteinTarget: number): number => {
-    if (proteinTarget === 0) {
+  const calculateProteinAccuracyScore = (proteinLogged: number, proteinTarget: number): number => {
+    // STABILITY FIX: Validate inputs
+    if (!proteinTarget || isNaN(proteinTarget) || proteinTarget === 0) {
+      return 0;
+    }
+    
+    if (isNaN(proteinLogged)) {
       return 0;
     }
 
@@ -62,14 +67,20 @@ export default function ShareProgressScreen() {
       const penalty = Math.min(10, excess / 5);
       return Math.max(15, Math.round(25 - penalty));
     }
-  }, []);
+  };
 
   /**
    * Calculate Consistency Score based on check-in data
    * Uses the same logic as ConsistencyScore component
    */
-  const calculateConsistencyScore = useCallback(async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
+  const calculateConsistencyScore = async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
     try {
+      // STABILITY FIX: Validate inputs
+      if (!userId || !startDate || !proteinTarget) {
+        console.error('[ShareProgress] Invalid inputs for calculateConsistencyScore');
+        return 0;
+      }
+      
       const today = new Date().toISOString().split('T')[0];
       
       // Get all meals in the date range
@@ -102,11 +113,16 @@ export default function ShareProgressScreen() {
             dailyData[meal.date].hasMeals = true;
             
             for (const item of meal.meal_items) {
+              // STABILITY FIX: Validate numeric values
               const itemCalories = parseFloat(String(item.calories || '0'));
               const itemProtein = parseFloat(String(item.protein || '0'));
               
-              dailyData[meal.date].calories += itemCalories;
-              dailyData[meal.date].protein += itemProtein;
+              if (!isNaN(itemCalories)) {
+                dailyData[meal.date].calories += itemCalories;
+              }
+              if (!isNaN(itemProtein)) {
+                dailyData[meal.date].protein += itemProtein;
+              }
             }
           }
         }
@@ -114,8 +130,22 @@ export default function ShareProgressScreen() {
 
       // Generate all dates in range
       const allDatesInRange: string[] = [];
-      const start = new Date(startDate + 'T00:00:00');
-      const end = new Date(today + 'T00:00:00');
+      // STABILITY FIX: Validate date strings
+      let start: Date;
+      let end: Date;
+      
+      try {
+        start = new Date(startDate + 'T00:00:00');
+        end = new Date(today + 'T00:00:00');
+        
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          throw new Error('Invalid dates');
+        }
+      } catch (error) {
+        console.error('[ShareProgress] Invalid date range:', startDate, today);
+        return 0;
+      }
+      
       const currentDate = new Date(start);
 
       while (currentDate <= end) {
@@ -170,13 +200,13 @@ export default function ShareProgressScreen() {
       const avgProtein = dailyScores.reduce((sum, day) => sum + day.proteinScore, 0) / dailyScores.length;
 
       const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
-      // Ensure score is between 0 and 100
+      // STABILITY FIX: Ensure score is between 0 and 100
       return Math.max(0, Math.min(100, totalScore));
     } catch (error) {
       console.error('[ShareProgress] Error calculating consistency score:', error);
       return 0;
     }
-  }, [calculateProteinAccuracyScore]);
+  };
 
   /**
    * Calculate Weight Goal Progress (% Complete)
@@ -190,6 +220,12 @@ export default function ShareProgressScreen() {
     try {
       console.log('[ShareProgress] === WEIGHT GOAL PROGRESS CALCULATION ===');
       console.log('[ShareProgress] userData:', userData);
+
+      // STABILITY FIX: Validate userId
+      if (!userId || typeof userId !== 'string') {
+        console.error('[ShareProgress] Invalid userId');
+        return { weightGoalProgress: 0, weightLost: 0 };
+      }
 
       // Get all weight check-ins ordered by date
       const { data: checkIns } = await supabase
@@ -206,9 +242,14 @@ export default function ShareProgressScreen() {
         return { weightGoalProgress: 0, weightLost: 0 };
       }
 
-      // Get first and last weight (in kg from database)
-      const firstWeightKg = checkIns[0].weight;
-      const lastWeightKg = checkIns[checkIns.length - 1].weight;
+      // STABILITY FIX: Validate weight values
+      const firstWeightKg = parseFloat(checkIns[0].weight);
+      const lastWeightKg = parseFloat(checkIns[checkIns.length - 1].weight);
+      
+      if (isNaN(firstWeightKg) || isNaN(lastWeightKg)) {
+        console.error('[ShareProgress] Invalid weight values');
+        return { weightGoalProgress: 0, weightLost: 0 };
+      }
       
       console.log('[ShareProgress] First weight (kg):', firstWeightKg);
       console.log('[ShareProgress] Last weight (kg):', lastWeightKg);
@@ -293,6 +334,12 @@ export default function ShareProgressScreen() {
    */
   const calculateDayStreak = async (userId: string, startDate: string): Promise<number> => {
     try {
+      // STABILITY FIX: Validate inputs
+      if (!userId || !startDate) {
+        console.error('[ShareProgress] Invalid inputs for calculateDayStreak');
+        return 0;
+      }
+      
       const today = new Date().toISOString().split('T')[0];
       
       // Get all meals from start date to today
@@ -312,7 +359,10 @@ export default function ShareProgressScreen() {
       const daysWithData = new Set<string>();
       allMeals.forEach((meal: any) => {
         if (meal.meal_items && meal.meal_items.length > 0) {
-          if (meal.meal_items.some((item: any) => item.calories > 0)) {
+          if (meal.meal_items.some((item: any) => {
+            const calories = parseFloat(item.calories);
+            return !isNaN(calories) && calories > 0;
+          })) {
             daysWithData.add(meal.date);
           }
         }
@@ -320,7 +370,18 @@ export default function ShareProgressScreen() {
 
       // Calculate current streak (working backwards from today)
       let streak = 0;
-      const currentDate = new Date(today + 'T00:00:00');
+      // STABILITY FIX: Validate date before creating Date object
+      let currentDate: Date;
+      try {
+        currentDate = new Date(today + 'T00:00:00');
+        if (isNaN(currentDate.getTime())) {
+          throw new Error('Invalid date');
+        }
+      } catch (error) {
+        console.error('[ShareProgress] Invalid today date:', today);
+        return 0;
+      }
+      
       const maxIterations = 1000; // Safety limit to prevent infinite loop
       
       while (streak < maxIterations) {
@@ -354,6 +415,12 @@ export default function ShareProgressScreen() {
     userId: string
   ): Promise<{ progressPhotoUrl?: string; beforePhotoUrl?: string }> => {
     try {
+      // STABILITY FIX: Validate userId
+      if (!userId || typeof userId !== 'string') {
+        console.error('[ShareProgress] Invalid userId for getProgressPhotos');
+        return {};
+      }
+      
       const { data: photoCheckIns } = await supabase
         .from('check_ins')
         .select('photo_url, date')
@@ -388,6 +455,11 @@ export default function ShareProgressScreen() {
     weightLost: number,
     dayStreak: number
   ): string => {
+    // STABILITY FIX: Validate inputs
+    if (isNaN(consistencyScore)) consistencyScore = 0;
+    if (isNaN(weightLost)) weightLost = 0;
+    if (isNaN(dayStreak)) dayStreak = 0;
+    
     if (dayStreak >= 14) {
       return 'Still showing up 💪';
     }
@@ -400,6 +472,7 @@ export default function ShareProgressScreen() {
     return 'Small wins add up';
   };
 
+  // STABILITY FIX: Remove calculation functions from dependency array
   const loadCardData = useCallback(async () => {
     try {
       setLoading(true);
@@ -442,7 +515,18 @@ export default function ShareProgressScreen() {
       if (goalData?.start_date) {
         startDate = goalData.start_date;
       } else if (userData?.created_at) {
-        startDate = userData.created_at.split('T')[0];
+        // STABILITY FIX: Validate created_at
+        try {
+          const createdAtDate = new Date(userData.created_at);
+          if (!isNaN(createdAtDate.getTime())) {
+            startDate = userData.created_at.split('T')[0];
+          } else {
+            throw new Error('Invalid created_at');
+          }
+        } catch (error) {
+          console.error('[ShareProgress] Invalid created_at:', userData.created_at);
+          startDate = new Date().toISOString().split('T')[0];
+        }
       } else {
         startDate = new Date().toISOString().split('T')[0];
       }
@@ -450,7 +534,12 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] Journey start date:', startDate);
 
       // ===== CALCULATE CONSISTENCY SCORE =====
-      const consistencyScore = await calculateConsistencyScore(authUser.id, startDate, goal.protein_g || 150);
+      // STABILITY FIX: Validate protein_g
+      const rawProteinG = goal.protein_g;
+      const parsedProteinG = parseFloat(rawProteinG);
+      const proteinG = (!isNaN(parsedProteinG) && parsedProteinG > 0) ? parsedProteinG : 150;
+      
+      const consistencyScore = await calculateConsistencyScore(authUser.id, startDate, proteinG);
       console.log('[ShareProgress] Consistency Score:', consistencyScore);
 
       // ===== CALCULATE WEIGHT GOAL PROGRESS (% COMPLETE) =====
@@ -489,7 +578,7 @@ export default function ShareProgressScreen() {
       console.error('[ShareProgress] Error loading card data:', error);
       setLoading(false);
     }
-  }, [calculateConsistencyScore]);
+  }, []); // Empty dependency array - all functions are defined inline
 
   useEffect(() => {
     loadCardData();

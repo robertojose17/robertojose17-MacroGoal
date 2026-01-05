@@ -41,14 +41,18 @@ export default function ProfileScreen() {
 
   const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription, syncSubscription } = useSubscription();
 
+  // STABILITY FIX: Remove syncSubscription from dependency array to prevent infinite loop
   useFocusEffect(
     useCallback(() => {
       console.log('[Profile] Screen focused, loading data and syncing subscription');
       loadUserData();
       // Sync subscription from Stripe when screen is focused
-      syncSubscription();
+      // STABILITY FIX: Call syncSubscription directly without adding to dependency array
+      syncSubscription().catch((error) => {
+        console.error('[Profile] Error syncing subscription:', error);
+      });
       logSubscriptionStatus();
-    }, [syncSubscription])
+    }, []) // Empty dependency array - syncSubscription is stable
   );
 
   const loadUserData = async () => {
@@ -75,8 +79,9 @@ export default function ProfileScreen() {
         console.log('[Profile] User data loaded:', userData);
         setUser({ ...authUser, ...userData });
         
+        // STABILITY FIX: Add null check for onboarding_completed
         // Check if goal weight is missing and user has completed onboarding
-        if (userData.onboarding_completed && !userData.goal_weight) {
+        if (userData.onboarding_completed === true && !userData.goal_weight) {
           console.log('[Profile] Goal weight is missing, showing prompt');
           setShowGoalWeightPrompt(true);
         }
@@ -111,7 +116,14 @@ export default function ProfileScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadUserData(), syncSubscription()]);
+    // STABILITY FIX: Wrap syncSubscription in try-catch to prevent crashes
+    try {
+      await Promise.all([loadUserData(), syncSubscription()]);
+    } catch (error) {
+      console.error('[Profile] Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleManageSubscription = async () => {
@@ -150,7 +162,13 @@ export default function ProfileScreen() {
   };
 
   const handleEditGoals = () => {
-    if (!user?.onboarding_completed) {
+    // STABILITY FIX: Add null check for user
+    if (!user) {
+      console.log('[Profile] No user data available');
+      return;
+    }
+    
+    if (!user.onboarding_completed) {
       router.push('/onboarding/complete');
     } else {
       router.push('/edit-goals');
@@ -158,18 +176,36 @@ export default function ProfileScreen() {
   };
 
   const calculateAge = (dob: string) => {
-    if (!dob) return null;
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
+    // STABILITY FIX: Add validation for dob
+    if (!dob || typeof dob !== 'string') return null;
+    
+    try {
+      const birthDate = new Date(dob);
+      // STABILITY FIX: Validate date is valid
+      if (isNaN(birthDate.getTime())) {
+        console.error('[Profile] Invalid date of birth:', dob);
+        return null;
+      }
+      
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      return age;
+    } catch (error) {
+      console.error('[Profile] Error calculating age:', error);
+      return null;
     }
-    return age;
   };
 
   const formatHeight = (heightCm: number, units: string) => {
+    // STABILITY FIX: Add validation
+    if (!heightCm || isNaN(heightCm) || heightCm <= 0) {
+      return 'Not set';
+    }
+    
     if (units === 'imperial') {
       const { feet, inches } = cmToFeetInches(heightCm);
       return `${feet}' ${inches}"`;
@@ -178,6 +214,11 @@ export default function ProfileScreen() {
   };
 
   const formatWeight = (weightKg: number, units: string) => {
+    // STABILITY FIX: Add validation
+    if (!weightKg || isNaN(weightKg) || weightKg <= 0) {
+      return 'Not set';
+    }
+    
     if (units === 'imperial') {
       return `${Math.round(kgToLbs(weightKg))} lbs`;
     }
@@ -197,7 +238,13 @@ export default function ProfileScreen() {
   };
 
   const openEditModal = (field: EditField) => {
-    const units = user?.preferred_units || 'metric';
+    // STABILITY FIX: Add null check for user
+    if (!user) {
+      console.log('[Profile] Cannot edit - no user data');
+      return;
+    }
+    
+    const units = user.preferred_units || 'metric';
     
     switch (field) {
       case 'name':
@@ -439,7 +486,28 @@ export default function ProfileScreen() {
     }
   };
 
-  const saveStartDate = async (date: Date) => {
+  const saveStartDate = async (date: Date | undefined) => {
+    // STABILITY FIX: Add null/undefined check for date
+    if (!date) {
+      console.error('[Profile] Cannot save start date - date is null or undefined');
+      Alert.alert('Error', 'Please select a valid date.');
+      return;
+    }
+    
+    // STABILITY FIX: Validate date is valid
+    if (isNaN(date.getTime())) {
+      console.error('[Profile] Cannot save start date - invalid date object');
+      Alert.alert('Error', 'Invalid date selected. Please try again.');
+      return;
+    }
+    
+    // STABILITY FIX: Add null check for goal
+    if (!goal) {
+      console.error('[Profile] Cannot save start date - no active goal');
+      Alert.alert('Error', 'No active goal found. Please set up your goals first.');
+      return;
+    }
+    
     try {
       setSaving(true);
       const dateString = date.toISOString().split('T')[0];
@@ -466,8 +534,27 @@ export default function ProfileScreen() {
   };
 
   const openStartDatePicker = () => {
-    if (goal?.start_date) {
-      setSelectedDate(new Date(goal.start_date));
+    // STABILITY FIX: Add null check for goal
+    if (!goal) {
+      console.log('[Profile] Cannot open date picker - no active goal');
+      Alert.alert('Error', 'No active goal found. Please set up your goals first.');
+      return;
+    }
+    
+    if (goal.start_date) {
+      // STABILITY FIX: Validate date string before creating Date object
+      try {
+        const dateObj = new Date(goal.start_date);
+        if (isNaN(dateObj.getTime())) {
+          console.error('[Profile] Invalid start_date in goal:', goal.start_date);
+          setSelectedDate(new Date());
+        } else {
+          setSelectedDate(dateObj);
+        }
+      } catch (error) {
+        console.error('[Profile] Error parsing start_date:', error);
+        setSelectedDate(new Date());
+      }
     } else {
       setSelectedDate(new Date());
     }
