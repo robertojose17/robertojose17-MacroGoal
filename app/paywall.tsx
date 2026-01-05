@@ -1,612 +1,152 @@
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Platform,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import * as WebBrowser from 'expo-web-browser';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/hooks/useSubscription';
-import { STRIPE_CONFIG } from '@/utils/stripeConfig';
-import { logStripeConfig, logSubscriptionAttempt, validateStripeConfig } from '@/utils/stripeDebug';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+
+const PRICE_IDS = {
+  monthly: 'price_1QYourMonthlyPriceID',
+  yearly: 'price_1QYourYearlyPriceID',
+};
 
 export default function PaywallScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { createCheckoutSession, loading: subscriptionLoading } = useSubscription();
-
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-
-  useEffect(() => {
-    // Log configuration on mount
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[Paywall] 🎬 Screen mounted');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    logStripeConfig();
-  }, []);
+  const { createCheckoutSession } = useSubscription();
+  const [loading, setLoading] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
 
   const handleSubscribe = async () => {
+    setLoading(true);
     try {
-      setCheckoutLoading(true);
-
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[Paywall] 🚀 Subscribe button pressed');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // Validate configuration before attempting
-      const validation = validateStripeConfig();
-      if (!validation.isValid) {
-        console.error('[Paywall] ❌ Invalid Stripe configuration:', validation.errors);
-        Alert.alert(
-          'Configuration Error',
-          'Stripe is not configured correctly. Please check the logs for details.\n\n' +
-          validation.errors.join('\n'),
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      console.log('[Paywall] ✅ Stripe configuration is valid');
-
-      const priceId = selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID;
-
-      console.log('[Paywall] 📋 Subscription details:');
-      console.log('[Paywall]   - Plan:', selectedPlan);
-      console.log('[Paywall]   - Price ID:', priceId);
-      console.log('[Paywall]   - Price:', selectedPlan === 'monthly' ? `$${STRIPE_CONFIG.MONTHLY_PRICE}/month` : `$${STRIPE_CONFIG.YEARLY_PRICE}/year`);
-
-      logSubscriptionAttempt(priceId, selectedPlan);
-
-      console.log('[Paywall] 🔄 Calling createCheckoutSession...');
-      await createCheckoutSession(priceId, selectedPlan);
-
-      console.log('[Paywall] ✅ Checkout session created successfully');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    } catch (error: any) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('[Paywall] ❌ Error creating checkout session');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('[Paywall] Error type:', error.constructor?.name || 'Unknown');
-      console.error('[Paywall] Error message:', error.message);
-      console.error('[Paywall] Error stack:', error.stack);
+      const priceId = PRICE_IDS[selectedPlan];
+      const url = await createCheckoutSession(priceId, selectedPlan);
       
-      // Log additional error details if available
-      if (error.statusCode) {
-        console.error('[Paywall] HTTP Status Code:', error.statusCode);
+      if (url) {
+        await WebBrowser.openBrowserAsync(url);
       }
-      if (error.responseBody) {
-        console.error('[Paywall] Response Body:', error.responseBody);
-      }
-      
-      console.error('[Paywall] Full error:', JSON.stringify(error, null, 2));
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      let errorMessage = 'Failed to start checkout. Please try again.';
-      let errorTitle = 'Subscription Error';
-      
-      // Provide more specific error messages based on the error details
-      if (error.statusCode === 400 || error.message?.includes('400')) {
-        errorTitle = 'Invalid Request';
-        
-        if (error.responseBody) {
-          // Try to extract the actual error from the response body
-          try {
-            const bodyStr = typeof error.responseBody === 'string' ? error.responseBody : JSON.stringify(error.responseBody);
-            
-            if (bodyStr.includes('No such price')) {
-              errorMessage = '❌ Invalid Price ID\n\n' +
-                'The Stripe Price ID is not valid or does not exist in your Stripe account.\n\n' +
-                'Please verify:\n' +
-                '• You are using PRICE IDs (price_...) not PRODUCT IDs (prod_...)\n' +
-                '• The Price IDs exist in your Stripe Dashboard\n' +
-                '• You are using TEST mode Price IDs for testing\n\n' +
-                `Current Price ID: ${selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID}`;
-            } else if (bodyStr.includes('Missing priceId or planType')) {
-              errorMessage = '❌ Missing Required Data\n\n' +
-                'The request is missing required information (priceId or planType).\n\n' +
-                'This is likely a bug in the app. Please contact support.';
-            } else if (bodyStr.includes('Invalid price ID format')) {
-              errorMessage = '❌ Invalid Price ID Format\n\n' +
-                'You are using a PRODUCT ID instead of a PRICE ID.\n\n' +
-                'Price IDs start with "price_" not "prod_".\n\n' +
-                'Please update your Stripe configuration in utils/stripeConfig.ts';
-            } else {
-              errorMessage = `❌ Bad Request (400)\n\n${bodyStr}\n\nPlease check the logs for more details.`;
-            }
-          } catch (parseError) {
-            console.error('[Paywall] Could not parse error response body');
-            errorMessage = `❌ Bad Request (400)\n\n${error.responseBody}\n\nPlease check the logs for more details.`;
-          }
-        } else {
-          errorMessage = '❌ Bad Request (400)\n\n' +
-            'The server rejected the request. This could be due to:\n' +
-            '• Invalid Price ID\n' +
-            '• Missing required data\n' +
-            '• Stripe configuration error\n\n' +
-            'Please check the logs for more details.';
-        }
-      } else if (error.statusCode === 401 || error.message?.includes('Unauthorized') || error.message?.includes('Not authenticated')) {
-        errorTitle = 'Authentication Required';
-        errorMessage = '❌ Not Authenticated\n\n' +
-          'You must be logged in to subscribe.\n\n' +
-          'Please log in and try again.';
-      } else if (error.statusCode === 500 || error.message?.includes('500')) {
-        errorTitle = 'Server Error';
-        errorMessage = '❌ Server Error (500)\n\n' +
-          'The payment service encountered an error.\n\n' +
-          'This could be due to:\n' +
-          '• Stripe API error\n' +
-          '• Invalid Stripe Secret Key\n' +
-          '• Database connection issue\n\n' +
-          'Please check the Edge Function logs for more details.';
-      } else if (error.message?.includes('FunctionsFetchError')) {
-        errorTitle = 'Connection Error';
-        errorMessage = '❌ Unable to Connect\n\n' +
-          'Could not connect to the payment service.\n\n' +
-          'Please check your internet connection and try again.\n\n' +
-          'If the problem persists, the payment service may be temporarily unavailable.';
-      } else if (error.message?.includes('No checkout URL')) {
-        errorTitle = 'Checkout Error';
-        errorMessage = '❌ No Checkout URL\n\n' +
-          'The payment service did not return a valid checkout URL.\n\n' +
-          'This could be due to a Stripe API error or configuration issue.\n\n' +
-          'Please check the Edge Function logs for more details.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      Alert.alert(
-        errorTitle,
-        errorMessage,
-        [{ text: 'OK' }]
-      );
+    } catch (err) {
+      console.error('[Paywall] Subscribe error:', err);
     } finally {
-      setCheckoutLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleRestore = () => {
-    console.log('[Paywall] ℹ️ Restore subscription button pressed');
-    Alert.alert(
-      'Restore Subscription',
-      'If you already have an active subscription, it will be automatically detected when you log in. Please make sure you are logged in with the same account you used to subscribe.',
-      [{ text: 'OK' }]
-    );
-  };
-
-  const isLoading = subscriptionLoading || checkoutLoading;
-
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-      edges={['top']}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.dark.background : colors.light.background }]} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol
-            ios_icon_name="xmark"
-            android_material_icon_name="close"
-            size={24}
-            color={isDark ? colors.textDark : colors.text}
-          />
+        <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+          <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={24} color={isDark ? colors.dark.text : colors.light.text} />
         </TouchableOpacity>
-        <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Hero Section */}
-        <View style={styles.heroSection}>
-          <View style={[styles.iconContainer, { backgroundColor: colors.primary + '20' }]}>
-            <IconSymbol
-              ios_icon_name="sparkles"
-              android_material_icon_name="auto_awesome"
-              size={48}
-              color={colors.primary}
-            />
-          </View>
-          <Text style={[styles.heroTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Unlock AI Features
-          </Text>
-          <Text style={[styles.heroSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Get instant meal estimates with our AI-powered nutrition assistant
-          </Text>
-        </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={[styles.title, { color: isDark ? colors.dark.text : colors.light.text }]}>
+          Unlock Premium
+        </Text>
+        <Text style={[styles.subtitle, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+          Get advanced analytics, custom recipes, and more
+        </Text>
 
-        {/* Features List */}
-        <View style={styles.featuresSection}>
-          <FeatureItem
-            icon="sparkles"
-            androidIcon="auto_awesome"
-            title="AI Meal Estimator"
-            description="Describe any meal and get instant calorie and macro estimates"
-            isDark={isDark}
-          />
-          <FeatureItem
-            icon="chart.bar.fill"
-            androidIcon="bar_chart"
-            title="Ingredient Breakdown"
-            description="See detailed nutrition for each ingredient in your meals"
-            isDark={isDark}
-          />
-          <FeatureItem
-            icon="slider.horizontal.3"
-            androidIcon="tune"
-            title="Adjust Portions"
-            description="Fine-tune ingredient quantities to match your exact portions"
-            isDark={isDark}
-          />
-          <FeatureItem
-            icon="bolt.fill"
-            androidIcon="flash_on"
-            title="Future AI Tools"
-            description="Get early access to new AI-powered features as we release them"
-            isDark={isDark}
-          />
-        </View>
-
-        {/* Pricing Plans */}
-        <View style={styles.pricingSection}>
-          <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Choose Your Plan
-          </Text>
-
-          {/* Monthly Plan */}
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              {
-                backgroundColor: isDark ? colors.cardDark : colors.card,
-                borderColor: selectedPlan === 'monthly' ? colors.primary : (isDark ? colors.borderDark : colors.border),
-                borderWidth: selectedPlan === 'monthly' ? 2 : 1,
-              },
-            ]}
-            onPress={() => setSelectedPlan('monthly')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.planHeader}>
-              <View style={styles.planTitleContainer}>
-                <Text style={[styles.planTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                  Monthly
-                </Text>
-                <Text style={[styles.planPrice, { color: colors.primary }]}>
-                  ${STRIPE_CONFIG.MONTHLY_PRICE}<Text style={styles.planPeriod}>/month</Text>
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.radioButton,
-                  {
-                    borderColor: selectedPlan === 'monthly' ? colors.primary : (isDark ? colors.borderDark : colors.border),
-                  },
-                ]}
-              >
-                {selectedPlan === 'monthly' && (
-                  <View style={[styles.radioButtonInner, { backgroundColor: colors.primary }]} />
-                )}
-              </View>
+        <View style={styles.features}>
+          {[
+            'Advanced 7/30-day analytics',
+            'Multiple goal phases',
+            'Custom recipe builder',
+            'Habit tracking & streaks',
+            'Data export (CSV)',
+            'AI meal suggestions',
+          ].map((feature, idx) => (
+            <View key={idx} style={styles.featureRow}>
+              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={20} color={colors.accent} />
+              <Text style={[styles.featureText, { color: isDark ? colors.dark.text : colors.light.text }]}>
+                {feature}
+              </Text>
             </View>
-            <Text style={[styles.planDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Perfect for trying out AI features
-            </Text>
-          </TouchableOpacity>
+          ))}
+        </View>
 
-          {/* Yearly Plan */}
+        <View style={styles.plans}>
           <TouchableOpacity
             style={[
               styles.planCard,
-              {
-                backgroundColor: isDark ? colors.cardDark : colors.card,
-                borderColor: selectedPlan === 'yearly' ? colors.primary : (isDark ? colors.borderDark : colors.border),
-                borderWidth: selectedPlan === 'yearly' ? 2 : 1,
-              },
+              { backgroundColor: isDark ? colors.dark.card : colors.light.card },
+              selectedPlan === 'yearly' && styles.planCardSelected,
             ]}
             onPress={() => setSelectedPlan('yearly')}
-            activeOpacity={0.7}
           >
-            <View style={styles.badgeContainer}>
-              <View style={[styles.saveBadge, { backgroundColor: colors.accent }]}>
-                <Text style={styles.saveBadgeText}>Save {STRIPE_CONFIG.YEARLY_SAVINGS_PERCENT}%</Text>
-              </View>
-            </View>
             <View style={styles.planHeader}>
-              <View style={styles.planTitleContainer}>
-                <Text style={[styles.planTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                  Yearly
-                </Text>
-                <Text style={[styles.planPrice, { color: colors.primary }]}>
-                  ${STRIPE_CONFIG.YEARLY_PRICE}<Text style={styles.planPeriod}>/year</Text>
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.radioButton,
-                  {
-                    borderColor: selectedPlan === 'yearly' ? colors.primary : (isDark ? colors.borderDark : colors.border),
-                  },
-                ]}
-              >
-                {selectedPlan === 'yearly' && (
-                  <View style={[styles.radioButtonInner, { backgroundColor: colors.primary }]} />
-                )}
+              <Text style={[styles.planName, { color: isDark ? colors.dark.text : colors.light.text }]}>Yearly</Text>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>Save 40%</Text>
               </View>
             </View>
-            <Text style={[styles.planDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Best value - just ${STRIPE_CONFIG.YEARLY_MONTHLY_EQUIVALENT}/month
+            <Text style={[styles.planPrice, { color: isDark ? colors.dark.text : colors.light.text }]}>$59.99/year</Text>
+            <Text style={[styles.planDetail, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+              $5/month
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.planCard,
+              { backgroundColor: isDark ? colors.dark.card : colors.light.card },
+              selectedPlan === 'monthly' && styles.planCardSelected,
+            ]}
+            onPress={() => setSelectedPlan('monthly')}
+          >
+            <Text style={[styles.planName, { color: isDark ? colors.dark.text : colors.light.text }]}>Monthly</Text>
+            <Text style={[styles.planPrice, { color: isDark ? colors.dark.text : colors.light.text }]}>$9.99/month</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Subscribe Button */}
         <TouchableOpacity
-          style={[
-            styles.subscribeButton,
-            { backgroundColor: colors.primary, opacity: isLoading ? 0.6 : 1 },
-          ]}
+          style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
           onPress={handleSubscribe}
-          disabled={isLoading}
-          activeOpacity={0.7}
+          disabled={loading}
         >
-          {checkoutLoading ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+          {loading ? (
+            <ActivityIndicator color="#fff" />
           ) : (
-            <React.Fragment>
-              <IconSymbol
-                ios_icon_name="lock.fill"
-                android_material_icon_name="lock"
-                size={20}
-                color="#FFFFFF"
-              />
-              <Text style={styles.subscribeButtonText}>
-                Subscribe Now
-              </Text>
-            </React.Fragment>
+            <Text style={styles.subscribeButtonText}>Subscribe Now</Text>
           )}
         </TouchableOpacity>
 
-        {/* Restore Button */}
-        <TouchableOpacity
-          style={styles.restoreButton}
-          onPress={handleRestore}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.restoreButtonText, { color: colors.primary }]}>
-            Restore Subscription
-          </Text>
-        </TouchableOpacity>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            • Cancel anytime from your account settings
-          </Text>
-          <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            • Secure payment powered by Stripe
-          </Text>
-          <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            • Test mode - no real charges will be made
-          </Text>
-        </View>
+        <Text style={[styles.disclaimer, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+          Cancel anytime. Auto-renews unless cancelled.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function FeatureItem({ icon, androidIcon, title, description, isDark }: any) {
-  return (
-    <View style={styles.featureItem}>
-      <View style={[styles.featureIcon, { backgroundColor: colors.primary + '15' }]}>
-        <IconSymbol
-          ios_icon_name={icon}
-          android_material_icon_name={androidIcon}
-          size={24}
-          color={colors.primary}
-        />
-      </View>
-      <View style={styles.featureContent}>
-        <Text style={[styles.featureTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          {title}
-        </Text>
-        <Text style={[styles.featureDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-          {description}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
-    paddingBottom: spacing.sm,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 120,
-  },
-  heroSection: {
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
-  },
-  iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  heroTitle: {
-    ...typography.h1,
-    fontSize: 32,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  heroSubtitle: {
-    ...typography.body,
-    fontSize: 16,
-    textAlign: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  featuresSection: {
-    marginTop: spacing.lg,
-    gap: spacing.md,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  featureIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureContent: {
-    flex: 1,
-  },
-  featureTitle: {
-    ...typography.bodyBold,
-    fontSize: 16,
-    marginBottom: spacing.xs,
-  },
-  featureDescription: {
-    ...typography.body,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  pricingSection: {
-    marginTop: spacing.xxl,
-  },
-  sectionTitle: {
-    ...typography.h2,
-    fontSize: 24,
-    marginBottom: spacing.lg,
-    textAlign: 'center',
-  },
-  planCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    position: 'relative',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  badgeContainer: {
-    position: 'absolute',
-    top: -12,
-    right: spacing.lg,
-  },
-  saveBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-  },
-  saveBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  planHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  planTitleContainer: {
-    flex: 1,
-  },
-  planTitle: {
-    ...typography.h3,
-    fontSize: 20,
-    marginBottom: spacing.xs,
-  },
-  planPrice: {
-    ...typography.h2,
-    fontSize: 28,
-  },
-  planPeriod: {
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  planDescription: {
-    ...typography.body,
-    fontSize: 14,
-  },
-  radioButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioButtonInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  subscribeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md + spacing.xs,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.xl,
-    gap: spacing.sm,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
-    elevation: 4,
-  },
-  subscribeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  restoreButton: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    marginTop: spacing.md,
-  },
-  restoreButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
-    marginTop: spacing.xl,
-    gap: spacing.xs,
-  },
-  footerText: {
-    ...typography.caption,
-    fontSize: 13,
-    textAlign: 'center',
-  },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  closeButton: { padding: spacing.sm },
+  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
+  title: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginTop: spacing.lg },
+  subtitle: { fontSize: 16, textAlign: 'center', marginTop: spacing.sm, marginBottom: spacing.xl },
+  features: { marginBottom: spacing.xl },
+  featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  featureText: { fontSize: 16, marginLeft: spacing.md },
+  plans: { marginBottom: spacing.lg },
+  planCard: { padding: spacing.lg, borderRadius: borderRadius.lg, marginBottom: spacing.md, borderWidth: 2, borderColor: 'transparent' },
+  planCardSelected: { borderColor: colors.accent },
+  planHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs },
+  planName: { fontSize: 20, fontWeight: '600' },
+  badge: { backgroundColor: colors.accent, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: borderRadius.sm },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  planPrice: { fontSize: 24, fontWeight: '700', marginBottom: 4 },
+  planDetail: { fontSize: 14 },
+  subscribeButton: { backgroundColor: colors.accent, padding: spacing.lg, borderRadius: borderRadius.lg, alignItems: 'center' },
+  subscribeButtonDisabled: { opacity: 0.6 },
+  subscribeButtonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  disclaimer: { fontSize: 12, textAlign: 'center', marginTop: spacing.md },
 });
