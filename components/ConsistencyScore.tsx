@@ -46,29 +46,23 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const [rangeStartDate, setRangeStartDate] = useState<string | null>(null);
   const [rangeEndDate, setRangeEndDate] = useState<string | null>(null);
 
-  // STABILITY FIX: Remove loadJourneyStartDate from dependency array
   useEffect(() => {
     if (userId) {
       loadJourneyStartDate();
     }
-  }, [userId]); // Only depend on userId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
-  // STABILITY FIX: Remove calculateConsistencyScore from dependency array
   useEffect(() => {
     if (userId && journeyStartDate && rangeStartDate && rangeEndDate) {
       calculateConsistencyScore();
     }
-  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate]); // Don't include calculateConsistencyScore
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, journeyStartDate, rangeStartDate, rangeEndDate]);
 
-  const loadJourneyStartDate = async () => {
+  const loadJourneyStartDate = useCallback(async () => {
     try {
       console.log('[ConsistencyScore] Loading journey start date for user:', userId);
-      
-      // STABILITY FIX: Validate userId
-      if (!userId || typeof userId !== 'string') {
-        console.error('[ConsistencyScore] Invalid userId:', userId);
-        return;
-      }
       
       // First, try to get the user's created_at date (when they joined)
       const { data: userData, error: userError } = await supabase
@@ -102,20 +96,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         startDate = goalData.start_date;
         console.log('[ConsistencyScore] Using goal start_date:', startDate);
       } else if (userData?.created_at) {
-        // STABILITY FIX: Validate created_at before using
-        try {
-          const createdAtDate = new Date(userData.created_at);
-          if (!isNaN(createdAtDate.getTime())) {
-            startDate = userData.created_at.split('T')[0];
-            console.log('[ConsistencyScore] Using user created_at:', startDate);
-          } else {
-            throw new Error('Invalid created_at date');
-          }
-        } catch (error) {
-          console.error('[ConsistencyScore] Invalid created_at:', userData.created_at);
-          startDate = new Date().toISOString().split('T')[0];
-          console.log('[ConsistencyScore] Using today as fallback');
-        }
+        startDate = userData.created_at.split('T')[0];
+        console.log('[ConsistencyScore] Using user created_at:', startDate);
       } else {
         startDate = new Date().toISOString().split('T')[0];
         console.log('[ConsistencyScore] No start date found, using today:', startDate);
@@ -137,15 +119,14 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       setRangeStartDate(today);
       setRangeEndDate(today);
     }
-  };
+  }, [userId]);
 
-  const calculateConsistencyScore = async () => {
+  const calculateConsistencyScore = useCallback(async () => {
     try {
       setLoading(true);
 
-      // STABILITY FIX: Validate inputs
-      if (!rangeStartDate || !rangeEndDate || !userId) {
-        console.log('[ConsistencyScore] Missing required data');
+      if (!rangeStartDate || !rangeEndDate) {
+        console.log('[ConsistencyScore] Missing date range');
         setLoading(false);
         return;
       }
@@ -193,10 +174,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         console.error('[ConsistencyScore] Error loading goal:', goalError);
       }
 
-      // STABILITY FIX: Validate protein target
-      const rawProteinTarget = goalData?.protein_g;
-      const parsedProteinTarget = parseFloat(rawProteinTarget);
-      const proteinTarget = (!isNaN(parsedProteinTarget) && parsedProteinTarget > 0) ? parsedProteinTarget : 150;
+      const proteinTarget = goalData?.protein_g || 150;
       console.log('[ConsistencyScore] Protein target:', proteinTarget, 'g');
 
       // 3. Organize data by date
@@ -212,16 +190,11 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
             dailyData[meal.date].hasMeals = true;
             
             for (const item of meal.meal_items) {
-              // STABILITY FIX: Validate numeric values
               const itemCalories = parseFloat(String(item.calories || '0'));
               const itemProtein = parseFloat(String(item.protein || '0'));
               
-              if (!isNaN(itemCalories)) {
-                dailyData[meal.date].calories += itemCalories;
-              }
-              if (!isNaN(itemProtein)) {
-                dailyData[meal.date].protein += itemProtein;
-              }
+              dailyData[meal.date].calories += itemCalories;
+              dailyData[meal.date].protein += itemProtein;
             }
           }
         }
@@ -231,23 +204,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
       // 4. Generate all dates in range
       const allDatesInRange: string[] = [];
-      // STABILITY FIX: Validate date strings before creating Date objects
-      let startDate: Date;
-      let endDate: Date;
-      
-      try {
-        startDate = new Date(rangeStartDate + 'T00:00:00');
-        endDate = new Date(rangeEndDate + 'T00:00:00');
-        
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-          throw new Error('Invalid date range');
-        }
-      } catch (error) {
-        console.error('[ConsistencyScore] Invalid date range:', rangeStartDate, rangeEndDate);
-        setLoading(false);
-        return;
-      }
-      
+      const startDate = new Date(rangeStartDate + 'T00:00:00');
+      const endDate = new Date(rangeEndDate + 'T00:00:00');
       const currentDate = new Date(startDate);
 
       while (currentDate <= endDate) {
@@ -359,15 +317,10 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       console.error('[ConsistencyScore] Error calculating score:', error);
       setLoading(false);
     }
-  };
+  }, [userId, rangeStartDate, rangeEndDate]);
 
   const calculateProteinAccuracyScore = (proteinLogged: number, proteinTarget: number): number => {
-    // STABILITY FIX: Validate inputs
-    if (!proteinTarget || isNaN(proteinTarget) || proteinTarget === 0) {
-      return 0;
-    }
-    
-    if (isNaN(proteinLogged)) {
+    if (proteinTarget === 0) {
       return 0;
     }
 
@@ -427,12 +380,6 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     console.log('[ConsistencyScore] ===== DATE RANGE CHANGED =====');
     console.log('[ConsistencyScore] New range:', startDate.toISOString(), '→', endDate.toISOString());
     
-    // STABILITY FIX: Validate dates
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      console.error('[ConsistencyScore] Invalid dates selected');
-      return;
-    }
-    
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
     
@@ -460,47 +407,24 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     const isDefaultRange = rangeStartDate === journeyStartDate && rangeEndDate === new Date().toISOString().split('T')[0];
 
     if (isDefaultRange) {
-      // STABILITY FIX: Validate date before formatting
-      try {
-        const startDateObj = new Date(rangeStartDate + 'T00:00:00');
-        if (isNaN(startDateObj.getTime())) {
-          return 'Invalid date range';
-        }
-        const start = startDateObj.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        return `${start} - Today`;
-      } catch (error) {
-        console.error('[ConsistencyScore] Error formatting date:', error);
-        return 'Invalid date range';
-      }
+      const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${start} - Today`;
     } else {
-      // STABILITY FIX: Validate dates before formatting
-      try {
-        const startDateObj = new Date(rangeStartDate + 'T00:00:00');
-        const endDateObj = new Date(rangeEndDate + 'T00:00:00');
-        
-        if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
-          return 'Invalid date range';
-        }
-        
-        const start = startDateObj.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        const end = endDateObj.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        return `${start} - ${end}`;
-      } catch (error) {
-        console.error('[ConsistencyScore] Error formatting dates:', error);
-        return 'Invalid date range';
-      }
+      const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const end = new Date(rangeEndDate + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${start} - ${end}`;
     }
   };
 

@@ -51,10 +51,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [showCalorieProjectionLine, setShowCalorieProjectionLine] = useState(true);
   const [showActualWeightDots, setShowActualWeightDots] = useState(true);
 
-  // STABILITY FIX: Remove loadProfileData from dependency array to prevent infinite loop
   useEffect(() => {
     loadProfileData();
-  }, [userId]); // Only depend on userId
+  }, [userId, loadProfileData]);
 
   const loadProfileData = useCallback(async () => {
     try {
@@ -62,14 +61,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setError(null);
 
       console.log('[ProgressCard] Loading profile data for user:', userId);
-
-      // STABILITY FIX: Add validation for userId
-      if (!userId || typeof userId !== 'string') {
-        console.error('[ProgressCard] Invalid userId:', userId);
-        setError('Invalid user ID');
-        setLoading(false);
-        return;
-      }
 
       // Load user profile data
       const { data: userData, error: userError } = await supabase
@@ -154,7 +145,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       const rawStartingWeight = userData.starting_weight;
       const rawGoalWeight = userData.goal_weight;
       
-      // STABILITY FIX: Parse to float, treating null/undefined/'' as invalid
+      // Parse to float, treating null/undefined/'' as invalid
       const parsedStartingWeight = parseFloat(rawStartingWeight);
       const parsedGoalWeight = parseFloat(rawGoalWeight);
 
@@ -238,34 +229,13 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       let startDate: Date;
       
       if (goalData && goalData.start_date) {
-        // STABILITY FIX: Validate date string before creating Date object
-        try {
-          startDate = new Date(goalData.start_date + 'T00:00:00');
-          if (isNaN(startDate.getTime())) {
-            throw new Error('Invalid date');
-          }
-          console.log('[ProgressCard] Using goal start_date:', startDate.toISOString().split('T')[0]);
-        } catch (error) {
-          console.error('[ProgressCard] Invalid goal start_date:', goalData.start_date);
-          startDate = new Date();
-          startDate.setHours(0, 0, 0, 0);
-          console.log('[ProgressCard] Using today as fallback due to invalid start_date');
-        }
+        startDate = new Date(goalData.start_date + 'T00:00:00');
+        console.log('[ProgressCard] Using goal start_date:', startDate.toISOString().split('T')[0]);
       } else if (userData.created_at) {
         // Fallback to user's created_at date
-        try {
-          startDate = new Date(userData.created_at);
-          if (isNaN(startDate.getTime())) {
-            throw new Error('Invalid date');
-          }
-          startDate.setHours(0, 0, 0, 0);
-          console.log('[ProgressCard] No goal start_date, using user created_at as fallback:', startDate.toISOString().split('T')[0]);
-        } catch (error) {
-          console.error('[ProgressCard] Invalid created_at:', userData.created_at);
-          startDate = new Date();
-          startDate.setHours(0, 0, 0, 0);
-          console.log('[ProgressCard] Using today as fallback due to invalid created_at');
-        }
+        startDate = new Date(userData.created_at);
+        startDate.setHours(0, 0, 0, 0);
+        console.log('[ProgressCard] No goal start_date, using user created_at as fallback:', startDate.toISOString().split('T')[0]);
       } else {
         // Final fallback: use today's date
         startDate = new Date();
@@ -275,25 +245,15 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       // Get weekly loss rate (default to 1.0 if not set)
       const rawLossRate = goalData?.loss_rate_lbs_per_week;
-      // STABILITY FIX: Add validation for loss rate
-      const parsedLossRate = parseFloat(rawLossRate);
-      const weeklyLossLbs = (!isNaN(parsedLossRate) && parsedLossRate > 0) ? parsedLossRate : 1.0;
+      const weeklyLossLbs = parseFloat(rawLossRate) || 1.0;
       
       console.log('[ProgressCard] === LOSS RATE ===');
       console.log('[ProgressCard] rawLossRate:', rawLossRate);
       console.log('[ProgressCard] weeklyLossLbs (with fallback):', weeklyLossLbs);
 
       // Get maintenance calories and daily calories
-      // STABILITY FIX: Add validation for calorie values
-      const parsedMaintenanceCalories = parseFloat(userData.maintenance_calories);
-      const maintenanceCalories = (!isNaN(parsedMaintenanceCalories) && parsedMaintenanceCalories > 0) 
-        ? parsedMaintenanceCalories 
-        : 2000;
-      
-      const parsedDailyCalories = parseFloat(goalData?.daily_calories);
-      const dailyCalories = (!isNaN(parsedDailyCalories) && parsedDailyCalories > 0)
-        ? parsedDailyCalories
-        : maintenanceCalories;
+      const maintenanceCalories = userData.maintenance_calories || 2000;
+      const dailyCalories = goalData?.daily_calories || maintenanceCalories || 2000;
 
       console.log('[ProgressCard] === CALORIE VALUES ===');
       console.log('[ProgressCard] maintenanceCalories:', maintenanceCalories);
@@ -358,16 +318,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setError('Failed to load progress data');
       setLoading(false);
     }
-  }, [userId]); // Only depend on userId
+  }, [userId]);
 
   const loadCalorieLogs = async (userId: string, startDate: Date) => {
     try {
-      // STABILITY FIX: Validate inputs
-      if (!userId || !startDate || isNaN(startDate.getTime())) {
-        console.error('[ProgressCard] Invalid inputs for loadCalorieLogs');
-        return;
-      }
-      
       const today = new Date();
       const startDateStr = startDate.toISOString().split('T')[0];
       const todayStr = today.toISOString().split('T')[0];
@@ -404,11 +358,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
               if (!caloriesByDate[meal.date]) {
                 caloriesByDate[meal.date] = 0;
               }
-              // STABILITY FIX: Add validation for calories
-              const calories = parseFloat(item.calories);
-              if (!isNaN(calories)) {
-                caloriesByDate[meal.date] += calories;
-              }
+              caloriesByDate[meal.date] += item.calories || 0;
             });
           }
         });
@@ -429,12 +379,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   const loadWeightCheckIns = async (userId: string, startDate: Date, weightUnit: string) => {
     try {
-      // STABILITY FIX: Validate inputs
-      if (!userId || !startDate || isNaN(startDate.getTime())) {
-        console.error('[ProgressCard] Invalid inputs for loadWeightCheckIns');
-        return;
-      }
-      
       const today = new Date();
       const startDateStr = startDate.toISOString().split('T')[0];
       const todayStr = today.toISOString().split('T')[0];
@@ -465,48 +409,33 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       }
 
       // Convert weights to lbs if needed (check_ins table stores weight in kg)
-      const weightPoints: WeightCheckIn[] = checkInsData
-        .map((checkIn: any) => {
-          // STABILITY FIX: Validate weight value
-          const weightKg = parseFloat(checkIn.weight);
-          if (isNaN(weightKg) || weightKg <= 0) {
-            console.warn('[ProgressCard] Invalid weight in check-in:', checkIn);
-            return null;
-          }
-          
-          // The check_ins table stores weight in kg, so we need to convert to lbs for chart
-          const weightLbs = weightKg * 2.20462;
-          
-          // STABILITY FIX: Validate date
-          try {
-            const dateObj = new Date(checkIn.date + 'T00:00:00');
-            if (isNaN(dateObj.getTime())) {
-              console.warn('[ProgressCard] Invalid date in check-in:', checkIn.date);
-              return null;
-            }
-            
-            return {
-              date: dateObj,
-              weightLbs,
-            };
-          } catch (error) {
-            console.warn('[ProgressCard] Error parsing check-in date:', checkIn.date);
-            return null;
-          }
-        })
-        .filter((point): point is WeightCheckIn => point !== null); // Filter out null values
+      const weightPoints: WeightCheckIn[] = checkInsData.map((checkIn: any) => {
+        let weightLbs: number;
+        
+        // The check_ins table stores weight in kg, so we need to convert based on user preference
+        if (weightUnit === 'lbs') {
+          // If user prefers lbs, the weight in the table is actually in kg, so convert
+          weightLbs = checkIn.weight * 2.20462;
+        } else {
+          // If user prefers kg, the weight in the table is in kg, so convert to lbs for chart
+          weightLbs = checkIn.weight * 2.20462;
+        }
+
+        return {
+          date: new Date(checkIn.date + 'T00:00:00'),
+          weightLbs,
+        };
+      });
 
       console.log('[ProgressCard] Weight check-ins loaded:', weightPoints.length, 'points');
-      if (weightPoints.length > 0) {
-        console.log('[ProgressCard] First check-in:', {
-          date: weightPoints[0].date.toISOString().split('T')[0],
-          weightLbs: weightPoints[0].weightLbs.toFixed(1),
-        });
-        console.log('[ProgressCard] Last check-in:', {
-          date: weightPoints[weightPoints.length - 1].date.toISOString().split('T')[0],
-          weightLbs: weightPoints[weightPoints.length - 1].weightLbs.toFixed(1),
-        });
-      }
+      console.log('[ProgressCard] First check-in:', {
+        date: weightPoints[0]?.date.toISOString().split('T')[0],
+        weightLbs: weightPoints[0]?.weightLbs.toFixed(1),
+      });
+      console.log('[ProgressCard] Last check-in:', {
+        date: weightPoints[weightPoints.length - 1]?.date.toISOString().split('T')[0],
+        weightLbs: weightPoints[weightPoints.length - 1]?.weightLbs.toFixed(1),
+      });
 
       setActualWeightPoints(weightPoints);
     } catch (err: any) {
