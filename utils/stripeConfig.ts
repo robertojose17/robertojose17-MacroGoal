@@ -22,10 +22,9 @@
  */
 
 export const STRIPE_CONFIG = {
-  // ⚠️ REPLACE THESE WITH YOUR ACTUAL STRIPE TEST **PRICE** IDs (NOT PRODUCT IDs!)
-  // These should start with "price_" not "prod_"
-  MONTHLY_PRICE_ID: 'price_1SZSojDsUf4JA97FuIWfvUfX',
-  YEARLY_PRICE_ID: 'price_1SZSnyDsUf4JA97Fd7R9BMkD',
+  // ✅ UPDATED WITH YOUR ACTUAL STRIPE PRICE IDs
+  MONTHLY_PRICE_ID: 'price_1SjTCm7srrOKlxJ1lI1gsjwN',
+  YEARLY_PRICE_ID: 'price_1SjTM17srrOKlxJ14i5bhDTx',
   
   // Pricing display (update if you change prices)
   MONTHLY_PRICE: 9.99,
