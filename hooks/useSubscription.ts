@@ -1,209 +1,118 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Alert, Platform } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { STRIPE_CONFIG } from '@/utils/stripeConfig';
 
-export interface SubscriptionStatus {
-  isSubscribed: boolean;
-  status: string | null;
-  planName: string | null;
-  planType: string | null;
-  expiresAt: string | null;
-  cancelAtPeriodEnd: boolean;
-}
-
 export function useSubscription() {
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>({
-    isSubscribed: false,
-    status: null,
-    planName: null,
-    planType: null,
-    expiresAt: null,
-    cancelAtPeriodEnd: false,
-  });
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'canceled' | null>(null);
 
-  useEffect(() => {
-    loadSubscriptionStatus();
+  const refreshSubscriptionStatus = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setIsSubscribed(false);
+        setSubscriptionStatus('inactive');
+        setSubscriptionLoading(false);
+        return;
+      }
+
+      // Query the users table (not profiles)
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('subscription_status, user_type')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching subscription status:', error);
+        setIsSubscribed(false);
+        setSubscriptionStatus('inactive');
+      } else {
+        const status = userData?.subscription_status || 'inactive';
+        const userType = userData?.user_type || 'free';
+        setSubscriptionStatus(status as any);
+        setIsSubscribed(status === 'active' && userType === 'premium');
+      }
+    } catch (error) {
+      console.error('Error refreshing subscription:', error);
+      setIsSubscribed(false);
+      setSubscriptionStatus('inactive');
+    } finally {
+      setSubscriptionLoading(false);
+    }
   }, []);
 
-  async function loadSubscriptionStatus() {
+  useEffect(() => {
+    refreshSubscriptionStatus();
+  }, [refreshSubscriptionStatus]);
+
+  const createCheckoutSession = async (priceId: string): Promise<string> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    console.log('Creating checkout session for user:', user.id, 'priceId:', priceId);
+
+    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      body: { 
+        priceId,
+        userId: user.id // Pass userId to Edge Function
+      },
+    });
+
+    if (error) {
+      console.error('Error invoking create-checkout-session:', error);
+      throw error;
+    }
+    
+    if (!data?.url) {
+      console.error('No checkout URL returned:', data);
+      throw new Error('No checkout URL returned');
+    }
+
+    console.log('Checkout session created:', data.url);
+    return data.url;
+  };
+
+  const handleSubscribe = async (plan: 'monthly' | 'yearly') => {
     try {
-      console.log('[useSubscription] Loading subscription status...');
+      setSubscriptionLoading(true);
+      const priceId = plan === 'monthly' ? STRIPE_CONFIG.monthlyPriceId : STRIPE_CONFIG.yearlyPriceId;
+      console.log('Subscribing to plan:', plan, 'priceId:', priceId);
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('[useSubscription] No user logged in');
-        setLoading(false);
-        return;
-      }
-
-      setUserId(user.id);
-      console.log('[useSubscription] User ID:', user.id);
-
-      // Fetch from both users and subscriptions tables
-      const [userResult, subscriptionResult] = await Promise.all([
-        supabase
-          .from('users')
-          .select('user_type')
-          .eq('id', user.id)
-          .maybeSingle(),
-        supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle()
-      ]);
-
-      const userData = userResult.data;
-      const subscriptionData = subscriptionResult.data;
-
-      console.log('[useSubscription] User type:', userData?.user_type);
-      console.log('[useSubscription] Subscription status:', subscriptionData?.status);
-      console.log('[useSubscription] Plan type:', subscriptionData?.plan_type);
-
-      // Determine if user is premium
-      const isPremium = userData?.user_type === 'premium' || 
-                       subscriptionData?.status === 'active' || 
-                       subscriptionData?.status === 'trialing';
-
-      setSubscriptionStatus({
-        isSubscribed: isPremium,
-        status: subscriptionData?.status || null,
-        planName: subscriptionData?.stripe_price_id || null,
-        planType: subscriptionData?.plan_type || null,
-        expiresAt: subscriptionData?.current_period_end || null,
-        cancelAtPeriodEnd: subscriptionData?.cancel_at_period_end || false,
-      });
-
-      console.log('[useSubscription] ✅ Subscription loaded:', {
-        isSubscribed: isPremium,
-        status: subscriptionData?.status,
-        planType: subscriptionData?.plan_type,
-      });
-    } catch (error) {
-      console.error('[useSubscription] Error loading subscription:', error);
+      const checkoutUrl = await createCheckoutSession(priceId);
+      console.log('Opening checkout URL:', checkoutUrl);
+      
+      await Linking.openURL(checkoutUrl);
+    } catch (error: any) {
+      console.error('Error in handleSubscribe:', error);
+      Alert.alert('Error', error.message || 'Failed to start checkout');
     } finally {
-      setLoading(false);
+      setSubscriptionLoading(false);
     }
-  }
+  };
 
-  async function createCheckoutSession(priceId: string): Promise<string | null> {
-    try {
-      console.log('[useSubscription] Creating checkout session for price:', priceId);
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('[useSubscription] Not authenticated');
-        throw new Error('Not authenticated');
-      }
+  const restoreSubscription = async () => {
+    setSubscriptionLoading(true);
+    await refreshSubscriptionStatus();
+    setSubscriptionLoading(false);
+    Alert.alert('Subscription Restored', 'Your subscription status has been refreshed.');
+  };
 
-      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-        body: { priceId, userId: user.id },
-      });
-
-      if (error) {
-        console.error('[useSubscription] Error from Edge Function:', error);
-        throw error;
-      }
-
-      console.log('[useSubscription] ✅ Checkout session created:', data.url);
-      return data.url;
-    } catch (error: any) {
-      console.error('[useSubscription] Error creating checkout session:', error);
-      Alert.alert('Error', error.message || 'Failed to start checkout. Please try again.');
-      return null;
-    }
-  }
-
-  async function restoreSubscription() {
-    console.log('[useSubscription] Restoring subscription...');
-    
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('[useSubscription] Not authenticated');
-        Alert.alert('Error', 'Please log in to restore your subscription.');
-        return;
-      }
-
-      // Call sync-subscription Edge Function
-      const { data, error } = await supabase.functions.invoke('sync-subscription', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) {
-        console.error('[useSubscription] Error syncing subscription:', error);
-        Alert.alert('Error', 'Failed to restore subscription. Please try again.');
-        return;
-      }
-
-      console.log('[useSubscription] ✅ Subscription synced:', data);
-
-      // Reload subscription status
-      await loadSubscriptionStatus();
-
-      if (data.isPremium) {
-        Alert.alert('Success', 'Your subscription has been restored!');
-      } else {
-        Alert.alert('No Subscription', 'No active subscription found.');
-      }
-    } catch (error: any) {
-      console.error('[useSubscription] Error restoring subscription:', error);
-      Alert.alert('Error', 'Failed to restore subscription. Please try again.');
-    }
-  }
-
-  async function openCustomerPortal() {
-    console.log('[useSubscription] Opening customer portal...');
-    
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('[useSubscription] Not authenticated');
-        Alert.alert('Error', 'Please log in to manage your subscription.');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('create-portal-session', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) {
-        console.error('[useSubscription] Error creating portal session:', error);
-        Alert.alert('Error', 'Failed to open subscription management. Please try again.');
-        return;
-      }
-
-      console.log('[useSubscription] ✅ Portal session created:', data.url);
-
-      // Open the portal URL
-      const { default: Linking } = await import('expo-linking');
-      const supported = await Linking.canOpenURL(data.url);
-      if (supported) {
-        await Linking.openURL(data.url);
-      } else {
-        Alert.alert('Error', 'Cannot open subscription management.');
-      }
-    } catch (error: any) {
-      console.error('[useSubscription] Error opening portal:', error);
-      Alert.alert('Error', 'Failed to open subscription management. Please try again.');
-    }
-  }
+  const cancelSubscription = async () => {
+    Alert.alert('Cancel Subscription', 'Please contact support to cancel your subscription.');
+  };
 
   return {
-    ...subscriptionStatus,
-    loading,
-    userId,
+    isSubscribed,
+    subscriptionLoading,
+    subscriptionStatus,
     createCheckoutSession,
+    handleSubscribe,
     restoreSubscription,
-    openCustomerPortal,
-    refresh: loadSubscriptionStatus,
+    cancelSubscription,
+    refreshSubscriptionStatus,
   };
 }

@@ -17,6 +17,7 @@ serve(async (req) => {
   const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
   if (!signature || !webhookSecret) {
+    console.error('Missing signature or webhook secret');
     return new Response('Missing signature or webhook secret', { status: 400 });
   }
 
@@ -24,17 +25,22 @@ serve(async (req) => {
     const body = await req.text();
     const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
 
-    console.log('Webhook event:', event.type);
+    console.log('Webhook event received:', event.type, 'ID:', event.id);
 
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.userId || session.client_reference_id;
 
+        console.log('Checkout session completed for user:', userId);
+
         if (userId && session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
           
-          await supabase
+          console.log('Subscription retrieved:', subscription.id, 'Status:', subscription.status);
+
+          // Update users table
+          const { error: userError } = await supabase
             .from('users')
             .update({
               user_type: 'premium',
@@ -46,7 +52,34 @@ serve(async (req) => {
             })
             .eq('id', userId);
 
-          console.log('User upgraded to premium:', userId);
+          if (userError) {
+            console.error('Error updating users table:', userError);
+          } else {
+            console.log('User upgraded to premium:', userId);
+          }
+
+          // Update subscriptions table
+          const { error: subError } = await supabase
+            .from('subscriptions')
+            .upsert({
+              user_id: userId,
+              stripe_customer_id: session.customer as string,
+              stripe_subscription_id: subscription.id,
+              stripe_price_id: subscription.items.data[0]?.price.id,
+              status: subscription.status,
+              plan_type: subscription.items.data[0]?.price.id.includes('yearly') ? 'yearly' : 'monthly',
+              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              cancel_at_period_end: subscription.cancel_at_period_end,
+              trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'user_id'
+            });
+
+          if (subError) {
+            console.error('Error updating subscriptions table:', subError);
+          }
         }
         break;
       }
@@ -55,6 +88,8 @@ serve(async (req) => {
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
+
+        console.log('Subscription event:', event.type, 'Customer:', customerId, 'Status:', subscription.status);
 
         const { data: user } = await supabase
           .from('users')
@@ -65,7 +100,8 @@ serve(async (req) => {
         if (user) {
           const isPremium = subscription.status === 'active' || subscription.status === 'trialing';
           
-          await supabase
+          // Update users table
+          const { error: userError } = await supabase
             .from('users')
             .update({
               user_type: isPremium ? 'premium' : 'free',
@@ -74,7 +110,34 @@ serve(async (req) => {
             })
             .eq('id', user.id);
 
-          console.log('Subscription updated for user:', user.id, 'Status:', subscription.status);
+          if (userError) {
+            console.error('Error updating users table:', userError);
+          } else {
+            console.log('Subscription updated for user:', user.id, 'Status:', subscription.status);
+          }
+
+          // Update subscriptions table
+          const { error: subError } = await supabase
+            .from('subscriptions')
+            .upsert({
+              user_id: user.id,
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscription.id,
+              stripe_price_id: subscription.items.data[0]?.price.id,
+              status: subscription.status,
+              plan_type: subscription.items.data[0]?.price.id.includes('yearly') ? 'yearly' : 'monthly',
+              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              cancel_at_period_end: subscription.cancel_at_period_end,
+              trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'user_id'
+            });
+
+          if (subError) {
+            console.error('Error updating subscriptions table:', subError);
+          }
         }
         break;
       }

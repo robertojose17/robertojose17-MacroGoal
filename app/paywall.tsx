@@ -1,181 +1,93 @@
 
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  Linking,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/hooks/useSubscription';
 import { STRIPE_CONFIG } from '@/utils/stripeConfig';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 
 export default function PaywallScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
-  const { createCheckoutSession, restoreSubscription, loading: subscriptionLoading } = useSubscription();
-  const [loading, setLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
+  const { handleSubscribe, restoreSubscription, subscriptionLoading } = useSubscription();
 
-  const premiumFeatures = [
-    { icon: 'chart.bar.fill', title: 'Advanced Analytics', description: '7/30-day trends & adherence' },
-    { icon: 'target', title: 'Multiple Goal Phases', description: 'Cut, maintain, bulk cycles' },
-    { icon: 'fork.knife', title: 'Custom Recipes', description: 'Multi-ingredient meal builder' },
-    { icon: 'checkmark.circle.fill', title: 'Habit Tracking', description: 'Streaks & completion stats' },
-    { icon: 'arrow.down.doc.fill', title: 'Data Export', description: 'CSV export for all data' },
-    { icon: 'sparkles', title: 'AI Suggestions', description: 'Smart nutrition tips' },
+  const features = [
+    'Advanced analytics & trends',
+    'Multiple goal phases',
+    'Custom recipes builder',
+    'Habit tracking & streaks',
+    'Data export (CSV)',
+    'AI meal suggestions',
+    'Priority support',
   ];
-
-  async function handleSubscribe() {
-    setLoading(true);
-    try {
-      console.log('[Paywall] Starting subscription for plan:', selectedPlan);
-      
-      const priceId = selectedPlan === 'monthly' 
-        ? STRIPE_CONFIG.MONTHLY_PRICE_ID 
-        : STRIPE_CONFIG.YEARLY_PRICE_ID;
-      
-      console.log('[Paywall] Using price ID:', priceId);
-      
-      const checkoutUrl = await createCheckoutSession(priceId);
-      
-      if (checkoutUrl) {
-        console.log('[Paywall] Opening checkout URL:', checkoutUrl);
-        const supported = await Linking.canOpenURL(checkoutUrl);
-        if (supported) {
-          await Linking.openURL(checkoutUrl);
-        } else {
-          console.error('[Paywall] Cannot open URL:', checkoutUrl);
-        }
-      }
-    } catch (error) {
-      console.error('[Paywall] Error in handleSubscribe:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRestore() {
-    setLoading(true);
-    try {
-      console.log('[Paywall] Restoring subscription...');
-      await restoreSubscription();
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.dark.background : colors.light.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
           <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={24} color={isDark ? colors.dark.text : colors.light.text} />
         </TouchableOpacity>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.heroSection}>
-          <IconSymbol ios_icon_name="crown.fill" android_material_icon_name="workspace-premium" size={60} color="#FFD700" />
-          <Text style={[styles.title, { color: isDark ? colors.dark.text : colors.light.text }]}>
-            Unlock Premium
-          </Text>
-          <Text style={[styles.subtitle, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
-            Take your fitness journey to the next level
-          </Text>
-        </View>
-
-        <View style={styles.plansContainer}>
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              { backgroundColor: isDark ? colors.dark.card : colors.light.card },
-              selectedPlan === 'yearly' && styles.planCardSelected,
-            ]}
-            onPress={() => setSelectedPlan('yearly')}
-          >
-            <View style={styles.planHeader}>
-              <Text style={[styles.planName, { color: isDark ? colors.dark.text : colors.light.text }]}>Yearly</Text>
-              <View style={styles.saveBadge}>
-                <Text style={styles.saveText}>Save {STRIPE_CONFIG.YEARLY_SAVINGS_PERCENT}%</Text>
-              </View>
-            </View>
-            <Text style={[styles.planPrice, { color: isDark ? colors.dark.text : colors.light.text }]}>
-              ${STRIPE_CONFIG.YEARLY_PRICE.toFixed(2)}/year
-            </Text>
-            <Text style={[styles.planDetail, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
-              Just ${STRIPE_CONFIG.YEARLY_MONTHLY_EQUIVALENT}/month
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              { backgroundColor: isDark ? colors.dark.card : colors.light.card },
-              selectedPlan === 'monthly' && styles.planCardSelected,
-            ]}
-            onPress={() => setSelectedPlan('monthly')}
-          >
-            <View style={styles.planHeader}>
-              <Text style={[styles.planName, { color: isDark ? colors.dark.text : colors.light.text }]}>Monthly</Text>
-            </View>
-            <Text style={[styles.planPrice, { color: isDark ? colors.dark.text : colors.light.text }]}>
-              ${STRIPE_CONFIG.MONTHLY_PRICE.toFixed(2)}/month
-            </Text>
-            <Text style={[styles.planDetail, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
-              Billed monthly
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.title, { color: isDark ? colors.dark.text : colors.light.text }]}>
+          Upgrade to Premium
+        </Text>
+        <Text style={[styles.subtitle, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+          Unlock all features and take your fitness journey to the next level
+        </Text>
 
         <View style={styles.featuresContainer}>
-          {premiumFeatures.map((feature, index) => (
+          {features.map((feature, index) => (
             <View key={index} style={styles.featureRow}>
-              <IconSymbol ios_icon_name={feature.icon} android_material_icon_name="check-circle" size={24} color="#FFD700" />
-              <View style={styles.featureText}>
-                <Text style={[styles.featureTitle, { color: isDark ? colors.dark.text : colors.light.text }]}>
-                  {feature.title}
-                </Text>
-                <Text style={[styles.featureDescription, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
-                  {feature.description}
-                </Text>
-              </View>
+              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color="#10B981" />
+              <Text style={[styles.featureText, { color: isDark ? colors.dark.text : colors.light.text }]}>
+                {feature}
+              </Text>
             </View>
           ))}
         </View>
 
-        <TouchableOpacity
-          style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
-          onPress={handleSubscribe}
-          disabled={loading || subscriptionLoading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.subscribeButtonText}>Start Premium</Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.plansContainer}>
+          <TouchableOpacity
+            style={[styles.planCard, { backgroundColor: isDark ? colors.dark.card : colors.light.card }]}
+            onPress={() => handleSubscribe('yearly')}
+            disabled={subscriptionLoading}
+          >
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>BEST VALUE</Text>
+            </View>
+            <Text style={[styles.planTitle, { color: isDark ? colors.dark.text : colors.light.text }]}>Yearly</Text>
+            <Text style={[styles.planPrice, { color: isDark ? colors.dark.text : colors.light.text }]}>
+              ${STRIPE_CONFIG.yearlyPrice}/year
+            </Text>
+            <Text style={[styles.planSavings, { color: colors.primary }]}>
+              Save ${(STRIPE_CONFIG.monthlyPrice * 12 - STRIPE_CONFIG.yearlyPrice).toFixed(2)}
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.restoreButton}
-          onPress={handleRestore}
-          disabled={loading || subscriptionLoading}
-        >
-          <Text style={[styles.restoreButtonText, { color: isDark ? colors.dark.text : colors.light.text }]}>
-            Restore Purchases
+          <TouchableOpacity
+            style={[styles.planCard, { backgroundColor: isDark ? colors.dark.card : colors.light.card }]}
+            onPress={() => handleSubscribe('monthly')}
+            disabled={subscriptionLoading}
+          >
+            <Text style={[styles.planTitle, { color: isDark ? colors.dark.text : colors.light.text }]}>Monthly</Text>
+            <Text style={[styles.planPrice, { color: isDark ? colors.dark.text : colors.light.text }]}>
+              ${STRIPE_CONFIG.monthlyPrice}/month
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity onPress={restoreSubscription} disabled={subscriptionLoading}>
+          <Text style={[styles.restoreText, { color: colors.primary }]}>
+            {subscriptionLoading ? 'Loading...' : 'Restore Purchases'}
           </Text>
         </TouchableOpacity>
 
         <Text style={[styles.disclaimer, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
-          Cancel anytime. Terms apply.
+          Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -183,118 +95,21 @@ export default function PaywallScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  closeButton: {
-    padding: spacing.sm,
-  },
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  heroSection: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  title: {
-    ...typography.h1,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    ...typography.body,
-    textAlign: 'center',
-  },
-  plansContainer: {
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  planCard: {
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  planCardSelected: {
-    borderColor: '#FFD700',
-  },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  planName: {
-    ...typography.h3,
-  },
-  saveBadge: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.sm,
-  },
-  saveText: {
-    ...typography.caption,
-    color: '#000',
-    fontWeight: '700',
-  },
-  planPrice: {
-    ...typography.h2,
-    marginBottom: spacing.xs,
-  },
-  planDetail: {
-    ...typography.body,
-  },
-  featuresContainer: {
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  featureRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  featureText: {
-    flex: 1,
-  },
-  featureTitle: {
-    ...typography.bodyBold,
-    marginBottom: 2,
-  },
-  featureDescription: {
-    ...typography.caption,
-  },
-  subscribeButton: {
-    backgroundColor: '#FFD700',
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  subscribeButtonDisabled: {
-    opacity: 0.6,
-  },
-  subscribeButtonText: {
-    ...typography.h3,
-    color: '#000',
-  },
-  restoreButton: {
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  restoreButtonText: {
-    ...typography.body,
-    textDecorationLine: 'underline',
-  },
-  disclaimer: {
-    ...typography.caption,
-    textAlign: 'center',
-  },
+  container: { flex: 1 },
+  content: { padding: spacing.lg, paddingTop: spacing.xl },
+  closeButton: { alignSelf: 'flex-end', marginBottom: spacing.md },
+  title: { fontSize: 32, fontWeight: 'bold', marginBottom: spacing.sm, textAlign: 'center' },
+  subtitle: { fontSize: 16, marginBottom: spacing.xl, textAlign: 'center' },
+  featuresContainer: { marginBottom: spacing.xl },
+  featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  featureText: { fontSize: 16, marginLeft: spacing.md, flex: 1 },
+  plansContainer: { gap: spacing.md, marginBottom: spacing.lg },
+  planCard: { padding: spacing.lg, borderRadius: borderRadius.lg, alignItems: 'center', position: 'relative' },
+  badge: { position: 'absolute', top: -10, backgroundColor: '#10B981', paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: borderRadius.sm },
+  badgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+  planTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: spacing.xs },
+  planPrice: { fontSize: 24, fontWeight: 'bold' },
+  planSavings: { fontSize: 14, marginTop: spacing.xs },
+  restoreText: { textAlign: 'center', fontSize: 16, marginBottom: spacing.lg },
+  disclaimer: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
 });
