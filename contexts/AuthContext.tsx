@@ -18,6 +18,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
+// eslint-disable-next-line import/no-unresolved
 import { authClient, storeWebBearerToken } from "@/lib/auth";
 
 // User type - customize based on your backend
@@ -48,12 +49,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 function openOAuthPopup(provider: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    // Guard against non-web platforms
-    if (typeof window === 'undefined') {
-      reject(new Error("Popup authentication is only available on web"));
-      return;
-    }
-
     const popupUrl = `${window.location.origin}/auth-popup?provider=${provider}`;
     const width = 500;
     const height = 600;
@@ -100,12 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch current user on mount
-  useEffect(() => {
-    fetchUser();
-  }, []);
-
-  const fetchUser = async () => {
+  const fetchUser = React.useCallback(async () => {
     try {
       setLoading(true);
       const session = await authClient.getSession();
@@ -120,7 +110,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch current user on mount
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
 
   const signInWithEmail = async (email: string, password: string) => {
     try {

@@ -4,13 +4,12 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
+import { cmToFeetInches, kgToLbs, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import React, { useEffect, useState, useCallback } from 'react';
-import { logSubscriptionStatus } from '@/utils/subscriptionDebug';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type EditField = 'sex' | 'dob' | 'height' | 'weight' | 'activity' | 'goal_type' | 'goal_weight';
@@ -190,15 +189,13 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
+  
+  // Fixed: Use correct property names from useSubscription hook
   const { 
     isSubscribed, 
-    status, 
-    planType, 
-    expiresAt, 
-    cancelAtPeriodEnd,
-    loading: subscriptionLoading, 
-    openCustomerPortal,
-    refresh: refreshSubscription 
+    subscriptionStatus,
+    subscriptionLoading,
+    refreshSubscriptionStatus,
   } = useSubscription();
 
   const [user, setUser] = useState<any>(null);
@@ -211,16 +208,12 @@ export default function ProfileScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date());
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
-  const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       loadUserData();
-      refreshSubscription();
-      
-      // Debug subscription status
-      logSubscriptionStatus();
-    }, [])
+      refreshSubscriptionStatus();
+    }, [refreshSubscriptionStatus])
   );
 
   async function loadUserData() {
@@ -254,14 +247,18 @@ export default function ProfileScreen() {
   async function onRefresh() {
     setRefreshing(true);
     await loadUserData();
-    await refreshSubscription();
+    await refreshSubscriptionStatus();
     setRefreshing(false);
   }
 
   async function handleManageSubscription() {
     if (isSubscribed) {
-      // Open Stripe Customer Portal
-      await openCustomerPortal();
+      // Navigate to a subscription management screen or show alert
+      Alert.alert(
+        'Manage Subscription',
+        'To manage your subscription, please visit the app settings or contact support.',
+        [{ text: 'OK' }]
+      );
     } else {
       // Navigate to paywall
       router.push('/paywall');
@@ -504,15 +501,6 @@ export default function ProfileScreen() {
     setShowStartDatePicker(true);
   }
 
-  async function handleGoalWeightPromptSave() {
-    setShowGoalWeightPrompt(false);
-    openEditModal('goal_weight');
-  }
-
-  function handleGoalWeightPromptSkip() {
-    setShowGoalWeightPrompt(false);
-  }
-
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.dark.background : colors.light.background }]} edges={['top']}>
@@ -557,9 +545,7 @@ export default function ProfileScreen() {
                 <Text style={styles.subscriptionBadgeText}>Premium Member</Text>
               </View>
               <Text style={[styles.subscriptionDetails, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
-                {planType === 'yearly' ? 'Yearly Plan' : 'Monthly Plan'}
-                {expiresAt && ` • Renews ${new Date(expiresAt).toLocaleDateString()}`}
-                {cancelAtPeriodEnd && ' • Cancels at period end'}
+                Status: {subscriptionStatus || 'Active'}
               </Text>
               <TouchableOpacity style={styles.subscriptionButton} onPress={handleManageSubscription}>
                 <Text style={styles.subscriptionButtonText}>Manage Subscription</Text>
