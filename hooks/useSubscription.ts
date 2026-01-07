@@ -34,6 +34,10 @@ export interface UseSubscriptionReturn {
   syncSubscription: () => Promise<void>;
   createCheckoutSession: (priceId: string, planType: 'monthly' | 'yearly') => Promise<void>;
   openCustomerPortal: () => Promise<void>;
+  // Legacy aliases for backward compatibility
+  subscriptionStatus: SubscriptionStatus | null;
+  subscriptionLoading: boolean;
+  refreshSubscriptionStatus: () => Promise<void>;
 }
 
 /**
@@ -306,5 +310,9 @@ export function useSubscription(): UseSubscriptionReturn {
     syncSubscription,
     createCheckoutSession,
     openCustomerPortal,
+    // Legacy aliases for backward compatibility
+    subscriptionStatus: subscription?.status || null,
+    subscriptionLoading: loading,
+    refreshSubscriptionStatus: fetchSubscription,
   };
 }
