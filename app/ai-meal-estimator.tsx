@@ -53,37 +53,37 @@ export default function AIMealEstimatorScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.dark.background : colors.light.background }]} edges={['top']}>
-      <View style={[styles.header, { backgroundColor: isDark ? colors.dark.card : colors.light.card }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <View style={[styles.header, { backgroundColor: colors.card }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <IconSymbol 
             ios_icon_name="chevron.left" 
             android_material_icon_name="arrow-back" 
             size={24} 
-            color={isDark ? colors.dark.text : colors.light.text} 
+            color={colors.text} 
           />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDark ? colors.dark.text : colors.light.text }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
           AI Meal Estimator
         </Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        <Text style={[styles.label, { color: isDark ? colors.dark.text : colors.light.text }]}>
+        <Text style={[styles.label, { color: colors.text }]}>
           Describe your meal
         </Text>
         <TextInput
           style={[
             styles.input,
             {
-              backgroundColor: isDark ? colors.dark.card : colors.light.card,
-              color: isDark ? colors.dark.text : colors.light.text,
-              borderColor: isDark ? colors.dark.border : colors.light.border,
+              backgroundColor: colors.backgroundAlt,
+              color: colors.text,
+              borderColor: colors.grey,
             },
           ]}
           placeholder="e.g., Grilled chicken breast with rice and broccoli"
-          placeholderTextColor={isDark ? colors.dark.textSecondary : colors.light.textSecondary}
+          placeholderTextColor={colors.grey}
           value={mealDescription}
           onChangeText={setMealDescription}
           multiline
@@ -104,39 +104,39 @@ export default function AIMealEstimatorScreen() {
         </TouchableOpacity>
 
         {result && (
-          <View style={[styles.resultCard, { backgroundColor: isDark ? colors.dark.card : colors.light.card }]}>
-            <Text style={[styles.resultTitle, { color: isDark ? colors.dark.text : colors.light.text }]}>
+          <View style={[styles.resultCard, { backgroundColor: colors.backgroundAlt }]}>
+            <Text style={[styles.resultTitle, { color: colors.text }]}>
               Estimated Nutrition
             </Text>
             <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+              <Text style={[styles.macroLabel, { color: colors.grey }]}>
                 Calories
               </Text>
-              <Text style={[styles.macroValue, { color: isDark ? colors.dark.text : colors.light.text }]}>
+              <Text style={[styles.macroValue, { color: colors.text }]}>
                 {result.calories} kcal
               </Text>
             </View>
             <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+              <Text style={[styles.macroLabel, { color: colors.grey }]}>
                 Protein
               </Text>
-              <Text style={[styles.macroValue, { color: isDark ? colors.dark.text : colors.light.text }]}>
+              <Text style={[styles.macroValue, { color: colors.text }]}>
                 {result.protein}g
               </Text>
             </View>
             <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+              <Text style={[styles.macroLabel, { color: colors.grey }]}>
                 Carbs
               </Text>
-              <Text style={[styles.macroValue, { color: isDark ? colors.dark.text : colors.light.text }]}>
+              <Text style={[styles.macroValue, { color: colors.text }]}>
                 {result.carbs}g
               </Text>
             </View>
             <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
+              <Text style={[styles.macroLabel, { color: colors.grey }]}>
                 Fats
               </Text>
-              <Text style={[styles.macroValue, { color: isDark ? colors.dark.text : colors.light.text }]}>
+              <Text style={[styles.macroValue, { color: colors.text }]}>
                 {result.fats}g
               </Text>
             </View>
@@ -173,8 +173,8 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
   },
   headerTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
+    fontSize: typography.lg,
+    fontWeight: '600',
   },
   content: {
     flex: 1,
@@ -183,15 +183,15 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   label: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.medium,
+    fontSize: typography.md,
+    fontWeight: '500',
     marginBottom: spacing.sm,
   },
   input: {
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    fontSize: typography.sizes.md,
+    fontSize: typography.md,
     minHeight: 120,
     marginBottom: spacing.lg,
   },
@@ -207,16 +207,16 @@ const styles = StyleSheet.create({
   },
   analyzeButtonText: {
     color: '#fff',
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
+    fontSize: typography.md,
+    fontWeight: '600',
   },
   resultCard: {
     borderRadius: borderRadius.md,
     padding: spacing.lg,
   },
   resultTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
+    fontSize: typography.lg,
+    fontWeight: '600',
     marginBottom: spacing.md,
   },
   macroRow: {
@@ -225,10 +225,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   macroLabel: {
-    fontSize: typography.sizes.md,
+    fontSize: typography.md,
   },
   macroValue: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.medium,
+    fontSize: typography.md,
+    fontWeight: '500',
   },
 });
