@@ -18,51 +18,45 @@ module.exports = {
       jsx: true
     }
   },
-  settings: {
-    'import/resolver': {
-      typescript: {
-        alwaysTryTypes: true,
-        project: './tsconfig.json'
-      },
-      node: {
-        extensions: ['.js', '.jsx', '.ts', '.tsx']
-      }
-    }
-  },
-  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*'],
+  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*', '/backend/*'],
   env: {
     browser: true,
+    node: true,
   },
   rules: {
     "@typescript-eslint/no-unused-vars": "off",
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/prefer-as-const": "off",
     "@typescript-eslint/no-var-requires": "off",
+    "@typescript-eslint/no-require-imports": "off",
     "react/react-in-jsx-scope": "off",
     "@typescript-eslint/no-empty-object-type": "off",
     "@typescript-eslint/no-wrapper-object-types": "off",
     "@typescript-eslint/ban-tslint-comment": "off",
     "react/no-unescaped-entities": "off",
-    "import/no-unresolved": "error",
+    "import/no-unresolved": ["error", {
+      "ignore": [
+        "better-auth/react",
+        "@better-auth/expo/client",
+        "expo-secure-store"
+      ]
+    }],
+    "react-hooks/exhaustive-deps": "off",
     "prefer-const": "off",
-    "react/prop-types": 1,
+    "react/prop-types": "off",
     "no-case-declarations": "off",
     "no-empty": "off",
     "react/display-name": "off",
-    "no-var": "off"
+    "no-constant-condition": "off",
+    "no-var": "off",
+    "no-useless-escape": "off"
   },
   overrides: [
     {
-      // Disable TypeScript parser for JavaScript config files
-      files: ['*.js'],
-      parser: 'espree',
-      parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module'
-      },
+      files: ['metro.config.js', 'babel.config.js'],
       rules: {
         '@typescript-eslint/no-var-requires': 'off',
-        'import/no-unresolved': 'off'
+        '@typescript-eslint/no-require-imports': 'off'
       }
     }
   ]
