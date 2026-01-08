@@ -85,18 +85,23 @@ export default function ProfileScreen() {
         setUser(authUser);
       }
 
+      // Load active goal with proper handling
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('*')
         .eq('user_id', authUser.id)
         .eq('is_active', true)
-        .maybeSingle();
+        .order('start_date', { ascending: false })
+        .limit(1);
 
       if (goalError) {
         console.error('[Profile] Error loading goal:', goalError);
-      } else if (goalData) {
-        console.log('[Profile] Goal data loaded:', goalData);
-        setGoal(goalData);
+        setGoal(null);
+      } else if (goalData && goalData.length > 0) {
+        const activeGoal = goalData[0];
+        console.log('[Profile] Active goal loaded:', activeGoal);
+        console.log('[Profile] Journey Start Date from goal:', activeGoal.start_date);
+        setGoal(activeGoal);
       } else {
         console.log('[Profile] No active goal found for user');
         setGoal(null);
@@ -444,6 +449,8 @@ export default function ProfileScreen() {
       setSaving(true);
       const dateString = date.toISOString().split('T')[0];
       
+      console.log('[Profile] Saving Journey Start Date:', dateString);
+      
       const { error } = await supabase
         .from('goals')
         .update({ start_date: dateString, updated_at: new Date().toISOString() })
@@ -451,12 +458,16 @@ export default function ProfileScreen() {
 
       if (error) throw error;
 
-      console.log('[Profile] Start date updated:', dateString);
+      console.log('[Profile] ✅ Journey Start Date saved successfully:', dateString);
+      
+      // Reload data to ensure sync
       await loadUserData();
       
       if (Platform.OS === 'ios') {
         setShowDatePicker(false);
       }
+      
+      Alert.alert('Success', 'Journey Start Date updated successfully');
     } catch (error: any) {
       console.error('[Profile] Error saving start date:', error);
       Alert.alert('Error', error.message || 'Failed to save start date');
@@ -466,9 +477,18 @@ export default function ProfileScreen() {
   };
 
   const openStartDatePicker = () => {
-    if (goal?.start_date) {
-      setSelectedDate(new Date(goal.start_date));
+    if (!goal) {
+      Alert.alert('No Goal', 'Please set up your goals first');
+      return;
+    }
+    
+    // Initialize with stored date or today
+    if (goal.start_date) {
+      const storedDate = new Date(goal.start_date + 'T00:00:00');
+      console.log('[Profile] Opening date picker with stored date:', goal.start_date, '→', storedDate.toISOString());
+      setSelectedDate(storedDate);
     } else {
+      console.log('[Profile] Opening date picker with today (no stored date)');
       setSelectedDate(new Date());
     }
     setShowDatePicker(true);
@@ -519,6 +539,18 @@ export default function ProfileScreen() {
 
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
+
+  // Format the journey start date for display
+  const formatJourneyStartDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Set Date';
+    try {
+      const date = new Date(dateStr + 'T00:00:00');
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (error) {
+      console.error('[Profile] Error formatting date:', error);
+      return 'Set Date';
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -796,7 +828,7 @@ export default function ProfileScreen() {
                   </Text>
                   <TouchableOpacity onPress={openStartDatePicker} style={styles.dateButton}>
                     <Text style={[styles.dateButtonText, { color: colors.primary }]}>
-                      {goal.start_date ? new Date(goal.start_date).toLocaleDateString() : 'Set Date'}
+                      {formatJourneyStartDate(goal.start_date)}
                     </Text>
                     <IconSymbol
                       ios_icon_name="calendar"
