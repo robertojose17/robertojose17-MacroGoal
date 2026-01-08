@@ -13,9 +13,8 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface CalendarDatePickerProps {
-  visible: boolean;
+  onDateSelect: (date: Date) => void;
   onClose: () => void;
-  onSelectDate: (date: Date) => void;
   initialDate?: Date;
   maxDate?: Date;
   minDate?: Date;
@@ -23,9 +22,8 @@ interface CalendarDatePickerProps {
 }
 
 export default function CalendarDatePicker({
-  visible,
+  onDateSelect,
   onClose,
-  onSelectDate,
   initialDate = new Date(),
   maxDate = new Date(),
   minDate,
@@ -47,7 +45,7 @@ export default function CalendarDatePicker({
     console.log('[CalendarDatePicker] Confirming date:', selectedDate);
     const [year, month, day] = selectedDate.split('-').map(Number);
     const date = new Date(year, month - 1, day);
-    onSelectDate(date);
+    onDateSelect(date);
     onClose();
   };
 
@@ -91,7 +89,7 @@ export default function CalendarDatePicker({
 
   return (
     <Modal
-      visible={visible}
+      visible={true}
       transparent
       animationType="fade"
       onRequestClose={handleCancel}
