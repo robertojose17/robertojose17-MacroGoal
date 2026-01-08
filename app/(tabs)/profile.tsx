@@ -1,396 +1,339 @@
 
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, ActivityIndicator, RefreshControl, TouchableOpacity, Alert } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
-import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "expo-router";
-import { supabase } from "@/app/integrations/supabase/client";
-
-interface UserData {
-  email: string;
-  date_of_birth: string | null;
-  sex: string | null;
-  height: number | null;
-  current_weight: number | null;
-  weight_unit: string;
-  activity_level: string | null;
-}
-
-interface GoalData {
-  daily_calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fats_g: number;
-  fiber_g: number;
-  goal_type: string;
-}
-
-interface SubscriptionData {
-  status: string;
-  plan_type: string | null;
-}
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/app/integrations/supabase/client';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
 
 export default function ProfileScreen() {
-  const theme = useTheme();
-  const { user, signOut } = useAuth();
+  const colorScheme = useColorScheme();
   const router = useRouter();
-  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [goalData, setGoalData] = useState<GoalData | null>(null);
-  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
+  const [userData, setUserData] = useState<any>(null);
+  const [goalData, setGoalData] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
 
-  const loadProfileData = useCallback(async () => {
-    if (!user?.id) {
-      console.log('[Profile] No user ID available');
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
+  const loadData = useCallback(async () => {
     try {
-      console.log('[Profile] Loading profile data for user:', user.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('No user found');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
-      // Fetch user data from Supabase
-      const { data: userDataResult, error: userError } = await supabase
+      console.log('Loading profile data for user:', user.id);
+
+      // Load user data
+      const { data: userRes, error: userError } = await supabase
         .from('users')
-        .select('email, date_of_birth, sex, height, current_weight, weight_unit, activity_level')
+        .select('*')
         .eq('id', user.id)
-        .maybeSingle();
+        .single();
 
       if (userError) {
-        console.error('[Profile] Error fetching user data:', userError);
-      } else if (userDataResult) {
-        console.log('[Profile] User data loaded:', userDataResult);
-        setUserData(userDataResult);
+        console.error('Error loading user data:', userError);
+      } else {
+        console.log('User data loaded:', userRes);
+        setUserData(userRes);
       }
 
-      // Fetch active goal from Supabase
-      const { data: goalDataResult, error: goalError } = await supabase
+      // Load goal data
+      const { data: goalRes, error: goalError } = await supabase
         .from('goals')
-        .select('daily_calories, protein_g, carbs_g, fats_g, fiber_g, goal_type')
+        .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .maybeSingle();
+        .single();
 
       if (goalError) {
-        console.error('[Profile] Error fetching goal data:', goalError);
-      } else if (goalDataResult) {
-        console.log('[Profile] Goal data loaded:', goalDataResult);
-        setGoalData(goalDataResult);
+        console.error('Error loading goal data:', goalError);
+      } else {
+        console.log('Goal data loaded:', goalRes);
+        setGoalData(goalRes);
       }
 
-      // Fetch subscription from Supabase
-      const { data: subDataResult, error: subError } = await supabase
+      // Load subscription data
+      const { data: subRes, error: subError } = await supabase
         .from('subscriptions')
-        .select('status, plan_type')
+        .select('*')
         .eq('user_id', user.id)
-        .maybeSingle();
+        .single();
 
       if (subError) {
-        console.error('[Profile] Error fetching subscription data:', subError);
-      } else if (subDataResult) {
-        console.log('[Profile] Subscription data loaded:', subDataResult);
-        setSubscription(subDataResult);
+        console.error('Error loading subscription data:', subError);
+      } else {
+        console.log('Subscription data loaded:', subRes);
+        setSubscription(subRes);
       }
     } catch (error) {
-      console.error('[Profile] Error loading profile data:', error);
+      console.error('Error loading profile:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.id]);
+  }, []);
 
   useEffect(() => {
-    loadProfileData();
-  }, [loadProfileData]);
+    loadData();
+  }, [loadData]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = () => {
     setRefreshing(true);
-    loadProfileData();
-  }, [loadProfileData]);
-
-  const calculateAge = (dob: string | null): number | null => {
-    if (!dob) return null;
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
+    loadData();
   };
 
-  const handleSignOut = () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to sign out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Out",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await signOut();
-              router.replace("/");
-            } catch (error) {
-              Alert.alert("Error", "Failed to sign out");
-            }
-          },
-        },
-      ]
-    );
+  const handleEditGoals = () => {
+    router.push('/edit-goals');
+  };
+
+  const handleViewSubscription = () => {
+    router.push('/paywall');
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-        </View>
-      </SafeAreaView>
+      <View style={[styles.container, { backgroundColor: colors[colorScheme].background }]}>
+        <ActivityIndicator size="large" color={colors[colorScheme].primary} />
+      </View>
     );
   }
 
-  const age = calculateAge(userData?.date_of_birth || null);
-  const isPremium = subscription?.status === "active" || subscription?.status === "trialing";
-
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors[colorScheme].background }]} edges={['top']}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.contentContainer,
-          Platform.OS !== 'ios' && styles.contentContainerWithTabBar
-        ]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.content}
       >
-        {/* Profile Header */}
-        <GlassView style={[
-          styles.profileHeader,
-          Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-        ]} glassEffectStyle="regular">
-          <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={80} color={theme.colors.primary} />
-          <Text style={[styles.name, { color: theme.colors.text }]}>{user?.name || "User"}</Text>
-          <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>{user?.email}</Text>
-          {isPremium && (
-            <View style={[styles.premiumBadge, { backgroundColor: theme.colors.primary }]}>
-              <IconSymbol ios_icon_name="star.fill" android_material_icon_name="star" size={16} color="#FFF" />
-              <Text style={styles.premiumText}>Premium</Text>
-            </View>
-          )}
-        </GlassView>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: colors[colorScheme].text }]}>Profile</Text>
+        </View>
 
-        {/* User Stats */}
-        {userData && (
-          <GlassView style={[
-            styles.section,
-            Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-          ]} glassEffectStyle="regular">
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Personal Info</Text>
-            {age && (
+        {/* Personal Info Card */}
+        <View style={[styles.card, { backgroundColor: colors[colorScheme].card }]}>
+          <View style={styles.cardHeader}>
+            <IconSymbol 
+              ios_icon_name="person.circle.fill" 
+              android_material_icon_name="account-circle" 
+              size={24} 
+              color={colors[colorScheme].primary} 
+            />
+            <Text style={[styles.cardTitle, { color: colors[colorScheme].text }]}>Personal Info</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Email</Text>
+            <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+              {userData?.email || 'Not set'}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Weight</Text>
+            <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+              {userData?.weight ? `${userData.weight} kg` : 'Not set'}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Height</Text>
+            <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+              {userData?.height ? `${userData.height} cm` : 'Not set'}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Sex</Text>
+            <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+              {userData?.sex || 'Not set'}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Date of Birth</Text>
+            <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+              {userData?.dob || 'Not set'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Goals Card */}
+        <View style={[styles.card, { backgroundColor: colors[colorScheme].card }]}>
+          <View style={styles.cardHeader}>
+            <IconSymbol 
+              ios_icon_name="target" 
+              android_material_icon_name="track-changes" 
+              size={24} 
+              color={colors[colorScheme].primary} 
+            />
+            <Text style={[styles.cardTitle, { color: colors[colorScheme].text }]}>Daily Goals</Text>
+          </View>
+          {goalData ? (
+            <>
               <View style={styles.infoRow}>
-                <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={20} color={theme.dark ? '#98989D' : '#666'} />
-                <Text style={[styles.infoText, { color: theme.colors.text }]}>{age} years old</Text>
-              </View>
-            )}
-            {userData?.sex && (
-              <View style={styles.infoRow}>
-                <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={theme.dark ? '#98989D' : '#666'} />
-                <Text style={[styles.infoText, { color: theme.colors.text }]}>{userData.sex === 'male' ? 'Male' : userData.sex === 'female' ? 'Female' : 'Other'}</Text>
-              </View>
-            )}
-            {userData?.height && (
-              <View style={styles.infoRow}>
-                <IconSymbol ios_icon_name="ruler" android_material_icon_name="straighten" size={20} color={theme.dark ? '#98989D' : '#666'} />
-                <Text style={[styles.infoText, { color: theme.colors.text }]}>{userData.height} cm</Text>
-              </View>
-            )}
-            {userData?.current_weight && (
-              <View style={styles.infoRow}>
-                <IconSymbol ios_icon_name="scalemass" android_material_icon_name="monitor-weight" size={20} color={theme.dark ? '#98989D' : '#666'} />
-                <Text style={[styles.infoText, { color: theme.colors.text }]}>{userData.current_weight} {userData.weight_unit || 'kg'}</Text>
-              </View>
-            )}
-            {userData?.activity_level && (
-              <View style={styles.infoRow}>
-                <IconSymbol ios_icon_name="figure.walk" android_material_icon_name="directions-walk" size={20} color={theme.dark ? '#98989D' : '#666'} />
-                <Text style={[styles.infoText, { color: theme.colors.text }]}>
-                  {userData.activity_level === 'sedentary' ? 'Sedentary' :
-                   userData.activity_level === 'light' ? 'Light Activity' :
-                   userData.activity_level === 'moderate' ? 'Moderate Activity' :
-                   userData.activity_level === 'active' ? 'Active' :
-                   userData.activity_level === 'very_active' ? 'Very Active' : userData.activity_level}
+                <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Calories</Text>
+                <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                  {goalData.daily_calories} kcal
                 </Text>
               </View>
-            )}
-          </GlassView>
-        )}
-
-        {/* Daily Goals */}
-        {goalData && (
-          <GlassView style={[
-            styles.section,
-            Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-          ]} glassEffectStyle="regular">
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Daily Goals</Text>
-            <View style={styles.infoRow}>
-              <IconSymbol ios_icon_name="flame.fill" android_material_icon_name="local-fire-department" size={20} color={theme.dark ? '#98989D' : '#666'} />
-              <Text style={[styles.infoText, { color: theme.colors.text }]}>{Math.round(goalData.daily_calories)} calories</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <IconSymbol ios_icon_name="p.circle.fill" android_material_icon_name="circle" size={20} color="#FF6B6B" />
-              <Text style={[styles.infoText, { color: theme.colors.text }]}>{Math.round(goalData.protein_g)}g protein</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <IconSymbol ios_icon_name="c.circle.fill" android_material_icon_name="circle" size={20} color="#4ECDC4" />
-              <Text style={[styles.infoText, { color: theme.colors.text }]}>{Math.round(goalData.carbs_g)}g carbs</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <IconSymbol ios_icon_name="f.circle.fill" android_material_icon_name="circle" size={20} color="#FFD93D" />
-              <Text style={[styles.infoText, { color: theme.colors.text }]}>{Math.round(goalData.fats_g)}g fats</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <IconSymbol ios_icon_name="leaf.fill" android_material_icon_name="eco" size={20} color="#95E1D3" />
-              <Text style={[styles.infoText, { color: theme.colors.text }]}>{Math.round(goalData.fiber_g)}g fiber</Text>
-            </View>
-            <TouchableOpacity 
-              style={[styles.editButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => router.push("/edit-goals")}
-            >
-              <Text style={styles.editButtonText}>Edit Goals</Text>
-            </TouchableOpacity>
-          </GlassView>
-        )}
-
-        {/* No Data Message */}
-        {!userData && !goalData && (
-          <GlassView style={[
-            styles.section,
-            Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-          ]} glassEffectStyle="regular">
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Complete Your Profile</Text>
-            <Text style={[styles.infoText, { color: theme.dark ? '#98989D' : '#666' }]}>
-              Set up your goals to start tracking your nutrition and fitness journey.
+              <View style={styles.infoRow}>
+                <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Protein</Text>
+                <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                  {goalData.protein_g}g
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Carbs</Text>
+                <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                  {goalData.carbs_g}g
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Fats</Text>
+                <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                  {goalData.fats_g}g
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Fiber</Text>
+                <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                  {goalData.fiber_g}g
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Goal Type</Text>
+                <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                  {goalData.goal_type || 'Not set'}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <Text style={[styles.emptyText, { color: colors[colorScheme].textSecondary }]}>
+              No active goals set. Tap "Edit Goals" to set your targets.
             </Text>
-            <TouchableOpacity 
-              style={[styles.editButton, { backgroundColor: theme.colors.primary, marginTop: 12 }]}
-              onPress={() => router.push("/edit-goals")}
-            >
-              <Text style={styles.editButtonText}>Set Up Goals</Text>
-            </TouchableOpacity>
-          </GlassView>
-        )}
+          )}
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: colors[colorScheme].primary }]}
+            onPress={handleEditGoals}
+          >
+            <IconSymbol 
+              ios_icon_name="pencil" 
+              android_material_icon_name="edit" 
+              size={20} 
+              color="#fff" 
+            />
+            <Text style={styles.buttonText}>Edit Goals</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Sign Out Button */}
-        <TouchableOpacity 
-          style={[styles.signOutButton, { borderColor: theme.dark ? '#98989D' : '#666' }]}
-          onPress={handleSignOut}
-        >
-          <IconSymbol ios_icon_name="arrow.right.square" android_material_icon_name="logout" size={20} color={theme.dark ? '#98989D' : '#666'} />
-          <Text style={[styles.signOutText, { color: theme.dark ? '#98989D' : '#666' }]}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* Subscription Card */}
+        <View style={[styles.card, { backgroundColor: colors[colorScheme].card }]}>
+          <View style={styles.cardHeader}>
+            <IconSymbol 
+              ios_icon_name="star.circle.fill" 
+              android_material_icon_name="star" 
+              size={24} 
+              color={colors[colorScheme].primary} 
+            />
+            <Text style={[styles.cardTitle, { color: colors[colorScheme].text }]}>Subscription</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Status</Text>
+            <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+              {subscription?.status || 'Free'}
+            </Text>
+          </View>
+          {subscription?.plan_name && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors[colorScheme].textSecondary }]}>Plan</Text>
+              <Text style={[styles.value, { color: colors[colorScheme].text }]}>
+                {subscription.plan_name}
+              </Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: colors[colorScheme].primary }]}
+            onPress={handleViewSubscription}
+          >
+            <IconSymbol 
+              ios_icon_name="arrow.up.circle.fill" 
+              android_material_icon_name="upgrade" 
+              size={20} 
+              color="#fff" 
+            />
+            <Text style={styles.buttonText}>
+              {subscription?.status === 'active' ? 'Manage Subscription' : 'Upgrade to Premium'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },
-  contentContainer: {
-    padding: 20,
+  content: {
+    padding: spacing.md,
+    paddingBottom: 100, // Extra padding for FloatingTabBar
   },
-  contentContainerWithTabBar: {
-    paddingBottom: 100,
+  header: {
+    marginBottom: spacing.lg,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileHeader: {
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 32,
-    marginBottom: 16,
-    gap: 12,
-  },
-  name: {
-    fontSize: 24,
+  headerTitle: {
+    fontSize: 32,
     fontWeight: 'bold',
   },
-  email: {
-    fontSize: 16,
+  card: {
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
   },
-  premiumBadge: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginTop: 8,
+    marginBottom: spacing.md,
   },
-  premiumText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  section: {
-    borderRadius: 12,
-    padding: 20,
-    gap: 12,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: spacing.sm,
   },
   infoRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.1)',
   },
-  infoText: {
+  label: {
     fontSize: 16,
   },
-  editButton: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  editButtonText: {
-    color: '#FFF',
+  value: {
     fontSize: 16,
     fontWeight: '600',
   },
-  signOutButton: {
+  emptyText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginBottom: spacing.md,
+  },
+  button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 20,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.md,
   },
-  signOutText: {
+  buttonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: spacing.xs,
   },
 });
