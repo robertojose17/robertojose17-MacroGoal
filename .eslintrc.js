@@ -43,7 +43,13 @@ module.exports = {
     "@typescript-eslint/no-wrapper-object-types": "off",
     "@typescript-eslint/ban-tslint-comment": "off",
     "react/no-unescaped-entities": "off",
-    "import/no-unresolved": "error",
+    "import/no-unresolved": ["error", { 
+      ignore: [
+        'better-auth/react',
+        '@better-auth/expo/client',
+        'expo-secure-store'
+      ]
+    }],
     "prefer-const": "off",
     "react/prop-types": 1,
     "no-case-declarations": "off",
