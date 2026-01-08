@@ -1,87 +1,58 @@
 
 import { StyleSheet } from 'react-native';
 
-// Color system organized by theme
-const lightColors = {
-  // Backgrounds
-  background: '#F7F8FC',
-  card: '#F0F2F7',
-  
-  // Text
-  text: '#2B2D42',
-  textSecondary: '#6B7280',
-  
-  // Primary/Accent
-  primary: '#5B9AA8',
-  accent: '#5B9AA8',
-  
-  // Status
-  success: '#5CB97B',
-  warning: '#FF8A5B',
-  error: '#EF4444',
-  info: '#5B9AA8',
-  
-  // UI elements
-  border: '#E5E7EB',
-  cardBorder: '#D4D6DA',
-  disabled: '#CBD5E1',
-  
-  // Macros
-  protein: '#EF4444',
-  carbs: '#3B82F6',
-  fats: '#F59E0B',
-  fiber: '#10B981',
-  calories: '#8B5CF6',
-};
-
-const darkColors = {
-  // Backgrounds
-  background: '#1A1C2E',
-  card: '#252740',
-  
-  // Text
-  text: '#F1F5F9',
-  textSecondary: '#A0A2B8',
-  
-  // Primary/Accent
-  primary: '#4A8A98',
-  accent: '#4A8A98',
-  
-  // Status
-  success: '#5CB97B',
-  warning: '#FF8A5B',
-  error: '#EF4444',
-  info: '#5B9AA8',
-  
-  // UI elements
-  border: '#3A3C52',
-  cardBorder: '#3A3C52',
-  disabled: '#CBD5E1',
-  
-  // Macros
-  protein: '#EF4444',
-  carbs: '#3B82F6',
-  fats: '#F59E0B',
-  fiber: '#10B981',
-  calories: '#8B5CF6',
-};
-
-// Export colors with theme support
 export const colors = {
-  light: lightColors,
-  dark: darkColors,
-  // Legacy flat structure for backward compatibility
-  ...lightColors,
-  primaryBackground: '#F7F8FC',
-  cardDark: '#252740',
-  primaryText: '#2B2D42',
-  textDark: '#F1F5F9',
-  textSecondaryDark: '#A0A2B8',
-  primaryDark: '#4A8A98',
-  secondary: '#5CB97B',
-  backgroundDark: '#1A1C2E',
-  borderDark: '#3A3C52',
-  cardBorderDark: '#3A3C52',
+  // NEW COLOR SYSTEM - Clean, Minimalistic, High-Contrast
+  // 1. General Background (behind cards)
+  primaryBackground: '#F7F8FC',      // Blanco de Fondo - light off-white for screens
+  
+  // 2. Cards / Containers - UPDATED for better contrast
+  card: '#F0F2F7',                   // Slightly darker than pure white for better separation
+  cardDark: '#252740',               // Dark mode cards (unchanged)
+  
+  // 3. Primary Text (titles, numbers, dates)
+  primaryText: '#2B2D42',            // Dark Gray - strong contrast for readability
+  text: '#2B2D42',                   // Alias for primaryText
+  textDark: '#F1F5F9',               // Light text for dark mode (unchanged)
+  textSecondary: '#6B7280',          // Muted text
+  textSecondaryDark: '#A0A2B8',      // Muted text for dark mode (unchanged)
+  
+  // 4. Progress Lines (rings, general progress bars - NOT macro bars)
+  accent: '#5B9AA8',                 // Light Blue - for progress accents, primary actions
+  primary: '#5B9AA8',                // Alias for accent
+  primaryDark: '#4A8A98',            // Darker version of accent
+  
+  // 5. Success / Brand Color (positive actions, buttons, check marks)
+  success: '#5CB97B',                // Emerald Green - for success states, goal met
+  secondary: '#5CB97B',              // Alias for success
+  
+  // 6. Warning / Attention
+  warning: '#FF8A5B',                // Copper Orange - for warnings, over target highlights
+  
+  // Backgrounds
+  background: '#F7F8FC',             // Using primaryBackground
+  backgroundDark: '#1A1C2E',         // Dark background (unchanged)
+  
+  // Status colors
+  error: '#EF4444',                  // Keep existing error color
+  info: '#5B9AA8',                   // Using accent color
+  
+  // UI elements
+  border: '#E5E7EB',                 // Light border to match new background
+  borderDark: '#3A3C52',             // Dark mode border (unchanged)
+  disabled: '#CBD5E1',               // Keep existing disabled color
+  
+  // Card borders - NEW
+  cardBorder: '#D4D6DA',             // Subtle neutral gray for card borders (light mode)
+  cardBorderDark: '#3A3C52',         // Card border for dark mode
+  
+  // ⚠️ MACRO COLORS - DO NOT CHANGE THESE! ⚠️
+  // These colors are used for macro bars and must remain exactly as they are
+  protein: '#EF4444',                // Red - DO NOT CHANGE
+  carbs: '#3B82F6',                  // Blue - DO NOT CHANGE
+  fats: '#F59E0B',                   // Orange/Amber - DO NOT CHANGE
+  fiber: '#10B981',                  // Green - DO NOT CHANGE
+  calories: '#8B5CF6',               // Purple - DO NOT CHANGE
 };
 
 export const spacing = {
@@ -137,51 +108,37 @@ export const typography = {
     fontWeight: '400' as const,
     lineHeight: 16,
   },
-  sizes: {
-    xs: 12,
-    sm: 14,
-    md: 16,
-    lg: 18,
-    xl: 24,
-    xxl: 32,
-  },
-  weights: {
-    regular: '400' as const,
-    medium: '500' as const,
-    semibold: '600' as const,
-    bold: '700' as const,
-  },
 };
 
 export const commonStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: lightColors.background,
+    backgroundColor: colors.primaryBackground,
   },
   containerDark: {
     flex: 1,
-    backgroundColor: darkColors.background,
+    backgroundColor: colors.backgroundDark,
   },
   card: {
-    backgroundColor: lightColors.card,
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: lightColors.cardBorder,
+    borderColor: colors.cardBorder,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.06)',
     elevation: 2,
   },
   cardDark: {
-    backgroundColor: darkColors.card,
+    backgroundColor: colors.cardDark,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: darkColors.cardBorder,
+    borderColor: colors.cardBorderDark,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.3)',
     elevation: 2,
   },
   button: {
-    backgroundColor: lightColors.accent,
+    backgroundColor: colors.accent,
     borderRadius: borderRadius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -194,23 +151,23 @@ export const commonStyles = StyleSheet.create({
     fontWeight: '600' as const,
   },
   input: {
-    backgroundColor: lightColors.card,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: lightColors.border,
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     fontSize: 16,
-    color: lightColors.text,
+    color: colors.primaryText,
   },
   inputDark: {
-    backgroundColor: darkColors.card,
+    backgroundColor: colors.cardDark,
     borderWidth: 1,
-    borderColor: darkColors.border,
+    borderColor: colors.borderDark,
     borderRadius: borderRadius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     fontSize: 16,
-    color: darkColors.text,
+    color: colors.textDark,
   },
 });

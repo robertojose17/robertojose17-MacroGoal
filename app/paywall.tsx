@@ -16,6 +16,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/hooks/useSubscription';
+import { router } from 'expo-router';
 import { STRIPE_CONFIG } from '@/utils/stripeConfig';
 import { logStripeConfig, logSubscriptionAttempt, validateStripeConfig } from '@/utils/stripeDebug';
 
@@ -23,17 +24,21 @@ export default function PaywallScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { createCheckoutSession, loading: subscriptionLoading } = useSubscription();
+  const { createCheckoutSession, syncSubscription, loading: subscriptionLoading } = useSubscription();
 
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [configValid, setConfigValid] = useState(true);
+  const [configErrors, setConfigErrors] = useState<string[]>([]);
 
   useEffect(() => {
     // Log configuration on mount
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Paywall] 🎬 Screen mounted');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    logStripeConfig();
+    const validation = logStripeConfig();
+    setConfigValid(validation.ok);
+    setConfigErrors(validation.errors);
   }, []);
 
   const handleSubscribe = async () => {
@@ -46,7 +51,7 @@ export default function PaywallScreen() {
 
       // Validate configuration before attempting
       const validation = validateStripeConfig();
-      if (!validation.isValid) {
+      if (!validation.ok) {
         console.error('[Paywall] ❌ Invalid Stripe configuration:', validation.errors);
         Alert.alert(
           'Configuration Error',
@@ -61,6 +66,16 @@ export default function PaywallScreen() {
 
       const priceId = selectedPlan === 'monthly' ? STRIPE_CONFIG.MONTHLY_PRICE_ID : STRIPE_CONFIG.YEARLY_PRICE_ID;
 
+      if (!priceId) {
+        console.error('[Paywall] ❌ Price ID is undefined for plan:', selectedPlan);
+        Alert.alert(
+          'Configuration Error',
+          `Price ID for ${selectedPlan} plan is not configured. Please check your Stripe configuration.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       console.log('[Paywall] 📋 Subscription details:');
       console.log('[Paywall]   - Plan:', selectedPlan);
       console.log('[Paywall]   - Price ID:', priceId);
@@ -72,6 +87,13 @@ export default function PaywallScreen() {
       await createCheckoutSession(priceId, selectedPlan);
 
       console.log('[Paywall] ✅ Checkout session created successfully');
+      console.log('[Paywall] 🔄 User returned from checkout, navigating back...');
+      
+      // CRITICAL FIX: After checkout completes (user returns), navigate back
+      // The subscription sync happens in useSubscription hook and _layout.tsx
+      // Just close the paywall and let the app refresh
+      router.back();
+      
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (error: any) {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -111,16 +133,91 @@ export default function PaywallScreen() {
     }
   };
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     console.log('[Paywall] ℹ️ Restore subscription button pressed');
-    Alert.alert(
-      'Restore Subscription',
-      'If you already have an active subscription, it will be automatically detected when you log in. Please make sure you are logged in with the same account you used to subscribe.',
-      [{ text: 'OK' }]
-    );
+    
+    try {
+      setCheckoutLoading(true);
+      
+      // Sync subscription to check for existing subscription
+      await syncSubscription();
+      
+      Alert.alert(
+        'Subscription Check',
+        'If you have an active subscription, it will be detected automatically. Please wait a moment...',
+        [{ text: 'OK' }]
+      );
+      
+      // Navigate back to let the app refresh
+      setTimeout(() => {
+        router.back();
+      }, 1000);
+    } catch (error) {
+      console.error('[Paywall] Error restoring subscription:', error);
+      Alert.alert(
+        'Restore Failed',
+        'Could not check subscription status. Please try again or contact support.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   const isLoading = subscriptionLoading || checkoutLoading;
+
+  // Show configuration error UI if config is invalid
+  if (!configValid) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+        edges={['top']}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="xmark"
+              android_material_icon_name="close"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.errorContainer}>
+          <View style={[styles.errorIconContainer, { backgroundColor: '#FF3B3020' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={48}
+              color="#FF3B30"
+            />
+          </View>
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Configuration Error
+          </Text>
+          <Text style={[styles.errorMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Stripe is not configured correctly. Please check the following issues:
+          </Text>
+          <View style={styles.errorList}>
+            {configErrors.map((error, index) => (
+              <Text key={index} style={[styles.errorItem, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                • {error}
+              </Text>
+            ))}
+          </View>
+          {__DEV__ && (
+            <View style={[styles.devNote, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+              <Text style={[styles.devNoteText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700' }}>Developer Note:</Text> Update the PRICE_IDS in utils/stripeConfig.ts with your Stripe price IDs.
+              </Text>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -332,9 +429,6 @@ export default function PaywallScreen() {
           <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             • Secure payment powered by Stripe
           </Text>
-          <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            • Test mode - no real charges will be made
-          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -385,6 +479,52 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 120,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  errorTitle: {
+    ...typography.h1,
+    fontSize: 28,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  errorMessage: {
+    ...typography.body,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  errorList: {
+    alignSelf: 'stretch',
+    marginBottom: spacing.xl,
+  },
+  errorItem: {
+    ...typography.body,
+    fontSize: 14,
+    marginBottom: spacing.xs,
+    paddingLeft: spacing.md,
+  },
+  devNote: {
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.lg,
+  },
+  devNoteText: {
+    ...typography.caption,
+    fontSize: 13,
+    textAlign: 'center',
   },
   heroSection: {
     alignItems: 'center',

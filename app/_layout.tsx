@@ -140,6 +140,7 @@ export default function RootLayout() {
 
   const handleDeepLink = async (url: string) => {
     try {
+      console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('[DeepLink] Processing URL:', url);
       
       const { hostname, path, queryParams } = Linking.parse(url);
@@ -150,13 +151,30 @@ export default function RootLayout() {
         console.log('[DeepLink] ✅ Checkout success detected!');
         console.log('[DeepLink] Session ID:', queryParams.session_id);
         
-        // Wait a moment for webhook to process
-        setTimeout(async () => {
-          console.log('[DeepLink] Syncing subscription after checkout...');
-          
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
+        // Show immediate feedback
+        Alert.alert(
+          '✅ Payment Successful!',
+          'Processing your subscription... This will take just a moment.',
+          [{ text: 'OK' }]
+        );
+        
+        // Navigate to profile immediately
+        router.replace('/(tabs)/profile');
+        
+        // Sync subscription in background with retries
+        console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
+        
+        const syncWithRetries = async (maxRetries = 10, delayMs = 2000) => {
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              console.log(`[DeepLink] 🔄 Sync attempt ${attempt}/${maxRetries}`);
+              
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) {
+                console.error('[DeepLink] ❌ No session found');
+                break;
+              }
+
               // Call sync-subscription Edge Function
               const { data, error } = await supabase.functions.invoke('sync-subscription', {
                 headers: {
@@ -165,34 +183,81 @@ export default function RootLayout() {
               });
 
               if (error) {
-                console.error('[DeepLink] Error syncing subscription:', error);
+                console.error(`[DeepLink] ⚠️ Sync attempt ${attempt} failed:`, error);
               } else {
-                console.log('[DeepLink] ✅ Subscription synced:', data);
+                console.log(`[DeepLink] ✅ Sync attempt ${attempt} succeeded:`, data);
               }
+
+              // Check if user is now premium
+              const { data: userData } = await supabase
+                .from('users')
+                .select('user_type')
+                .eq('id', session.user.id)
+                .maybeSingle();
+
+              if (userData?.user_type === 'premium') {
+                console.log('[DeepLink] 🎉 Premium status confirmed!');
+                
+                // Show success message
+                Alert.alert(
+                  '🎉 Welcome to Premium!',
+                  'Your subscription is now active. Enjoy unlimited AI-powered meal estimates and all premium features!',
+                  [{ text: 'Awesome!' }]
+                );
+                
+                return; // Success, stop retrying
+              }
+
+              // Wait before next retry
+              if (attempt < maxRetries) {
+                console.log(`[DeepLink] ⏳ Waiting ${delayMs}ms before next attempt...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+              }
+            } catch (error) {
+              console.error(`[DeepLink] ❌ Error in sync attempt ${attempt}:`, error);
             }
-          } catch (error) {
-            console.error('[DeepLink] Error in sync:', error);
           }
 
-          // Navigate to profile to show updated subscription
-          router.replace('/(tabs)/profile');
-          
-          // Show success message
+          // If we get here, all retries failed
+          console.log('[DeepLink] ⚠️ Premium status not confirmed after all retries');
           Alert.alert(
-            '🎉 Welcome to Premium!',
-            'Your subscription is now active. Enjoy unlimited AI-powered meal estimates!',
+            'Processing...',
+            'Your payment is being processed. Premium features will be unlocked shortly. If this takes more than a few minutes, please contact support.',
             [{ text: 'OK' }]
           );
-        }, 2000);
+        };
+
+        // Run sync in background
+        syncWithRetries().catch(error => {
+          console.error('[DeepLink] ❌ Error in syncWithRetries:', error);
+        });
       }
 
       // Handle checkout cancel
-      if (queryParams?.subscription_cancelled === 'true') {
+      else if (queryParams?.subscription_cancelled === 'true') {
         console.log('[DeepLink] ❌ Checkout cancelled');
         router.replace('/paywall');
+        Alert.alert(
+          'Checkout Cancelled',
+          'You can subscribe anytime to unlock premium features.',
+          [{ text: 'OK' }]
+        );
       }
+
+      // Handle subscription error
+      else if (queryParams?.subscription_error === 'true') {
+        console.log('[DeepLink] ⚠️ Subscription error detected');
+        router.replace('/(tabs)/profile');
+        Alert.alert(
+          'Processing Issue',
+          'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
+          [{ text: 'OK' }]
+        );
+      }
+
+      console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (error) {
-      console.error('[DeepLink] Error handling deep link:', error);
+      console.error('[DeepLink] ❌ Error handling deep link:', error);
     }
   };
 

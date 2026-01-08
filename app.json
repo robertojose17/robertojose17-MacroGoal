@@ -52,7 +52,7 @@
         }
       ]
     ],
-    "scheme": "elitemacrotracker",
+    "scheme": "macrogoal",
     "experiments": {
       "typedRoutes": true
     },

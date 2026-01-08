@@ -185,14 +185,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    // CRITICAL FIX: Use the correct hardcoded project URL instead of environment variable
-    // This fixes the NOT_FOUND error caused by incorrect SUPABASE_URL env var
-    const successUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?success=true&session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${CORRECT_PROJECT_URL}/functions/v1/checkout-redirect?cancelled=true`;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Use direct deep links with proper URL encoding
+    // The app will handle these via expo-linking in _layout.tsx
+    // Webhooks handle all database updates, so we just need to redirect back to app
+    // ═══════════════════════════════════════════════════════════════════════════
+    const successUrl = `macrogoal://profile?subscription_success=true&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `macrogoal://paywall?subscription_cancelled=true`;
 
-    console.log("[Checkout] 🔗 Redirect URLs:");
+    console.log("[Checkout] 🔗 Redirect URLs (Direct Deep Links):");
     console.log("[Checkout]   - Success:", successUrl);
     console.log("[Checkout]   - Cancel:", cancelUrl);
+    console.log("[Checkout] ✅ Using direct deep links - app will handle via expo-linking");
 
     // CRITICAL FIX: Create checkout session with customer and comprehensive metadata
     console.log("[Checkout] 🚀 Creating Stripe checkout session...");
@@ -226,6 +230,7 @@ Deno.serve(async (req) => {
     console.log("[Checkout]   - Customer ID:", customerId);
     console.log("[Checkout]   - User ID in metadata:", session.metadata?.supabase_user_id);
     console.log("[Checkout]   - Checkout URL:", session.url);
+    console.log("[Checkout] 🎯 After payment, user will be redirected DIRECTLY to app!");
 
     return new Response(
       JSON.stringify({ 

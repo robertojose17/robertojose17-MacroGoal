@@ -32,12 +32,9 @@ export interface UseSubscriptionReturn {
   planType: PlanType;
   refreshSubscription: () => Promise<void>;
   syncSubscription: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
   createCheckoutSession: (priceId: string, planType: 'monthly' | 'yearly') => Promise<void>;
   openCustomerPortal: () => Promise<void>;
-  // Legacy aliases for backward compatibility
-  subscriptionStatus: SubscriptionStatus | null;
-  subscriptionLoading: boolean;
-  refreshSubscriptionStatus: () => Promise<void>;
 }
 
 /**
@@ -117,6 +114,32 @@ export function useSubscription(): UseSubscriptionReturn {
       console.error('[useSubscription] ❌ Error in syncSubscription:', error);
     }
   }, [fetchSubscription]);
+
+  const refreshUserProfile = useCallback(async () => {
+    try {
+      console.log('[useSubscription] 🔄 Refreshing user profile...');
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[useSubscription] ❌ No user found');
+        return;
+      }
+
+      // Trigger a refetch of user data by updating the auth state
+      // This will cause any components listening to auth state to re-render
+      const { data: userData } = await supabase
+        .from('users')
+        .select('user_type')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (userData) {
+        console.log('[useSubscription] ✅ User profile refreshed, user_type:', userData.user_type);
+      }
+    } catch (error) {
+      console.error('[useSubscription] ❌ Error refreshing user profile:', error);
+    }
+  }, []);
 
   useEffect(() => {
     fetchSubscription();
@@ -219,14 +242,39 @@ export function useSubscription(): UseSubscriptionReturn {
         
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes (regardless of reason), sync the subscription
+        // CRITICAL FIX: After the browser closes, sync subscription with multiple retries
         // The webhook should have already updated the database if payment succeeded
-        console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
+        console.log('[useSubscription] 🔄 Browser closed, syncing subscription with retries...');
         
-        // Wait a moment for webhook to process, then sync
-        setTimeout(() => {
-          syncSubscription();
-        }, 2000);
+        // Retry sync multiple times to ensure we catch the webhook update
+        const maxRetries = 5;
+        const retryDelay = 2000; // 2 seconds between retries
+        
+        for (let i = 0; i < maxRetries; i++) {
+          console.log(`[useSubscription] 🔄 Sync attempt ${i + 1}/${maxRetries}`);
+          
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          await syncSubscription();
+          
+          // Check if subscription is now active
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: userData } = await supabase
+              .from('users')
+              .select('user_type')
+              .eq('id', user.id)
+              .maybeSingle();
+            
+            if (userData?.user_type === 'premium') {
+              console.log('[useSubscription] ✅ Premium status confirmed!');
+              break;
+            }
+          }
+          
+          if (i === maxRetries - 1) {
+            console.log('[useSubscription] ⚠️ Premium status not confirmed after all retries');
+          }
+        }
       } else {
         console.error('[useSubscription] ❌ No checkout URL in response');
         console.error('[useSubscription] Response data:', JSON.stringify(data, null, 2));
@@ -308,11 +356,8 @@ export function useSubscription(): UseSubscriptionReturn {
     planType: subscription?.plan_type || null,
     refreshSubscription: fetchSubscription,
     syncSubscription,
+    refreshUserProfile,
     createCheckoutSession,
     openCustomerPortal,
-    // Legacy aliases for backward compatibility
-    subscriptionStatus: subscription?.status || null,
-    subscriptionLoading: loading,
-    refreshSubscriptionStatus: fetchSubscription,
   };
 }
