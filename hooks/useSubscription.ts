@@ -38,6 +38,34 @@ export interface UseSubscriptionReturn {
 }
 
 /**
+ * CRITICAL FIX: Check if user has premium access
+ * A user has premium access if:
+ * - status is 'active' OR 'trialing'
+ * - OR status is 'canceled' but current_period_end is in the future
+ */
+function hasPremiumAccess(subscription: Subscription | null): boolean {
+  if (!subscription) return false;
+  
+  const now = new Date();
+  
+  // Active or trialing = premium
+  if (subscription.status === 'active' || subscription.status === 'trialing') {
+    return true;
+  }
+  
+  // Canceled but still within paid period = premium
+  if (subscription.status === 'canceled' && subscription.current_period_end) {
+    const periodEnd = new Date(subscription.current_period_end);
+    if (periodEnd > now) {
+      console.log('[useSubscription] 📅 Subscription canceled but still active until:', periodEnd.toISOString());
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Hook to manage user subscription state
  * Automatically fetches subscription on mount and provides helper methods
  */
@@ -75,6 +103,8 @@ export function useSubscription(): UseSubscriptionReturn {
             status: data.status,
             plan_type: data.plan_type,
             stripe_subscription_id: data.stripe_subscription_id,
+            current_period_end: data.current_period_end,
+            has_premium_access: hasPremiumAccess(data),
           });
         }
         setSubscription(data);
@@ -345,7 +375,8 @@ export function useSubscription(): UseSubscriptionReturn {
     }
   }, [syncSubscription]);
 
-  const isSubscribed = subscription?.status === 'active' || subscription?.status === 'trialing';
+  // CRITICAL FIX: Use hasPremiumAccess function to determine subscription status
+  const isSubscribed = hasPremiumAccess(subscription);
   const hasActiveSubscription = isSubscribed;
 
   return {

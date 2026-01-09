@@ -105,6 +105,29 @@ async function resolveUserId(
 }
 
 /**
+ * CRITICAL FIX: Determine if user should have premium access
+ * A user has premium access if:
+ * - status is 'active' OR 'trialing'
+ * - OR status is 'canceled' but current_period_end is in the future
+ */
+function shouldHavePremiumAccess(subscription: Stripe.Subscription): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  
+  // Active or trialing = premium
+  if (subscription.status === 'active' || subscription.status === 'trialing') {
+    return true;
+  }
+  
+  // Canceled but still within paid period = premium
+  if (subscription.status === 'canceled' && subscription.current_period_end > now) {
+    console.log("[Webhook] 📅 Subscription canceled but still active until:", new Date(subscription.current_period_end * 1000).toISOString());
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Update subscription and user status in database
  */
 async function updateSubscriptionStatus(
@@ -115,7 +138,7 @@ async function updateSubscriptionStatus(
 ) {
   const priceId = subscription.items.data[0].price.id;
   const status = subscription.status;
-  const isPremium = status === 'active' || status === 'trialing';
+  const isPremium = shouldHavePremiumAccess(subscription);
 
   console.log("[Webhook] 💾 Updating subscription in database...");
   console.log("[Webhook]   - User ID:", userId);
@@ -123,6 +146,7 @@ async function updateSubscriptionStatus(
   console.log("[Webhook]   - Subscription ID:", subscriptionId);
   console.log("[Webhook]   - Status:", status);
   console.log("[Webhook]   - Is Premium:", isPremium);
+  console.log("[Webhook]   - Current Period End:", new Date(subscription.current_period_end * 1000).toISOString());
 
   // Determine plan type from price ID or metadata
   let planType = subscription.metadata?.plan_type || 'monthly';
@@ -160,7 +184,7 @@ async function updateSubscriptionStatus(
 
   console.log("[Webhook] ✅ Subscription upserted successfully");
 
-  // CRITICAL: Update user_type
+  // CRITICAL FIX: Update user_type based on premium access, not just status
   const newUserType = isPremium ? 'premium' : 'free';
   console.log("[Webhook] 🔄 Updating user_type to:", newUserType);
 
@@ -362,21 +386,30 @@ Deno.serve(async (req) => {
           console.log("[Webhook] ✅ Subscription canceled successfully");
         }
 
-        // Update user_type to free
-        console.log("[Webhook] 🔄 Updating user_type to: free");
+        // CRITICAL FIX: Only update user_type to free if subscription has truly ended
+        // Check if current_period_end is in the past
+        const now = Math.floor(Date.now() / 1000);
+        const shouldRemovePremium = subscription.current_period_end <= now;
+        
+        if (shouldRemovePremium) {
+          console.log("[Webhook] 🔄 Subscription ended, updating user_type to: free");
 
-        const { error: userError } = await supabase
-          .from("users")
-          .update({
-            user_type: "free",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", userId);
+          const { error: userError } = await supabase
+            .from("users")
+            .update({
+              user_type: "free",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", userId);
 
-        if (userError) {
-          console.error("[Webhook] ❌ Error updating user_type:", userError);
+          if (userError) {
+            console.error("[Webhook] ❌ Error updating user_type:", userError);
+          } else {
+            console.log("[Webhook] ✅ User type updated to: free");
+          }
         } else {
-          console.log("[Webhook] ✅ User type updated to: free");
+          console.log("[Webhook] 📅 Subscription canceled but still active until:", new Date(subscription.current_period_end * 1000).toISOString());
+          console.log("[Webhook] ℹ️ User will keep premium access until period ends");
         }
 
         break;

@@ -625,6 +625,11 @@ export default function ProfileScreen() {
                 <Text style={[styles.subscriptionStatus, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Status: {subscription?.status || 'unknown'}
                 </Text>
+                {subscription?.status === 'canceled' && subscription?.current_period_end && (
+                  <Text style={[styles.subscriptionWarning, { color: colors.accent }]}>
+                    ⚠️ Subscription canceled but active until {new Date(subscription.current_period_end).toLocaleDateString()}
+                  </Text>
+                )}
               </View>
               <TouchableOpacity
                 style={[styles.manageButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -1384,6 +1389,12 @@ const styles = StyleSheet.create({
   subscriptionStatus: {
     ...typography.caption,
     fontSize: 12,
+  },
+  subscriptionWarning: {
+    ...typography.caption,
+    fontSize: 12,
+    marginTop: spacing.xs,
+    fontWeight: '600',
   },
   subscriptionDescription: {
     ...typography.body,
