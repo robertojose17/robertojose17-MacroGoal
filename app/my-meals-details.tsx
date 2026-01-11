@@ -256,6 +256,16 @@ export default function MyMealsDetailsScreen() {
     };
   }, []);
 
+  const handleEditMeal = () => {
+    console.log('[MyMealsDetails] Navigating to edit meal');
+    router.push({
+      pathname: '/my-meals-edit',
+      params: {
+        mealId: mealId,
+      },
+    });
+  };
+
   const handleAddToMeal = async () => {
     if (!savedMeal) return;
 
@@ -411,7 +421,14 @@ export default function MyMealsDetailsScreen() {
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Meal Details
         </Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={handleEditMeal} style={styles.editButton}>
+          <IconSymbol
+            ios_icon_name="pencil"
+            android_material_icon_name="edit"
+            size={24}
+            color={isDark ? colors.textDark : colors.text}
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -616,6 +633,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     flex: 1,
     textAlign: 'center',
+  },
+  editButton: {
+    padding: spacing.xs,
   },
   scrollView: {
     flex: 1,
