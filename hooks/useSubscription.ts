@@ -97,15 +97,19 @@ export function useSubscription(): UseSubscriptionReturn {
         console.error('[useSubscription] ❌ Error fetching subscription:', error);
         setSubscription(null);
       } else {
-        console.log('[useSubscription] ✅ Subscription fetched:', data?.status || 'none');
+        console.log('[useSubscription] ✅ Subscription fetched from database');
         if (data) {
           console.log('[useSubscription] 📊 Subscription details:', {
             status: data.status,
             plan_type: data.plan_type,
             stripe_subscription_id: data.stripe_subscription_id,
             current_period_end: data.current_period_end,
+            cancel_at_period_end: data.cancel_at_period_end,
             has_premium_access: hasPremiumAccess(data),
+            updated_at: data.updated_at,
           });
+        } else {
+          console.log('[useSubscription] ℹ️ No subscription record found (user has never subscribed)');
         }
         setSubscription(data);
       }
@@ -136,8 +140,8 @@ export function useSubscription(): UseSubscriptionReturn {
       if (error) {
         console.error('[useSubscription] ❌ Error syncing subscription:', error);
       } else {
-        console.log('[useSubscription] ✅ Subscription synced:', data);
-        // Refresh local subscription data
+        console.log('[useSubscription] ✅ Subscription synced with Stripe:', data);
+        // CRITICAL: Force refresh local subscription data after sync
         await fetchSubscription();
       }
     } catch (error) {
@@ -189,7 +193,8 @@ export function useSubscription(): UseSubscriptionReturn {
           table: 'subscriptions',
         },
         (payload) => {
-          console.log('[useSubscription] 🔔 Subscription changed:', payload);
+          console.log('[useSubscription] 🔔 Subscription changed via real-time:', payload);
+          // CRITICAL: Immediately fetch fresh data when subscription changes
           fetchSubscription();
         }
       )
@@ -272,37 +277,47 @@ export function useSubscription(): UseSubscriptionReturn {
         
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // CRITICAL FIX: After the browser closes, sync subscription with multiple retries
+        // CRITICAL FIX: After the browser closes, aggressively sync subscription with multiple retries
         // The webhook should have already updated the database if payment succeeded
-        console.log('[useSubscription] 🔄 Browser closed, syncing subscription with retries...');
+        console.log('[useSubscription] 🔄 Browser closed, syncing subscription with aggressive retries...');
         
         // Retry sync multiple times to ensure we catch the webhook update
-        const maxRetries = 5;
-        const retryDelay = 2000; // 2 seconds between retries
+        const maxRetries = 8; // Increased from 5 to 8
+        const retryDelay = 1500; // Reduced from 2000ms to 1500ms for faster feedback
         
         for (let i = 0; i < maxRetries; i++) {
           console.log(`[useSubscription] 🔄 Sync attempt ${i + 1}/${maxRetries}`);
           
           await new Promise(resolve => setTimeout(resolve, retryDelay));
+          
+          // Force sync with Stripe
           await syncSubscription();
           
           // Check if subscription is now active
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('user_type')
-              .eq('id', user.id)
+            // Fetch fresh subscription data
+            const { data: subData } = await supabase
+              .from('subscriptions')
+              .select('*')
+              .eq('user_id', user.id)
               .maybeSingle();
             
-            if (userData?.user_type === 'premium') {
-              console.log('[useSubscription] ✅ Premium status confirmed!');
+            console.log(`[useSubscription] 🔍 Retry ${i + 1} - Subscription status:`, subData?.status);
+            
+            if (subData && (subData.status === 'active' || subData.status === 'trialing')) {
+              console.log('[useSubscription] ✅ Premium status confirmed! Subscription is now active.');
+              // Force one final refresh to update UI
+              await fetchSubscription();
               break;
             }
           }
           
           if (i === maxRetries - 1) {
             console.log('[useSubscription] ⚠️ Premium status not confirmed after all retries');
+            console.log('[useSubscription] ℹ️ This might be normal if payment is still processing');
+            // Force one final refresh anyway
+            await fetchSubscription();
           }
         }
       } else {
@@ -322,7 +337,7 @@ export function useSubscription(): UseSubscriptionReturn {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       throw error;
     }
-  }, [syncSubscription]);
+  }, [syncSubscription, fetchSubscription]);
 
   const openCustomerPortal = useCallback(async () => {
     try {
@@ -360,10 +375,12 @@ export function useSubscription(): UseSubscriptionReturn {
         });
         console.log('[useSubscription] 📱 WebBrowser result:', result);
         
-        // After the browser closes, sync the subscription
+        // After the browser closes, aggressively sync the subscription
         console.log('[useSubscription] 🔄 Browser closed, syncing subscription...');
-        setTimeout(() => {
-          syncSubscription();
+        setTimeout(async () => {
+          await syncSubscription();
+          // Force refresh after sync
+          await fetchSubscription();
         }, 1000);
       } else {
         console.error('[useSubscription] ❌ No portal URL returned');
@@ -373,7 +390,7 @@ export function useSubscription(): UseSubscriptionReturn {
       console.error('[useSubscription] ❌ Error in openCustomerPortal:', error);
       throw error;
     }
-  }, [syncSubscription]);
+  }, [syncSubscription, fetchSubscription]);
 
   // CRITICAL FIX: Use hasPremiumAccess function to determine subscription status
   const isSubscribed = hasPremiumAccess(subscription);

@@ -512,17 +512,28 @@ export default function ProfileScreen() {
     const now = new Date();
     const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : null;
 
+    console.log('[Profile] Subscription status check:', {
+      status: subscription.status,
+      current_period_end: subscription.current_period_end,
+      periodEnd: periodEnd?.toISOString(),
+      now: now.toISOString(),
+      isPeriodEndInFuture: periodEnd ? periodEnd > now : false,
+    });
+
     // Active or trialing = show "Active"
     if (subscription.status === 'active' || subscription.status === 'trialing') {
+      console.log('[Profile] ✅ Status: Active (subscription is active or trialing)');
       return 'Active';
     }
 
     // Canceled but still within paid period = show "Active (Canceled)"
     if (subscription.status === 'canceled' && periodEnd && periodEnd > now) {
+      console.log('[Profile] ⚠️ Status: Active (Canceled) - subscription canceled but still active until', periodEnd.toISOString());
       return 'Active (Canceled)';
     }
 
     // Canceled and period expired, or any other status = show "Free"
+    console.log('[Profile] ❌ Status: Free (subscription canceled and expired, or other status)');
     return 'Free';
   };
 
