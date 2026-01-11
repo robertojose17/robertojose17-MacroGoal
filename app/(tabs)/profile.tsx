@@ -24,7 +24,6 @@ export default function ProfileScreen() {
   const [goal, setGoal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
 
   // Edit modal state
   const [editingField, setEditingField] = useState<EditField>(null);
@@ -39,7 +38,7 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
-  const { subscription, isSubscribed, planType, openCustomerPortal, refreshSubscription, syncSubscription } = useSubscription();
+  const { subscription, isSubscribed, planType, syncSubscription } = useSubscription();
 
   useFocusEffect(
     useCallback(() => {
@@ -120,20 +119,9 @@ export default function ProfileScreen() {
   };
 
   const handleManageSubscription = async () => {
-    if (!isSubscribed) {
-      router.push('/paywall');
-      return;
-    }
-
-    try {
-      setPortalLoading(true);
-      await openCustomerPortal();
-    } catch (error: any) {
-      console.error('[Profile] Error opening customer portal:', error);
-      Alert.alert('Error', error.message || 'Failed to open subscription management. Please try again.');
-    } finally {
-      setPortalLoading(false);
-    }
+    // Always navigate to paywall to allow users to purchase/repurchase subscription
+    // This ensures users who canceled can buy again
+    router.push('/paywall');
   };
 
   const handleLogout = async () => {
@@ -518,7 +506,7 @@ export default function ProfileScreen() {
       const periodEnd = new Date(subscription.current_period_end);
       const now = new Date();
       if (periodEnd > now) {
-        return 'Subscription: Active';
+        return 'Subscription: Active (Canceled)';
       }
     }
     
@@ -650,26 +638,17 @@ export default function ProfileScreen() {
                 )}
               </View>
               <TouchableOpacity
-                style={[styles.manageButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                style={[styles.upgradeButton, { backgroundColor: colors.primary }]}
                 onPress={handleManageSubscription}
-                disabled={portalLoading}
                 activeOpacity={0.7}
               >
-                {portalLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <React.Fragment>
-                    <Text style={[styles.manageButtonText, { color: colors.primary }]}>
-                      Manage Subscription
-                    </Text>
-                    <IconSymbol
-                      ios_icon_name="arrow.up.right"
-                      android_material_icon_name="open_in_new"
-                      size={16}
-                      color={colors.primary}
-                    />
-                  </React.Fragment>
-                )}
+                <IconSymbol
+                  ios_icon_name="sparkles"
+                  android_material_icon_name="auto_awesome"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.upgradeButtonText}>View Subscription Options</Text>
               </TouchableOpacity>
             </React.Fragment>
           ) : (
