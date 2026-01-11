@@ -189,11 +189,6 @@ export default function FoodDetailsLayout({
   }, [mode, itemId, loadEditItem]);
 
   const loadViewData = useCallback(() => {
-  useEffect(() => {
-    if (mode === 'view' && offData) {
-      loadViewData();
-    }
-  }, [mode, offData, loadViewData]);
     console.log('[FoodDetailsLayout] ========== LOADING VIEW DATA ==========');
     console.log('[FoodDetailsLayout] Mode:', mode);
     console.log('[FoodDetailsLayout] Context:', context);
@@ -332,6 +327,12 @@ export default function FoodDetailsLayout({
   }, [offData, context, mealType, date, returnTo, router]);
 
   // Load data for view mode
+  useEffect(() => {
+    if (mode === 'view' && offData) {
+      loadViewData();
+    }
+  }, [mode, offData, loadViewData]);
+
   useEffect(() => {
     return () => {
       if (bannerTimerRef.current) {

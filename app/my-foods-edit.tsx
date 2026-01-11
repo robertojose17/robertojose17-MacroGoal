@@ -66,40 +66,6 @@ export default function MyFoodsEditScreen() {
     loadFood();
   }, [loadFood]);
 
-  const loadFood = async () => {
-    console.log('[MyFoodsEdit] Loading food:', foodId);
-    try {
-      const { data, error } = await supabase
-        .from('foods')
-        .select('*')
-        .eq('id', foodId)
-        .single();
-
-      if (error) {
-        console.error('[MyFoodsEdit] Error loading food:', error);
-        Alert.alert('Error', 'Failed to load food');
-        router.back();
-        return;
-      }
-
-      console.log('[MyFoodsEdit] Food loaded:', data);
-      setFoodName(data.name);
-      setBrand(data.brand || '');
-      setServingAmount(data.serving_amount.toString());
-      setServingUnit(data.serving_unit);
-      setCalories(data.calories.toString());
-      setProtein(data.protein.toString());
-      setCarbs(data.carbs.toString());
-      setFats(data.fats.toString());
-      setFiber(data.fiber.toString());
-      setLoading(false);
-    } catch (error) {
-      console.error('[MyFoodsEdit] Error in loadFood:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-      router.back();
-    }
-  };
-
   const handleSave = async () => {
     console.log('[MyFoodsEdit] ========== SAVE BUTTON PRESSED ==========');
     console.log('[MyFoodsEdit] Food ID:', foodId);

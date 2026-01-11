@@ -204,7 +204,7 @@ export default function BarcodeScannerScreen() {
     // Start lookup process immediately (no delay needed)
     console.log('[BarcodeScanner] 🚀 STARTING LOOKUP PROCESS');
     performLookupAndNavigate(cleanBarcode);
-  }, [performLookupAndNavigate, router, mealType, date, mode, context, returnTo, myMealId]);
+  }, [performLookupAndNavigate]);
 
   // Show loading while checking permissions
   if (!permission) {
