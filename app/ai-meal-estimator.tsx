@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -16,9 +16,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { Audio } from 'expo-audio';
-import * as FileSystem from 'expo-file-system/legacy';
-import { transcribeAudioLocally, isLocalSTTSupported } from '@/utils/localSpeechRecognition';
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
@@ -28,9 +25,6 @@ export default function AIMealEstimatorScreen() {
   const [mealDescription, setMealDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
 
   const handleAnalyze = async () => {
     if (!mealDescription.trim()) {
@@ -56,148 +50,6 @@ export default function AIMealEstimatorScreen() {
       Alert.alert('Error', 'Failed to analyze meal');
     } finally {
       setIsAnalyzing(false);
-    }
-  };
-
-  const startRecording = async () => {
-    try {
-      console.log('[AIMealEstimator] Requesting audio permissions...');
-      const { granted } = await Audio.requestPermissionsAsync();
-      
-      if (!granted) {
-        Alert.alert(
-          'Permission Required',
-          'Microphone access is required to record audio. Please enable it in Settings.'
-        );
-        return;
-      }
-
-      console.log('[AIMealEstimator] Setting audio mode...');
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log('[AIMealEstimator] Starting recording...');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      
-      recordingRef.current = recording;
-      setIsRecording(true);
-      console.log('[AIMealEstimator] Recording started successfully');
-    } catch (error: any) {
-      console.error('[AIMealEstimator] Error starting recording:', error);
-      Alert.alert('Error', 'Failed to start recording: ' + error.message);
-    }
-  };
-
-  const stopRecording = async () => {
-    try {
-      console.log('[AIMealEstimator] Stopping recording...');
-      
-      if (!recordingRef.current) {
-        console.error('[AIMealEstimator] No active recording');
-        Alert.alert('Error', 'No active recording found');
-        return;
-      }
-
-      setIsRecording(false);
-      await recordingRef.current.stopAndUnloadAsync();
-      
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-
-      if (!uri) {
-        console.error('[AIMealEstimator] No recording URI');
-        Alert.alert('Error', 'Failed to save recording');
-        return;
-      }
-
-      console.log('[AIMealEstimator] Recording saved to:', uri);
-      
-      // Transcribe the audio using native device speech recognition
-      await transcribeAudio(uri);
-    } catch (error: any) {
-      console.error('[AIMealEstimator] Error stopping recording:', error);
-      Alert.alert('Error', 'Failed to stop recording: ' + error.message);
-      setIsRecording(false);
-    }
-  };
-
-  const transcribeAudio = async (audioUri: string) => {
-    setIsTranscribing(true);
-    
-    try {
-      console.log('[AIMealEstimator] Starting native device transcription...');
-      console.log('[AIMealEstimator] Audio URI:', audioUri);
-      
-      // Check if local STT is supported
-      if (!isLocalSTTSupported()) {
-        Alert.alert(
-          'Not Supported',
-          'Voice transcription requires a native build. Please run: npx expo run:' + Platform.OS
-        );
-        return;
-      }
-
-      // Verify file exists
-      const fileInfo = await FileSystem.getInfoAsync(audioUri);
-      console.log('[AIMealEstimator] File info:', JSON.stringify(fileInfo));
-      
-      if (!fileInfo.exists) {
-        throw new Error('Audio file does not exist');
-      }
-
-      if (fileInfo.size && fileInfo.size < 1000) {
-        throw new Error('Recording is too short. Please speak for at least 1 second.');
-      }
-
-      console.log('[AIMealEstimator] Using native device speech recognition (FREE)...');
-
-      // Use native device speech recognition (iOS Speech Framework / Android SpeechRecognizer)
-      await transcribeAudioLocally(
-        audioUri,
-        (transcribedText) => {
-          console.log('[AIMealEstimator] ✅ Transcription successful:', transcribedText);
-          
-          // Append transcribed text to the meal description
-          setMealDescription(prev => {
-            const newText = prev ? `${prev} ${transcribedText}` : transcribedText;
-            return newText;
-          });
-          
-          // Show success feedback
-          Alert.alert('Success', 'Voice transcribed successfully!');
-          setIsTranscribing(false);
-        },
-        (error) => {
-          console.error('[AIMealEstimator] ❌ Transcription error:', error);
-          Alert.alert('Error', error);
-          setIsTranscribing(false);
-        }
-      );
-
-    } catch (error: any) {
-      console.error('[AIMealEstimator] Error transcribing audio:', error);
-      Alert.alert('Error', error.message || 'Failed to transcribe audio. Please try again.');
-      setIsTranscribing(false);
-    } finally {
-      // Clean up the audio file
-      try {
-        await FileSystem.deleteAsync(audioUri, { idempotent: true });
-        console.log('[AIMealEstimator] Audio file cleaned up');
-      } catch (cleanupError) {
-        console.warn('[AIMealEstimator] Failed to delete audio file:', cleanupError);
-      }
-    }
-  };
-
-  const handleMicPress = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
     }
   };
 
@@ -227,7 +79,7 @@ export default function AIMealEstimatorScreen() {
             color={colors.primary}
           />
           <Text style={[styles.infoText, { color: colors.text }]}>
-            Using FREE native device speech recognition (no API keys needed!)
+            Describe your meal and get instant nutrition estimates powered by AI
           </Text>
         </View>
 
@@ -235,66 +87,28 @@ export default function AIMealEstimatorScreen() {
           Describe your meal
         </Text>
         
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: colors.backgroundAlt,
-                color: colors.text,
-                borderColor: colors.grey,
-              },
-            ]}
-            placeholder="e.g., Grilled chicken breast with rice and broccoli"
-            placeholderTextColor={colors.grey}
-            value={mealDescription}
-            onChangeText={setMealDescription}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-            editable={!isTranscribing}
-          />
-          
-          <TouchableOpacity
-            style={[
-              styles.micButton,
-              {
-                backgroundColor: isRecording ? '#ef4444' : colors.primary,
-              },
-              (isTranscribing || isAnalyzing) && styles.micButtonDisabled,
-            ]}
-            onPress={handleMicPress}
-            disabled={isTranscribing || isAnalyzing}
-          >
-            {isTranscribing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <IconSymbol
-                ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
-                android_material_icon_name={isRecording ? 'stop' : 'mic'}
-                size={24}
-                color="#fff"
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {isRecording && (
-          <Text style={[styles.recordingText, { color: '#ef4444' }]}>
-            🔴 Recording... Tap the microphone to stop
-          </Text>
-        )}
-
-        {isTranscribing && (
-          <Text style={[styles.recordingText, { color: colors.primary }]}>
-            ⏳ Transcribing with device speech recognition...
-          </Text>
-        )}
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: colors.backgroundAlt,
+              color: colors.text,
+              borderColor: colors.grey,
+            },
+          ]}
+          placeholder="e.g., Grilled chicken breast with rice and broccoli"
+          placeholderTextColor={colors.grey}
+          value={mealDescription}
+          onChangeText={setMealDescription}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
 
         <TouchableOpacity
-          style={[styles.analyzeButton, (isAnalyzing || isTranscribing || isRecording) && styles.analyzeButtonDisabled]}
+          style={[styles.analyzeButton, isAnalyzing && styles.analyzeButtonDisabled]}
           onPress={handleAnalyze}
-          disabled={isAnalyzing || isTranscribing || isRecording}
+          disabled={isAnalyzing}
         >
           {isAnalyzing ? (
             <ActivityIndicator color="#fff" />
@@ -400,47 +214,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: spacing.sm,
   },
-  inputContainer: {
-    position: 'relative',
-    marginBottom: spacing.sm,
-  },
   input: {
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    paddingRight: 60,
     fontSize: typography.md,
     minHeight: 120,
-  },
-  micButton: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  micButtonDisabled: {
-    opacity: 0.5,
-  },
-  recordingText: {
-    fontSize: typography.sm,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-    fontWeight: '500',
+    marginBottom: spacing.lg,
   },
   analyzeButton: {
     backgroundColor: colors.primary,
