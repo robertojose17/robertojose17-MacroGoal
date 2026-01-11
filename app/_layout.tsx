@@ -497,14 +497,6 @@ export default function RootLayout() {
                   presentation: "modal",
                 }}
               />
-              
-              <Stack.Screen
-                name="ai-meal-estimator"
-                options={{
-                  headerShown: false,
-                  presentation: "card",
-                }}
-              />
             </Stack>
             <SystemBars style={"dark"} />
           </GestureHandlerRootView>
