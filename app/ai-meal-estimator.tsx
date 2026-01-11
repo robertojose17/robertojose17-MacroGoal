@@ -17,6 +17,16 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 
+/**
+ * AI Meal Estimator Screen
+ * 
+ * This screen allows users to describe their meal in text and get AI-powered
+ * nutrition estimates. 
+ * 
+ * NOTE: All voice/microphone/transcription functionality has been removed.
+ * Users can only input meal descriptions via text.
+ */
+
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
