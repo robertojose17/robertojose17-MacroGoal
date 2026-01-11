@@ -18,7 +18,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { Audio } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import { supabase } from '@/app/integrations/supabase/client';
+import { transcribeAudioLocally, isLocalSTTSupported } from '@/utils/localSpeechRecognition';
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
@@ -116,7 +116,7 @@ export default function AIMealEstimatorScreen() {
 
       console.log('[AIMealEstimator] Recording saved to:', uri);
       
-      // Transcribe the audio
+      // Transcribe the audio using native device speech recognition
       await transcribeAudio(uri);
     } catch (error: any) {
       console.error('[AIMealEstimator] Error stopping recording:', error);
@@ -129,9 +129,18 @@ export default function AIMealEstimatorScreen() {
     setIsTranscribing(true);
     
     try {
-      console.log('[AIMealEstimator] Starting transcription process...');
+      console.log('[AIMealEstimator] Starting native device transcription...');
       console.log('[AIMealEstimator] Audio URI:', audioUri);
       
+      // Check if local STT is supported
+      if (!isLocalSTTSupported()) {
+        Alert.alert(
+          'Not Supported',
+          'Voice transcription requires a native build. Please run: npx expo run:' + Platform.OS
+        );
+        return;
+      }
+
       // Verify file exists
       const fileInfo = await FileSystem.getInfoAsync(audioUri);
       console.log('[AIMealEstimator] File info:', JSON.stringify(fileInfo));
@@ -144,77 +153,36 @@ export default function AIMealEstimatorScreen() {
         throw new Error('Recording is too short. Please speak for at least 1 second.');
       }
 
-      console.log('[AIMealEstimator] Reading audio file as base64...');
-      
-      // Read the audio file as base64 using legacy FileSystem
-      const audioBase64 = await FileSystem.readAsStringAsync(audioUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      console.log('[AIMealEstimator] Using native device speech recognition (FREE)...');
 
-      console.log('[AIMealEstimator] Audio base64 length:', audioBase64.length);
-
-      if (!audioBase64 || audioBase64.length < 100) {
-        throw new Error('Audio file is empty or too short');
-      }
-
-      // Get the current session
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        Alert.alert('Error', 'Please log in to use voice input');
-        return;
-      }
-
-      console.log('[AIMealEstimator] Calling transcription API...');
-
-      // Call the transcription edge function
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-        body: {
-          audioBase64,
-          mimeType: 'audio/m4a',
+      // Use native device speech recognition (iOS Speech Framework / Android SpeechRecognizer)
+      await transcribeAudioLocally(
+        audioUri,
+        (transcribedText) => {
+          console.log('[AIMealEstimator] ✅ Transcription successful:', transcribedText);
+          
+          // Append transcribed text to the meal description
+          setMealDescription(prev => {
+            const newText = prev ? `${prev} ${transcribedText}` : transcribedText;
+            return newText;
+          });
+          
+          // Show success feedback
+          Alert.alert('Success', 'Voice transcribed successfully!');
+          setIsTranscribing(false);
         },
-      });
-
-      console.log('[AIMealEstimator] Transcription API response:', { data, error });
-
-      if (error) {
-        console.error('[AIMealEstimator] Transcription error:', error);
-        
-        // Handle specific error cases
-        if (error.message?.includes('Subscription Required') || error.message?.includes('403')) {
-          Alert.alert(
-            'Premium Feature',
-            'Voice input is a premium feature. Please upgrade to use this feature.'
-          );
-        } else if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-          Alert.alert('Error', 'Please log in again to use voice input');
-        } else {
-          Alert.alert('Error', 'Failed to transcribe audio: ' + (error.message || 'Unknown error'));
+        (error) => {
+          console.error('[AIMealEstimator] ❌ Transcription error:', error);
+          Alert.alert('Error', error);
+          setIsTranscribing(false);
         }
-        return;
-      }
+      );
 
-      if (data && data.text) {
-        console.log('[AIMealEstimator] Transcription successful:', data.text);
-        
-        // Append transcribed text to the meal description
-        setMealDescription(prev => {
-          const newText = prev ? `${prev} ${data.text}` : data.text;
-          return newText;
-        });
-        
-        // Show success feedback
-        Alert.alert('Success', 'Voice transcribed successfully!');
-      } else {
-        console.error('[AIMealEstimator] No transcription text received');
-        Alert.alert('Error', 'Could not transcribe audio. Please try again.');
-      }
     } catch (error: any) {
       console.error('[AIMealEstimator] Error transcribing audio:', error);
       Alert.alert('Error', error.message || 'Failed to transcribe audio. Please try again.');
-    } finally {
       setIsTranscribing(false);
-      
+    } finally {
       // Clean up the audio file
       try {
         await FileSystem.deleteAsync(audioUri, { idempotent: true });
@@ -251,6 +219,18 @@ export default function AIMealEstimatorScreen() {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        <View style={[styles.infoCard, { backgroundColor: colors.backgroundAlt }]}>
+          <IconSymbol
+            ios_icon_name="info.circle.fill"
+            android_material_icon_name="info"
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={[styles.infoText, { color: colors.text }]}>
+            Using FREE native device speech recognition (no API keys needed!)
+          </Text>
+        </View>
+
         <Text style={[styles.label, { color: colors.text }]}>
           Describe your meal
         </Text>
@@ -307,7 +287,7 @@ export default function AIMealEstimatorScreen() {
 
         {isTranscribing && (
           <Text style={[styles.recordingText, { color: colors.primary }]}>
-            ⏳ Transcribing audio...
+            ⏳ Transcribing with device speech recognition...
           </Text>
         )}
 
@@ -401,6 +381,19 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: spacing.lg,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: typography.sm,
+    lineHeight: 20,
   },
   label: {
     fontSize: typography.md,
