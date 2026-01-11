@@ -146,7 +146,7 @@ export default function AIMealEstimatorScreen() {
 
       console.log('[AIMealEstimator] Reading audio file as base64...');
       
-      // Read the audio file as base64 - use FileSystem.EncodingType.Base64 directly
+      // Read the audio file as base64 using legacy FileSystem
       const audioBase64 = await FileSystem.readAsStringAsync(audioUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
