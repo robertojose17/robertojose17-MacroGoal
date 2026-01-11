@@ -87,14 +87,7 @@ export default function FoodDetailsLayout({
     };
   }, []);
 
-  // Load data for edit mode
-  useEffect(() => {
-    if (mode === 'edit' && itemId) {
-      loadEditItem();
-    }
-  }, [mode, itemId]);
-
-  const loadEditItem = async () => {
+  const loadEditItem = useCallback(async () => {
     if (!itemId) return;
 
     try {
@@ -186,16 +179,21 @@ export default function FoodDetailsLayout({
       router.back();
       setEditLoading(false);
     }
-  };
+  }, [itemId, router]);
 
-  // Load data for view mode
+  // Load data for edit mode
+  useEffect(() => {
+    if (mode === 'edit' && itemId) {
+      loadEditItem();
+    }
+  }, [mode, itemId, loadEditItem]);
+
+  const loadViewData = useCallback(() => {
   useEffect(() => {
     if (mode === 'view' && offData) {
       loadViewData();
     }
-  }, [mode, offData]);
-
-  const loadViewData = () => {
+  }, [mode, offData, loadViewData]);
     console.log('[FoodDetailsLayout] ========== LOADING VIEW DATA ==========');
     console.log('[FoodDetailsLayout] Mode:', mode);
     console.log('[FoodDetailsLayout] Context:', context);
@@ -331,8 +329,9 @@ export default function FoodDetailsLayout({
         [{ text: 'OK' }]
       );
     }
-  };
+  }, [offData, context, mealType, date, returnTo, router]);
 
+  // Load data for view mode
   useEffect(() => {
     return () => {
       if (bannerTimerRef.current) {

@@ -62,49 +62,10 @@ export default function BarcodeScannerScreen() {
   );
 
   /**
-   * Handle barcode scan
-   * CRITICAL FIX: Use dismissTo() to remove ALL screens including Add Food Menu
-   */
-  const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
-    // Check one-scan lock
-    if (hasScannedRef.current) {
-      console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
-      return;
-    }
-
-    // Check if component is still mounted
-    if (!isMountedRef.current) {
-      console.log('[BarcodeScanner] ⚠️ Component unmounted, ignoring scan');
-      return;
-    }
-
-    console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
-    console.log('[BarcodeScanner] SCANNED BARCODE:', data);
-    console.log('[BarcodeScanner] Type:', type);
-
-    // Clean the barcode
-    const cleanBarcode = data.trim();
-    
-    // Validate barcode
-    if (!cleanBarcode || cleanBarcode.length === 0) {
-      console.log('[BarcodeScanner] ❌ Empty barcode, ignoring');
-      return;
-    }
-
-    // Set one-scan lock IMMEDIATELY
-    hasScannedRef.current = true;
-    console.log('[BarcodeScanner] ✅ One-scan lock activated');
-
-    // Start lookup process immediately (no delay needed)
-    console.log('[BarcodeScanner] 🚀 STARTING LOOKUP PROCESS');
-    performLookupAndNavigate(cleanBarcode);
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
-
-  /**
    * Perform OpenFoodFacts lookup and navigate to Food Details
    * CRITICAL FIX: Use router.dismissTo() to dismiss ALL screens back to home, then push food-details
    */
-  const performLookupAndNavigate = async (barcode: string) => {
+  const performLookupAndNavigate = useCallback(async (barcode: string) => {
     console.log('[BarcodeScanner] ========== PERFORMING LOOKUP ==========');
     console.log('[BarcodeScanner] Barcode:', barcode);
 
@@ -204,7 +165,46 @@ export default function BarcodeScannerScreen() {
         });
       }, 100);
     }
-  };
+  }, [router, mealType, date, mode, context, returnTo, myMealId]);
+
+  /**
+   * Handle barcode scan
+   * CRITICAL FIX: Use dismissTo() to remove ALL screens including Add Food Menu
+   */
+  const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
+    // Check one-scan lock
+    if (hasScannedRef.current) {
+      console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
+      return;
+    }
+
+    // Check if component is still mounted
+    if (!isMountedRef.current) {
+      console.log('[BarcodeScanner] ⚠️ Component unmounted, ignoring scan');
+      return;
+    }
+
+    console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
+    console.log('[BarcodeScanner] SCANNED BARCODE:', data);
+    console.log('[BarcodeScanner] Type:', type);
+
+    // Clean the barcode
+    const cleanBarcode = data.trim();
+    
+    // Validate barcode
+    if (!cleanBarcode || cleanBarcode.length === 0) {
+      console.log('[BarcodeScanner] ❌ Empty barcode, ignoring');
+      return;
+    }
+
+    // Set one-scan lock IMMEDIATELY
+    hasScannedRef.current = true;
+    console.log('[BarcodeScanner] ✅ One-scan lock activated');
+
+    // Start lookup process immediately (no delay needed)
+    console.log('[BarcodeScanner] 🚀 STARTING LOOKUP PROCESS');
+    performLookupAndNavigate(cleanBarcode);
+  }, [performLookupAndNavigate, router, mealType, date, mode, context, returnTo, myMealId]);
 
   // Show loading while checking permissions
   if (!permission) {

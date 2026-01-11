@@ -455,7 +455,7 @@ export default function ChatbotScreen() {
         handleSendTranscribedText(transcribedText);
       }
     }, 100);
-  }, []);
+  }, [handleSendTranscribedText]);
 
   const handleTranscriptionError = useCallback((error: string) => {
     console.error('[Chatbot] Transcription error:', error);

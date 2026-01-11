@@ -47,9 +47,11 @@ let platformImplementation: {
 
 if (Platform.OS === 'web') {
   // Dynamic import for web platform
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   platformImplementation = require('./localSpeechRecognition.web') as typeof platformImplementation;
 } else {
   // Dynamic import for native platforms
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   platformImplementation = require('./localSpeechRecognition.native') as typeof platformImplementation;
 }
 

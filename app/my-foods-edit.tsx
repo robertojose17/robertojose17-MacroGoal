@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,9 +28,43 @@ export default function MyFoodsEditScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const loadFood = useCallback(async () => {
+    console.log('[MyFoodsEdit] Loading food:', foodId);
+    try {
+      const { data, error } = await supabase
+        .from('foods')
+        .select('*')
+        .eq('id', foodId)
+        .single();
+
+      if (error) {
+        console.error('[MyFoodsEdit] Error loading food:', error);
+        Alert.alert('Error', 'Failed to load food');
+        router.back();
+        return;
+      }
+
+      console.log('[MyFoodsEdit] Food loaded:', data);
+      setFoodName(data.name);
+      setBrand(data.brand || '');
+      setServingAmount(data.serving_amount.toString());
+      setServingUnit(data.serving_unit);
+      setCalories(data.calories.toString());
+      setProtein(data.protein.toString());
+      setCarbs(data.carbs.toString());
+      setFats(data.fats.toString());
+      setFiber(data.fiber.toString());
+      setLoading(false);
+    } catch (error) {
+      console.error('[MyFoodsEdit] Error in loadFood:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+      router.back();
+    }
+  }, [foodId, router]);
+
   useEffect(() => {
     loadFood();
-  }, [foodId]);
+  }, [loadFood]);
 
   const loadFood = async () => {
     console.log('[MyFoodsEdit] Loading food:', foodId);

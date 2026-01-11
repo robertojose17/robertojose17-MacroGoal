@@ -17,7 +17,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { Audio } from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AIMealEstimatorScreen() {
@@ -146,7 +146,7 @@ export default function AIMealEstimatorScreen() {
 
       console.log('[AIMealEstimator] Reading audio file as base64...');
       
-      // Read the audio file as base64
+      // Read the audio file as base64 - use FileSystem.EncodingType.Base64 directly
       const audioBase64 = await FileSystem.readAsStringAsync(audioUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
