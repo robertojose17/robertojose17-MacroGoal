@@ -507,6 +507,30 @@ export default function ProfileScreen() {
     closeEditModal();
   };
 
+  // Determine subscription button text based on status
+  const getSubscriptionButtonText = () => {
+    if (!isSubscribed) {
+      return 'Subscription: Upgrade to Premium';
+    }
+    
+    // Check if subscription is canceled but still active
+    if (subscription?.status === 'canceled' && subscription?.current_period_end) {
+      const periodEnd = new Date(subscription.current_period_end);
+      const now = new Date();
+      if (periodEnd > now) {
+        return 'Subscription: Active';
+      }
+    }
+    
+    // Active or trialing
+    if (subscription?.status === 'active' || subscription?.status === 'trialing') {
+      return 'Subscription: Active';
+    }
+    
+    // Default to upgrade
+    return 'Subscription: Upgrade to Premium';
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -582,11 +606,10 @@ export default function ProfileScreen() {
             {user.email || 'Guest User'}
           </Text>
           
-          <View style={[styles.badge, { backgroundColor: user.user_type === 'premium' ? colors.accent : colors.primary }]}>
-            <Text style={styles.badgeText}>
-              {user.user_type === 'premium' ? '⭐ Premium' : user.user_type === 'free' ? 'Free' : 'Guest'}
-            </Text>
-          </View>
+          {/* Show Free or Premium below email */}
+          <Text style={[styles.userTypeText, { color: isDark ? colors.textDark : colors.text }]}>
+            {isSubscribed ? 'Premium' : 'Free'}
+          </Text>
         </View>
 
         {/* Subscription Card */}
@@ -600,14 +623,9 @@ export default function ProfileScreen() {
                 color={isSubscribed ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
               />
               <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text, marginBottom: 0 }]}>
-                Subscription
+                {getSubscriptionButtonText()}
               </Text>
             </View>
-            {isSubscribed && (
-              <View style={[styles.activeBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.activeBadgeText}>Active</Text>
-              </View>
-            )}
           </View>
 
           {isSubscribed ? (
@@ -1199,7 +1217,12 @@ const styles = StyleSheet.create({
   },
   email: {
     ...typography.body,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  userTypeText: {
+    ...typography.bodyBold,
+    fontSize: 16,
+    marginTop: spacing.xs,
   },
   badge: {
     paddingHorizontal: spacing.md,
