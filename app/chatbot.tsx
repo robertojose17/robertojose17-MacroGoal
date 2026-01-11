@@ -16,21 +16,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import {
-  useAudioRecorder,
-  RecordingPresets,
-  setAudioModeAsync,
-  requestRecordingPermissionsAsync,
-  useAudioRecorderState,
-} from 'expo-audio';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { AudioWaveform } from '@/components/AudioWaveform';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useSubscription } from '@/hooks/useSubscription';
-import { transcribeAudioLocally } from '@/utils/localSpeechRecognition';
 import { addToDraft } from '@/utils/myMealsDraft';
 
 // Generate a unique ID for each message
@@ -74,9 +65,6 @@ type AIEstimate = {
   totalFiber: number;
 };
 
-// Check if we're on a mobile platform
-const isMobilePlatform = Platform.OS === 'ios' || Platform.OS === 'android';
-
 export default function ChatbotScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -106,7 +94,7 @@ export default function ChatbotScreen() {
       id: generateMessageId(),
       role: 'assistant',
       content:
-        'Describe your meal or take a photo! You can use text, a photo, or voice for the most accurate estimate.',
+        'Describe your meal or take a photo! You can use text or a photo for the most accurate estimate.',
       timestamp: Date.now(),
     },
   ]);
@@ -115,32 +103,11 @@ export default function ChatbotScreen() {
   const [latestEstimate, setLatestEstimate] = useState<AIEstimate | null>(null);
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
-  // Voice recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(audioRecorder, 50); // Poll every 50ms for smooth visualization
-
   const { sendMessage, loading } = useChatbot();
 
   // Setup and cleanup
   useEffect(() => {
     isMountedRef.current = true;
-
-    // Setup audio mode for recording
-    const setupAudio = async () => {
-      try {
-        await setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
-        });
-      } catch (error) {
-        console.error('[Chatbot] Error setting up audio mode:', error);
-      }
-    };
-
-    setupAudio();
 
     return () => {
       isMountedRef.current = false;
@@ -149,38 +116,6 @@ export default function ChatbotScreen() {
       }
     };
   }, []);
-
-  // Update audio level based on real metering data from the recorder
-  useEffect(() => {
-    if (isRecording && recorderState.isRecording) {
-      const updateAudioLevel = () => {
-        if (!recorderState.isRecording) {
-          setAudioLevel(0);
-          return;
-        }
-
-        // Create a realistic simulation based on recording activity
-        // expo-audio doesn't expose real-time metering data directly
-        const baseLevel = 0.3 + Math.random() * 0.4; // 0.3 to 0.7
-        const time = Date.now() / 1000;
-        const wave = Math.sin(time * 2) * 0.2; // Slow wave
-        const noise = (Math.random() - 0.5) * 0.3; // Random variation
-        const level = Math.max(0.1, Math.min(1, baseLevel + wave + noise));
-
-        setAudioLevel(level);
-      };
-
-      // Update audio level frequently for smooth animation
-      const interval = setInterval(updateAudioLevel, 100);
-
-      return () => {
-        clearInterval(interval);
-        setAudioLevel(0);
-      };
-    } else {
-      setAudioLevel(0);
-    }
-  }, [isRecording, recorderState.isRecording, recorderState.durationMillis]);
 
   // Check subscription and redirect to paywall if not subscribed
   useEffect(() => {
@@ -272,8 +207,6 @@ export default function ChatbotScreen() {
     }
   }, []);
 
-
-
   // Take photo
   const handleTakePhoto = useCallback(async () => {
     try {
@@ -337,8 +270,6 @@ export default function ChatbotScreen() {
       },
     ]);
   }, [handleTakePhoto, handleChooseFromGallery]);
-
-
 
   // Remove selected photo
   const handleRemovePhoto = useCallback(() => {
@@ -420,248 +351,12 @@ export default function ChatbotScreen() {
     }
   }, []);
 
-  const handleStartRecording = useCallback(async () => {
-    try {
-      console.log('[Chatbot] Requesting microphone permission...');
-      const { granted } = await requestRecordingPermissionsAsync();
-
-      if (!granted) {
-        Alert.alert('Permission Required', 'Microphone permission is required to use voice input.');
-        return;
-      }
-
-      console.log('[Chatbot] Starting recording...');
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-      setIsRecording(true);
-      console.log('[Chatbot] Recording started');
-    } catch (error) {
-      console.error('[Chatbot] Error starting recording:', error);
-      Alert.alert('Error', 'Failed to start recording. Please try again.');
-    }
-  }, [audioRecorder]);
-
-  const handleTranscriptionResult = useCallback((transcribedText: string) => {
-    console.log('[Chatbot] Transcription successful:', transcribedText);
-    
-    if (!isMountedRef.current) return;
-    
-    // Set the transcribed text in the input field
-    setInputText(transcribedText);
-    
-    // Automatically send the transcribed text
-    setTimeout(() => {
-      if (isMountedRef.current && transcribedText.trim()) {
-        handleSendTranscribedText(transcribedText);
-      }
-    }, 100);
-  }, [handleSendTranscribedText]);
-
-  const handleTranscriptionError = useCallback((error: string) => {
-    console.error('[Chatbot] Transcription error:', error);
-    
-    if (!isMountedRef.current) return;
-    
-    Alert.alert('Transcription Error', "We couldn't transcribe that. Please try again.");
-  }, []);
-
-  const handleStopRecording = useCallback(async () => {
-    try {
-      console.log('[Chatbot] Stopping recording...');
-      await audioRecorder.stop();
-      setIsRecording(false);
-
-      const uri = audioRecorder.uri;
-      if (!uri) {
-        console.error('[Chatbot] No recording URI');
-        Alert.alert('Error', 'Failed to save recording.');
-        return;
-      }
-
-      console.log('[Chatbot] Recording saved:', uri);
-
-      // Transcribe the audio using local speech recognition
-      await transcribeAudioLocally(uri, handleTranscriptionResult, handleTranscriptionError);
-    } catch (error) {
-      console.error('[Chatbot] Error stopping recording:', error);
-      Alert.alert('Error', 'Failed to stop recording. Please try again.');
-      setIsRecording(false);
-    }
-  }, [audioRecorder, handleTranscriptionResult, handleTranscriptionError]);
-
-  // Handle voice recording
-  const handleVoiceInput = useCallback(async () => {
-    if (isRecording) {
-      // Stop recording
-      await handleStopRecording();
-    } else {
-      // Start recording
-      await handleStartRecording();
-    }
-  }, [isRecording, handleStartRecording, handleStopRecording]);
-
-  // Handle sending transcribed text automatically
-  const handleSendTranscribedText = useCallback(async (text: string) => {
-    const trimmedInput = text.trim();
-    
-    if (!trimmedInput) {
-      return;
-    }
-    
-    if (loading) return;
-
-    const userMessage: MessageWithId = {
-      id: generateMessageId(),
-      role: 'user',
-      content: trimmedInput,
-      timestamp: Date.now(),
-    };
-
-    setLastUserMessage(trimmedInput);
-    
-    if (isMountedRef.current) {
-      setMessages((prev) => [...prev, userMessage]);
-      setInputText('');
-    }
-
-    try {
-      // Enhanced system message requesting structured ingredient data
-      const systemMessage: ChatMessage = {
-        role: 'system',
-        content: `You are an AI Meal Estimator. Your job is to estimate calories and macronutrients for meals based on text descriptions, photos, or both.
-
-IMPORTANT: You MUST respond in TWO parts:
-
-1. First, provide a JSON object in a code block with this exact format:
-
-\`\`\`json
-{
-  "ingredients": [
-    {
-      "name": "ingredient name",
-      "quantity": number,
-      "unit": "g" or "oz" or "cup" or "tbsp" or "serving",
-      "calories": number,
-      "protein": number,
-      "carbs": number,
-      "fats": number,
-      "fiber": number
-    }
-  ]
-}
-\`\`\`
-
-2. Then, provide a natural language explanation of the meal.
-
-Example response:
-
-\`\`\`json
-{
-  "ingredients": [
-    {
-      "name": "McFlurry (medium)",
-      "quantity": 1,
-      "unit": "serving",
-      "calories": 510,
-      "protein": 12,
-      "carbs": 70,
-      "fats": 22,
-      "fiber": 1
-    }
-  ]
-}
-\`\`\`
-
-A medium McFlurry from McDonald's contains around 510 calories, 12g protein, 70g carbs, 22g fat, and 1g fiber.
-
-Break down the meal into individual ingredients with their estimated quantities and macros. Be specific and realistic with portions.
-
-When analyzing photos:
-- Identify all visible food items
-- Estimate portion sizes based on visual cues (plate size, common serving sizes)
-- Make reasonable assumptions about ingredients and preparation methods
-- If the photo quality is poor or items are unclear, make your best educated guess
-
-If the user provides both text and photo, use both sources to make the most accurate estimate possible.`,
-      };
-
-      const validMessages = messages.filter((m) => {
-        return m && typeof m === 'object' && m.role && m.content && m.role !== 'system';
-      });
-
-      const apiMessages: ChatMessage[] = [
-        systemMessage,
-        ...validMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp,
-        })),
-        {
-          role: 'user',
-          content: trimmedInput,
-          timestamp: Date.now(),
-        },
-      ];
-
-      // Send without images (voice input doesn't include images)
-      const result = await sendMessage({
-        messages: apiMessages,
-        images: [],
-      });
-
-      if (!isMountedRef.current) return;
-
-      if (result && result.message && typeof result.message === 'string') {
-        // Display only the natural language description in the chat
-        const assistantMessage: MessageWithId = {
-          id: generateMessageId(),
-          role: 'assistant',
-          content: result.message,
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-
-        // Parse the meal data if available
-        if (result.mealData) {
-          const estimate = parseMealData(result.mealData, trimmedInput);
-          if (estimate) {
-            console.log('[Chatbot] Setting latest estimate with', estimate.ingredients.length, 'ingredients');
-            setLatestEstimate(estimate);
-          } else {
-            console.log('[Chatbot] Could not parse meal data');
-          }
-        } else {
-          console.log('[Chatbot] No meal data in response');
-        }
-      } else {
-        const errorMessage: MessageWithId = {
-          id: generateMessageId(),
-          role: 'assistant',
-          content: 'Sorry, I encountered an error. Please try again.',
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      }
-    } catch (error) {
-      console.error('[ChatbotScreen] Error in handleSendTranscribedText:', error);
-      if (!isMountedRef.current) return;
-
-      const errorMessage: MessageWithId = {
-        id: generateMessageId(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    }
-  }, [loading, messages, sendMessage, parseMealData]);
-
   const handleSend = useCallback(async () => {
     const trimmedInput = inputText.trim();
 
     // Check if we have either text or image
     if (!trimmedInput && !selectedImage) {
-      Alert.alert('Input Required', 'Please provide a description, photo, or use voice input.');
+      Alert.alert('Input Required', 'Please provide a description or photo.');
       return;
     }
 
@@ -1392,14 +1087,14 @@ If the user provides both text and photo, use both sources to make the most accu
             </View>
           )}
 
-          {(loading || isTranscribing) && (
+          {loading && (
             <View style={styles.loadingWrapper}>
               <View style={[styles.loadingBubble, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text
                   style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}
                 >
-                  {isTranscribing ? 'Transcribing...' : 'Analyzing meal...'}
+                  Analyzing meal...
                 </Text>
               </View>
             </View>
@@ -1594,14 +1289,6 @@ If the user provides both text and photo, use both sources to make the most accu
             </View>
           )}
 
-          {/* Audio waveform indicator - shown while recording */}
-          {isRecording && (
-            <View style={styles.audioWaveformContainer}>
-              <AudioWaveform isRecording={isRecording} audioLevel={audioLevel} color={colors.primary} barCount={5} />
-              <Text style={[styles.recordingText, { color: colors.primary }]}>Recording...</Text>
-            </View>
-          )}
-
           <View style={styles.inputRow}>
             <TouchableOpacity
               style={[
@@ -1609,7 +1296,7 @@ If the user provides both text and photo, use both sources to make the most accu
                 { backgroundColor: isDark ? colors.backgroundDark : colors.background },
               ]}
               onPress={handleAddPhoto}
-              disabled={loading || isRecording || isTranscribing}
+              disabled={loading}
             >
               <IconSymbol
                 ios_icon_name="camera.fill"
@@ -1627,52 +1314,27 @@ If the user provides both text and photo, use both sources to make the most accu
                   color: isDark ? colors.textDark : colors.text,
                 },
               ]}
-              placeholder="Describe your meal or use voice..."
+              placeholder="Describe your meal..."
               placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
               value={inputText}
               onChangeText={setInputText}
               multiline
               maxLength={500}
-              editable={!loading && !isRecording && !isTranscribing}
+              editable={!loading}
             />
-
-            {/* Only show mic button on mobile platforms */}
-            {isMobilePlatform && (
-              <TouchableOpacity
-                style={[
-                  styles.voiceButton,
-                  {
-                    backgroundColor: isRecording
-                      ? colors.error
-                      : isDark
-                      ? colors.backgroundDark
-                      : colors.background,
-                  },
-                ]}
-                onPress={handleVoiceInput}
-                disabled={loading || isTranscribing}
-              >
-                <IconSymbol
-                  ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
-                  android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
-                  size={24}
-                  color={isRecording ? '#FFFFFF' : colors.primary}
-                />
-              </TouchableOpacity>
-            )}
 
             <TouchableOpacity
               style={[
                 styles.sendButton,
                 {
                   backgroundColor:
-                    (inputText.trim() || selectedImage) && !loading && !isRecording && !isTranscribing
+                    (inputText.trim() || selectedImage) && !loading
                       ? colors.primary
                       : colors.border,
                 },
               ]}
               onPress={handleSend}
-              disabled={(!inputText.trim() && !selectedImage) || loading || isRecording || isTranscribing}
+              disabled={(!inputText.trim() && !selectedImage) || loading}
             >
               <IconSymbol ios_icon_name="arrow.up" android_material_icon_name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
@@ -1901,18 +1563,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.error,
     borderRadius: 12,
   },
-  audioWaveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  recordingText: {
-    ...typography.bodyBold,
-    fontSize: 14,
-  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -1932,13 +1582,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     maxHeight: 100,
     ...typography.body,
-  },
-  voiceButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sendButton: {
     width: 40,
