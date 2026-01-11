@@ -1,22 +1,30 @@
 
 /**
- * Web implementation of local speech recognition
+ * Web fallback for local speech recognition
  * 
- * The Web Speech API is not suitable for this use case because:
- * 1. It requires user interaction to start (can't be triggered programmatically after recording)
- * 2. It doesn't work with pre-recorded audio files
- * 3. Browser support is inconsistent
- * 
- * Therefore, the microphone button should be hidden on web platforms.
+ * Speech recognition is not supported on web in this implementation.
+ * The microphone button should be hidden on web platforms.
  */
+
+export async function startSpeechRecognition(
+  onSuccess: (text: string) => void,
+  onError: (error: string) => void
+): Promise<void> {
+  console.warn('[LocalSTT] Speech recognition is not supported on web');
+  onError('Voice input is not supported on web. Please use the text input field.');
+}
+
+export async function stopSpeechRecognition(): Promise<void> {
+  console.warn('[LocalSTT] Speech recognition is not supported on web');
+}
 
 export async function transcribeAudioLocally(
   audioUri: string,
   onSuccess: (text: string) => void,
   onError: (error: string) => void
 ): Promise<void> {
-  console.log('[LocalSTT Web] Web platform not supported');
-  onError('Voice input is not supported on web. Please use the mobile app.');
+  console.warn('[LocalSTT] Speech recognition is not supported on web');
+  onError('Voice input is not supported on web. Please use the text input field.');
 }
 
 export function isLocalSTTSupported(): boolean {
@@ -25,4 +33,8 @@ export function isLocalSTTSupported(): boolean {
 
 export async function requestSpeechRecognitionPermissions(): Promise<boolean> {
   return false;
+}
+
+export async function cleanupSpeechRecognition(): Promise<void> {
+  // No-op on web
 }

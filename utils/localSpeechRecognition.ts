@@ -2,40 +2,39 @@
 /**
  * Local Speech Recognition Utility
  * 
- * This module provides on-device speech-to-text functionality for the AI chatbot.
+ * This module provides on-device speech-to-text functionality using @react-native-voice/voice.
  * It uses platform-specific implementations:
  * 
- * - iOS/Android: Native speech recognition APIs (placeholder for now)
+ * - iOS: Speech framework (SFSpeechRecognizer)
+ * - Android: SpeechRecognizer API
  * - Web: Not supported (mic button hidden)
  * 
- * IMPLEMENTATION STATUS:
- * This is currently a placeholder implementation that provides graceful error handling.
+ * FEATURES:
+ * - Real-time speech recognition (no file recording needed)
+ * - Works reliably on both iOS and Android
+ * - Free and on-device
+ * - No API keys required
  * 
- * To implement full local STT functionality:
- * 
- * 1. Create a native module using expo-modules-core:
- *    - iOS: Implement Speech framework (SFSpeechRecognizer)
- *    - Android: Implement SpeechRecognizer API
- * 
- * 2. Handle permissions:
- *    - iOS: Request speech recognition permission
- *    - Android: Use existing RECORD_AUDIO permission
- * 
- * 3. Process audio files:
- *    - Convert recorded audio to format required by native APIs
- *    - Force language to "en-US" for English-only transcription
- *    - Handle errors and edge cases gracefully
- * 
- * 4. Alternative approaches:
- *    - Use a lightweight local Whisper model (whisper.cpp)
- *    - Integrate a third-party React Native STT library
- *    - Create a self-hosted Whisper API endpoint
+ * SETUP:
+ * 1. Install: npm install @react-native-voice/voice
+ * 2. iOS: Add to Info.plist:
+ *    <key>NSSpeechRecognitionUsageDescription</key>
+ *    <string>We need access to speech recognition to transcribe your voice input</string>
+ *    <key>NSMicrophoneUsageDescription</key>
+ *    <string>We need access to your microphone to record audio</string>
+ * 3. Android: Permissions are automatically handled
+ * 4. Build: npx expo run:ios or npx expo run:android
  */
 
 import { Platform } from 'react-native';
 
 // Platform-specific implementations
 let platformImplementation: {
+  startSpeechRecognition: (
+    onSuccess: (text: string) => void,
+    onError: (error: string) => void
+  ) => Promise<void>;
+  stopSpeechRecognition: () => Promise<void>;
   transcribeAudioLocally: (
     audioUri: string,
     onSuccess: (text: string) => void,
@@ -43,6 +42,7 @@ let platformImplementation: {
   ) => Promise<void>;
   isLocalSTTSupported: () => boolean;
   requestSpeechRecognitionPermissions: () => Promise<boolean>;
+  cleanupSpeechRecognition: () => Promise<void>;
 };
 
 if (Platform.OS === 'web') {
@@ -55,9 +55,12 @@ if (Platform.OS === 'web') {
   platformImplementation = require('./localSpeechRecognition.native') as typeof platformImplementation;
 }
 
+export const startSpeechRecognition = platformImplementation.startSpeechRecognition;
+export const stopSpeechRecognition = platformImplementation.stopSpeechRecognition;
 export const transcribeAudioLocally = platformImplementation.transcribeAudioLocally;
 export const isLocalSTTSupported = platformImplementation.isLocalSTTSupported;
 export const requestSpeechRecognitionPermissions = platformImplementation.requestSpeechRecognitionPermissions;
+export const cleanupSpeechRecognition = platformImplementation.cleanupSpeechRecognition;
 
 /**
  * Check if the microphone button should be shown
