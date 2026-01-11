@@ -495,28 +495,46 @@ export default function ProfileScreen() {
     closeEditModal();
   };
 
+  /**
+   * CRITICAL FIX: Determine subscription status display text
+   * Logic:
+   * - If no subscription or never paid → "Free"
+   * - If active or trialing → "Active"
+   * - If canceled but still within paid period → "Active (Canceled)"
+   * - If canceled and period expired → "Free"
+   */
+  const getSubscriptionStatusText = () => {
+    if (!subscription) {
+      // No subscription record = never paid
+      return 'Free';
+    }
+
+    const now = new Date();
+    const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : null;
+
+    // Active or trialing = show "Active"
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      return 'Active';
+    }
+
+    // Canceled but still within paid period = show "Active (Canceled)"
+    if (subscription.status === 'canceled' && periodEnd && periodEnd > now) {
+      return 'Active (Canceled)';
+    }
+
+    // Canceled and period expired, or any other status = show "Free"
+    return 'Free';
+  };
+
   // Determine subscription button text based on status
   const getSubscriptionButtonText = () => {
-    if (!isSubscribed) {
+    const statusText = getSubscriptionStatusText();
+    
+    if (statusText === 'Free') {
       return 'Subscription: Upgrade to Premium';
     }
     
-    // Check if subscription is canceled but still active
-    if (subscription?.status === 'canceled' && subscription?.current_period_end) {
-      const periodEnd = new Date(subscription.current_period_end);
-      const now = new Date();
-      if (periodEnd > now) {
-        return 'Subscription: Active (Canceled)';
-      }
-    }
-    
-    // Active or trialing
-    if (subscription?.status === 'active' || subscription?.status === 'trialing') {
-      return 'Subscription: Active';
-    }
-    
-    // Default to upgrade
-    return 'Subscription: Upgrade to Premium';
+    return `Subscription: ${statusText}`;
   };
 
   if (loading) {
@@ -551,6 +569,7 @@ export default function ProfileScreen() {
 
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
+  const subscriptionStatusText = getSubscriptionStatusText();
 
   // Format the journey start date for display
   const formatJourneyStartDate = (dateStr: string | null) => {
@@ -594,9 +613,9 @@ export default function ProfileScreen() {
             {user.email || 'Guest User'}
           </Text>
           
-          {/* Show Free or Premium below email */}
+          {/* Show subscription status below email */}
           <Text style={[styles.userTypeText, { color: isDark ? colors.textDark : colors.text }]}>
-            {isSubscribed ? 'Premium' : 'Free'}
+            {subscriptionStatusText}
           </Text>
         </View>
 
@@ -605,10 +624,10 @@ export default function ProfileScreen() {
           <View style={styles.subscriptionHeader}>
             <View style={styles.subscriptionTitleContainer}>
               <IconSymbol
-                ios_icon_name={isSubscribed ? 'checkmark.seal.fill' : 'lock.fill'}
-                android_material_icon_name={isSubscribed ? 'verified' : 'lock'}
+                ios_icon_name={subscriptionStatusText === 'Free' ? 'lock.fill' : 'checkmark.seal.fill'}
+                android_material_icon_name={subscriptionStatusText === 'Free' ? 'lock' : 'verified'}
                 size={24}
-                color={isSubscribed ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
+                color={subscriptionStatusText === 'Free' ? (isDark ? colors.textSecondaryDark : colors.textSecondary) : colors.primary}
               />
               <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text, marginBottom: 0 }]}>
                 {getSubscriptionButtonText()}
@@ -616,7 +635,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {isSubscribed ? (
+          {subscriptionStatusText !== 'Free' ? (
             <React.Fragment>
               <View style={styles.subscriptionInfo}>
                 <Text style={[styles.subscriptionPlan, { color: isDark ? colors.textDark : colors.text }]}>
@@ -624,14 +643,11 @@ export default function ProfileScreen() {
                 </Text>
                 {subscription?.current_period_end && (
                   <Text style={[styles.subscriptionRenewal, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {subscription.cancel_at_period_end ? 'Expires' : 'Renews'} on{' '}
+                    {subscription.cancel_at_period_end || subscription.status === 'canceled' ? 'Expires' : 'Renews'} on{' '}
                     {new Date(subscription.current_period_end).toLocaleDateString()}
                   </Text>
                 )}
-                <Text style={[styles.subscriptionStatus, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Status: {subscription?.status || 'unknown'}
-                </Text>
-                {subscription?.status === 'canceled' && subscription?.current_period_end && (
+                {subscriptionStatusText === 'Active (Canceled)' && subscription?.current_period_end && (
                   <Text style={[styles.subscriptionWarning, { color: colors.accent }]}>
                     ⚠️ Subscription canceled but active until {new Date(subscription.current_period_end).toLocaleDateString()}
                   </Text>
