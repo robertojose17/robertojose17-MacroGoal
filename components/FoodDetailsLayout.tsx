@@ -146,25 +146,25 @@ export default function FoodDetailsLayout({
 
       const serving = extractServingSize(productData);
       setServingInfo(serving);
-      setBaseServingGrams(serving.grams);
 
-      // Set current values from meal item
-      const currentGrams = data.grams || (data.quantity * serving.grams);
-      const currentServings = data.quantity || 1;
+      // CRITICAL FIX: Use the saved serving size from the meal item (data.grams)
+      // instead of the default serving size from the food database (serving.grams)
+      const savedGrams = data.grams || (data.quantity * serving.grams);
+      setBaseServingGrams(savedGrams);
 
       // Determine default unit
       const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
       setServingUnit(defaultUnit);
 
-      // Set serving amount based on unit
+      // Set serving amount based on the SAVED grams, not the default serving size
       if (defaultUnit === 'oz') {
-        const ozAmount = serving.grams / UNIT_CONVERSIONS['oz'];
+        const ozAmount = savedGrams / UNIT_CONVERSIONS['oz'];
         setServingAmount(ozAmount.toFixed(1));
       } else {
-        setServingAmount(serving.grams.toString());
+        setServingAmount(savedGrams.toString());
       }
 
-      setNumberOfServings(currentServings.toString());
+      setNumberOfServings(data.quantity.toString());
 
       const nutritionData = extractNutrition(productData);
       setNutrition(nutritionData);
