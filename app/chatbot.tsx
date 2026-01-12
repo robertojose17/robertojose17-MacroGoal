@@ -630,6 +630,11 @@ If the user provides both text and photo, use both sources to make the most accu
    * Branch based on context:
    * - my_meals_builder: Add ingredients to My Meal draft and navigate back to Create Meal screen
    * - meal_log (or undefined): Log ingredients to diary and navigate to Food Home
+   * 
+   * CRITICAL FIX FOR RECENT FOODS:
+   * Store foods with per-100g nutrition values in the foods table
+   * Store the actual quantity/serving in the meal_items table
+   * This ensures foods appear correctly in Recent Foods
    */
   const handleLogMeal = useCallback(async () => {
     if (!latestEstimate) return;
@@ -672,16 +677,39 @@ If the user provides both text and photo, use both sources to make the most accu
           try {
             console.log('[Chatbot] Creating food entry for ingredient:', ingredient.name);
 
-            // Create food entry for this ingredient
+            // CRITICAL FIX: Convert to per-100g values for storage
+            let per100gCalories, per100gProtein, per100gCarbs, per100gFats, per100gFiber;
+            let servingGrams = 100; // Default to 100g
+
+            if (ingredient.unit === 'g') {
+              // If unit is grams, calculate per-100g
+              const ratio = 100 / ingredient.quantity;
+              per100gCalories = ingredient.calories * ratio;
+              per100gProtein = ingredient.protein * ratio;
+              per100gCarbs = ingredient.carbs * ratio;
+              per100gFats = ingredient.fats * ratio;
+              per100gFiber = ingredient.fiber * ratio;
+              servingGrams = ingredient.quantity;
+            } else {
+              // For other units (serving, cup, etc.), store as-is
+              // This is the nutrition for 1 serving
+              per100gCalories = ingredient.calories;
+              per100gProtein = ingredient.protein;
+              per100gCarbs = ingredient.carbs;
+              per100gFats = ingredient.fats;
+              per100gFiber = ingredient.fiber;
+              servingGrams = 100; // Default
+            }
+
             const foodPayload = {
               name: `${ingredient.name} (AI Estimated)`,
-              serving_amount: 100, // Store as per-100g
+              serving_amount: 100, // Always store as per-100g
               serving_unit: 'g',
-              calories: ingredient.unit === 'g' ? (ingredient.calories / ingredient.quantity) * 100 : ingredient.calories,
-              protein: ingredient.unit === 'g' ? (ingredient.protein / ingredient.quantity) * 100 : ingredient.protein,
-              carbs: ingredient.unit === 'g' ? (ingredient.carbs / ingredient.quantity) * 100 : ingredient.carbs,
-              fats: ingredient.unit === 'g' ? (ingredient.fats / ingredient.quantity) * 100 : ingredient.fats,
-              fiber: ingredient.unit === 'g' ? (ingredient.fiber / ingredient.quantity) * 100 : ingredient.fiber,
+              calories: per100gCalories,
+              protein: per100gProtein,
+              carbs: per100gCarbs,
+              fats: per100gFats,
+              fiber: per100gFiber,
               user_created: true,
               created_by: user.id,
             };
@@ -700,14 +728,14 @@ If the user provides both text and photo, use both sources to make the most accu
 
             console.log('[Chatbot] Food created for ingredient:', foodData.id);
 
-            // Add to My Meal draft
+            // Add to My Meal draft with the actual serving size
             await addToDraft({
               food_id: foodData.id,
               food_name: `${ingredient.name} (AI Estimated)`,
               food_brand: undefined,
-              serving_amount: ingredient.unit === 'g' ? ingredient.quantity : 100,
-              serving_unit: ingredient.unit === 'g' ? 'g' : ingredient.unit,
-              servings_count: ingredient.unit === 'g' ? 1 : ingredient.quantity,
+              serving_amount: servingGrams,
+              serving_unit: 'g',
+              servings_count: 1,
               calories: ingredient.calories,
               protein: ingredient.protein,
               carbs: ingredient.carbs,
@@ -831,16 +859,40 @@ If the user provides both text and photo, use both sources to make the most accu
           try {
             console.log('[Chatbot] Creating food entry for ingredient:', ingredient.name);
 
-            // Create food entry for this ingredient
+            // CRITICAL FIX: Convert to per-100g values for storage
+            let per100gCalories, per100gProtein, per100gCarbs, per100gFats, per100gFiber;
+            let servingGrams = 100; // Default to 100g
+
+            if (ingredient.unit === 'g') {
+              // If unit is grams, calculate per-100g
+              const ratio = 100 / ingredient.quantity;
+              per100gCalories = ingredient.calories * ratio;
+              per100gProtein = ingredient.protein * ratio;
+              per100gCarbs = ingredient.carbs * ratio;
+              per100gFats = ingredient.fats * ratio;
+              per100gFiber = ingredient.fiber * ratio;
+              servingGrams = ingredient.quantity;
+            } else {
+              // For other units (serving, cup, etc.), store as-is
+              // This is the nutrition for 1 serving
+              per100gCalories = ingredient.calories;
+              per100gProtein = ingredient.protein;
+              per100gCarbs = ingredient.carbs;
+              per100gFats = ingredient.fats;
+              per100gFiber = ingredient.fiber;
+              servingGrams = 100; // Default
+            }
+
+            // Create food entry with per-100g values
             const foodPayload = {
               name: `${ingredient.name} (AI Estimated)`,
-              serving_amount: ingredient.quantity,
-              serving_unit: ingredient.unit,
-              calories: ingredient.calories,
-              protein: ingredient.protein,
-              carbs: ingredient.carbs,
-              fats: ingredient.fats,
-              fiber: ingredient.fiber,
+              serving_amount: 100, // Always store as per-100g
+              serving_unit: 'g',
+              calories: per100gCalories,
+              protein: per100gProtein,
+              carbs: per100gCarbs,
+              fats: per100gFats,
+              fiber: per100gFiber,
               user_created: true,
               created_by: user.id,
             };
@@ -859,18 +911,18 @@ If the user provides both text and photo, use both sources to make the most accu
 
             console.log('[Chatbot] Food created for ingredient:', foodData.id);
 
-            // Create meal item for this ingredient
+            // Create meal item with the actual serving size
             const mealItemPayload = {
               meal_id: mealId,
               food_id: foodData.id,
-              quantity: 1, // Quantity is already baked into the food entry
+              quantity: 1, // Always 1 serving
               calories: ingredient.calories,
               protein: ingredient.protein,
               carbs: ingredient.carbs,
               fats: ingredient.fats,
               fiber: ingredient.fiber,
               serving_description: `${ingredient.quantity} ${ingredient.unit}`,
-              grams: ingredient.unit === 'g' ? ingredient.quantity : null,
+              grams: servingGrams,
             };
 
             const { data: mealItemData, error: mealItemError } = await supabase
