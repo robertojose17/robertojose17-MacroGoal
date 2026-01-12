@@ -147,21 +147,30 @@ export default function FoodDetailsLayout({
       const serving = extractServingSize(productData);
       setServingInfo(serving);
 
-      // CRITICAL FIX: Use the saved serving size from the meal item (data.grams)
-      // instead of the default serving size from the food database (serving.grams)
-      const savedGrams = data.grams || (data.quantity * serving.grams);
-      setBaseServingGrams(savedGrams);
+      // CRITICAL FIX: Calculate the per-serving grams correctly
+      // data.grams = total logged grams (e.g., 58g for 2 slices)
+      // data.quantity = number of servings (e.g., 2)
+      // We need: per-serving grams = total grams / quantity
+      const totalLoggedGrams = data.grams || (data.quantity * serving.grams);
+      const perServingGrams = totalLoggedGrams / data.quantity;
+      
+      console.log('[FoodDetailsLayout] EDIT MODE CALCULATION:');
+      console.log('  - Total logged grams:', totalLoggedGrams);
+      console.log('  - Quantity (servings):', data.quantity);
+      console.log('  - Per-serving grams:', perServingGrams);
+      
+      setBaseServingGrams(perServingGrams);
 
       // Determine default unit
       const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
       setServingUnit(defaultUnit);
 
-      // Set serving amount based on the SAVED grams, not the default serving size
+      // Set serving amount based on the PER-SERVING grams
       if (defaultUnit === 'oz') {
-        const ozAmount = savedGrams / UNIT_CONVERSIONS['oz'];
+        const ozAmount = perServingGrams / UNIT_CONVERSIONS['oz'];
         setServingAmount(ozAmount.toFixed(1));
       } else {
-        setServingAmount(savedGrams.toString());
+        setServingAmount(perServingGrams.toString());
       }
 
       setNumberOfServings(data.quantity.toString());
@@ -902,7 +911,7 @@ export default function FoodDetailsLayout({
         <TouchableOpacity onPress={() => router.back()}>
           <IconSymbol
             ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
+            android_material_icon_name="arrow-back"
             size={24}
             color={isDark ? colors.textDark : colors.text}
           />
@@ -919,7 +928,7 @@ export default function FoodDetailsLayout({
             ) : (
               <IconSymbol
                 ios_icon_name={isFavorited ? "star.fill" : "star"}
-                android_material_icon_name={isFavorited ? "star" : "star_border"}
+                android_material_icon_name={isFavorited ? "star" : "star-border"}
                 size={24}
                 color={isFavorited ? "#FFD700" : (isDark ? colors.textDark : colors.text)}
               />
@@ -1152,7 +1161,7 @@ export default function FoodDetailsLayout({
           <View style={styles.banner}>
             <IconSymbol
               ios_icon_name="checkmark.circle.fill"
-              android_material_icon_name="check_circle"
+              android_material_icon_name="check-circle"
               size={20}
               color="#FFFFFF"
             />
