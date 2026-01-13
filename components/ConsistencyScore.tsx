@@ -62,7 +62,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
   const loadJourneyStartDate = useCallback(async () => {
     try {
-      console.log('[ConsistencyScore] Loading journey start date for user:', userId);
+      console.log('[ConsistencyScore] ===== LOADING JOURNEY START DATE =====');
+      console.log('[ConsistencyScore] User ID:', userId);
       
       // First, try to get the user's created_at date (when they joined)
       const { data: userData, error: userError } = await supabase
@@ -77,7 +78,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
       let startDate: string | null = null;
 
-      // Try to get start_date from active goal
+      // Try to get start_date from active goal - THIS IS THE PRIMARY SOURCE
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('start_date')
@@ -91,16 +92,19 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         console.error('[ConsistencyScore] Error loading goal:', goalError);
       }
 
+      console.log('[ConsistencyScore] Goal data retrieved:', goalData);
+      console.log('[ConsistencyScore] Goal start_date from DB:', goalData?.start_date);
+
       // Priority: goal start_date > user created_at > today
       if (goalData?.start_date) {
         startDate = goalData.start_date;
-        console.log('[ConsistencyScore] Using goal start_date:', startDate);
+        console.log('[ConsistencyScore] ✅ Using goal start_date from Profile tab:', startDate);
       } else if (userData?.created_at) {
         startDate = userData.created_at.split('T')[0];
-        console.log('[ConsistencyScore] Using user created_at:', startDate);
+        console.log('[ConsistencyScore] ⚠️ No goal start_date, using user created_at:', startDate);
       } else {
         startDate = new Date().toISOString().split('T')[0];
-        console.log('[ConsistencyScore] No start date found, using today:', startDate);
+        console.log('[ConsistencyScore] ⚠️ No start date found, using today:', startDate);
       }
 
       setJourneyStartDate(startDate);
@@ -110,7 +114,10 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       const today = new Date().toISOString().split('T')[0];
       setRangeEndDate(today);
       
-      console.log('[ConsistencyScore] Default range set:', startDate, '→', today);
+      console.log('[ConsistencyScore] ===== RANGE INITIALIZED =====');
+      console.log('[ConsistencyScore] Journey Start Date:', startDate);
+      console.log('[ConsistencyScore] Default Range:', startDate, '→', today);
+      console.log('[ConsistencyScore] =====================================');
     } catch (error) {
       console.error('[ConsistencyScore] Error loading journey start date:', error);
       // Fallback to today
@@ -250,16 +257,17 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         const trackingScore = hasTracking ? 40 : 0;
 
         // B) Streak Score (0-35)
-        // Update streak counter
+        // Update streak counter - FIXED: Reset to 0 on break, no carryover
         if (hasTracking) {
           currentStreakDays++;
           maxStreakDays = Math.max(maxStreakDays, currentStreakDays);
         } else {
-          // Apply 30% carryover on break
-          currentStreakDays = Math.floor(currentStreakDays * 0.3);
+          // Reset streak on break (no carryover)
+          currentStreakDays = 0;
         }
 
         // Calculate streak score using log curve: 35 * (1 - e^(-0.1 * streak))
+        // This gives: 1 day = 3pts, 7 days = 17pts, 14 days = 25pts, 30 days = 32pts
         const streakScore = currentStreakDays > 0 
           ? Math.round(35 * (1 - Math.exp(-0.1 * currentStreakDays)))
           : 0;
@@ -284,15 +292,40 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       console.log('[ConsistencyScore] Daily scores calculated:', dailyScores.length);
       console.log('[ConsistencyScore] Max streak days:', maxStreakDays);
 
-      // 6. Calculate averages across all days in range
-      const avgTracking = dailyScores.reduce((sum, day) => sum + day.trackingScore, 0) / dailyScores.length;
-      const avgStreak = dailyScores.reduce((sum, day) => sum + day.streakScore, 0) / dailyScores.length;
-      const avgProtein = dailyScores.reduce((sum, day) => sum + day.proteinScore, 0) / dailyScores.length;
+      // 6. Calculate averages - ONLY across days with actual data
+      // Filter to only include days that have tracking data
+      const daysWithData = dailyScores.filter(day => day.trackingScore > 0);
+      const daysWithDataCount = daysWithData.length;
+
+      console.log('[ConsistencyScore] Days with data:', daysWithDataCount, '/', dailyScores.length);
+
+      // If no days with data, score = 0
+      if (daysWithDataCount === 0) {
+        console.log('[ConsistencyScore] No days with data, score = 0');
+        setScoreData({
+          dailyTracking: 0,
+          streakScore: 0,
+          proteinAccuracy: 0,
+          total: 0,
+          streakDays: 0,
+          hasLoggedToday: false,
+          proteinLogged: 0,
+          proteinTarget,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Calculate averages ONLY from days with data
+      const avgTracking = daysWithData.reduce((sum, day) => sum + day.trackingScore, 0) / daysWithDataCount;
+      const avgStreak = daysWithData.reduce((sum, day) => sum + day.streakScore, 0) / daysWithDataCount;
+      const avgProtein = daysWithData.reduce((sum, day) => sum + day.proteinScore, 0) / daysWithDataCount;
 
       const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
       const avgProteinLogged = daysWithProtein > 0 ? totalProteinLogged / daysWithProtein : 0;
 
-      console.log('[ConsistencyScore] ===== AVERAGES ACROSS RANGE =====');
+      console.log('[ConsistencyScore] ===== AVERAGES (ONLY DAYS WITH DATA) =====');
+      console.log('[ConsistencyScore] Days counted:', daysWithDataCount, '/', dailyScores.length);
       console.log('[ConsistencyScore] Avg Daily Tracking:', avgTracking.toFixed(1), '/ 40');
       console.log('[ConsistencyScore] Avg Streak Score:', avgStreak.toFixed(1), '/ 35');
       console.log('[ConsistencyScore] Avg Protein Accuracy:', avgProtein.toFixed(1), '/ 25');
