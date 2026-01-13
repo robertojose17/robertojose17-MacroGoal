@@ -629,12 +629,16 @@ If the user provides both text and photo, use both sources to make the most accu
    * CRITICAL FIX: Handle "Log This Meal" / "Add to My Meal" button
    * Branch based on context:
    * - my_meals_builder: Add ingredients to My Meal draft and navigate back to Create Meal screen
-   * - meal_log (or undefined): Log ingredients to diary and navigate to Food Home
+   * - meal_log (or undefined): Log ingredients to diary and navigate back to Foods tab
    * 
    * CRITICAL FIX FOR RECENT FOODS:
    * Store foods with per-100g nutrition values in the foods table
    * Store the actual quantity/serving in the meal_items table
    * This ensures foods appear correctly in Recent Foods
+   * 
+   * CRITICAL FIX FOR NAVIGATION:
+   * Use router.back() instead of router.push() to close the AI Meal Estimator
+   * and return to the existing Foods tab (previous screen)
    */
   const handleLogMeal = useCallback(async () => {
     if (!latestEstimate) return;
@@ -945,7 +949,7 @@ If the user provides both text and photo, use both sources to make the most accu
           }
         }
 
-        // Show result to user
+        // Show result to user and navigate back
         if (successCount === includedIngredients.length) {
           console.log('[Chatbot] ✅ All ingredients logged successfully!');
           
@@ -963,8 +967,8 @@ If the user provides both text and photo, use both sources to make the most accu
               {
                 text: 'OK',
                 onPress: () => {
-                  console.log('[Chatbot] Navigating to Food Home');
-                  router.push('/(tabs)/(home)/');
+                  console.log('[Chatbot] ✅ CRITICAL FIX: Navigating back to close AI Meal Estimator');
+                  router.back();
                 },
               },
             ]
@@ -978,8 +982,8 @@ If the user provides both text and photo, use both sources to make the most accu
               {
                 text: 'OK',
                 onPress: () => {
-                  console.log('[Chatbot] Navigating to Food Home');
-                  router.push('/(tabs)/(home)/');
+                  console.log('[Chatbot] ✅ CRITICAL FIX: Navigating back to close AI Meal Estimator');
+                  router.back();
                 },
               },
             ]
