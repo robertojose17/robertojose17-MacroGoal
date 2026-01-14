@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -401,7 +402,6 @@ export default function HomeScreen() {
   }
 
   const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
-  const caloriesProgress = Math.min((totalCalories / (goal?.daily_calories || 2000)) * 100, 100);
 
   const leftArrowDisabled = isEarliestDate();
   const rightArrowDisabled = isFutureDate();
@@ -428,15 +428,13 @@ export default function HomeScreen() {
               {getServingDisplayText(item)}
             </Text>
           </View>
-          <View style={styles.foodActions}>
-            <View style={styles.foodCalories}>
-              <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-                {Math.round(item.calories)}
-              </Text>
-              <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                kcal
-              </Text>
-            </View>
+          <View style={styles.foodCalories}>
+            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
+              {Math.round(item.calories)}
+            </Text>
+            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              kcal
+            </Text>
           </View>
         </TouchableOpacity>
       )}
@@ -449,13 +447,7 @@ export default function HomeScreen() {
         data={[{ key: 'content' }]}
         renderItem={() => (
           <View>
-            <View style={[
-              styles.dateNavigation, 
-              { 
-                backgroundColor: isDark ? colors.cardDark : colors.card,
-                borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-              }
-            ]}>
+            <View style={[styles.dateNavigation, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
               <TouchableOpacity 
                 onPress={goToPreviousDay} 
                 style={styles.dateButton}
@@ -505,86 +497,50 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
 
-            <View style={[
-              styles.summaryCard, 
-              { 
-                backgroundColor: isDark ? colors.cardDark : colors.card,
-                borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-              }
-            ]}>
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Goal
-                  </Text>
-                  <Text style={[styles.summaryValue, { color: isDark ? colors.textDark : colors.text }]}>
-                    {goal?.daily_calories || 2000}
-                  </Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Eaten
-                  </Text>
-                  <Text style={[styles.summaryValue, { color: colors.calories }]}>
-                    {Math.round(totalCalories)}
-                  </Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Remaining
-                  </Text>
-                  <Text style={[styles.summaryValue, { color: caloriesRemaining >= 0 ? colors.success : colors.error }]}>
-                    {Math.round(caloriesRemaining)}
-                  </Text>
-                </View>
-              </View>
+            <View style={[styles.caloriesCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+              <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Calories
+              </Text>
               
-              <View style={[styles.progressBarContainer, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <View 
-                  style={[
-                    styles.progressBarFill, 
-                    { 
-                      width: `${caloriesProgress}%`,
-                      backgroundColor: caloriesRemaining >= 0 ? colors.success : colors.error
-                    }
-                  ]} 
+              <View style={styles.caloriesContent}>
+                <ProgressCircle
+                  current={totalCalories}
+                  target={goal?.daily_calories || 2000}
+                  size={140}
+                  strokeWidth={12}
+                  color={colors.calories}
+                  label="kcal"
                 />
-              </View>
-
-              <View style={styles.macrosSummary}>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.protein }]}>
-                    {Math.round(totalMacros.protein)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Protein
-                  </Text>
-                </View>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.carbs }]}>
-                    {Math.round(totalMacros.carbs)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Carbs
-                  </Text>
-                </View>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.fats }]}>
-                    {Math.round(totalMacros.fats)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Fats
-                  </Text>
-                </View>
-                <View style={styles.macroItem}>
-                  <Text style={[styles.macroValue, { color: colors.fiber }]}>
-                    {Math.round(totalMacros.fiber)}g
-                  </Text>
-                  <Text style={[styles.macroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Fiber
-                  </Text>
+                
+                <View style={styles.macroSummaryCompact}>
+                  <MacroSummaryRowCompact
+                    label="Protein"
+                    eaten={Math.round(totalMacros.protein)}
+                    goal={goal?.protein_g || 150}
+                    color={colors.protein}
+                    isDark={isDark}
+                  />
+                  <MacroSummaryRowCompact
+                    label="Carbs"
+                    eaten={Math.round(totalMacros.carbs)}
+                    goal={goal?.carbs_g || 200}
+                    color={colors.carbs}
+                    isDark={isDark}
+                  />
+                  <MacroSummaryRowCompact
+                    label="Fats"
+                    eaten={Math.round(totalMacros.fats)}
+                    goal={goal?.fats_g || 65}
+                    color={colors.fats}
+                    isDark={isDark}
+                  />
+                  <MacroSummaryRowCompact
+                    label="Fiber"
+                    eaten={Math.round(totalMacros.fiber)}
+                    goal={goal?.fiber_g || 30}
+                    color={colors.fiber}
+                    isDark={isDark}
+                  />
                 </View>
               </View>
             </View>
@@ -592,13 +548,7 @@ export default function HomeScreen() {
             {meals.map((meal) => (
               <View 
                 key={meal.type}
-                style={[
-                  styles.mealCard, 
-                  { 
-                    backgroundColor: isDark ? colors.cardDark : colors.card,
-                    borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-                  }
-                ]}
+                style={[styles.mealCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
               >
                 <View style={styles.mealHeader}>
                   <View>
@@ -657,6 +607,34 @@ export default function HomeScreen() {
   );
 }
 
+function MacroSummaryRowCompact({ label, eaten, goal, color, isDark }: any) {
+  const percentage = Math.min((eaten / goal) * 100, 100);
+  
+  return (
+    <View style={styles.macroSummaryRowCompact}>
+      <Text style={[styles.macroSummaryLabelCompact, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+        {label}
+      </Text>
+      <View style={styles.macroSummaryBarContainer}>
+        <View style={[styles.macroSummaryBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+          <View
+            style={[
+              styles.macroSummaryBarFill,
+              {
+                width: `${percentage}%`,
+                backgroundColor: color,
+              },
+            ]}
+          />
+        </View>
+        <Text style={[styles.macroSummaryProgressCompact, { color: isDark ? colors.textDark : colors.text }]}>
+          {eaten} / {goal}g
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -681,7 +659,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
-    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
@@ -715,62 +692,58 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
-  summaryCard: {
+  caloriesCard: {
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
-    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  cardTitle: {
+    ...typography.h3,
     marginBottom: spacing.md,
   },
-  summaryItem: {
+  caloriesContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.lg,
   },
-  summaryLabel: {
-    ...typography.caption,
-    marginBottom: spacing.xs,
+  macroSummaryCompact: {
+    flex: 1,
+    gap: spacing.sm,
   },
-  summaryValue: {
-    ...typography.h2,
+  macroSummaryRowCompact: {
+    gap: 4,
   },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: colors.border,
+  macroSummaryLabelCompact: {
+    fontSize: 12,
+    fontWeight: '500',
   },
-  progressBarContainer: {
-    height: 8,
+  macroSummaryBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  macroSummaryBarBackground: {
+    flex: 1,
+    height: 6,
     borderRadius: borderRadius.full,
     overflow: 'hidden',
-    marginBottom: spacing.md,
   },
-  progressBarFill: {
+  macroSummaryBarFill: {
     height: '100%',
     borderRadius: borderRadius.full,
   },
-  macrosSummary: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  macroItem: {
-    alignItems: 'center',
-  },
-  macroValue: {
-    ...typography.bodyBold,
-    fontSize: 18,
-  },
-  macroLabel: {
-    ...typography.caption,
+  macroSummaryProgressCompact: {
+    fontSize: 11,
+    fontWeight: '500',
+    minWidth: 70,
+    textAlign: 'right',
   },
   mealCard: {
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
-    borderWidth: 1,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
@@ -810,7 +783,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   foodInfo: {
     flex: 1,
@@ -825,11 +799,6 @@ const styles = StyleSheet.create({
   },
   foodDetails: {
     ...typography.caption,
-  },
-  foodActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
   },
   foodCalories: {
     alignItems: 'flex-end',
