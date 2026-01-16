@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, Link } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -900,6 +900,29 @@ export default function ProfileScreen() {
             Log Out
           </Text>
         </TouchableOpacity>
+
+        {/* Footer Links */}
+        <View style={styles.footerLinksContainer}>
+          <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            <Link href="/privacy-policy" asChild>
+              <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Privacy Policy
+              </Text>
+            </Link>
+            {' · '}
+            <Link href="/terms-of-service" asChild>
+              <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Terms of Service
+              </Text>
+            </Link>
+            {' · '}
+            <Link href="/delete-account" asChild>
+              <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Delete Account
+              </Text>
+            </Link>
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Edit Modal */}
@@ -1373,6 +1396,19 @@ const styles = StyleSheet.create({
   logoutText: {
     fontWeight: '600',
     fontSize: 16,
+  },
+  footerLinksContainer: {
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  footerText: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  footerLink: {
+    fontSize: 12,
   },
   subscriptionCard: {
     borderRadius: borderRadius.lg,
