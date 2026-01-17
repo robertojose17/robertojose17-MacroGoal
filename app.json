@@ -18,6 +18,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator"
+      },
+      "entitlements": {
+        "com.apple.developer.in-app-payments": []
       }
     },
     "android": {
@@ -39,6 +42,7 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
+      "expo-store-kit",
       [
         "expo-camera",
         {
