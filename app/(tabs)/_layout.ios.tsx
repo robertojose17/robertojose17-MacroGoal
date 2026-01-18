@@ -9,12 +9,20 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  console.log('[iOS Tab Layout] Rendering iOS-specific tab layout with Profile tab');
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: isDark ? colors.textSecondaryDark : colors.textSecondary,
+        tabBarStyle: {
+          backgroundColor: isDark ? colors.cardDark : colors.card,
+          borderTopColor: isDark ? colors.borderDark : colors.border,
+          paddingBottom: 20,
+          height: 85,
+        },
       }}
     >
       <Tabs.Screen
@@ -63,14 +71,17 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'person.fill' : 'person'}
-              android_material_icon_name="person"
-              size={28}
-              color={color}
-            />
-          ),
+          tabBarIcon: ({ color, focused }) => {
+            console.log('[iOS Tab Layout] Rendering Profile tab icon, focused:', focused);
+            return (
+              <IconSymbol
+                ios_icon_name={focused ? 'person.fill' : 'person'}
+                android_material_icon_name="person"
+                size={28}
+                color={color}
+              />
+            );
+          },
         }}
       />
     </Tabs>
