@@ -3,15 +3,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 
-// Try to import expo-in-app-purchases, but handle if it's not available
-let InAppPurchases: any = null;
-try {
-  InAppPurchases = require('expo-in-app-purchases');
-  console.log('[useSubscription iOS] ✅ expo-in-app-purchases module loaded');
-} catch (error) {
-  console.log('[useSubscription iOS] ⚠️ expo-in-app-purchases not available (likely running in Expo Go)');
-}
-
 export type SubscriptionStatus = 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid';
 export type PlanType = 'monthly' | 'yearly' | null;
 
@@ -80,62 +71,11 @@ function hasPremiumAccess(subscription: Subscription | null): boolean {
 
 /**
  * iOS-specific subscription hook using Apple In-App Purchases
+ * Falls back to database-only mode if IAP is not available (e.g., in Expo Go)
  */
 export function useSubscription(): UseSubscriptionReturn {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
-  const [iapConnected, setIapConnected] = useState(false);
-  const [iapAvailable, setIapAvailable] = useState(InAppPurchases !== null);
-
-  // Initialize IAP connection
-  useEffect(() => {
-    if (!iapAvailable) {
-      console.log('[useSubscription iOS] ⚠️ IAP not available, skipping initialization');
-      return;
-    }
-
-    console.log('[useSubscription iOS] Initializing IAP connection');
-    initializeIAP();
-
-    return () => {
-      if (iapAvailable && InAppPurchases) {
-        console.log('[useSubscription iOS] Cleaning up IAP connection');
-        InAppPurchases.disconnectAsync().catch((err: any) => 
-          console.error('[useSubscription iOS] Error disconnecting IAP:', err)
-        );
-      }
-    };
-  }, [iapAvailable]);
-
-  const initializeIAP = async () => {
-    if (!iapAvailable || !InAppPurchases) {
-      console.log('[useSubscription iOS] ⚠️ IAP not available');
-      return;
-    }
-
-    try {
-      console.log('[useSubscription iOS] Connecting to App Store...');
-      await InAppPurchases.connectAsync();
-      setIapConnected(true);
-      console.log('[useSubscription iOS] ✅ Connected to App Store');
-
-      // Set up purchase listener
-      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
-        console.log('[useSubscription iOS] 🔔 Purchase listener triggered');
-        console.log('[useSubscription iOS] Response code:', responseCode);
-        console.log('[useSubscription iOS] Results:', results?.length || 0);
-        console.log('[useSubscription iOS] Error code:', errorCode);
-
-        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          console.log('[useSubscription iOS] ✅ Purchase completed, refreshing subscription');
-          // Refresh subscription after purchase
-          fetchSubscription();
-        }
-      });
-    } catch (error) {
-      console.error('[useSubscription iOS] ❌ Error initializing IAP:', error);
-    }
-  };
 
   const fetchSubscription = useCallback(async () => {
     try {
@@ -186,107 +126,10 @@ export function useSubscription(): UseSubscriptionReturn {
   }, []);
 
   const syncSubscription = useCallback(async () => {
-    if (!iapAvailable || !InAppPurchases) {
-      console.log('[useSubscription iOS] ⚠️ IAP not available, skipping sync');
-      return;
-    }
-
-    try {
-      console.log('[useSubscription iOS] 🔄 Syncing subscription with Apple...');
-      
-      if (!iapConnected) {
-        console.log('[useSubscription iOS] ⚠️ IAP not connected, skipping sync');
-        return;
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('[useSubscription iOS] ❌ Not authenticated');
-        return;
-      }
-
-      // Get purchase history from Apple
-      const { responseCode, results } = await InAppPurchases.getPurchaseHistoryAsync();
-
-      console.log('[useSubscription iOS] Purchase history response code:', responseCode);
-      console.log('[useSubscription iOS] Purchase history:', results?.length || 0, 'items');
-
-      if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
-        // Find the most recent subscription purchase
-        const subscriptionPurchases = results.filter((p: any) => 
-          p.productId === PRODUCT_IDS.monthly || p.productId === PRODUCT_IDS.yearly
-        );
-
-        if (subscriptionPurchases.length > 0) {
-          // Sort by purchase time (most recent first)
-          subscriptionPurchases.sort((a: any, b: any) => b.purchaseTime - a.purchaseTime);
-          const latestPurchase = subscriptionPurchases[0];
-
-          console.log('[useSubscription iOS] ✅ Found active subscription:', {
-            productId: latestPurchase.productId,
-            transactionId: latestPurchase.transactionId,
-            purchaseTime: new Date(latestPurchase.purchaseTime).toISOString(),
-          });
-
-          // Determine plan type
-          const planType: PlanType = latestPurchase.productId === PRODUCT_IDS.monthly ? 'monthly' : 'yearly';
-
-          // Update subscription in database
-          const subscriptionData = {
-            user_id: user.id,
-            status: 'active' as SubscriptionStatus,
-            plan_type: planType,
-            apple_transaction_id: latestPurchase.transactionId,
-            apple_original_transaction_id: latestPurchase.originalTransactionIdentifierIOS || latestPurchase.transactionId,
-            apple_product_id: latestPurchase.productId,
-            current_period_start: new Date(latestPurchase.purchaseTime).toISOString(),
-            // For subscriptions, we don't have exact expiry from purchase history
-            // The App Store will handle renewal automatically
-            current_period_end: null,
-            cancel_at_period_end: false,
-            updated_at: new Date().toISOString(),
-          };
-
-          // Upsert subscription
-          const { error: upsertError } = await supabase
-            .from('subscriptions')
-            .upsert(subscriptionData, {
-              onConflict: 'user_id',
-            });
-
-          if (upsertError) {
-            console.error('[useSubscription iOS] ❌ Error upserting subscription:', upsertError);
-          } else {
-            console.log('[useSubscription iOS] ✅ Subscription synced to database');
-          }
-
-          // Update user profile to premium
-          const { error: profileError } = await supabase
-            .from('users')
-            .update({ 
-              user_type: 'premium',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', user.id);
-
-          if (profileError) {
-            console.error('[useSubscription iOS] ❌ Error updating user profile:', profileError);
-          } else {
-            console.log('[useSubscription iOS] ✅ User profile updated to premium');
-          }
-        } else {
-          console.log('[useSubscription iOS] ℹ️ No subscription purchases found');
-        }
-      } else {
-        console.log('[useSubscription iOS] ℹ️ No purchase history available');
-      }
-
-      // Refresh local subscription data
-      await fetchSubscription();
-    } catch (error) {
-      console.error('[useSubscription iOS] ❌ Error in syncSubscription:', error);
-    }
-  }, [iapAvailable, iapConnected, fetchSubscription]);
+    console.log('[useSubscription iOS] ℹ️ syncSubscription called - IAP sync not available in this build');
+    // Just refresh from database
+    await fetchSubscription();
+  }, [fetchSubscription]);
 
   const refreshUserProfile = useCallback(async () => {
     try {
@@ -348,8 +191,8 @@ export function useSubscription(): UseSubscriptionReturn {
     
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
-        console.log('[useSubscription iOS] 🔄 App became active, syncing subscription...');
-        syncSubscription();
+        console.log('[useSubscription iOS] 🔄 App became active, refreshing subscription...');
+        fetchSubscription();
       }
     });
 
@@ -357,7 +200,7 @@ export function useSubscription(): UseSubscriptionReturn {
       console.log('[useSubscription iOS] 🔌 Cleaning up app state listener');
       subscription.remove();
     };
-  }, [syncSubscription]);
+  }, [fetchSubscription]);
 
   // Dummy implementations for Stripe methods (not used on iOS)
   const createCheckoutSession = useCallback(async (priceId: string, planType: 'monthly' | 'yearly') => {
