@@ -1,17 +1,17 @@
 
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput, Linking } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { IconSymbol } from '@/components/IconSymbol';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Sex, ActivityLevel, GoalType } from '@/types';
+import { useSubscription } from '@/hooks/useSubscription.ios';
+import { supabase } from '@/app/integrations/supabase/client';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { logSubscriptionStatus } from '@/utils/subscriptionDebug';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
-import { IconSymbol } from '@/components/IconSymbol';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput, Linking } from 'react-native';
-import { supabase } from '@/app/integrations/supabase/client';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useEffect, useState, useCallback } from 'react';
-import { Sex, ActivityLevel, GoalType } from '@/types';
-import { useSubscription } from '@/hooks/useSubscription';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 
 type EditField = 'sex' | 'dob' | 'height' | 'weight' | 'activity' | 'goal_type' | 'loss_rate' | 'units' | 'goal_weight';
 
