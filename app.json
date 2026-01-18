@@ -42,7 +42,6 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      "expo-store-kit",
       [
         "expo-camera",
         {
