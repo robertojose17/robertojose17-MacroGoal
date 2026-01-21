@@ -92,6 +92,9 @@ export default function FoodDetailsLayout({
 
     try {
       setEditLoading(true);
+      console.log('[FoodDetailsLayout] ========== LOADING EDIT ITEM ==========');
+      console.log('[FoodDetailsLayout] Item ID:', itemId);
+      
       const { data, error } = await supabase
         .from('meal_items')
         .select(`
@@ -121,7 +124,14 @@ export default function FoodDetailsLayout({
         return;
       }
 
-      console.log('[FoodDetailsLayout] Edit item loaded:', data);
+      console.log('[FoodDetailsLayout] ✅ Edit item loaded:', {
+        id: data.id,
+        quantity: data.quantity,
+        grams: data.grams,
+        serving_description: data.serving_description,
+        food_name: data.foods?.name,
+      });
+      
       setEditItem(data);
 
       // Convert to OpenFoodFacts format for consistency
@@ -147,36 +157,47 @@ export default function FoodDetailsLayout({
       const serving = extractServingSize(productData);
       setServingInfo(serving);
 
-      // CRITICAL FIX: Calculate the per-serving grams correctly
-      // data.grams = total logged grams (e.g., 58g for 2 slices)
-      // data.quantity = number of servings (e.g., 2)
+      // CRITICAL FIX: Use the actual logged grams and quantity
+      // data.grams = total logged grams (e.g., 45g for 1 serving of 45g)
+      // data.quantity = number of servings (e.g., 1)
       // We need: per-serving grams = total grams / quantity
-      const totalLoggedGrams = data.grams || (data.quantity * serving.grams);
-      const perServingGrams = totalLoggedGrams / data.quantity;
       
-      console.log('[FoodDetailsLayout] EDIT MODE CALCULATION:');
-      console.log('  - Total logged grams:', totalLoggedGrams);
-      console.log('  - Quantity (servings):', data.quantity);
-      console.log('  - Per-serving grams:', perServingGrams);
+      console.log('[FoodDetailsLayout] ========== CALCULATING SERVING SIZE ==========');
+      console.log('[FoodDetailsLayout] Logged data from database:');
+      console.log('[FoodDetailsLayout]   - Total grams:', data.grams);
+      console.log('[FoodDetailsLayout]   - Quantity (servings):', data.quantity);
+      console.log('[FoodDetailsLayout]   - Serving description:', data.serving_description);
+      
+      // CRITICAL: Use the actual logged grams, not the default serving size
+      const totalLoggedGrams = data.grams || 100;
+      const loggedQuantity = data.quantity || 1;
+      const perServingGrams = totalLoggedGrams / loggedQuantity;
+      
+      console.log('[FoodDetailsLayout] Calculated values:');
+      console.log('[FoodDetailsLayout]   - Per-serving grams:', perServingGrams);
+      console.log('[FoodDetailsLayout]   - This is what should appear in the input field');
       
       setBaseServingGrams(perServingGrams);
 
-      // Determine default unit
-      const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
+      // Determine default unit (use 'g' for edit mode to match what was logged)
+      const defaultUnit: ServingUnit = 'g';
       setServingUnit(defaultUnit);
 
-      // Set serving amount based on the PER-SERVING grams
-      if (defaultUnit === 'oz') {
-        const ozAmount = perServingGrams / UNIT_CONVERSIONS['oz'];
-        setServingAmount(ozAmount.toFixed(1));
-      } else {
-        setServingAmount(perServingGrams.toString());
-      }
+      // Set serving amount to the per-serving grams
+      console.log('[FoodDetailsLayout] Setting servingAmount to:', perServingGrams.toString());
+      setServingAmount(perServingGrams.toString());
 
-      setNumberOfServings(data.quantity.toString());
+      // Set number of servings
+      console.log('[FoodDetailsLayout] Setting numberOfServings to:', loggedQuantity.toString());
+      setNumberOfServings(loggedQuantity.toString());
 
       const nutritionData = extractNutrition(productData);
       setNutrition(nutritionData);
+
+      console.log('[FoodDetailsLayout] ✅ Edit mode initialized with:');
+      console.log('[FoodDetailsLayout]   - Serving Amount:', perServingGrams, 'g');
+      console.log('[FoodDetailsLayout]   - Number of Servings:', loggedQuantity);
+      console.log('[FoodDetailsLayout]   - Total Grams:', totalLoggedGrams);
 
       setIsReady(true);
       setEditLoading(false);
