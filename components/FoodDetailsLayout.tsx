@@ -22,6 +22,7 @@ const UNIT_CONVERSIONS: Record<string, number> = {
 };
 
 type ServingUnit = 'g' | 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp';
+type ServingOption = ServingUnit | 'portion';
 
 interface FoodDetailsLayoutProps {
   mode: 'view' | 'edit';
@@ -61,6 +62,7 @@ export default function FoodDetailsLayout({
   const [servingAmount, setServingAmount] = useState('100');
   const [servingUnit, setServingUnit] = useState<ServingUnit>('g');
   const [numberOfServings, setNumberOfServings] = useState('1');
+  const [selectedOption, setSelectedOption] = useState<ServingOption>('g');
   
   const [saving, setSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -182,6 +184,7 @@ export default function FoodDetailsLayout({
       // Determine default unit (use 'g' for edit mode to match what was logged)
       const defaultUnit: ServingUnit = 'g';
       setServingUnit(defaultUnit);
+      setSelectedOption(defaultUnit);
 
       // Set serving amount to the per-serving grams
       console.log('[FoodDetailsLayout] Setting servingAmount to:', perServingGrams.toString());
@@ -281,17 +284,27 @@ export default function FoodDetailsLayout({
       setBaseServingGrams(serving.grams);
       
       // Determine default unit based on source
-      const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
-      setServingUnit(defaultUnit);
-      
-      // Set serving amount based on unit
-      if (defaultUnit === 'oz') {
-        const ozAmount = serving.grams / UNIT_CONVERSIONS['oz'];
-        setServingAmount(ozAmount.toFixed(1));
-      } else {
+      // If the serving has a portion description (not just grams), default to portion
+      let defaultOption: ServingOption = 'g';
+      if (serving.description && serving.description !== '100 g' && !serving.description.match(/^\d+\s*g$/i)) {
+        defaultOption = 'portion';
         setServingAmount(serving.grams.toString());
+        setServingUnit('g');
+      } else {
+        const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
+        defaultOption = defaultUnit;
+        setServingUnit(defaultUnit);
+        
+        // Set serving amount based on unit
+        if (defaultUnit === 'oz') {
+          const ozAmount = serving.grams / UNIT_CONVERSIONS['oz'];
+          setServingAmount(ozAmount.toFixed(1));
+        } else {
+          setServingAmount(serving.grams.toString());
+        }
       }
       
+      setSelectedOption(defaultOption);
       setNumberOfServings('1');
       
       console.log('[FoodDetailsLayout] Extracting nutrition...');
@@ -480,6 +493,7 @@ export default function FoodDetailsLayout({
     
     setServingUnit(newUnit);
     setServingAmount(newAmount.toFixed(1));
+    setSelectedOption(newUnit);
     
     console.log('[FoodDetailsLayout] Converted:', servingAmount, servingUnit, '→', newAmount.toFixed(1), newUnit);
   };
@@ -912,6 +926,42 @@ export default function FoodDetailsLayout({
     snack: 'Snacks',
   };
 
+  // Build available serving options (portions + units)
+  const servingOptions: Array<{ label: string; value: ServingUnit | 'portion'; grams?: number }> = [];
+  
+  // Add portion option if available (e.g., "large egg", "medium", "1 slice")
+  if (servingInfo && servingInfo.description && servingInfo.description !== '100 g' && !servingInfo.description.match(/^\d+\s*g$/i)) {
+    // Extract portion label (e.g., "large egg" from "1 large egg (50g)")
+    let portionLabel = servingInfo.description;
+    
+    // Remove leading numbers (e.g., "1 large egg" -> "large egg")
+    portionLabel = portionLabel.replace(/^\d+\.?\d*\s*/, '');
+    
+    // Remove trailing grams in parentheses if present
+    portionLabel = portionLabel.replace(/\s*\(\d+\.?\d*\s*g\)$/i, '');
+    
+    // Trim and capitalize first letter
+    portionLabel = portionLabel.trim();
+    if (portionLabel.length > 0) {
+      portionLabel = portionLabel.charAt(0).toUpperCase() + portionLabel.slice(1);
+      
+      servingOptions.push({
+        label: portionLabel,
+        value: 'portion',
+        grams: servingInfo.grams,
+      });
+    }
+  }
+  
+  // Add common units
+  const commonUnits: ServingUnit[] = ['g', 'oz', 'tbsp', 'tsp', 'cup'];
+  commonUnits.forEach(unit => {
+    servingOptions.push({
+      label: unit,
+      value: unit,
+    });
+  });
+
   const availableUnits: ServingUnit[] = ['g', 'oz'];
 
   // CRITICAL FIX: Determine button text based on context
@@ -977,73 +1027,83 @@ export default function FoodDetailsLayout({
 
         {/* SERVING CONTROLS - COMPACT */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Serving Size with Unit Selector */}
+          {/* Amount Input */}
           <View style={styles.servingRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Serving Size
+              Amount
             </Text>
-            <View style={styles.servingInputRow}>
-              <TextInput
-                style={[styles.servingInput, { 
-                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                  borderColor: isDark ? colors.borderDark : colors.border, 
-                  color: isDark ? colors.textDark : colors.text 
-                }]}
-                placeholder="100"
-                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                keyboardType="decimal-pad"
-                value={servingAmount}
-                onChangeText={handleServingAmountChange}
-              />
-              <View style={styles.unitSelector}>
-                {availableUnits.map((unit) => (
+            <TextInput
+              style={[styles.servingInputFull, { 
+                backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                borderColor: isDark ? colors.borderDark : colors.border, 
+                color: isDark ? colors.textDark : colors.text 
+              }]}
+              placeholder="1"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              keyboardType="decimal-pad"
+              value={numberOfServings}
+              onChangeText={handleNumberOfServingsChange}
+            />
+          </View>
+
+          {/* Serving Size / Portion Selector - Chip Grid */}
+          <View style={styles.servingRow}>
+            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Serving Size / Portion
+            </Text>
+            <View style={styles.chipGrid}>
+              {servingOptions.map((option, index) => {
+                const isSelected = selectedOption === option.value;
+                const chipLabel = option.label;
+                
+                return (
                   <TouchableOpacity
-                    key={unit}
+                    key={`${option.value}-${index}`}
                     style={[
-                      styles.unitButton,
-                      servingUnit === unit && { backgroundColor: colors.primary },
+                      styles.chip,
+                      { 
+                        backgroundColor: isSelected ? colors.primary : (isDark ? colors.backgroundDark : colors.background),
+                        borderColor: isSelected ? colors.primary : (isDark ? colors.borderDark : colors.border),
+                      },
                     ]}
-                    onPress={() => handleServingUnitChange(unit)}
+                    onPress={() => {
+                      if (option.value === 'portion' && option.grams) {
+                        // Switch to portion mode
+                        setSelectedOption('portion');
+                        setBaseServingGrams(option.grams);
+                        setServingAmount(option.grams.toString());
+                        setServingUnit('g');
+                        console.log('[FoodDetailsLayout] Switched to portion:', option.label, option.grams, 'g');
+                      } else if (option.value !== 'portion') {
+                        // Switch to unit mode
+                        const newUnit = option.value as ServingUnit;
+                        setSelectedOption(newUnit);
+                        handleServingUnitChange(newUnit);
+                      }
+                    }}
                   >
                     <Text style={[
-                      styles.unitButtonText,
-                      { color: servingUnit === unit ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }
+                      styles.chipText,
+                      { color: isSelected ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }
                     ]}>
-                      {unit}
+                      {chipLabel}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                );
+              })}
             </View>
           </View>
 
-          {/* Number of Servings */}
-          <View style={styles.servingRow}>
-            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Number of Servings
-            </Text>
-            <View style={styles.servingInputRow}>
-              <TextInput
-                style={[styles.servingInput, { 
-                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                  borderColor: isDark ? colors.borderDark : colors.border, 
-                  color: isDark ? colors.textDark : colors.text 
-                }]}
-                placeholder="1"
-                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                keyboardType="decimal-pad"
-                value={numberOfServings}
-                onChangeText={handleNumberOfServingsChange}
-              />
-              <Text style={[styles.servingUnitText, { color: isDark ? colors.textDark : colors.text }]}>
-                × {servingAmount} {servingUnit}
+          <View style={styles.servingSummaryRow}>
+            <View>
+              <Text style={[styles.servingSummaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Weight
+              </Text>
+              <Text style={[styles.servingSummaryValue, { color: isDark ? colors.textDark : colors.text }]}>
+                {Math.round(totalGrams)}g
               </Text>
             </View>
           </View>
-
-          <Text style={[styles.totalGramsText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Total: {Math.round(totalGrams)}g
-          </Text>
         </View>
 
         {/* MACROS + CALORIES - COMPACT ROW WITH IMPROVED SPACING */}
@@ -1276,6 +1336,60 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  servingInputFull: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  chipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  chip: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 24,
+    borderWidth: 2,
+    minWidth: 100,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  servingSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  servingSummaryLabel: {
+    ...typography.caption,
+    fontSize: 12,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  servingSummaryValue: {
+    ...typography.bodyBold,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  servingSummaryText: {
+    ...typography.body,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   unitSelector: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -1298,8 +1412,6 @@ const styles = StyleSheet.create({
   totalGramsText: {
     ...typography.caption,
     fontSize: 12,
-    textAlign: 'right',
-    marginTop: spacing.xs,
   },
   macrosCard: {
     borderRadius: borderRadius.lg,
