@@ -54,12 +54,11 @@ export default function FoodDetailsLayout({
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
   const [nutrition, setNutrition] = useState<any>(null);
   
-  // Base serving in grams (canonical reference)
-  const [baseServingGrams, setBaseServingGrams] = useState(100);
+  // CRITICAL FIX: Serving size is now FIXED from nutrition table (per 100g)
+  // This is the base serving size from the nutrition facts and cannot be changed
+  const [baseServingGrams] = useState(100); // Always 100g from nutrition table
   
-  // Current serving controls
-  const [servingAmount, setServingAmount] = useState('100');
-  const [servingUnit, setServingUnit] = useState<ServingUnit>('g');
+  // Number of servings (how many 100g servings you're eating)
   const [numberOfServings, setNumberOfServings] = useState('1');
   
   const [saving, setSaving] = useState(false);
@@ -157,46 +156,33 @@ export default function FoodDetailsLayout({
       const serving = extractServingSize(productData);
       setServingInfo(serving);
 
-      // CRITICAL FIX: Use the actual logged grams and quantity
-      // data.grams = total logged grams (e.g., 45g for 1 serving of 45g)
-      // data.quantity = number of servings (e.g., 1)
-      // We need: per-serving grams = total grams / quantity
+      // CRITICAL FIX: Calculate number of servings from logged grams
+      // data.grams = total logged grams (e.g., 84g)
+      // baseServingGrams = 100g (from nutrition table)
+      // numberOfServings = 84g / 100g = 0.84
       
-      console.log('[FoodDetailsLayout] ========== CALCULATING SERVING SIZE ==========');
+      console.log('[FoodDetailsLayout] ========== CALCULATING NUMBER OF SERVINGS ==========');
       console.log('[FoodDetailsLayout] Logged data from database:');
       console.log('[FoodDetailsLayout]   - Total grams:', data.grams);
-      console.log('[FoodDetailsLayout]   - Quantity (servings):', data.quantity);
-      console.log('[FoodDetailsLayout]   - Serving description:', data.serving_description);
+      console.log('[FoodDetailsLayout]   - Base serving (nutrition table):', baseServingGrams, 'g');
       
-      // CRITICAL: Use the actual logged grams, not the default serving size
       const totalLoggedGrams = data.grams || 100;
-      const loggedQuantity = data.quantity || 1;
-      const perServingGrams = totalLoggedGrams / loggedQuantity;
+      const calculatedServings = totalLoggedGrams / baseServingGrams;
       
       console.log('[FoodDetailsLayout] Calculated values:');
-      console.log('[FoodDetailsLayout]   - Per-serving grams:', perServingGrams);
-      console.log('[FoodDetailsLayout]   - This is what should appear in the input field');
+      console.log('[FoodDetailsLayout]   - Number of servings:', calculatedServings);
+      console.log('[FoodDetailsLayout]   - This means:', calculatedServings, '×', baseServingGrams, 'g =', totalLoggedGrams, 'g');
       
-      setBaseServingGrams(perServingGrams);
-
-      // Determine default unit (use 'g' for edit mode to match what was logged)
-      const defaultUnit: ServingUnit = 'g';
-      setServingUnit(defaultUnit);
-
-      // Set serving amount to the per-serving grams
-      console.log('[FoodDetailsLayout] Setting servingAmount to:', perServingGrams.toString());
-      setServingAmount(perServingGrams.toString());
-
       // Set number of servings
-      console.log('[FoodDetailsLayout] Setting numberOfServings to:', loggedQuantity.toString());
-      setNumberOfServings(loggedQuantity.toString());
+      console.log('[FoodDetailsLayout] Setting numberOfServings to:', calculatedServings.toString());
+      setNumberOfServings(calculatedServings.toString());
 
       const nutritionData = extractNutrition(productData);
       setNutrition(nutritionData);
 
       console.log('[FoodDetailsLayout] ✅ Edit mode initialized with:');
-      console.log('[FoodDetailsLayout]   - Serving Amount:', perServingGrams, 'g');
-      console.log('[FoodDetailsLayout]   - Number of Servings:', loggedQuantity);
+      console.log('[FoodDetailsLayout]   - Serving Size (FIXED):', baseServingGrams, 'g');
+      console.log('[FoodDetailsLayout]   - Number of Servings:', calculatedServings);
       console.log('[FoodDetailsLayout]   - Total Grams:', totalLoggedGrams);
 
       setIsReady(true);
@@ -209,7 +195,7 @@ export default function FoodDetailsLayout({
       router.back();
       setEditLoading(false);
     }
-  }, [itemId, router]);
+  }, [itemId, router, baseServingGrams]);
 
   // Load data for edit mode
   useEffect(() => {
@@ -278,20 +264,8 @@ export default function FoodDetailsLayout({
       });
       
       setServingInfo(serving);
-      setBaseServingGrams(serving.grams);
       
-      // Determine default unit based on source
-      const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
-      setServingUnit(defaultUnit);
-      
-      // Set serving amount based on unit
-      if (defaultUnit === 'oz') {
-        const ozAmount = serving.grams / UNIT_CONVERSIONS['oz'];
-        setServingAmount(ozAmount.toFixed(1));
-      } else {
-        setServingAmount(serving.grams.toString());
-      }
-      
+      // CRITICAL FIX: Always start with 1 serving (100g)
       setNumberOfServings('1');
       
       console.log('[FoodDetailsLayout] Extracting nutrition...');
@@ -342,9 +316,6 @@ export default function FoodDetailsLayout({
         fiber: 0,
         sugars: 0,
       });
-      setBaseServingGrams(100);
-      setServingAmount('100');
-      setServingUnit('g');
       setNumberOfServings('1');
       setIsReady(true);
       
@@ -428,7 +399,7 @@ export default function FoodDetailsLayout({
           per100_fat: nutrition.fat,
           per100_fiber: nutrition.fiber,
           serving_size: servingInfo.displayText,
-          serving_unit: servingUnit,
+          serving_unit: 'g',
           default_grams: baseServingGrams,
         }
       );
@@ -446,42 +417,6 @@ export default function FoodDetailsLayout({
     } finally {
       setFavoriteLoading(false);
     }
-  };
-
-  // Convert serving amount to grams
-  const convertToGrams = (amount: number, unit: ServingUnit): number => {
-    return amount * UNIT_CONVERSIONS[unit];
-  };
-
-  // Convert grams to target unit
-  const convertFromGrams = (grams: number, unit: ServingUnit): number => {
-    return grams / UNIT_CONVERSIONS[unit];
-  };
-
-  // Handle serving amount change
-  const handleServingAmountChange = (newAmount: string) => {
-    setServingAmount(newAmount);
-    
-    const amountNum = parseFloat(newAmount);
-    if (!isNaN(amountNum) && amountNum > 0) {
-      const gramsPerServing = convertToGrams(amountNum, servingUnit);
-      setBaseServingGrams(gramsPerServing);
-      console.log('[FoodDetailsLayout] Serving amount changed:', newAmount, servingUnit, '=', gramsPerServing, 'g');
-    }
-  };
-
-  // Handle serving unit change
-  const handleServingUnitChange = (newUnit: ServingUnit) => {
-    console.log('[FoodDetailsLayout] Unit changed from', servingUnit, 'to', newUnit);
-    
-    // Convert current amount to new unit
-    const currentGrams = convertToGrams(parseFloat(servingAmount) || baseServingGrams, servingUnit);
-    const newAmount = convertFromGrams(currentGrams, newUnit);
-    
-    setServingUnit(newUnit);
-    setServingAmount(newAmount.toFixed(1));
-    
-    console.log('[FoodDetailsLayout] Converted:', servingAmount, servingUnit, '→', newAmount.toFixed(1), newUnit);
   };
 
   // Handle number of servings change
@@ -577,7 +512,7 @@ export default function FoodDetailsLayout({
       }
 
       const macros = calculateMacros();
-      const servingDescription = `${servingAmount} ${servingUnit} (${Math.round(finalGrams)}g)`;
+      const servingDescription = `${baseServingGrams}g`;
 
       if (mode === 'edit') {
         // UPDATE EXISTING MEAL ITEM
@@ -706,7 +641,7 @@ export default function FoodDetailsLayout({
           food_name: product?.product_name || 'Unknown Product',
           food_brand: product?.brands || undefined,
           serving_amount: baseServingGrams,
-          serving_unit: servingUnit,
+          serving_unit: 'g',
           servings_count: finalServings,
           calories: macros.calories,
           protein: macros.protein,
@@ -720,7 +655,7 @@ export default function FoodDetailsLayout({
           food_name: product?.product_name || 'Unknown Product',
           food_brand: product?.brands || undefined,
           serving_amount: baseServingGrams,
-          serving_unit: servingUnit,
+          serving_unit: 'g',
           servings_count: finalServings,
           calories: macros.calories,
           protein: macros.protein,
@@ -912,8 +847,6 @@ export default function FoodDetailsLayout({
     snack: 'Snacks',
   };
 
-  const availableUnits: ServingUnit[] = ['g', 'oz'];
-
   // CRITICAL FIX: Determine button text based on context
   let buttonText = 'Add to Meal';
   if (mode === 'edit') {
@@ -975,49 +908,24 @@ export default function FoodDetailsLayout({
           )}
         </View>
 
-        {/* SERVING CONTROLS - COMPACT */}
+        {/* SERVING CONTROLS - SIMPLIFIED */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Serving Size with Unit Selector */}
+          {/* Serving Size - FIXED (from nutrition table) */}
           <View style={styles.servingRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Serving Size
             </Text>
-            <View style={styles.servingInputRow}>
-              <TextInput
-                style={[styles.servingInput, { 
-                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                  borderColor: isDark ? colors.borderDark : colors.border, 
-                  color: isDark ? colors.textDark : colors.text 
-                }]}
-                placeholder="100"
-                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                keyboardType="decimal-pad"
-                value={servingAmount}
-                onChangeText={handleServingAmountChange}
-              />
-              <View style={styles.unitSelector}>
-                {availableUnits.map((unit) => (
-                  <TouchableOpacity
-                    key={unit}
-                    style={[
-                      styles.unitButton,
-                      servingUnit === unit && { backgroundColor: colors.primary },
-                    ]}
-                    onPress={() => handleServingUnitChange(unit)}
-                  >
-                    <Text style={[
-                      styles.unitButtonText,
-                      { color: servingUnit === unit ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }
-                    ]}>
-                      {unit}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <View style={styles.servingDisplayRow}>
+              <Text style={[styles.servingDisplayText, { color: isDark ? colors.textDark : colors.text }]}>
+                {baseServingGrams}
+              </Text>
+              <Text style={[styles.servingUnitText, { color: isDark ? colors.textDark : colors.text }]}>
+                g
+              </Text>
             </View>
           </View>
 
-          {/* Number of Servings */}
+          {/* Number of Servings - EDITABLE */}
           <View style={styles.servingRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Number of Servings
@@ -1035,8 +943,8 @@ export default function FoodDetailsLayout({
                 value={numberOfServings}
                 onChangeText={handleNumberOfServingsChange}
               />
-              <Text style={[styles.servingUnitText, { color: isDark ? colors.textDark : colors.text }]}>
-                × {servingAmount} {servingUnit}
+              <Text style={[styles.servingMultiplierText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                × {baseServingGrams} g
               </Text>
             </View>
           </View>
@@ -1262,6 +1170,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  servingDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+  },
+  servingDisplayText: {
+    fontSize: 32,
+    fontWeight: '700',
+  },
   servingInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1276,22 +1193,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  unitSelector: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  unitButton: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  unitButtonText: {
-    fontSize: 14,
+  servingUnitText: {
+    ...typography.body,
+    fontSize: 18,
     fontWeight: '600',
   },
-  servingUnitText: {
+  servingMultiplierText: {
     ...typography.body,
     fontSize: 14,
   },
