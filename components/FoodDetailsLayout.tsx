@@ -931,10 +931,11 @@ export default function FoodDetailsLayout({
     snack: 'Snacks',
   };
 
-  // Build available serving options (portions + units)
+  // Build available serving options
+  // PRIORITY: Portion options FIRST (like "1 slice", "1 egg"), then units (g, oz, etc.)
   const servingOptions: Array<{ label: string; value: ServingUnit | 'portion'; grams?: number }> = [];
   
-  // Add portion option if available (e.g., "large egg", "medium", "1 slice")
+  // STEP 1: Add portion option FIRST if available (e.g., "Large egg", "Slice")
   if (servingInfo && servingInfo.description && servingInfo.description !== '100 g' && !servingInfo.description.match(/^\d+\s*g$/i)) {
     // Extract portion label (e.g., "large egg" from "1 large egg (50g)")
     let portionLabel = servingInfo.description;
@@ -958,7 +959,7 @@ export default function FoodDetailsLayout({
     }
   }
   
-  // Add common units
+  // STEP 2: Add common units AFTER portions
   const commonUnits: ServingUnit[] = ['g', 'oz', 'tbsp', 'tsp', 'cup'];
   commonUnits.forEach(unit => {
     servingOptions.push({
