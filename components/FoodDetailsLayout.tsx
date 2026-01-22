@@ -932,10 +932,10 @@ export default function FoodDetailsLayout({
   };
 
   // Build available serving options
-  // PRIORITY: Portion options FIRST (like "1 slice", "1 egg"), then units (g, oz, etc.)
+  // PRIORITY: Portion options FIRST (like "1 slice", "1 egg", "1 tortilla"), then units (g, oz, etc.)
   const servingOptions: Array<{ label: string; value: ServingUnit | 'portion'; grams?: number }> = [];
   
-  // STEP 1: Add portion option FIRST if available (e.g., "Large egg", "Slice")
+  // STEP 1: Add portion option FIRST if available (e.g., "Egg", "Slice", "Tortilla")
   if (servingInfo && servingInfo.description && servingInfo.description !== '100 g' && !servingInfo.description.match(/^\d+\s*g$/i)) {
     // Extract portion label (e.g., "large egg" from "1 large egg (50g)")
     let portionLabel = servingInfo.description;
@@ -943,13 +943,27 @@ export default function FoodDetailsLayout({
     // Remove leading numbers (e.g., "1 large egg" -> "large egg")
     portionLabel = portionLabel.replace(/^\d+\.?\d*\s*/, '');
     
-    // Remove trailing grams in parentheses if present
-    portionLabel = portionLabel.replace(/\s*\(\d+\.?\d*\s*g\)$/i, '');
+    // Remove trailing grams in parentheses if present (e.g., "(50g)" or "(50 g)")
+    portionLabel = portionLabel.replace(/\s*\(.*?\)$/i, '');
     
-    // Trim and capitalize first letter
+    // Remove trailing weight indicators like "- 50g" or "50g"
+    portionLabel = portionLabel.replace(/\s*[-–—]\s*\d+\.?\d*\s*g$/i, '');
+    portionLabel = portionLabel.replace(/\s+\d+\.?\d*\s*g$/i, '');
+    
+    // Remove any remaining parentheses or brackets
+    portionLabel = portionLabel.replace(/[()[\]{}]/g, '');
+    
+    // Trim whitespace
     portionLabel = portionLabel.trim();
+    
+    // Capitalize first letter of each word for better display
     if (portionLabel.length > 0) {
-      portionLabel = portionLabel.charAt(0).toUpperCase() + portionLabel.slice(1);
+      portionLabel = portionLabel
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+      
+      console.log('[FoodDetailsLayout] Extracted portion label:', portionLabel, 'with', servingInfo.grams, 'grams');
       
       servingOptions.push({
         label: portionLabel,
@@ -983,14 +997,23 @@ export default function FoodDetailsLayout({
   }
 
   // CRITICAL FIX: Calculate the weight display
-  // Weight should show the equivalent in grams for the selected serving amount
-  // NOT multiplied by the number of servings
+  // Weight should show the equivalent in grams for ONE serving (not multiplied by amount)
+  // This is the per-serving weight that the user selected
   const weightDisplayGrams = baseServingGrams;
   const weightDisplayText = `${Math.round(weightDisplayGrams)}g`;
 
   // Determine if we should show the serving amount input
   // Show it when a unit (not portion) is selected
+  // When portion is selected, the serving amount is fixed (e.g., "1 egg" = 50g)
   const showServingAmountInput = selectedOption !== 'portion';
+  
+  console.log('[FoodDetailsLayout] Display state:', {
+    selectedOption,
+    showServingAmountInput,
+    baseServingGrams,
+    weightDisplayText,
+    numberOfServings,
+  });
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>

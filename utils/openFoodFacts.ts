@@ -96,9 +96,11 @@ function mlToGrams(ml: number): number {
  * 4) No serving label at all → default to 100g
  */
 export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeInfo {
-  console.log('[OpenFoodFacts] extractServingSize called with:', {
+  console.log('[OpenFoodFacts] ========== EXTRACT SERVING SIZE ==========');
+  console.log('[OpenFoodFacts] Input:', {
     serving_size: product.serving_size,
     serving_quantity: product.serving_quantity,
+    product_name: product.product_name,
   });
 
   // Default to 100g if no serving info available
@@ -166,15 +168,16 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       }
     }
 
-    // Pattern 3: "X unit - Yg" or "X unit Yg"
-    const pattern3 = /^(.+?)\s*[-–—]\s*(\d+\.?\d*)\s*g$/i;
+    // Pattern 3: "X unit - Yg" or "X unit Yg" or "unit Yg"
+    const pattern3 = /^(.+?)\s*[-–—]?\s*(\d+\.?\d*)\s*g$/i;
     const match3 = servingSize.match(pattern3);
     if (match3) {
       const description = match3[1].trim();
       const grams = parseFloat(match3[2]);
       
-      if (!isNaN(grams) && grams > 0) {
-        console.log('[OpenFoodFacts] Pattern 3 matched (grams with dash):', { description, grams });
+      // Make sure description is not just a number (to avoid matching "45g" as description="45")
+      if (!isNaN(grams) && grams > 0 && description && !/^\d+\.?\d*$/.test(description)) {
+        console.log('[OpenFoodFacts] Pattern 3 matched (grams with optional dash):', { description, grams });
         return {
           description,
           grams,
@@ -185,16 +188,36 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       }
     }
 
-    // Pattern 4: Try to find any number followed by g anywhere in the string
-    const pattern4 = /(\d+\.?\d*)\s*g/i;
+    // Pattern 4: "portion_name Yg" (e.g., "tortilla 45g", "slice 28g", "egg 50g")
+    // This pattern specifically looks for a word followed by a number and 'g'
+    const pattern4 = /^([a-zA-Z\s]+?)\s+(\d+\.?\d*)\s*g$/i;
     const match4 = servingSize.match(pattern4);
     if (match4) {
-      const grams = parseFloat(match4[1]);
+      const description = match4[1].trim();
+      const grams = parseFloat(match4[2]);
+      
+      if (!isNaN(grams) && grams > 0 && description && description.length > 0) {
+        console.log('[OpenFoodFacts] Pattern 4 matched (portion name + grams):', { description, grams });
+        return {
+          description,
+          grams,
+          displayText: `${description} (${Math.round(grams)} g)`,
+          hasValidGrams: true,
+          isEstimated: false,
+        };
+      }
+    }
+
+    // Pattern 5: Try to find any number followed by g anywhere in the string (fallback)
+    const pattern5 = /(\d+\.?\d*)\s*g/i;
+    const match5 = servingSize.match(pattern5);
+    if (match5) {
+      const grams = parseFloat(match5[1]);
       
       if (!isNaN(grams) && grams > 0) {
         // Try to extract description before the grams
-        const description = servingSize.replace(pattern4, '').trim();
-        console.log('[OpenFoodFacts] Pattern 4 matched (grams anywhere):', { description, grams });
+        const description = servingSize.replace(pattern5, '').trim();
+        console.log('[OpenFoodFacts] Pattern 5 matched (grams anywhere - fallback):', { description, grams });
         
         if (description && description.length > 0) {
           return {
@@ -359,8 +382,9 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       }
     }
 
-    // Household units pattern: "X slice", "X egg", "X piece", "X bar", etc.
-    const householdPattern = /(\d+\.?\d*)\s*(slice|slices|egg|eggs|piece|pieces|bar|bars|serving|servings|item|items|unit|units)/i;
+    // Household units pattern: "X slice", "X egg", "X piece", "X bar", "X tortilla", etc.
+    // EXPANDED: Added more common portion types
+    const householdPattern = /(\d+\.?\d*)\s*(slice|slices|egg|eggs|piece|pieces|bar|bars|serving|servings|item|items|unit|units|tortilla|tortillas|pancake|pancakes|waffle|waffles|cookie|cookies|cracker|crackers|biscuit|biscuits|roll|rolls|muffin|muffins|bagel|bagels|patty|patties|nugget|nuggets|wing|wings|drumstick|drumsticks|breast|breasts|thigh|thighs|fillet|fillets|steak|steaks|chop|chops|sausage|sausages|link|links|strip|strips|stick|sticks|ball|balls|cube|cubes|wedge|wedges|ring|rings|chip|chips|fry|fries)/i;
     const householdMatch = servingSize.match(householdPattern);
     if (householdMatch) {
       console.log('[OpenFoodFacts] Household unit detected without grams:', servingSize);
