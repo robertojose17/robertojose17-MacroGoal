@@ -473,13 +473,18 @@ export default function FoodDetailsLayout({
 
   // Handle serving amount change
   const handleServingAmountChange = (newAmount: string) => {
+    console.log('[FoodDetailsLayout] ========== SERVING AMOUNT CHANGED ==========');
+    console.log('[FoodDetailsLayout] New amount:', newAmount);
+    console.log('[FoodDetailsLayout] Current unit:', servingUnit);
+    
     setServingAmount(newAmount);
     
     const amountNum = parseFloat(newAmount);
     if (!isNaN(amountNum) && amountNum > 0) {
       const gramsPerServing = convertToGrams(amountNum, servingUnit);
       setBaseServingGrams(gramsPerServing);
-      console.log('[FoodDetailsLayout] Serving amount changed:', newAmount, servingUnit, '=', gramsPerServing, 'g');
+      console.log('[FoodDetailsLayout] ✅ Serving amount changed:', newAmount, servingUnit, '=', gramsPerServing, 'g');
+      console.log('[FoodDetailsLayout] Weight display will show:', gramsPerServing, 'g');
     }
   };
 
@@ -982,6 +987,10 @@ export default function FoodDetailsLayout({
   const weightDisplayGrams = baseServingGrams;
   const weightDisplayText = `${Math.round(weightDisplayGrams)}g`;
 
+  // Determine if we should show the serving amount input
+  // Show it when a unit (not portion) is selected
+  const showServingAmountInput = selectedOption !== 'portion';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -1033,25 +1042,6 @@ export default function FoodDetailsLayout({
 
         {/* SERVING CONTROLS - COMPACT */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Amount Input */}
-          <View style={styles.servingRow}>
-            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Amount
-            </Text>
-            <TextInput
-              style={[styles.servingInputFull, { 
-                backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                borderColor: isDark ? colors.borderDark : colors.border, 
-                color: isDark ? colors.textDark : colors.text 
-              }]}
-              placeholder="1"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              keyboardType="decimal-pad"
-              value={numberOfServings}
-              onChangeText={handleNumberOfServingsChange}
-            />
-          </View>
-
           {/* Serving Size / Portion Selector - Chip Grid */}
           <View style={styles.servingRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
@@ -1098,6 +1088,46 @@ export default function FoodDetailsLayout({
                 );
               })}
             </View>
+          </View>
+
+          {/* Serving Amount Input - Only show when unit is selected */}
+          {showServingAmountInput && (
+            <View style={styles.servingRow}>
+              <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Serving Amount
+              </Text>
+              <TextInput
+                style={[styles.servingInputFull, { 
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                  borderColor: isDark ? colors.borderDark : colors.border, 
+                  color: isDark ? colors.textDark : colors.text 
+                }]}
+                placeholder="1"
+                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                keyboardType="decimal-pad"
+                value={servingAmount}
+                onChangeText={handleServingAmountChange}
+              />
+            </View>
+          )}
+
+          {/* Amount Input */}
+          <View style={styles.servingRow}>
+            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Amount
+            </Text>
+            <TextInput
+              style={[styles.servingInputFull, { 
+                backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                borderColor: isDark ? colors.borderDark : colors.border, 
+                color: isDark ? colors.textDark : colors.text 
+              }]}
+              placeholder="1"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              keyboardType="decimal-pad"
+              value={numberOfServings}
+              onChangeText={handleNumberOfServingsChange}
+            />
           </View>
 
           <View style={styles.servingSummaryRow}>
