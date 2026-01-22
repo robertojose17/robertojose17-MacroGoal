@@ -996,11 +996,13 @@ export default function FoodDetailsLayout({
     buttonText = `Add to ${mealLabels[mealType]}`;
   }
 
-  // CRITICAL FIX: Calculate the weight display
-  // Weight should show the equivalent in grams for ONE serving (not multiplied by amount)
-  // This is the per-serving weight that the user selected
+  // CRITICAL FIX: Calculate the weight display with decimal precision
+  // Weight should show the per-serving weight (not multiplied by amount)
+  // Show 1 decimal place if there are decimals, otherwise show whole number
   const weightDisplayGrams = baseServingGrams;
-  const weightDisplayText = `${Math.round(weightDisplayGrams)}g`;
+  const weightDisplayText = weightDisplayGrams % 1 === 0 
+    ? `${Math.round(weightDisplayGrams)}g` 
+    : `${weightDisplayGrams.toFixed(1)}g`;
 
   // Determine if we should show the serving amount input
   // Show it when a unit (not portion) is selected
