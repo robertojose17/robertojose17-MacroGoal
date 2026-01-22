@@ -976,6 +976,12 @@ export default function FoodDetailsLayout({
     buttonText = `Add to ${mealLabels[mealType]}`;
   }
 
+  // CRITICAL FIX: Calculate the weight display
+  // Weight should show the equivalent in grams for the selected serving amount
+  // NOT multiplied by the number of servings
+  const weightDisplayGrams = baseServingGrams;
+  const weightDisplayText = `${Math.round(weightDisplayGrams)}g`;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -1100,7 +1106,7 @@ export default function FoodDetailsLayout({
                 Weight
               </Text>
               <Text style={[styles.servingSummaryValue, { color: isDark ? colors.textDark : colors.text }]}>
-                {Math.round(totalGrams)}g
+                {weightDisplayText}
               </Text>
             </View>
           </View>
