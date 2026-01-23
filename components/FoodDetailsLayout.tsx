@@ -1028,14 +1028,14 @@ export default function FoodDetailsLayout({
 
         {/* SERVING CONTROLS - COMPACT WITH INLINE WEIGHT */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Amount Input with Weight inline */}
-          <View style={styles.servingRow}>
+          {/* Label and Input Row - All on one line */}
+          <View style={styles.servingLabelRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Serving Amount
             </Text>
-            <View style={styles.servingInputRow}>
+            <View style={styles.servingInputRowInline}>
               <TextInput
-                style={[styles.servingInput, { 
+                style={[styles.servingInputCompact, { 
                   backgroundColor: isDark ? colors.backgroundDark : colors.background, 
                   borderColor: isDark ? colors.borderDark : colors.border, 
                   color: isDark ? colors.textDark : colors.text 
@@ -1046,7 +1046,7 @@ export default function FoodDetailsLayout({
                 value={servingAmount}
                 onChangeText={handleServingAmountChange}
               />
-              <View style={styles.weightBadge}>
+              <View style={styles.weightBadgeInline}>
                 <Text style={[styles.weightBadgeText, { color: isDark ? colors.textDark : colors.text }]}>
                   {weightDisplayText}
                 </Text>
@@ -1272,39 +1272,37 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
-  servingRow: {
+  servingLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
   servingLabel: {
     ...typography.caption,
     fontSize: 12,
-    marginBottom: spacing.xs,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    flex: 1,
   },
-  servingInputRow: {
+  servingInputRowInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  servingInput: {
     flex: 1,
+    justifyContent: 'flex-end',
+  },
+  servingInputCompact: {
     borderWidth: 1,
     borderRadius: borderRadius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     fontSize: 18,
     fontWeight: '600',
+    minWidth: 80,
+    textAlign: 'center',
   },
-  servingInputFull: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  weightBadge: {
+  weightBadgeInline: {
     backgroundColor: colors.primary,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -1317,26 +1315,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  chipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  chip: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: 24,
-    borderWidth: 2,
-    minWidth: 100,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipText: {
-    fontSize: 18,
-    fontWeight: '600',
   },
   servingSummaryRow: {
     flexDirection: 'row',
@@ -1358,34 +1336,6 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 18,
     fontWeight: '700',
-  },
-  servingSummaryText: {
-    ...typography.body,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  unitSelector: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  unitButton: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  unitButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  servingUnitText: {
-    ...typography.body,
-    fontSize: 14,
-  },
-  totalGramsText: {
-    ...typography.caption,
-    fontSize: 12,
   },
   macrosCard: {
     borderRadius: borderRadius.lg,
