@@ -1026,37 +1026,36 @@ export default function FoodDetailsLayout({
           )}
         </View>
 
-        {/* SERVING CONTROLS - COMPACT */}
+        {/* SERVING CONTROLS - COMPACT WITH INLINE WEIGHT */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Amount Input - Number of portions (cups, slices, cookies, etc.) */}
+          {/* Amount Input with Weight inline */}
           <View style={styles.servingRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Amount ({portionLabel})
+              Serving Amount
             </Text>
-            <TextInput
-              style={[styles.servingInputFull, { 
-                backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                borderColor: isDark ? colors.borderDark : colors.border, 
-                color: isDark ? colors.textDark : colors.text 
-              }]}
-              placeholder="1"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              keyboardType="decimal-pad"
-              value={servingAmount}
-              onChangeText={handleServingAmountChange}
-            />
+            <View style={styles.servingInputRow}>
+              <TextInput
+                style={[styles.servingInput, { 
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                  borderColor: isDark ? colors.borderDark : colors.border, 
+                  color: isDark ? colors.textDark : colors.text 
+                }]}
+                placeholder="1"
+                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                keyboardType="decimal-pad"
+                value={servingAmount}
+                onChangeText={handleServingAmountChange}
+              />
+              <View style={styles.weightBadge}>
+                <Text style={[styles.weightBadgeText, { color: isDark ? colors.textDark : colors.text }]}>
+                  {weightDisplayText}
+                </Text>
+              </View>
+            </View>
           </View>
 
           <View style={styles.servingSummaryRow}>
             <View>
-              <Text style={[styles.servingSummaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Weight per {portionLabel}
-              </Text>
-              <Text style={[styles.servingSummaryValue, { color: isDark ? colors.textDark : colors.text }]}>
-                {weightDisplayText}
-              </Text>
-            </View>
-            <View style={{ marginLeft: spacing.xl }}>
               <Text style={[styles.servingSummaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Total Weight
               </Text>
@@ -1304,6 +1303,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     fontSize: 18,
     fontWeight: '600',
+  },
+  weightBadge: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    minWidth: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weightBadgeText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   chipGrid: {
     flexDirection: 'row',
