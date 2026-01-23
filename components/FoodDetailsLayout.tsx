@@ -59,10 +59,10 @@ export default function FoodDetailsLayout({
   const [baseServingGrams, setBaseServingGrams] = useState(100);
   
   // Current serving controls
-  const [servingAmount, setServingAmount] = useState('100');
+  const [servingAmount, setServingAmount] = useState('1');
   const [servingUnit, setServingUnit] = useState<ServingUnit>('g');
   const [numberOfServings, setNumberOfServings] = useState('1');
-  const [selectedOption, setSelectedOption] = useState<ServingOption>('g');
+  const [selectedOption, setSelectedOption] = useState<ServingOption>('portion');
   
   const [saving, setSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -181,14 +181,13 @@ export default function FoodDetailsLayout({
       
       setBaseServingGrams(perServingGrams);
 
-      // Determine default unit (use 'g' for edit mode to match what was logged)
-      const defaultUnit: ServingUnit = 'g';
-      setServingUnit(defaultUnit);
-      setSelectedOption(defaultUnit);
+      // Set to portion mode
+      setServingUnit('g');
+      setSelectedOption('portion');
 
-      // Set serving amount to the per-serving grams
-      console.log('[FoodDetailsLayout] Setting servingAmount to:', perServingGrams.toString());
-      setServingAmount(perServingGrams.toString());
+      // Set serving amount to the quantity (number of portions)
+      console.log('[FoodDetailsLayout] Setting servingAmount to:', loggedQuantity.toString());
+      setServingAmount(loggedQuantity.toString());
 
       // Set number of servings
       console.log('[FoodDetailsLayout] Setting numberOfServings to:', loggedQuantity.toString());
@@ -198,8 +197,8 @@ export default function FoodDetailsLayout({
       setNutrition(nutritionData);
 
       console.log('[FoodDetailsLayout] ✅ Edit mode initialized with:');
-      console.log('[FoodDetailsLayout]   - Serving Amount:', perServingGrams, 'g');
-      console.log('[FoodDetailsLayout]   - Number of Servings:', loggedQuantity);
+      console.log('[FoodDetailsLayout]   - Serving Amount:', loggedQuantity);
+      console.log('[FoodDetailsLayout]   - Per-portion grams:', perServingGrams);
       console.log('[FoodDetailsLayout]   - Total Grams:', totalLoggedGrams);
 
       setIsReady(true);
@@ -283,28 +282,10 @@ export default function FoodDetailsLayout({
       setServingInfo(serving);
       setBaseServingGrams(serving.grams);
       
-      // Determine default unit based on source
-      // If the serving has a portion description (not just grams), default to portion
-      let defaultOption: ServingOption = 'g';
-      if (serving.description && serving.description !== '100 g' && !serving.description.match(/^\d+\s*g$/i)) {
-        defaultOption = 'portion';
-        setServingAmount(serving.grams.toString());
-        setServingUnit('g');
-      } else {
-        const defaultUnit: ServingUnit = serving.description.toLowerCase().includes('oz') ? 'oz' : 'g';
-        defaultOption = defaultUnit;
-        setServingUnit(defaultUnit);
-        
-        // Set serving amount based on unit
-        if (defaultUnit === 'oz') {
-          const ozAmount = serving.grams / UNIT_CONVERSIONS['oz'];
-          setServingAmount(ozAmount.toFixed(1));
-        } else {
-          setServingAmount(serving.grams.toString());
-        }
-      }
-      
-      setSelectedOption(defaultOption);
+      // Always default to portion mode
+      setSelectedOption('portion');
+      setServingAmount('1');
+      setServingUnit('g');
       setNumberOfServings('1');
       
       console.log('[FoodDetailsLayout] Extracting nutrition...');
@@ -356,7 +337,7 @@ export default function FoodDetailsLayout({
         sugars: 0,
       });
       setBaseServingGrams(100);
-      setServingAmount('100');
+      setServingAmount('1');
       setServingUnit('g');
       setNumberOfServings('1');
       setIsReady(true);
@@ -471,21 +452,19 @@ export default function FoodDetailsLayout({
     return grams / UNIT_CONVERSIONS[unit];
   };
 
-  // Handle serving amount change
+  // Handle serving amount change (number of portions)
   const handleServingAmountChange = (newAmount: string) => {
     console.log('[FoodDetailsLayout] ========== SERVING AMOUNT CHANGED ==========');
-    console.log('[FoodDetailsLayout] New amount:', newAmount);
-    console.log('[FoodDetailsLayout] Current unit:', servingUnit);
+    console.log('[FoodDetailsLayout] New amount (portions):', newAmount);
     
     setServingAmount(newAmount);
     
-    const amountNum = parseFloat(newAmount);
-    if (!isNaN(amountNum) && amountNum > 0) {
-      const gramsPerServing = convertToGrams(amountNum, servingUnit);
-      setBaseServingGrams(gramsPerServing);
-      console.log('[FoodDetailsLayout] ✅ Serving amount changed:', newAmount, servingUnit, '=', gramsPerServing, 'g');
-      console.log('[FoodDetailsLayout] Weight display will show:', gramsPerServing, 'g');
-    }
+    // The amount is now the number of portions
+    // baseServingGrams stays the same (grams per portion)
+    // Total grams = baseServingGrams * amount
+    console.log('[FoodDetailsLayout] ✅ Serving amount changed to:', newAmount, 'portions');
+    console.log('[FoodDetailsLayout] Weight per portion:', baseServingGrams, 'g');
+    console.log('[FoodDetailsLayout] Total weight:', baseServingGrams * (parseFloat(newAmount) || 1), 'g');
   };
 
   // Handle serving unit change
@@ -511,8 +490,11 @@ export default function FoodDetailsLayout({
 
   // Calculate total grams
   const getTotalGrams = (): number => {
-    // Always use 1 serving since we removed the numberOfServings input
-    return baseServingGrams;
+    // Total grams = baseServingGrams (per portion) * servingAmount (number of portions)
+    const amount = parseFloat(servingAmount) || 1;
+    const totalGrams = baseServingGrams * amount;
+    console.log('[FoodDetailsLayout] getTotalGrams:', baseServingGrams, 'g/portion ×', amount, 'portions =', totalGrams, 'g');
+    return totalGrams;
   };
 
   // Calculate macros based on total grams
@@ -571,8 +553,8 @@ export default function FoodDetailsLayout({
   }, [bannerQueue, bannerOpacity]);
 
   const handleSave = async () => {
-    // Always use 1 serving since we removed the numberOfServings input
-    const finalServings = 1;
+    // Use the serving amount as the number of portions
+    const finalServings = parseFloat(servingAmount) || 1;
     const finalGrams = getTotalGrams();
     
     if (!finalGrams || finalGrams <= 0) {
@@ -583,7 +565,7 @@ export default function FoodDetailsLayout({
     console.log('[FoodDetailsLayout] ========== SAVING FOOD ==========');
     console.log('[FoodDetailsLayout] Mode:', mode);
     console.log('[FoodDetailsLayout] Context:', context);
-    console.log('[FoodDetailsLayout] Servings:', finalServings);
+    console.log('[FoodDetailsLayout] Servings (portions):', finalServings);
     console.log('[FoodDetailsLayout] Total Grams:', finalGrams);
 
     setSaving(true);
@@ -597,7 +579,20 @@ export default function FoodDetailsLayout({
       }
 
       const macros = calculateMacros();
-      const servingDescription = `${servingAmount} ${servingUnit} (${Math.round(finalGrams)}g)`;
+      
+      // Extract portion label for serving description
+      let portionLabel = 'portion';
+      if (servingInfo && servingInfo.description && servingInfo.description !== '100 g' && !servingInfo.description.match(/^\d+\s*g$/i)) {
+        portionLabel = servingInfo.description;
+        portionLabel = portionLabel.replace(/^\d+\.?\d*\s*/, '');
+        portionLabel = portionLabel.replace(/\s*\(.*?\)$/i, '');
+        portionLabel = portionLabel.replace(/\s*[-–—]\s*\d+\.?\d*\s*g$/i, '');
+        portionLabel = portionLabel.replace(/\s+\d+\.?\d*\s*g$/i, '');
+        portionLabel = portionLabel.replace(/[()[\]{}]/g, '');
+        portionLabel = portionLabel.trim();
+      }
+      
+      const servingDescription = `${servingAmount} ${portionLabel} (${Math.round(finalGrams)}g)`;
 
       if (mode === 'edit') {
         // UPDATE EXISTING MEAL ITEM
@@ -932,14 +927,10 @@ export default function FoodDetailsLayout({
     snack: 'Snacks',
   };
 
-  // Build available serving options
-  // PRIORITY: Portion options FIRST (like "1 slice", "1 egg", "1 tortilla"), then units (g, oz, etc.)
-  const servingOptions: Array<{ label: string; value: ServingUnit | 'portion'; grams?: number }> = [];
-  
-  // STEP 1: Add portion option FIRST if available (e.g., "Egg", "Slice", "Tortilla")
+  // Extract portion label for display
+  let portionLabel = 'Portion';
   if (servingInfo && servingInfo.description && servingInfo.description !== '100 g' && !servingInfo.description.match(/^\d+\s*g$/i)) {
-    // Extract portion label (e.g., "large egg" from "1 large egg (50g)")
-    let portionLabel = servingInfo.description;
+    portionLabel = servingInfo.description;
     
     // Remove leading numbers (e.g., "1 large egg" -> "large egg")
     portionLabel = portionLabel.replace(/^\d+\.?\d*\s*/, '');
@@ -963,27 +954,8 @@ export default function FoodDetailsLayout({
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(' ');
-      
-      console.log('[FoodDetailsLayout] Extracted portion label:', portionLabel, 'with', servingInfo.grams, 'grams');
-      
-      servingOptions.push({
-        label: portionLabel,
-        value: 'portion',
-        grams: servingInfo.grams,
-      });
     }
   }
-  
-  // STEP 2: Add common units AFTER portions
-  const commonUnits: ServingUnit[] = ['g', 'oz', 'tbsp', 'tsp', 'cup'];
-  commonUnits.forEach(unit => {
-    servingOptions.push({
-      label: unit,
-      value: unit,
-    });
-  });
-
-  const availableUnits: ServingUnit[] = ['g', 'oz'];
 
   // CRITICAL FIX: Determine button text based on context
   let buttonText = 'Add to Meal';
@@ -1004,19 +976,6 @@ export default function FoodDetailsLayout({
   const weightDisplayText = weightDisplayGrams % 1 === 0 
     ? `${Math.round(weightDisplayGrams)}g` 
     : `${weightDisplayGrams.toFixed(1)}g`;
-
-  // Determine if we should show the serving amount input
-  // Show it when a unit (not portion) is selected
-  // When portion is selected, the serving amount is fixed (e.g., "1 egg" = 50g)
-  const showServingAmountInput = selectedOption !== 'portion';
-  
-  console.log('[FoodDetailsLayout] Display state:', {
-    selectedOption,
-    showServingAmountInput,
-    baseServingGrams,
-    weightDisplayText,
-    numberOfServings,
-  });
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -1069,82 +1028,40 @@ export default function FoodDetailsLayout({
 
         {/* SERVING CONTROLS - COMPACT */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Serving Size / Portion Selector - Chip Grid */}
+          {/* Amount Input - Number of portions (cups, slices, cookies, etc.) */}
           <View style={styles.servingRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Serving Size / Portion
+              Amount ({portionLabel})
             </Text>
-            <View style={styles.chipGrid}>
-              {servingOptions.map((option, index) => {
-                const isSelected = selectedOption === option.value;
-                const chipLabel = option.label;
-                
-                return (
-                  <TouchableOpacity
-                    key={`${option.value}-${index}`}
-                    style={[
-                      styles.chip,
-                      { 
-                        backgroundColor: isSelected ? colors.primary : (isDark ? colors.backgroundDark : colors.background),
-                        borderColor: isSelected ? colors.primary : (isDark ? colors.borderDark : colors.border),
-                      },
-                    ]}
-                    onPress={() => {
-                      if (option.value === 'portion' && option.grams) {
-                        // Switch to portion mode
-                        setSelectedOption('portion');
-                        setBaseServingGrams(option.grams);
-                        setServingAmount(option.grams.toString());
-                        setServingUnit('g');
-                        console.log('[FoodDetailsLayout] Switched to portion:', option.label, option.grams, 'g');
-                      } else if (option.value !== 'portion') {
-                        // Switch to unit mode
-                        const newUnit = option.value as ServingUnit;
-                        setSelectedOption(newUnit);
-                        handleServingUnitChange(newUnit);
-                      }
-                    }}
-                  >
-                    <Text style={[
-                      styles.chipText,
-                      { color: isSelected ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }
-                    ]}>
-                      {chipLabel}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <TextInput
+              style={[styles.servingInputFull, { 
+                backgroundColor: isDark ? colors.backgroundDark : colors.background, 
+                borderColor: isDark ? colors.borderDark : colors.border, 
+                color: isDark ? colors.textDark : colors.text 
+              }]}
+              placeholder="1"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              keyboardType="decimal-pad"
+              value={servingAmount}
+              onChangeText={handleServingAmountChange}
+            />
           </View>
-
-          {/* Serving Amount Input - Only show when unit is selected */}
-          {showServingAmountInput && (
-            <View style={styles.servingRow}>
-              <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Serving Amount
-              </Text>
-              <TextInput
-                style={[styles.servingInputFull, { 
-                  backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                  borderColor: isDark ? colors.borderDark : colors.border, 
-                  color: isDark ? colors.textDark : colors.text 
-                }]}
-                placeholder="1"
-                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                keyboardType="decimal-pad"
-                value={servingAmount}
-                onChangeText={handleServingAmountChange}
-              />
-            </View>
-          )}
 
           <View style={styles.servingSummaryRow}>
             <View>
               <Text style={[styles.servingSummaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Weight
+                Weight per {portionLabel}
               </Text>
               <Text style={[styles.servingSummaryValue, { color: isDark ? colors.textDark : colors.text }]}>
                 {weightDisplayText}
+              </Text>
+            </View>
+            <View style={{ marginLeft: spacing.xl }}>
+              <Text style={[styles.servingSummaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Total Weight
+              </Text>
+              <Text style={[styles.servingSummaryValue, { color: isDark ? colors.textDark : colors.text }]}>
+                {totalGrams % 1 === 0 ? `${Math.round(totalGrams)}g` : `${totalGrams.toFixed(1)}g`}
               </Text>
             </View>
           </View>
