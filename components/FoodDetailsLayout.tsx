@@ -511,8 +511,8 @@ export default function FoodDetailsLayout({
 
   // Calculate total grams
   const getTotalGrams = (): number => {
-    const servings = parseFloat(numberOfServings) || 1;
-    return baseServingGrams * servings;
+    // Always use 1 serving since we removed the numberOfServings input
+    return baseServingGrams;
   };
 
   // Calculate macros based on total grams
@@ -571,11 +571,12 @@ export default function FoodDetailsLayout({
   }, [bannerQueue, bannerOpacity]);
 
   const handleSave = async () => {
-    const finalServings = parseFloat(numberOfServings);
+    // Always use 1 serving since we removed the numberOfServings input
+    const finalServings = 1;
     const finalGrams = getTotalGrams();
     
-    if (!finalServings || finalServings <= 0 || !finalGrams || finalGrams <= 0) {
-      Alert.alert('Error', 'Please enter valid servings');
+    if (!finalGrams || finalGrams <= 0) {
+      Alert.alert('Error', 'Please enter a valid serving amount');
       return;
     }
 
@@ -1136,25 +1137,6 @@ export default function FoodDetailsLayout({
               />
             </View>
           )}
-
-          {/* Amount Input */}
-          <View style={styles.servingRow}>
-            <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Amount
-            </Text>
-            <TextInput
-              style={[styles.servingInputFull, { 
-                backgroundColor: isDark ? colors.backgroundDark : colors.background, 
-                borderColor: isDark ? colors.borderDark : colors.border, 
-                color: isDark ? colors.textDark : colors.text 
-              }]}
-              placeholder="1"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              keyboardType="decimal-pad"
-              value={numberOfServings}
-              onChangeText={handleNumberOfServingsChange}
-            />
-          </View>
 
           <View style={styles.servingSummaryRow}>
             <View>
