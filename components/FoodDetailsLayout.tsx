@@ -55,7 +55,9 @@ export default function FoodDetailsLayout({
   const [servingInfo, setServingInfo] = useState<ServingSizeInfo | null>(null);
   const [nutrition, setNutrition] = useState<any>(null);
   
-  // Base serving in grams (canonical reference)
+  // CRITICAL: baseServingGrams represents the weight of ONE PORTION
+  // This is extracted from the nutrition table's serving size
+  // When "portion" is selected, this is the grams per portion
   const [baseServingGrams, setBaseServingGrams] = useState(100);
   
   // Current serving controls
@@ -280,6 +282,13 @@ export default function FoodDetailsLayout({
       });
       
       setServingInfo(serving);
+      
+      // CRITICAL: baseServingGrams is set to the serving size from the nutrition table
+      // This is the weight of ONE PORTION as defined by the product
+      // For example: "1 egg (50g)" → baseServingGrams = 50
+      // For example: "1 slice (28g)" → baseServingGrams = 28
+      // For example: "100g" → baseServingGrams = 100
+      console.log('[FoodDetailsLayout] ✅ Setting baseServingGrams to:', serving.grams, 'g (from nutrition table)');
       setBaseServingGrams(serving.grams);
       
       // Always default to portion mode
@@ -301,6 +310,7 @@ export default function FoodDetailsLayout({
       
       setIsReady(true);
       console.log('[FoodDetailsLayout] ✅ Screen ready to display');
+      console.log('[FoodDetailsLayout] ✅ When user selects "portion", it will use', serving.grams, 'g per portion');
 
       checkFavoriteStatus(productWithDefaults);
     } catch (error) {
@@ -460,10 +470,10 @@ export default function FoodDetailsLayout({
     setServingAmount(newAmount);
     
     // The amount is now the number of portions
-    // baseServingGrams stays the same (grams per portion)
+    // baseServingGrams stays the same (grams per portion from nutrition table)
     // Total grams = baseServingGrams * amount
     console.log('[FoodDetailsLayout] ✅ Serving amount changed to:', newAmount, 'portions');
-    console.log('[FoodDetailsLayout] Weight per portion:', baseServingGrams, 'g');
+    console.log('[FoodDetailsLayout] Weight per portion (from nutrition table):', baseServingGrams, 'g');
     console.log('[FoodDetailsLayout] Total weight:', baseServingGrams * (parseFloat(newAmount) || 1), 'g');
   };
 
@@ -491,10 +501,12 @@ export default function FoodDetailsLayout({
   // Calculate total grams
   const getTotalGrams = (): number => {
     if (selectedOption === 'portion') {
-      // Portion mode: baseServingGrams * servingAmount
+      // PORTION MODE: baseServingGrams (from nutrition table) × servingAmount (number of portions)
+      // Example: 1 egg (50g) × 2 portions = 100g
+      // Example: 1 slice (28g) × 3 portions = 84g
       const amount = parseFloat(servingAmount) || 1;
       const totalGrams = baseServingGrams * amount;
-      console.log('[FoodDetailsLayout] getTotalGrams (portion):', baseServingGrams, 'g/portion ×', amount, 'portions =', totalGrams, 'g');
+      console.log('[FoodDetailsLayout] getTotalGrams (portion):', baseServingGrams, 'g/portion (from nutrition table) ×', amount, 'portions =', totalGrams, 'g');
       return totalGrams;
     } else {
       // Unit mode: convert servingAmount in servingUnit to grams
@@ -575,6 +587,7 @@ export default function FoodDetailsLayout({
     console.log('[FoodDetailsLayout] Context:', context);
     console.log('[FoodDetailsLayout] Servings (portions):', finalServings);
     console.log('[FoodDetailsLayout] Total Grams:', finalGrams);
+    console.log('[FoodDetailsLayout] Base Serving Grams (from nutrition table):', baseServingGrams);
 
     setSaving(true);
 
@@ -1001,9 +1014,12 @@ export default function FoodDetailsLayout({
     
     if (option === 'portion') {
       // Switch to portion mode
+      // CRITICAL: When switching to portion mode, reset to 1 portion
+      // baseServingGrams is already set to the serving size from the nutrition table
       setSelectedOption('portion');
       setServingAmount('1');
-      console.log('[FoodDetailsLayout] Switched to portion mode');
+      console.log('[FoodDetailsLayout] ✅ Switched to portion mode');
+      console.log('[FoodDetailsLayout] Using baseServingGrams:', baseServingGrams, 'g (from nutrition table)');
     } else {
       // Switch to unit mode
       const newUnit = option as ServingUnit;
