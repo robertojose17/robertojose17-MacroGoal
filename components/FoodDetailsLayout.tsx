@@ -1105,7 +1105,7 @@ export default function FoodDetailsLayout({
             </View>
           </View>
 
-          {/* UNITS MENU - Chip/Button Grid */}
+          {/* UNITS MENU - Chip/Button Grid - NOW MORE VISIBLE */}
           <View style={styles.unitsMenuContainer}>
             <Text style={[styles.unitsMenuLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Unit
@@ -1396,14 +1396,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   unitsMenuContainer: {
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   unitsMenuLabel: {
     ...typography.caption,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
+    fontWeight: '600',
   },
   unitsGrid: {
     flexDirection: 'row',
@@ -1411,12 +1415,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   unitChip: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.md,
-    borderWidth: 1,
-    minWidth: 80,
+    borderWidth: 2,
+    minWidth: 90,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   unitChipText: {
     fontSize: 14,
