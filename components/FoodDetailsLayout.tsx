@@ -490,11 +490,19 @@ export default function FoodDetailsLayout({
 
   // Calculate total grams
   const getTotalGrams = (): number => {
-    // Total grams = baseServingGrams (per portion) * servingAmount (number of portions)
-    const amount = parseFloat(servingAmount) || 1;
-    const totalGrams = baseServingGrams * amount;
-    console.log('[FoodDetailsLayout] getTotalGrams:', baseServingGrams, 'g/portion ×', amount, 'portions =', totalGrams, 'g');
-    return totalGrams;
+    if (selectedOption === 'portion') {
+      // Portion mode: baseServingGrams * servingAmount
+      const amount = parseFloat(servingAmount) || 1;
+      const totalGrams = baseServingGrams * amount;
+      console.log('[FoodDetailsLayout] getTotalGrams (portion):', baseServingGrams, 'g/portion ×', amount, 'portions =', totalGrams, 'g');
+      return totalGrams;
+    } else {
+      // Unit mode: convert servingAmount in servingUnit to grams
+      const amount = parseFloat(servingAmount) || 1;
+      const totalGrams = convertToGrams(amount, servingUnit);
+      console.log('[FoodDetailsLayout] getTotalGrams (unit):', amount, servingUnit, '=', totalGrams, 'g');
+      return totalGrams;
+    }
   };
 
   // Calculate macros based on total grams
@@ -592,7 +600,9 @@ export default function FoodDetailsLayout({
         portionLabel = portionLabel.trim();
       }
       
-      const servingDescription = `${servingAmount} ${portionLabel} (${Math.round(finalGrams)}g)`;
+      const servingDescription = selectedOption === 'portion' 
+        ? `${servingAmount} ${portionLabel} (${Math.round(finalGrams)}g)`
+        : `${servingAmount} ${servingUnit} (${Math.round(finalGrams)}g)`;
 
       if (mode === 'edit') {
         // UPDATE EXISTING MEAL ITEM
@@ -976,6 +986,48 @@ export default function FoodDetailsLayout({
     ? `${Math.round(totalWeightGrams)}g` 
     : `${totalWeightGrams.toFixed(1)}g`;
 
+  // Available unit options
+  const unitOptions: Array<{ value: ServingOption; label: string }> = [
+    { value: 'portion', label: portionLabel },
+    { value: 'g', label: 'Grams' },
+    { value: 'oz', label: 'Ounces' },
+    { value: 'cup', label: 'Cups' },
+    { value: 'tbsp', label: 'Tbsp' },
+    { value: 'tsp', label: 'Tsp' },
+  ];
+
+  const handleUnitOptionPress = (option: ServingOption) => {
+    console.log('[FoodDetailsLayout] Unit option pressed:', option);
+    
+    if (option === 'portion') {
+      // Switch to portion mode
+      setSelectedOption('portion');
+      setServingAmount('1');
+      console.log('[FoodDetailsLayout] Switched to portion mode');
+    } else {
+      // Switch to unit mode
+      const newUnit = option as ServingUnit;
+      
+      if (selectedOption === 'portion') {
+        // Converting from portion to unit
+        const currentGrams = baseServingGrams * (parseFloat(servingAmount) || 1);
+        const newAmount = convertFromGrams(currentGrams, newUnit);
+        setServingAmount(newAmount.toFixed(1));
+        setServingUnit(newUnit);
+        setSelectedOption(newUnit);
+        console.log('[FoodDetailsLayout] Converted from portion to', newUnit, ':', newAmount.toFixed(1));
+      } else {
+        // Converting from one unit to another
+        const currentGrams = convertToGrams(parseFloat(servingAmount) || 1, servingUnit);
+        const newAmount = convertFromGrams(currentGrams, newUnit);
+        setServingAmount(newAmount.toFixed(1));
+        setServingUnit(newUnit);
+        setSelectedOption(newUnit);
+        console.log('[FoodDetailsLayout] Converted from', servingUnit, 'to', newUnit, ':', newAmount.toFixed(1));
+      }
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -1050,6 +1102,46 @@ export default function FoodDetailsLayout({
                   {totalWeightText}
                 </Text>
               </View>
+            </View>
+          </View>
+
+          {/* UNITS MENU - Chip/Button Grid */}
+          <View style={styles.unitsMenuContainer}>
+            <Text style={[styles.unitsMenuLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Unit
+            </Text>
+            <View style={styles.unitsGrid}>
+              {unitOptions.map((option) => {
+                const isSelected = selectedOption === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.unitChip,
+                      {
+                        backgroundColor: isSelected 
+                          ? colors.primary 
+                          : (isDark ? colors.backgroundDark : colors.background),
+                        borderColor: isSelected 
+                          ? colors.primary 
+                          : (isDark ? colors.borderDark : colors.border),
+                      }
+                    ]}
+                    onPress={() => handleUnitOptionPress(option.value)}
+                  >
+                    <Text style={[
+                      styles.unitChipText,
+                      {
+                        color: isSelected 
+                          ? '#FFFFFF' 
+                          : (isDark ? colors.textDark : colors.text)
+                      }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -1264,6 +1356,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
   servingLabel: {
     ...typography.caption,
@@ -1301,6 +1394,33 @@ const styles = StyleSheet.create({
   weightBadgeText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  unitsMenuContainer: {
+    marginTop: spacing.xs,
+  },
+  unitsMenuLabel: {
+    ...typography.caption,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  unitsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  unitChip: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  unitChipText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   macrosCard: {
     borderRadius: borderRadius.lg,
