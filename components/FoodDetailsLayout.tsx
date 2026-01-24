@@ -969,13 +969,12 @@ export default function FoodDetailsLayout({
     buttonText = `Add to ${mealLabels[mealType]}`;
   }
 
-  // CRITICAL FIX: Calculate the weight display with decimal precision
-  // Weight should show the per-serving weight (not multiplied by amount)
-  // Show 1 decimal place if there are decimals, otherwise show whole number
-  const weightDisplayGrams = baseServingGrams;
-  const weightDisplayText = weightDisplayGrams % 1 === 0 
-    ? `${Math.round(weightDisplayGrams)}g` 
-    : `${weightDisplayGrams.toFixed(1)}g`;
+  // CRITICAL FIX: Calculate the TOTAL weight display (servingAmount × baseServingGrams)
+  // This replaces the "480g" badge in the image
+  const totalWeightGrams = totalGrams;
+  const totalWeightText = totalWeightGrams % 1 === 0 
+    ? `${Math.round(totalWeightGrams)}g` 
+    : `${totalWeightGrams.toFixed(1)}g`;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -1026,9 +1025,9 @@ export default function FoodDetailsLayout({
           )}
         </View>
 
-        {/* SERVING CONTROLS - COMPACT WITH INLINE WEIGHT */}
+        {/* SERVING CONTROLS - COMPACT WITH INLINE TOTAL WEIGHT */}
         <View style={[styles.servingCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          {/* Label and Input Row - All on one line */}
+          {/* Label and Input Row - All on one line with TOTAL weight */}
           <View style={styles.servingLabelRow}>
             <Text style={[styles.servingLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Serving Amount
@@ -1047,21 +1046,10 @@ export default function FoodDetailsLayout({
                 onChangeText={handleServingAmountChange}
               />
               <View style={styles.weightBadgeInline}>
-                <Text style={[styles.weightBadgeText, { color: isDark ? colors.textDark : colors.text }]}>
-                  {weightDisplayText}
+                <Text style={[styles.weightBadgeText, { color: '#FFFFFF' }]}>
+                  {totalWeightText}
                 </Text>
               </View>
-            </View>
-          </View>
-
-          <View style={styles.servingSummaryRow}>
-            <View>
-              <Text style={[styles.servingSummaryLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Total Weight
-              </Text>
-              <Text style={[styles.servingSummaryValue, { color: isDark ? colors.textDark : colors.text }]}>
-                {totalGrams % 1 === 0 ? `${Math.round(totalGrams)}g` : `${totalGrams.toFixed(1)}g`}
-              </Text>
             </View>
           </View>
         </View>
@@ -1276,7 +1264,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
   },
   servingLabel: {
     ...typography.caption,
@@ -1313,28 +1300,6 @@ const styles = StyleSheet.create({
   },
   weightBadgeText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  servingSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  servingSummaryLabel: {
-    ...typography.caption,
-    fontSize: 12,
-    marginBottom: spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  servingSummaryValue: {
-    ...typography.bodyBold,
-    fontSize: 18,
     fontWeight: '700',
   },
   macrosCard: {
