@@ -490,19 +490,11 @@ export default function FoodDetailsLayout({
 
   // Calculate total grams
   const getTotalGrams = (): number => {
-    if (selectedOption === 'portion') {
-      // Total grams = baseServingGrams (per portion) * servingAmount (number of portions)
-      const amount = parseFloat(servingAmount) || 1;
-      const totalGrams = baseServingGrams * amount;
-      console.log('[FoodDetailsLayout] getTotalGrams (portion mode):', baseServingGrams, 'g/portion ×', amount, 'portions =', totalGrams, 'g');
-      return totalGrams;
-    } else {
-      // Unit mode: convert the amount in the selected unit to grams
-      const amount = parseFloat(servingAmount) || 1;
-      const totalGrams = convertToGrams(amount, servingUnit);
-      console.log('[FoodDetailsLayout] getTotalGrams (unit mode):', amount, servingUnit, '=', totalGrams, 'g');
-      return totalGrams;
-    }
+    // Total grams = baseServingGrams (per portion) * servingAmount (number of portions)
+    const amount = parseFloat(servingAmount) || 1;
+    const totalGrams = baseServingGrams * amount;
+    console.log('[FoodDetailsLayout] getTotalGrams:', baseServingGrams, 'g/portion ×', amount, 'portions =', totalGrams, 'g');
+    return totalGrams;
   };
 
   // Calculate macros based on total grams
@@ -600,9 +592,7 @@ export default function FoodDetailsLayout({
         portionLabel = portionLabel.trim();
       }
       
-      const servingDescription = selectedOption === 'portion' 
-        ? `${servingAmount} ${portionLabel} (${Math.round(finalGrams)}g)`
-        : `${servingAmount} ${servingUnit} (${Math.round(finalGrams)}g)`;
+      const servingDescription = `${servingAmount} ${portionLabel} (${Math.round(finalGrams)}g)`;
 
       if (mode === 'edit') {
         // UPDATE EXISTING MEAL ITEM
@@ -982,9 +972,7 @@ export default function FoodDetailsLayout({
   // CRITICAL FIX: Calculate the weight display with decimal precision
   // Weight should show the per-serving weight (not multiplied by amount)
   // Show 1 decimal place if there are decimals, otherwise show whole number
-  const weightDisplayGrams = selectedOption === 'portion' 
-    ? baseServingGrams 
-    : convertToGrams(1, servingUnit);
+  const weightDisplayGrams = baseServingGrams;
   const weightDisplayText = weightDisplayGrams % 1 === 0 
     ? `${Math.round(weightDisplayGrams)}g` 
     : `${weightDisplayGrams.toFixed(1)}g`;
@@ -1063,200 +1051,6 @@ export default function FoodDetailsLayout({
                   {weightDisplayText}
                 </Text>
               </View>
-            </View>
-          </View>
-
-          {/* UNIT SELECTION MENU */}
-          <View style={styles.unitMenuContainer}>
-            <Text style={[styles.unitMenuLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Unit
-            </Text>
-            <View style={styles.unitButtonsGrid}>
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'portion' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'portion' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => {
-                  setSelectedOption('portion');
-                  setServingUnit('g');
-                  setServingAmount('1');
-                }}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'portion' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  {portionLabel}
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'g' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'g' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => handleServingUnitChange('g')}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'g' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  g
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'oz' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'oz' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => handleServingUnitChange('oz')}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'oz' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  oz
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'ml' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'ml' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => handleServingUnitChange('ml')}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'ml' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  ml
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'cup' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'cup' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => handleServingUnitChange('cup')}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'cup' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  cup
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'tbsp' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'tbsp' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => handleServingUnitChange('tbsp')}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'tbsp' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  tbsp
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.unitButton,
-                  { 
-                    backgroundColor: selectedOption === 'tsp' 
-                      ? colors.primary 
-                      : (isDark ? colors.backgroundDark : colors.background),
-                    borderColor: selectedOption === 'tsp' 
-                      ? colors.primary 
-                      : (isDark ? colors.borderDark : colors.border),
-                  }
-                ]}
-                onPress={() => handleServingUnitChange('tsp')}
-              >
-                <Text style={[
-                  styles.unitButtonText,
-                  { 
-                    color: selectedOption === 'tsp' 
-                      ? '#FFFFFF' 
-                      : (isDark ? colors.textDark : colors.text) 
-                  }
-                ]}>
-                  tsp
-                </Text>
-              </TouchableOpacity>
             </View>
           </View>
 
@@ -1521,37 +1315,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  unitMenuContainer: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  unitMenuLabel: {
-    ...typography.caption,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  unitButtonsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  unitButton: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    minWidth: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unitButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   servingSummaryRow: {
     flexDirection: 'row',
