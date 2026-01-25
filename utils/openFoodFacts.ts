@@ -69,7 +69,7 @@ export interface OpenFoodFactsSearchResult {
 
 export interface ServingSizeInfo {
   description: string; // e.g., "1 egg", "2 slices", "1 bar"
-  grams: number; // gram equivalent
+  grams: number; // gram equivalent PER SINGLE UNIT
   displayText: string; // e.g., "1 egg (50 g)", "2 slices (28 g)", "1 slice (estimated as 100g)"
   hasValidGrams: boolean; // true if grams were successfully parsed/converted, false if using fallback
   isEstimated: boolean; // true if conversion is estimated (household units without grams)
@@ -86,14 +86,19 @@ function mlToGrams(ml: number): number {
 
 /**
  * Extract serving size information from OpenFoodFacts product
- * Returns the serving description and gram equivalent
+ * Returns the serving description and gram equivalent PER SINGLE UNIT
  * NEVER throws errors or blocks - always returns a valid ServingSizeInfo
  * 
+ * CRITICAL FIX: Now correctly handles serving sizes with quantities > 1
+ * Example: "4 cookies (29g)" → returns grams = 7.25 (29g / 4 cookies = 7.25g per cookie)
+ * Example: "2 slices 56g" → returns grams = 28 (56g / 2 slices = 28g per slice)
+ * 
  * PRIORITY ORDER:
- * 1) Serving label that already includes grams → use directly
- * 2) Serving label with oz/ml/tbsp/tsp/cup → convert to grams → use
- * 3) Household unit without grams → show unit, estimate grams as 100g but mark estimated
- * 4) No serving label at all → default to 100g
+ * 1) Serving label with quantity AND grams → divide grams by quantity → use per-unit grams
+ * 2) Serving label that already includes grams (quantity = 1) → use directly
+ * 3) Serving label with oz/ml/tbsp/tsp/cup → convert to grams → use
+ * 4) Household unit without grams → show unit, estimate grams as 100g but mark estimated
+ * 5) No serving label at all → default to 100g
  */
 export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeInfo {
   console.log('[OpenFoodFacts] ========== EXTRACT SERVING SIZE ==========');
@@ -129,7 +134,46 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
   console.log('[OpenFoodFacts] Parsing serving size:', servingSize);
 
   try {
-    // ========== PRIORITY 1: GRAMS ALREADY IN SERVING SIZE ==========
+    // ========== PRIORITY 1: QUANTITY + UNIT + GRAMS (e.g., "4 cookies (29g)", "2 slices 56g") ==========
+    
+    // Pattern: "X unit (Yg)" or "X unit Yg" where X > 1
+    // This handles cases like "4 cookies (29g)" or "2 slices 56g"
+    const quantityUnitGramsPattern = /^(\d+\.?\d*)\s+([a-zA-Z\s]+?)\s*[(-]?\s*(\d+\.?\d*)\s*g\)?$/i;
+    const quantityMatch = servingSize.match(quantityUnitGramsPattern);
+    
+    if (quantityMatch) {
+      const quantity = parseFloat(quantityMatch[1]);
+      const unit = quantityMatch[2].trim();
+      const totalGrams = parseFloat(quantityMatch[3]);
+      
+      if (!isNaN(quantity) && quantity > 0 && !isNaN(totalGrams) && totalGrams > 0 && unit.length > 0) {
+        // CRITICAL: Calculate grams PER SINGLE UNIT
+        const gramsPerUnit = totalGrams / quantity;
+        
+        console.log('[OpenFoodFacts] ✅ QUANTITY + UNIT + GRAMS pattern matched:');
+        console.log('[OpenFoodFacts]   - Quantity:', quantity);
+        console.log('[OpenFoodFacts]   - Unit:', unit);
+        console.log('[OpenFoodFacts]   - Total grams:', totalGrams);
+        console.log('[OpenFoodFacts]   - Grams per unit:', gramsPerUnit);
+        
+        // Return description as "1 unit" (singular form)
+        // Try to singularize the unit (remove trailing 's' if present)
+        let singularUnit = unit;
+        if (unit.endsWith('s') && unit.length > 1) {
+          singularUnit = unit.slice(0, -1);
+        }
+        
+        return {
+          description: `1 ${singularUnit}`,
+          grams: gramsPerUnit,
+          displayText: `1 ${singularUnit} (${Math.round(gramsPerUnit)} g)`,
+          hasValidGrams: true,
+          isEstimated: false,
+        };
+      }
+    }
+    
+    // ========== PRIORITY 2: GRAMS ALREADY IN SERVING SIZE (quantity = 1) ==========
     
     // Pattern 1: "X unit (Yg)" or "X unit (Y g)"
     const pattern1 = /^(.+?)\s*\((\d+\.?\d*)\s*g\)$/i;
@@ -239,7 +283,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       }
     }
 
-    // ========== PRIORITY 2: CONVERT OTHER UNITS TO GRAMS ==========
+    // ========== PRIORITY 3: CONVERT OTHER UNITS TO GRAMS ==========
     
     // A) OUNCES (oz)
     // Pattern: "X oz" or "X ounce" or "X ounces"
@@ -363,7 +407,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       }
     }
 
-    // ========== PRIORITY 3: HOUSEHOLD UNITS WITHOUT GRAMS ==========
+    // ========== PRIORITY 4: HOUSEHOLD UNITS WITHOUT GRAMS ==========
     
     // Check if serving_quantity provides a gram value
     if (product.serving_quantity) {
@@ -399,7 +443,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       };
     }
 
-    // ========== PRIORITY 4: FALLBACK ==========
+    // ========== PRIORITY 5: FALLBACK ==========
     
     // Fallback: We have a serving description but no parseable grams or convertible units
     // Return the description as-is with 100g default for calculations
