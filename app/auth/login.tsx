@@ -29,15 +29,27 @@ export default function LoginScreen() {
 
     try {
       console.log('[Login] Step 1: Signing in with password...');
+      console.log('[Login] Email:', email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
       if (error) {
         console.error('[Login] Login error:', error);
-        Alert.alert('Login Failed', error.message);
+        console.error('[Login] Error code:', error.status);
+        console.error('[Login] Error message:', error.message);
+        
+        // Provide more helpful error messages
+        let errorMessage = error.message;
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'Please verify your email address before logging in.';
+        }
+        
+        Alert.alert('Login Failed', errorMessage);
         setLoading(false);
         return;
       }
