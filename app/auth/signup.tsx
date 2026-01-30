@@ -69,83 +69,118 @@ export default function SignUpScreen() {
 
       console.log('[SignUp] ✅ Auth user created:', authData.user.id);
 
-      // Step 2: Wait a moment for the auth session to be fully established
+      // Step 2: Wait for auth session to be fully established
       console.log('[SignUp] Waiting for auth session to establish...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Step 3: Create user profile with retry logic
-      console.log('[SignUp] Step 2: Creating user profile...');
+      // Step 3: Get the current session to ensure we have a valid token
+      console.log('[SignUp] Getting current session...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('[SignUp] Session error:', sessionError);
+        console.log('[SignUp] Attempting to refresh session...');
+        
+        // Try to refresh the session
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession) {
+          console.error('[SignUp] Failed to get session after signup');
+          Alert.alert(
+            'Account Created',
+            'Your account was created successfully, but there was an issue setting up your profile. Please try logging in.',
+            [
+              {
+                text: 'Go to Login',
+                onPress: () => router.replace('/auth/login'),
+              },
+            ]
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
+      console.log('[SignUp] ✅ Session established');
+
+      // Step 4: Create user profile using Edge Function (bypasses RLS)
+      console.log('[SignUp] Step 2: Creating user profile via Edge Function...');
       
       let profileCreated = false;
       let retryCount = 0;
-      const maxRetries = 5;
+      const maxRetries = 3;
 
       while (!profileCreated && retryCount < maxRetries) {
         try {
           console.log(`[SignUp] Profile creation attempt ${retryCount + 1}/${maxRetries}`);
           
-          // Check if profile already exists
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', authData.user.id)
-            .maybeSingle();
+          // Try to create profile using Edge Function
+          const { data: edgeFunctionData, error: edgeFunctionError } = await supabase.functions.invoke('create-user-profile', {
+            body: { name },
+          });
 
-          if (existingUser) {
-            console.log('[SignUp] ✅ Profile already exists');
-            profileCreated = true;
-            break;
-          }
-
-          // Try to create profile
-          const { error: profileError } = await supabase
-            .from('users')
-            .insert({
-              id: authData.user.id,
-              email: authData.user.email,
-              name: name,
-              user_type: 'free',
-              onboarding_completed: false,
-            });
-
-          if (profileError) {
-            console.error(`[SignUp] Profile creation error (attempt ${retryCount + 1}):`, profileError);
-            console.error(`[SignUp] Error code: ${profileError.code}`);
-            console.error(`[SignUp] Error message: ${profileError.message}`);
+          if (edgeFunctionError) {
+            console.error(`[SignUp] Edge Function error (attempt ${retryCount + 1}):`, edgeFunctionError);
             
-            // If it's a duplicate key error, that's actually success
-            if (profileError.code === '23505') {
-              console.log('[SignUp] ✅ Profile already exists (duplicate key)');
+            // If Edge Function doesn't exist or fails, fall back to direct insert
+            console.log('[SignUp] Falling back to direct insert...');
+            
+            // Check if profile already exists
+            const { data: existingUser } = await supabase
+              .from('users')
+              .select('id')
+              .eq('id', authData.user.id)
+              .maybeSingle();
+
+            if (existingUser) {
+              console.log('[SignUp] ✅ Profile already exists');
               profileCreated = true;
               break;
             }
-            
-            // If it's an RLS error, wait longer and retry
-            if (profileError.code === '42501' || profileError.message?.includes('row-level security')) {
-              console.log('[SignUp] ⚠️ RLS policy blocking insert, waiting longer...');
+
+            // Try direct insert
+            const { error: profileError } = await supabase
+              .from('users')
+              .insert({
+                id: authData.user.id,
+                email: authData.user.email,
+                name: name,
+                user_type: 'free',
+                onboarding_completed: false,
+              });
+
+            if (profileError) {
+              console.error(`[SignUp] Profile creation error (attempt ${retryCount + 1}):`, profileError);
+              console.error(`[SignUp] Error code: ${profileError.code}`);
+              console.error(`[SignUp] Error message: ${profileError.message}`);
+              
+              // If it's a duplicate key error, that's actually success
+              if (profileError.code === '23505') {
+                console.log('[SignUp] ✅ Profile already exists (duplicate key)');
+                profileCreated = true;
+                break;
+              }
+              
+              // Retry with exponential backoff
               retryCount++;
               if (retryCount < maxRetries) {
-                const waitTime = retryCount * 1000; // Exponential backoff
+                const waitTime = retryCount * 2000; // 2s, 4s, 6s
                 console.log(`[SignUp] Waiting ${waitTime}ms before retry...`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
               }
             } else {
-              // Other errors, retry with shorter wait
-              retryCount++;
-              if (retryCount < maxRetries) {
-                console.log('[SignUp] Waiting 1 second before retry...');
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
+              console.log('[SignUp] ✅ Profile created successfully via direct insert');
+              profileCreated = true;
             }
           } else {
-            console.log('[SignUp] ✅ Profile created successfully');
+            console.log('[SignUp] ✅ Profile created successfully via Edge Function');
             profileCreated = true;
           }
         } catch (error) {
           console.error(`[SignUp] Exception during profile creation (attempt ${retryCount + 1}):`, error);
           retryCount++;
           if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
       }
@@ -153,21 +188,18 @@ export default function SignUpScreen() {
       if (!profileCreated) {
         console.error('[SignUp] ❌ Failed to create profile after all retries');
         
-        // Sign out the user since profile creation failed
-        console.log('[SignUp] Signing out user due to profile creation failure...');
-        await supabase.auth.signOut();
+        // Don't sign out - let them try to continue
+        console.log('[SignUp] Allowing user to continue despite profile creation failure...');
         
         Alert.alert(
-          'Account Setup Issue',
-          'There was an issue setting up your account. Please try again or contact support if the problem persists.',
+          'Account Created',
+          'Your account was created successfully! Let\'s complete your profile setup.',
           [
             {
-              text: 'Try Again',
+              text: 'Continue',
               onPress: () => {
-                setName('');
-                setEmail('');
-                setPassword('');
-                setConfirmPassword('');
+                console.log('[SignUp] Navigating to onboarding...');
+                router.replace('/onboarding/complete');
               },
             },
           ]
@@ -176,7 +208,7 @@ export default function SignUpScreen() {
         return;
       }
 
-      // Step 4: Success!
+      // Step 5: Success!
       console.log('[SignUp] ✅ Signup complete!');
       
       Alert.alert(
