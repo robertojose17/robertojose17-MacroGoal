@@ -18,6 +18,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    console.log('[Login] Starting login process...');
+    
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -26,46 +28,103 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
+      console.log('[Login] Step 1: Signing in with password...');
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        console.error('[Login] Login error:', error);
         Alert.alert('Login Failed', error.message);
         setLoading(false);
         return;
       }
 
-      if (data.user) {
-        console.log('[Login] User logged in:', data.user.id);
+      if (!data.user) {
+        console.error('[Login] No user returned from login');
+        Alert.alert('Login Failed', 'Failed to log in. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('[Login] ✅ User logged in:', data.user.id);
+      
+      // Step 2: Check if user has completed onboarding
+      console.log('[Login] Step 2: Checking onboarding status...');
+      
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('onboarding_completed')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (userError) {
+        console.error('[Login] User fetch error:', userError);
         
-        // Check if user has completed onboarding
-        const { data: userData, error: userError } = await supabase
+        // Try to create user record if it doesn't exist
+        console.log('[Login] Attempting to create user record...');
+        const { error: insertError } = await supabase
           .from('users')
-          .select('onboarding_completed')
-          .eq('id', data.user.id)
-          .maybeSingle();
-
-        if (userError) {
-          console.error('[Login] User fetch error:', userError);
-          // Default to onboarding on error
-          router.replace('/onboarding/complete');
-          return;
-        }
-
-        // Navigate based on onboarding status
-        if (userData?.onboarding_completed) {
-          console.log('[Login] Onboarding complete, going to home');
-          router.replace('/(tabs)/(home)/');
+          .insert({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            user_type: 'free',
+            onboarding_completed: false,
+          });
+        
+        if (insertError && insertError.code !== '23505') {
+          console.error('[Login] ❌ Failed to create user record:', insertError);
         } else {
-          console.log('[Login] Onboarding not complete, going to onboarding');
-          router.replace('/onboarding/complete');
+          console.log('[Login] ✅ User record created or already exists');
         }
+        
+        // Go to onboarding
+        console.log('[Login] Redirecting to onboarding');
+        router.replace('/onboarding/complete');
+        return;
+      }
+
+      // Handle missing user data
+      if (!userData) {
+        console.log('[Login] ⚠️ User not in database, creating record...');
+        
+        // Try to create user record
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            user_type: 'free',
+            onboarding_completed: false,
+          });
+        
+        if (insertError && insertError.code !== '23505') {
+          console.error('[Login] ❌ Failed to create user record:', insertError);
+        } else {
+          console.log('[Login] ✅ User record created');
+        }
+        
+        // Go to onboarding
+        console.log('[Login] Redirecting to onboarding');
+        router.replace('/onboarding/complete');
+        return;
+      }
+
+      // Navigate based on onboarding status
+      if (userData.onboarding_completed) {
+        console.log('[Login] ✅ Onboarding complete, going to home');
+        router.replace('/(tabs)/(home)/');
+      } else {
+        console.log('[Login] ⚠️ Onboarding not complete, going to onboarding');
+        router.replace('/onboarding/complete');
       }
     } catch (error: any) {
-      console.error('[Login] Login error:', error);
-      Alert.alert('Error', error.message || 'An error occurred during login');
+      console.error('[Login] Unexpected error:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred during login');
     } finally {
       setLoading(false);
     }
@@ -80,7 +139,7 @@ export default function LoginScreen() {
         >
           <IconSymbol
             ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
+            android_material_icon_name="arrow-back"
             size={24}
             color={isDark ? colors.textDark : colors.text}
           />

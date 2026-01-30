@@ -20,6 +20,8 @@ export default function SignUpScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
+    console.log('[SignUp] Starting signup process...');
+    
     if (!name || !email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -38,50 +40,133 @@ export default function SignUpScreen() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      console.log('[SignUp] Step 1: Creating auth user...');
+      
+      // Step 1: Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed'
-        }
+          data: {
+            name: name,
+          },
+        },
       });
 
-      if (error) {
-        Alert.alert('Sign Up Failed', error.message);
+      if (authError) {
+        console.error('[SignUp] Auth error:', authError);
+        Alert.alert('Sign Up Failed', authError.message);
         setLoading(false);
         return;
       }
 
-      if (data.user) {
-        // Create user profile with name
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email,
-            name: name,
-            user_type: 'free',
-            onboarding_completed: false,
-          });
+      if (!authData.user) {
+        console.error('[SignUp] No user returned from signup');
+        Alert.alert('Sign Up Failed', 'Failed to create account. Please try again.');
+        setLoading(false);
+        return;
+      }
 
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
+      console.log('[SignUp] ✅ Auth user created:', authData.user.id);
+
+      // Step 2: Create user profile with retry logic
+      console.log('[SignUp] Step 2: Creating user profile...');
+      
+      let profileCreated = false;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (!profileCreated && retryCount < maxRetries) {
+        try {
+          console.log(`[SignUp] Profile creation attempt ${retryCount + 1}/${maxRetries}`);
+          
+          // Check if profile already exists
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+
+          if (existingUser) {
+            console.log('[SignUp] ✅ Profile already exists');
+            profileCreated = true;
+            break;
+          }
+
+          // Try to create profile
+          const { error: profileError } = await supabase
+            .from('users')
+            .insert({
+              id: authData.user.id,
+              email: authData.user.email,
+              name: name,
+              user_type: 'free',
+              onboarding_completed: false,
+            });
+
+          if (profileError) {
+            console.error(`[SignUp] Profile creation error (attempt ${retryCount + 1}):`, profileError);
+            
+            // If it's a duplicate key error, that's actually success
+            if (profileError.code === '23505') {
+              console.log('[SignUp] ✅ Profile already exists (duplicate key)');
+              profileCreated = true;
+              break;
+            }
+            
+            retryCount++;
+            if (retryCount < maxRetries) {
+              console.log('[SignUp] Waiting 1 second before retry...');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          } else {
+            console.log('[SignUp] ✅ Profile created successfully');
+            profileCreated = true;
+          }
+        } catch (error) {
+          console.error(`[SignUp] Exception during profile creation (attempt ${retryCount + 1}):`, error);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         }
+      }
 
+      if (!profileCreated) {
+        console.error('[SignUp] ❌ Failed to create profile after all retries');
         Alert.alert(
-          'Success!',
-          'Account created successfully! Please check your email to verify your account before logging in.',
+          'Account Created',
+          'Your account was created but there was an issue setting up your profile. Please try logging in.',
           [
             {
-              text: 'OK',
+              text: 'Go to Login',
               onPress: () => router.replace('/auth/login'),
             },
           ]
         );
+        setLoading(false);
+        return;
       }
+
+      // Step 3: Success!
+      console.log('[SignUp] ✅ Signup complete!');
+      
+      Alert.alert(
+        'Success!',
+        'Account created successfully! Let\'s set up your profile.',
+        [
+          {
+            text: 'Continue',
+            onPress: () => {
+              console.log('[SignUp] Navigating to onboarding...');
+              router.replace('/onboarding/complete');
+            },
+          },
+        ]
+      );
     } catch (error: any) {
-      console.error('Sign up error:', error);
-      Alert.alert('Error', error.message || 'An error occurred during sign up');
+      console.error('[SignUp] Unexpected error:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred during sign up');
     } finally {
       setLoading(false);
     }
@@ -96,7 +181,7 @@ export default function SignUpScreen() {
         >
           <IconSymbol
             ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
+            android_material_icon_name="arrow-back"
             size={24}
             color={isDark ? colors.textDark : colors.text}
           />

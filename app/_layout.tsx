@@ -348,14 +348,53 @@ export default function RootLayout() {
 
             // CRITICAL FIX: Handle all error cases gracefully
             if (error) {
-              console.error('[Navigation] ⚠️ Error checking onboarding (defaulting to onboarding):', error);
+              console.error('[Navigation] ⚠️ Error checking onboarding:', error);
+              
+              // Try to create user record if it doesn't exist
+              console.log('[Navigation] Attempting to create user record...');
+              const { error: insertError } = await supabase
+                .from('users')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  user_type: 'free',
+                  onboarding_completed: false,
+                });
+              
+              if (insertError && insertError.code !== '23505') {
+                console.error('[Navigation] ❌ Failed to create user record:', insertError);
+              } else {
+                console.log('[Navigation] ✅ User record created or already exists');
+              }
+              
+              // Always go to onboarding if there's an error
               router.replace('/onboarding/complete');
               return;
             }
 
-            // CRITICAL FIX: Handle missing user data (0 rows)
+            // CRITICAL FIX: Handle missing user data (user not in database)
             if (!userData) {
-              console.log('[Navigation] ⚠️ User not in database (defaulting to onboarding)');
+              console.log('[Navigation] ⚠️ User not in database, creating record...');
+              
+              // Try to create user record
+              const { error: insertError } = await supabase
+                .from('users')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  user_type: 'free',
+                  onboarding_completed: false,
+                });
+              
+              if (insertError && insertError.code !== '23505') {
+                console.error('[Navigation] ❌ Failed to create user record:', insertError);
+              } else {
+                console.log('[Navigation] ✅ User record created');
+              }
+              
+              // Go to onboarding
               router.replace('/onboarding/complete');
               return;
             }
@@ -369,7 +408,25 @@ export default function RootLayout() {
               router.replace('/onboarding/complete');
             }
           } catch (error) {
-            console.error('[Navigation] ❌ Onboarding check failed (defaulting to onboarding):', error);
+            console.error('[Navigation] ❌ Onboarding check failed:', error);
+            
+            // Try to create user record as last resort
+            try {
+              console.log('[Navigation] Last resort: Creating user record...');
+              await supabase
+                .from('users')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  user_type: 'free',
+                  onboarding_completed: false,
+                });
+              console.log('[Navigation] ✅ User record created');
+            } catch (insertError) {
+              console.error('[Navigation] ❌ Failed to create user record:', insertError);
+            }
+            
             // CRITICAL: On any error, default to onboarding (safe fallback)
             router.replace('/onboarding/complete');
           }
