@@ -955,6 +955,14 @@ export default function ProfileScreen() {
             <Text style={[styles.footerSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               {' · '}
             </Text>
+            <TouchableOpacity onPress={() => router.push('/terms-of-use-eula')}>
+              <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Terms of Use (EULA)
+              </Text>
+            </TouchableOpacity>
+            <Text style={[styles.footerSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {' · '}
+            </Text>
             <TouchableOpacity onPress={() => router.push('/delete-account')}>
               <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Delete Account
