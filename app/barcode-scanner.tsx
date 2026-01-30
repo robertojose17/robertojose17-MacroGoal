@@ -249,20 +249,20 @@ export default function BarcodeScannerScreen() {
             Camera Access Required
           </Text>
           <Text style={[styles.permissionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            We need access to your camera to scan barcodes and find food products.
+            We need camera access to use this function
           </Text>
           <TouchableOpacity
             style={[styles.permissionButton, { backgroundColor: colors.primary }]}
             onPress={requestPermission}
           >
-            <Text style={styles.permissionButtonText}>Grant Permission</Text>
+            <Text style={styles.permissionButtonText}>Continue</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
           >
             <Text style={[styles.backButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-              Go Back
+              Close
             </Text>
           </TouchableOpacity>
         </View>

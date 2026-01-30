@@ -184,7 +184,10 @@ export default function CheckInFormScreen() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+        Alert.alert('Permission Required', 'We need camera access to use this function', [
+          { text: 'Close', style: 'cancel' },
+          { text: 'Continue', onPress: () => ImagePicker.requestCameraPermissionsAsync() }
+        ]);
         return;
       }
 
