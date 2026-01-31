@@ -44,9 +44,9 @@ export default function LoginScreen() {
         // Provide more helpful error messages
         let errorMessage = error.message;
         if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.\n\nIf you just signed up, make sure you confirmed your email first.';
         } else if (error.message.includes('Email not confirmed')) {
-          errorMessage = 'Please verify your email address before logging in.';
+          errorMessage = 'Please check your email and click the confirmation link before logging in. Check your spam folder if you don\'t see it.';
         }
         
         Alert.alert('Login Failed', errorMessage);

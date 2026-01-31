@@ -69,39 +69,33 @@ export default function SignUpScreen() {
 
       console.log('[SignUp] ✅ Auth user created:', authData.user.id);
 
-      // Step 2: Wait for auth session to be fully established
-      console.log('[SignUp] Waiting for auth session to establish...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Step 3: Get the current session to ensure we have a valid token
-      console.log('[SignUp] Getting current session...');
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      // Check if email confirmation is required
+      const emailConfirmationRequired = !authData.session;
       
-      if (sessionError || !session) {
-        console.error('[SignUp] Session error:', sessionError);
-        console.log('[SignUp] Attempting to refresh session...');
+      if (emailConfirmationRequired) {
+        console.log('[SignUp] ⚠️ Email confirmation required - no session returned');
+        console.log('[SignUp] User will need to confirm email before logging in');
         
-        // Try to refresh the session
-        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
-        
-        if (refreshError || !refreshedSession) {
-          console.error('[SignUp] Failed to get session after signup');
-          Alert.alert(
-            'Account Created',
-            'Your account was created successfully, but there was an issue setting up your profile. Please try logging in.',
-            [
-              {
-                text: 'Go to Login',
-                onPress: () => router.replace('/auth/login'),
+        // Show success message and redirect to login
+        Alert.alert(
+          '✅ Account Created!',
+          'We sent a confirmation email to ' + email + '. Please check your inbox and click the confirmation link, then return here to log in.',
+          [
+            {
+              text: 'Go to Login',
+              onPress: () => {
+                console.log('[SignUp] Redirecting to login screen');
+                router.replace('/auth/login');
               },
-            ]
-          );
-          setLoading(false);
-          return;
-        }
+            },
+          ]
+        );
+        setLoading(false);
+        return;
       }
 
-      console.log('[SignUp] ✅ Session established');
+      // If we have a session, continue with profile creation
+      console.log('[SignUp] ✅ Session established immediately (email confirmation disabled)');
 
       // Step 4: Create user profile using Edge Function (bypasses RLS)
       console.log('[SignUp] Step 2: Creating user profile via Edge Function...');
