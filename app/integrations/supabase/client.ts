@@ -1,7 +1,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 
 // CRITICAL: Use safe defaults for environment variables
 const SUPABASE_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
@@ -30,7 +31,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: true, // Enable deep link detection
   },
 })
 

@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { supabase } from '@/app/integrations/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
+import * as Linking from 'expo-linking';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -42,6 +43,10 @@ export default function SignUpScreen() {
     try {
       console.log('[SignUp] Step 1: Creating auth user...');
       
+      // Create deep link URL for email verification redirect
+      const redirectUrl = Linking.createURL('/auth/verify');
+      console.log('[SignUp] Email verification redirect URL:', redirectUrl);
+      
       // Step 1: Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -50,6 +55,7 @@ export default function SignUpScreen() {
           data: {
             name: name,
           },
+          emailRedirectTo: redirectUrl, // Use deep link for email verification
         },
       });
 
@@ -76,15 +82,15 @@ export default function SignUpScreen() {
         console.log('[SignUp] ⚠️ Email confirmation required - no session returned');
         console.log('[SignUp] User will need to confirm email before logging in');
         
-        // Show success message and redirect to login
+        // Show success message
         Alert.alert(
-          '✅ Account Created!',
-          'We sent a confirmation email to ' + email + '. Please check your inbox and click the confirmation link, then return here to log in.',
+          '✅ Check Your Email!',
+          'We sent a confirmation email to ' + email + '. Please open the email on this device and tap the confirmation link to verify your account.',
           [
             {
-              text: 'Go to Login',
+              text: 'OK',
               onPress: () => {
-                console.log('[SignUp] Redirecting to login screen');
+                console.log('[SignUp] User acknowledged email verification message');
                 router.replace('/auth/login');
               },
             },
