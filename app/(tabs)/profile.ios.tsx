@@ -927,6 +927,24 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* IAP Diagnostics Tool (iOS only) */}
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={[styles.diagnosticsButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.primary }]}
+            onPress={() => router.push('/iap-diagnostics')}
+          >
+            <IconSymbol
+              ios_icon_name="wrench.and.screwdriver"
+              android_material_icon_name="build"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={[styles.diagnosticsText, { color: colors.primary }]}>
+              IAP Diagnostics
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
@@ -1432,6 +1450,20 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  diagnosticsButton: {
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  diagnosticsText: {
+    fontWeight: '600',
+    fontSize: 16,
   },
   logoutButton: {
     borderRadius: borderRadius.lg,
