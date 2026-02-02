@@ -84,11 +84,11 @@ export default function SignUpScreen() {
         
         // Show success message
         Alert.alert(
-          '✅ Verifica tu Email',
-          `Hemos enviado un email de confirmación a ${email}.\n\n📱 IMPORTANTE: Abre el email EN ESTE DISPOSITIVO (tu iPhone/iPad) y toca el enlace de confirmación.\n\nEl enlace abrirá automáticamente la app y verificará tu cuenta.`,
+          '✅ Check Your Email',
+          `We sent a confirmation email to ${email}.\n\nOpen the email on this device and tap the link to verify your account.\n\n⚠️ Check your junk/spam folder if you don't see it.`,
           [
             {
-              text: 'Entendido',
+              text: 'Got It',
               onPress: () => {
                 console.log('[SignUp] User acknowledged email verification message');
                 router.replace('/auth/login');
