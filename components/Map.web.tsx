@@ -5,7 +5,7 @@ import { View, StyleSheet } from 'react-native';
 interface MapProps {
   latitude: number;
   longitude: number;
-  markers?: Array<{ latitude: number; longitude: number; title?: string }>;
+  markers?: { latitude: number; longitude: number; title?: string }[];
   style?: any;
 }
 

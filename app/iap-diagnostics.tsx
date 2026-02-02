@@ -142,13 +142,12 @@ export default function IAPDiagnosticsScreen() {
 
     // Test 2: IAP Module Available
     try {
-      const available = await InAppPurchases.isAvailableAsync();
+      // Check if the module is available by attempting to connect
+      await InAppPurchases.connectAsync();
       diagnosticResults.push({
         test: 'IAP Module Available',
-        status: available ? 'pass' : 'fail',
-        message: available 
-          ? 'expo-in-app-purchases module is available' 
-          : 'IAP module not available',
+        status: 'pass',
+        message: 'expo-in-app-purchases module is available',
       });
     } catch (error) {
       diagnosticResults.push({
@@ -157,27 +156,17 @@ export default function IAPDiagnosticsScreen() {
         message: 'Error checking IAP availability',
         details: error instanceof Error ? error.message : String(error),
       });
-    }
-
-    // Test 3: Connect to Store
-    try {
-      await InAppPurchases.connectAsync();
-      diagnosticResults.push({
-        test: 'Store Connection',
-        status: 'pass',
-        message: 'Successfully connected to App Store',
-      });
-    } catch (error) {
-      diagnosticResults.push({
-        test: 'Store Connection',
-        status: 'fail',
-        message: 'Failed to connect to App Store',
-        details: error instanceof Error ? error.message : String(error),
-      });
       setResults(diagnosticResults);
       setIsRunning(false);
       return;
     }
+
+    // Test 3: Store Connection (already connected above)
+    diagnosticResults.push({
+      test: 'Store Connection',
+      status: 'pass',
+      message: 'Successfully connected to App Store',
+    });
 
     // Test 4: Fetch Products
     try {
