@@ -142,6 +142,11 @@ export default function IAPDiagnosticsScreen() {
 
     // Test 2: IAP Module Available
     try {
+      // Check if InAppPurchases module exists
+      if (!InAppPurchases || typeof InAppPurchases.connectAsync !== 'function') {
+        throw new Error('Native module not available. Please rebuild the app with: npx expo run:ios');
+      }
+
       // Check if the module is available by attempting to connect
       await InAppPurchases.connectAsync();
       diagnosticResults.push({
@@ -150,11 +155,18 @@ export default function IAPDiagnosticsScreen() {
         message: 'expo-in-app-purchases module is available',
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isNativeModuleError = errorMessage.includes('native module') || errorMessage.includes('ExpoInAppPurchases');
+      
       diagnosticResults.push({
         test: 'IAP Module Available',
         status: 'fail',
-        message: 'Error checking IAP availability',
-        details: error instanceof Error ? error.message : String(error),
+        message: isNativeModuleError 
+          ? 'Native module not linked - App needs to be rebuilt' 
+          : 'Error checking IAP availability',
+        details: isNativeModuleError
+          ? 'Run: npx expo prebuild --clean && npx expo run:ios\n\nThis error occurs because the native module needs to be compiled into the app. Expo Go does not support expo-in-app-purchases.'
+          : errorMessage,
       });
       setResults(diagnosticResults);
       setIsRunning(false);
@@ -293,6 +305,9 @@ export default function IAPDiagnosticsScreen() {
               • macro_goal_premium_yearly
             </Text>
           </View>
+          <Text style={[styles.infoText, { color: '#FF9800', marginTop: spacing.sm, fontWeight: '600' }]}>
+            ⚠️ Important: This only works on a physical iOS device or simulator with a development build. Expo Go does not support IAP.
+          </Text>
         </View>
 
         <View style={styles.section}>
@@ -341,6 +356,12 @@ export default function IAPDiagnosticsScreen() {
         <View style={[styles.infoBox, { backgroundColor: cardBackground, borderColor, marginTop: spacing.lg }]}>
           <Text style={[styles.infoTitle, { color: textColor }]}>Next Steps</Text>
           <Text style={[styles.infoText, { color: textColor }]}>
+            If "IAP Module Available" fails:{'\n\n'}
+            1. Build a development build:{'\n'}
+            {'   '}npx expo prebuild --clean{'\n'}
+            {'   '}npx expo run:ios{'\n\n'}
+            2. Test on a physical device or simulator{'\n'}
+            3. Expo Go does NOT support IAP{'\n\n'}
             If "Product Fetch" fails:{'\n\n'}
             1. Create products in App Store Connect{'\n'}
             2. Use exact product IDs shown above{'\n'}
