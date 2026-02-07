@@ -170,7 +170,7 @@ export default function IAPDiagnosticsScreen() {
 
     // Test 4: Fetch Products
     try {
-      const productIds = ['macro_goal_premium_monthly', 'macro_goal_premium_yearly'];
+      const productIds = ['macrogoal_premium_monthly', 'macrogoal_premium_yearly'];
       const { results: products } = await InAppPurchases.getProductsAsync(productIds);
       
       if (products && products.length > 0) {
@@ -289,8 +289,8 @@ export default function IAPDiagnosticsScreen() {
           <View style={[styles.productIdBox, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
             <Text style={[styles.infoText, { color: textColor, fontSize: 12 }]}>
               Product IDs:{'\n'}
-              • macro_goal_premium_monthly{'\n'}
-              • macro_goal_premium_yearly
+              • macrogoal_premium_monthly{'\n'}
+              • macrogoal_premium_yearly
             </Text>
           </View>
         </View>
