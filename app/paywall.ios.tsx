@@ -17,22 +17,11 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/hooks/useSubscription';
 import * as InAppPurchases from 'expo-in-app-purchases';
-
-// iOS Product IDs from App Store Connect
-const PRODUCT_IDS = {
-  monthly: 'macrogoal_premium_monthly',
-  yearly: 'macrogoal_premium_yearly',
-};
-
-// Display pricing (update to match your actual prices)
-const PRICING = {
-  monthly: 9.99,
-  yearly: 49.99,
-};
+import { IAP_PRODUCT_IDS, IAP_PRICING, getAllProductIds } from '@/config/iapConfig';
 
 // Calculate savings
-const yearlySavings = Math.round((1 - (PRICING.yearly / 12) / PRICING.monthly) * 100);
-const yearlyMonthlyEquivalent = (PRICING.yearly / 12).toFixed(2);
+const yearlySavings = Math.round((1 - (IAP_PRICING.yearly / 12) / IAP_PRICING.monthly) * 100);
+const yearlyMonthlyEquivalent = (IAP_PRICING.yearly / 12).toFixed(2);
 
 export default function PaywallScreen() {
   const router = useRouter();
@@ -45,9 +34,13 @@ export default function PaywallScreen() {
   const [products, setProducts] = useState<InAppPurchases.IAPItemDetails[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [iapConnected, setIapConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('[Paywall iOS] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Paywall iOS] Screen mounted, initializing IAP');
+    console.log('[Paywall iOS] Product IDs configured:', getAllProductIds());
+    console.log('[Paywall iOS] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     initializeIAP();
 
     return () => {
@@ -60,41 +53,90 @@ export default function PaywallScreen() {
 
   const initializeIAP = async () => {
     try {
-      console.log('[Paywall iOS] Connecting to App Store...');
+      console.log('[Paywall iOS] Step 1: Connecting to App Store...');
       await InAppPurchases.connectAsync();
       setIapConnected(true);
-      console.log('[Paywall iOS] ✅ Connected to App Store');
+      console.log('[Paywall iOS] ✅ Step 1 Complete: Connected to App Store');
 
-      console.log('[Paywall iOS] Fetching products:', Object.values(PRODUCT_IDS));
-      const { results, responseCode } = await InAppPurchases.getProductsAsync(
-        Object.values(PRODUCT_IDS)
-      );
+      const productIds = getAllProductIds();
+      console.log('[Paywall iOS] Step 2: Fetching products...');
+      console.log('[Paywall iOS] Product IDs to fetch:', productIds);
+      
+      const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
 
-      console.log('[Paywall iOS] Products response code:', responseCode);
-      console.log('[Paywall iOS] Products fetched:', results.length);
+      console.log('[Paywall iOS] Products API Response:');
+      console.log('[Paywall iOS]   - Response Code:', responseCode);
+      console.log('[Paywall iOS]   - Products Found:', results?.length || 0);
 
       if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-        setProducts(results);
-        console.log('[Paywall iOS] ✅ Products loaded:', results.map(p => ({
-          productId: p.productId,
-          price: p.price,
-          priceString: p.priceString,
-        })));
+        if (results && results.length > 0) {
+          setProducts(results);
+          console.log('[Paywall iOS] ✅ Step 2 Complete: Products loaded successfully');
+          console.log('[Paywall iOS] Product Details:');
+          results.forEach((product, index) => {
+            console.log(`[Paywall iOS]   ${index + 1}. ${product.productId}`);
+            console.log(`[Paywall iOS]      - Title: ${product.title}`);
+            console.log(`[Paywall iOS]      - Price: ${product.priceString} (${product.price})`);
+            console.log(`[Paywall iOS]      - Description: ${product.description}`);
+          });
+          setConnectionError(null);
+        } else {
+          console.error('[Paywall iOS] ❌ Step 2 Failed: No products returned');
+          console.error('[Paywall iOS] This means:');
+          console.error('[Paywall iOS]   1. Products are not created in App Store Connect, OR');
+          console.error('[Paywall iOS]   2. Product IDs in code do not match App Store Connect, OR');
+          console.error('[Paywall iOS]   3. Products are not approved/ready for testing');
+          console.error('[Paywall iOS]');
+          console.error('[Paywall iOS] Expected Product IDs:', productIds);
+          console.error('[Paywall iOS]');
+          console.error('[Paywall iOS] To fix:');
+          console.error('[Paywall iOS]   1. Open App Store Connect');
+          console.error('[Paywall iOS]   2. Go to your app → In-App Purchases');
+          console.error('[Paywall iOS]   3. Verify products exist with EXACT IDs above');
+          console.error('[Paywall iOS]   4. Ensure products are "Ready to Submit"');
+          console.error('[Paywall iOS]   5. Wait 2-4 hours after creating products');
+          
+          const errorMsg = `Products not found in App Store.\n\nExpected Product IDs:\n${productIds.join('\n')}\n\nPlease verify these match your App Store Connect configuration.`;
+          setConnectionError(errorMsg);
+          
+          Alert.alert(
+            'Products Not Found',
+            'The subscription products are not available. This usually means:\n\n' +
+            '1. Products not created in App Store Connect\n' +
+            '2. Product IDs don\'t match\n' +
+            '3. Products not approved yet\n\n' +
+            'Check the console logs for details.',
+            [
+              { text: 'View Diagnostics', onPress: () => router.push('/iap-diagnostics') },
+              { text: 'OK' },
+            ]
+          );
+        }
       } else {
-        console.error('[Paywall iOS] ❌ Failed to fetch products, response code:', responseCode);
+        console.error('[Paywall iOS] ❌ Step 2 Failed: API returned error code:', responseCode);
+        const errorMsg = `Failed to fetch products (Code: ${responseCode})`;
+        setConnectionError(errorMsg);
         Alert.alert(
           'Products Unavailable',
           'Unable to load subscription options. Please try again later.'
         );
       }
-    } catch (error) {
-      console.error('[Paywall iOS] ❌ Error initializing IAP:', error);
+    } catch (error: any) {
+      console.error('[Paywall iOS] ❌ Fatal Error during IAP initialization:', error);
+      console.error('[Paywall iOS] Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      const errorMsg = `Connection error: ${error.message}`;
+      setConnectionError(errorMsg);
       Alert.alert(
         'Connection Error',
         'Unable to connect to the App Store. Please check your internet connection and try again.'
       );
     } finally {
       setProductsLoading(false);
+      console.log('[Paywall iOS] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   };
 
@@ -104,22 +146,36 @@ export default function PaywallScreen() {
       return;
     }
 
+    if (products.length === 0) {
+      Alert.alert(
+        'Products Not Available',
+        'Subscription products are not available. Please check your App Store Connect configuration.',
+        [
+          { text: 'View Diagnostics', onPress: () => router.push('/iap-diagnostics') },
+          { text: 'OK' },
+        ]
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       console.log('[Paywall iOS] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('[Paywall iOS] 🚀 Starting purchase flow');
       console.log('[Paywall iOS] Selected plan:', selectedPlan);
 
-      const productId = PRODUCT_IDS[selectedPlan];
+      const productId = IAP_PRODUCT_IDS[selectedPlan];
       console.log('[Paywall iOS] Product ID:', productId);
 
       // Find the product
       const product = products.find(p => p.productId === productId);
       if (!product) {
-        console.error('[Paywall iOS] ❌ Product not found:', productId);
+        console.error('[Paywall iOS] ❌ Product not found in loaded products');
+        console.error('[Paywall iOS] Looking for:', productId);
+        console.error('[Paywall iOS] Available products:', products.map(p => p.productId));
         Alert.alert(
           'Product Not Found',
-          'The selected subscription is not available. Please try again.'
+          `The selected subscription (${productId}) is not available. Please try again or contact support.`
         );
         return;
       }
@@ -127,6 +183,7 @@ export default function PaywallScreen() {
       console.log('[Paywall iOS] 💳 Purchasing product:', {
         productId: product.productId,
         price: product.priceString,
+        title: product.title,
       });
 
       // Purchase the product
@@ -269,8 +326,8 @@ export default function PaywallScreen() {
 
   // Get product price string or fallback to hardcoded price
   const getProductPrice = (planType: 'monthly' | 'yearly'): string => {
-    const product = products.find(p => p.productId === PRODUCT_IDS[planType]);
-    return product?.priceString || `$${PRICING[planType]}`;
+    const product = products.find(p => p.productId === IAP_PRODUCT_IDS[planType]);
+    return product?.priceString || `$${IAP_PRICING[planType]}`;
   };
 
   const isLoadingState = loading || productsLoading;
@@ -289,8 +346,32 @@ export default function PaywallScreen() {
             color={isDark ? colors.textDark : colors.text}
           />
         </TouchableOpacity>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => router.push('/iap-diagnostics')} style={styles.diagnosticsButton}>
+          <IconSymbol
+            ios_icon_name="wrench.and.screwdriver"
+            android_material_icon_name="settings"
+            size={20}
+            color={isDark ? colors.textDark : colors.text}
+          />
+          <Text style={[styles.diagnosticsText, { color: isDark ? colors.textDark : colors.text }]}>
+            Diagnostics
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {connectionError && (
+        <View style={[styles.errorBanner, { backgroundColor: '#FFF3CD', borderColor: '#FFC107' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={20}
+            color="#856404"
+          />
+          <Text style={[styles.errorText, { color: '#856404' }]}>
+            {connectionError}
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         style={styles.scrollView}
@@ -359,6 +440,27 @@ export default function PaywallScreen() {
               <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Loading subscription options...
               </Text>
+            </View>
+          ) : products.length === 0 ? (
+            <View style={styles.errorContainer}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle"
+                android_material_icon_name="error"
+                size={48}
+                color="#F44336"
+              />
+              <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Products Not Available
+              </Text>
+              <Text style={[styles.errorMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Subscription products could not be loaded. This usually means the products are not configured in App Store Connect.
+              </Text>
+              <TouchableOpacity
+                style={[styles.diagnosticsButtonLarge, { backgroundColor: colors.primary }]}
+                onPress={() => router.push('/iap-diagnostics')}
+              >
+                <Text style={styles.diagnosticsButtonText}>Run Diagnostics</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <React.Fragment>
@@ -451,43 +553,47 @@ export default function PaywallScreen() {
         </View>
 
         {/* Subscribe Button */}
-        <TouchableOpacity
-          style={[
-            styles.subscribeButton,
-            { backgroundColor: colors.primary, opacity: isLoadingState ? 0.6 : 1 },
-          ]}
-          onPress={handleSubscribe}
-          disabled={isLoadingState}
-          activeOpacity={0.7}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <React.Fragment>
-              <IconSymbol
-                ios_icon_name="lock.fill"
-                android_material_icon_name="lock"
-                size={20}
-                color="#FFFFFF"
-              />
-              <Text style={styles.subscribeButtonText}>
-                Subscribe Now
-              </Text>
-            </React.Fragment>
-          )}
-        </TouchableOpacity>
+        {products.length > 0 && (
+          <React.Fragment>
+            <TouchableOpacity
+              style={[
+                styles.subscribeButton,
+                { backgroundColor: colors.primary, opacity: isLoadingState ? 0.6 : 1 },
+              ]}
+              onPress={handleSubscribe}
+              disabled={isLoadingState}
+              activeOpacity={0.7}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <React.Fragment>
+                  <IconSymbol
+                    ios_icon_name="lock.fill"
+                    android_material_icon_name="lock"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.subscribeButtonText}>
+                    Subscribe Now
+                  </Text>
+                </React.Fragment>
+              )}
+            </TouchableOpacity>
 
-        {/* Restore Button */}
-        <TouchableOpacity
-          style={styles.restoreButton}
-          onPress={handleRestore}
-          activeOpacity={0.7}
-          disabled={isLoadingState}
-        >
-          <Text style={[styles.restoreButtonText, { color: colors.primary, opacity: isLoadingState ? 0.6 : 1 }]}>
-            Restore Purchases
-          </Text>
-        </TouchableOpacity>
+            {/* Restore Button */}
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={handleRestore}
+              activeOpacity={0.7}
+              disabled={isLoadingState}
+            >
+              <Text style={[styles.restoreButtonText, { color: colors.primary, opacity: isLoadingState ? 0.6 : 1 }]}>
+                Restore Purchases
+              </Text>
+            </TouchableOpacity>
+          </React.Fragment>
+        )}
 
         {/* Footer */}
         <View style={styles.footer}>
@@ -544,6 +650,32 @@ const styles = StyleSheet.create({
   backButton: {
     padding: spacing.xs,
   },
+  diagnosticsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.xs,
+    gap: spacing.xs,
+  },
+  diagnosticsText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+  },
   scrollView: {
     flex: 1,
   },
@@ -559,6 +691,34 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    gap: spacing.md,
+  },
+  errorTitle: {
+    ...typography.h3,
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    ...typography.body,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  diagnosticsButtonLarge: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.md,
+  },
+  diagnosticsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   heroSection: {
     alignItems: 'center',

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  Clipboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -15,6 +16,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import * as InAppPurchases from 'expo-in-app-purchases';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { IAP_PRODUCT_IDS, APP_STORE_CONFIG, getAllProductIds, validateProductId } from '@/config/iapConfig';
 
 interface DiagnosticResult {
   test: string;
@@ -112,6 +114,35 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     fontFamily: 'monospace',
   },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  copyButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  configSection: {
+    marginTop: spacing.md,
+  },
+  configRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  configLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  configValue: {
+    fontSize: 14,
+    fontFamily: 'monospace',
+  },
 });
 
 export default function IAPDiagnosticsScreen() {
@@ -121,35 +152,67 @@ export default function IAPDiagnosticsScreen() {
 
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const backgroundColor = isDark ? colors.dark.background : colors.light.background;
   const textColor = isDark ? colors.dark.text : colors.light.text;
   const borderColor = isDark ? colors.dark.border : colors.light.border;
   const cardBackground = isDark ? colors.dark.card : colors.light.card;
 
+  const copyToClipboard = (text: string, label: string) => {
+    Clipboard.setString(text);
+    setCopiedText(label);
+    setTimeout(() => setCopiedText(null), 2000);
+  };
+
   const runDiagnostics = useCallback(async () => {
     setIsRunning(true);
     const diagnosticResults: DiagnosticResult[] = [];
 
+    console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[IAP Diagnostics] Starting comprehensive IAP diagnostics');
+    console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     // Test 1: Platform Check
+    console.log('[IAP Diagnostics] Test 1: Platform Check');
     diagnosticResults.push({
       test: 'Platform Check',
       status: Platform.OS === 'ios' ? 'pass' : 'warning',
       message: Platform.OS === 'ios' 
         ? 'Running on iOS - IAP supported' 
         : `Running on ${Platform.OS} - IAP only works on iOS`,
+      details: `Platform: ${Platform.OS}, Version: ${Platform.Version}`,
     });
 
-    // Test 2: IAP Module Available
+    // Test 2: Product ID Validation
+    console.log('[IAP Diagnostics] Test 2: Product ID Validation');
+    const productIds = getAllProductIds();
+    const validationResults = productIds.map(id => validateProductId(id));
+    const allValid = validationResults.every(r => r.valid);
+    
+    diagnosticResults.push({
+      test: 'Product ID Format',
+      status: allValid ? 'pass' : 'fail',
+      message: allValid 
+        ? 'All product IDs have valid format' 
+        : 'Some product IDs have invalid format',
+      details: productIds.map((id, i) => 
+        `${id}: ${validationResults[i].message}`
+      ).join('\n'),
+    });
+
+    // Test 3: IAP Module Available
+    console.log('[IAP Diagnostics] Test 3: IAP Module Availability');
     try {
-      // Check if the module is available by attempting to connect
       await InAppPurchases.connectAsync();
       diagnosticResults.push({
         test: 'IAP Module Available',
         status: 'pass',
         message: 'expo-in-app-purchases module is available',
       });
+      console.log('[IAP Diagnostics] ✅ IAP module available');
     } catch (error) {
+      console.error('[IAP Diagnostics] ❌ IAP module error:', error);
       diagnosticResults.push({
         test: 'IAP Module Available',
         status: 'fail',
@@ -161,19 +224,31 @@ export default function IAPDiagnosticsScreen() {
       return;
     }
 
-    // Test 3: Store Connection (already connected above)
+    // Test 4: Store Connection
+    console.log('[IAP Diagnostics] Test 4: Store Connection');
     diagnosticResults.push({
       test: 'Store Connection',
       status: 'pass',
       message: 'Successfully connected to App Store',
     });
 
-    // Test 4: Fetch Products
+    // Test 5: Fetch Products
+    console.log('[IAP Diagnostics] Test 5: Fetching Products');
+    console.log('[IAP Diagnostics] Product IDs to fetch:', productIds);
     try {
-      const productIds = ['macrogoal_premium_monthly', 'macrogoal_premium_yearly'];
-      const { results: products } = await InAppPurchases.getProductsAsync(productIds);
+      const { results: products, responseCode } = await InAppPurchases.getProductsAsync(productIds);
+      
+      console.log('[IAP Diagnostics] Response code:', responseCode);
+      console.log('[IAP Diagnostics] Products returned:', products?.length || 0);
       
       if (products && products.length > 0) {
+        console.log('[IAP Diagnostics] ✅ Products found:');
+        products.forEach((p, i) => {
+          console.log(`[IAP Diagnostics]   ${i + 1}. ${p.productId}`);
+          console.log(`[IAP Diagnostics]      Title: ${p.title}`);
+          console.log(`[IAP Diagnostics]      Price: ${p.priceString}`);
+        });
+        
         diagnosticResults.push({
           test: 'Product Fetch',
           status: 'pass',
@@ -181,18 +256,48 @@ export default function IAPDiagnosticsScreen() {
           details: JSON.stringify(products.map(p => ({
             productId: p.productId,
             title: p.title,
-            price: p.price,
+            price: p.priceString,
+            description: p.description,
           })), null, 2),
         });
+
+        // Check if all expected products were found
+        const foundIds = products.map(p => p.productId);
+        const missingIds = productIds.filter(id => !foundIds.includes(id));
+        
+        if (missingIds.length > 0) {
+          console.warn('[IAP Diagnostics] ⚠️ Missing products:', missingIds);
+          diagnosticResults.push({
+            test: 'Product Completeness',
+            status: 'warning',
+            message: `${missingIds.length} product(s) not found`,
+            details: `Missing: ${missingIds.join(', ')}`,
+          });
+        } else {
+          diagnosticResults.push({
+            test: 'Product Completeness',
+            status: 'pass',
+            message: 'All expected products found',
+          });
+        }
       } else {
+        console.error('[IAP Diagnostics] ❌ No products found');
+        console.error('[IAP Diagnostics] Expected:', productIds);
+        console.error('[IAP Diagnostics] This means:');
+        console.error('[IAP Diagnostics]   1. Products not created in App Store Connect');
+        console.error('[IAP Diagnostics]   2. Product IDs in code don\'t match App Store Connect');
+        console.error('[IAP Diagnostics]   3. Products not approved/ready for testing');
+        console.error('[IAP Diagnostics]   4. Need to wait 2-4 hours after creating products');
+        
         diagnosticResults.push({
           test: 'Product Fetch',
           status: 'fail',
           message: 'No products found - Products not configured in App Store Connect',
-          details: `Searched for: ${productIds.join(', ')}`,
+          details: `Expected Product IDs:\n${productIds.join('\n')}\n\nResponse Code: ${responseCode}`,
         });
       }
     } catch (error) {
+      console.error('[IAP Diagnostics] ❌ Error fetching products:', error);
       diagnosticResults.push({
         test: 'Product Fetch',
         status: 'fail',
@@ -201,9 +306,12 @@ export default function IAPDiagnosticsScreen() {
       });
     }
 
-    // Test 5: Purchase History
+    // Test 6: Purchase History
+    console.log('[IAP Diagnostics] Test 6: Purchase History');
     try {
       const history = await InAppPurchases.getPurchaseHistoryAsync();
+      console.log('[IAP Diagnostics] Purchase history:', history.results?.length || 0, 'items');
+      
       diagnosticResults.push({
         test: 'Purchase History',
         status: 'pass',
@@ -211,10 +319,15 @@ export default function IAPDiagnosticsScreen() {
           ? `Found ${history.results.length} previous purchase(s)` 
           : 'No previous purchases',
         details: history.results.length > 0 
-          ? JSON.stringify(history.results, null, 2) 
+          ? JSON.stringify(history.results.map(p => ({
+              productId: p.productId,
+              transactionId: p.transactionId,
+              acknowledged: p.acknowledged,
+            })), null, 2)
           : undefined,
       });
     } catch (error) {
+      console.error('[IAP Diagnostics] ⚠️ Error fetching purchase history:', error);
       diagnosticResults.push({
         test: 'Purchase History',
         status: 'warning',
@@ -226,9 +339,14 @@ export default function IAPDiagnosticsScreen() {
     // Disconnect
     try {
       await InAppPurchases.disconnectAsync();
+      console.log('[IAP Diagnostics] Disconnected from App Store');
     } catch (error) {
-      console.log('Error disconnecting from store:', error);
+      console.log('[IAP Diagnostics] Error disconnecting:', error);
     }
+
+    console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[IAP Diagnostics] Diagnostics complete');
+    console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     setResults(diagnosticResults);
     setIsRunning(false);
@@ -264,6 +382,8 @@ export default function IAPDiagnosticsScreen() {
     }
   };
 
+  const productIds = getAllProductIds();
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: borderColor }]}>
@@ -275,24 +395,59 @@ export default function IAPDiagnosticsScreen() {
 
       <ScrollView style={styles.content}>
         <View style={[styles.infoBox, { backgroundColor: cardBackground, borderColor }]}>
+          <Text style={[styles.infoTitle, { color: textColor }]}>Configuration</Text>
+          
+          <View style={styles.configSection}>
+            <View style={styles.configRow}>
+              <Text style={[styles.configLabel, { color: textColor }]}>Bundle ID:</Text>
+              <Text style={[styles.configValue, { color: textColor }]}>{APP_STORE_CONFIG.bundleId}</Text>
+            </View>
+            <View style={styles.configRow}>
+              <Text style={[styles.configLabel, { color: textColor }]}>App Name:</Text>
+              <Text style={[styles.configValue, { color: textColor }]}>{APP_STORE_CONFIG.appName}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.productIdBox, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+            <Text style={[styles.infoText, { color: textColor, fontSize: 12, fontWeight: '600' }]}>
+              Product IDs:
+            </Text>
+            {productIds.map((id, index) => (
+              <Text key={index} style={[styles.infoText, { color: textColor, fontSize: 12, marginTop: 4 }]}>
+                {index + 1}. {id}
+              </Text>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.copyButton, { backgroundColor: colors.primary }]}
+            onPress={() => copyToClipboard(productIds.join('\n'), 'Product IDs')}
+          >
+            <IconSymbol
+              ios_icon_name="doc.on.doc"
+              android_material_icon_name="content-copy"
+              size={16}
+              color="#FFFFFF"
+            />
+            <Text style={[styles.copyButtonText, { color: '#FFFFFF' }]}>
+              {copiedText === 'Product IDs' ? 'Copied!' : 'Copy Product IDs'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.infoBox, { backgroundColor: cardBackground, borderColor }]}>
           <Text style={[styles.infoTitle, { color: textColor }]}>About This Test</Text>
           <Text style={[styles.infoText, { color: textColor }]}>
             This diagnostic checks if your in-app purchase setup is working correctly. It verifies:
           </Text>
           <Text style={[styles.infoText, { color: textColor, marginTop: spacing.xs }]}>
             • Platform compatibility{'\n'}
+            • Product ID format validation{'\n'}
             • IAP module availability{'\n'}
             • App Store connection{'\n'}
             • Product configuration{'\n'}
             • Purchase history
           </Text>
-          <View style={[styles.productIdBox, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-            <Text style={[styles.infoText, { color: textColor, fontSize: 12 }]}>
-              Product IDs:{'\n'}
-              • macrogoal_premium_monthly{'\n'}
-              • macrogoal_premium_yearly
-            </Text>
-          </View>
         </View>
 
         <View style={styles.section}>
@@ -339,14 +494,25 @@ export default function IAPDiagnosticsScreen() {
         </TouchableOpacity>
 
         <View style={[styles.infoBox, { backgroundColor: cardBackground, borderColor, marginTop: spacing.lg }]}>
-          <Text style={[styles.infoTitle, { color: textColor }]}>Next Steps</Text>
+          <Text style={[styles.infoTitle, { color: textColor }]}>Troubleshooting "Product Not Found"</Text>
           <Text style={[styles.infoText, { color: textColor }]}>
-            If "Product Fetch" fails:{'\n\n'}
-            1. Create products in App Store Connect{'\n'}
-            2. Use exact product IDs shown above{'\n'}
-            3. Wait 2-4 hours for products to sync{'\n'}
-            4. Test with a Sandbox account{'\n\n'}
-            See IOS_IAP_TESTING_GUIDE.md for details.
+            If "Product Fetch" fails, follow these steps:{'\n\n'}
+            
+            1. Open App Store Connect{'\n'}
+            2. Select your app{'\n'}
+            3. Go to "In-App Purchases"{'\n'}
+            4. Create subscriptions with EXACT Product IDs shown above{'\n'}
+            5. Set status to "Ready to Submit"{'\n'}
+            6. Wait 2-4 hours for products to sync{'\n'}
+            7. Test with a Sandbox account{'\n\n'}
+            
+            Common Issues:{'\n'}
+            • Product IDs must match EXACTLY (case-sensitive){'\n'}
+            • Products must be approved/ready{'\n'}
+            • Bundle ID must match app.json{'\n'}
+            • Need to wait after creating products{'\n\n'}
+            
+            See IOS_IAP_TESTING_GUIDE.md for detailed instructions.
           </Text>
         </View>
       </ScrollView>

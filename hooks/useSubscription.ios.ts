@@ -39,12 +39,6 @@ export interface UseSubscriptionReturn {
   openCustomerPortal: () => Promise<void>;
 }
 
-// iOS Product IDs
-const PRODUCT_IDS = {
-  monthly: 'macrogoal_premium_monthly',
-  yearly: 'macrogoal_premium_yearly',
-};
-
 /**
  * Check if user has premium access based on iOS IAP
  */
