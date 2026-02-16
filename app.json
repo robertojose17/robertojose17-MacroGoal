@@ -60,7 +60,7 @@
         }
       ]
     ],
-    "scheme": "macro-goal",
+    "scheme": "macrogoal",
     "experiments": {
       "typedRoutes": true
     },
