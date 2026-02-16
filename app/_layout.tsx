@@ -159,7 +159,10 @@ export default function RootLayout() {
         );
         
         // Navigate to profile immediately
-        router.replace('/(tabs)/profile');
+        // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+        setTimeout(() => {
+          router.replace('/(tabs)/profile');
+        }, 0);
         
         // Sync subscription in background with retries
         console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
@@ -236,7 +239,10 @@ export default function RootLayout() {
       // Handle checkout cancel
       else if (queryParams?.subscription_cancelled === 'true') {
         console.log('[DeepLink] ❌ Checkout cancelled');
-        router.replace('/paywall');
+        // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+        setTimeout(() => {
+          router.replace('/paywall');
+        }, 0);
         Alert.alert(
           'Checkout Cancelled',
           'You can subscribe anytime to unlock premium features.',
@@ -247,7 +253,10 @@ export default function RootLayout() {
       // Handle subscription error
       else if (queryParams?.subscription_error === 'true') {
         console.log('[DeepLink] ⚠️ Subscription error detected');
-        router.replace('/(tabs)/profile');
+        // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+        setTimeout(() => {
+          router.replace('/(tabs)/profile');
+        }, 0);
         Alert.alert(
           'Processing Issue',
           'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
@@ -328,7 +337,10 @@ export default function RootLayout() {
       if (!session) {
         if (!inAuthGroup) {
           console.log('[Navigation] No session, redirecting to welcome');
-          router.replace('/auth/welcome');
+          // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+          setTimeout(() => {
+            router.replace('/auth/welcome');
+          }, 0);
         }
         return;
       }
@@ -377,7 +389,10 @@ export default function RootLayout() {
             }
             
             // Always go to onboarding if there's an error
-            router.replace('/onboarding/complete');
+            // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
             return;
           }
 
@@ -403,17 +418,26 @@ export default function RootLayout() {
             }
             
             // Go to onboarding
-            router.replace('/onboarding/complete');
+            // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
             return;
           }
 
           // User exists, check onboarding status
           if (userData.onboarding_completed) {
             console.log('[Navigation] ✅ Onboarding complete, redirecting to home');
-            router.replace('/(tabs)/(home)/');
+            // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+            setTimeout(() => {
+              router.replace('/(tabs)/(home)/');
+            }, 0);
           } else {
             console.log('[Navigation] ⚠️ Onboarding not complete, redirecting to onboarding');
-            router.replace('/onboarding/complete');
+            // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
           }
         } catch (error) {
           console.error('[Navigation] ❌ Onboarding check failed:', error);
@@ -436,13 +460,19 @@ export default function RootLayout() {
           }
           
           // CRITICAL: On any error, default to onboarding (safe fallback)
-          router.replace('/onboarding/complete');
+          // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+          setTimeout(() => {
+            router.replace('/onboarding/complete');
+          }, 0);
         }
       }
     } catch (error) {
       console.error('[Navigation] ❌ CRITICAL: Navigation error:', error);
       // CRITICAL: On catastrophic error, go to welcome screen
-      router.replace('/auth/welcome');
+      // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
+      setTimeout(() => {
+        router.replace('/auth/welcome');
+      }, 0);
     }
   };
 
