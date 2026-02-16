@@ -221,16 +221,16 @@ export default function IAPDiagnosticsScreen() {
 
   const showTroubleshootingGuide = () => {
     Alert.alert(
-      'Guía de Solución',
-      'Si "Product Fetch" falla:\n\n' +
-      '1. Verifica que los Product IDs en App Store Connect coincidan EXACTAMENTE\n\n' +
-      '2. Asegúrate de que los productos estén "Ready to Submit"\n\n' +
-      '3. Espera 2-4 horas después de crear los productos\n\n' +
-      '4. Verifica que el Bundle ID sea: com.elitemacrotracker.app\n\n' +
-      '5. Usa un Sandbox Tester Account (no tu Apple ID real)\n\n' +
-      '6. Asegúrate de estar en un dispositivo físico (no simulador)\n\n' +
-      'Ver IAP_PRODUCT_NOT_FOUND_COMPLETE_FIX.md para más detalles.',
-      [{ text: 'Entendido' }]
+      'Troubleshooting Guide',
+      'If "Product Fetch" fails:\n\n' +
+      '1. Verify that Product IDs in App Store Connect match EXACTLY\n\n' +
+      '2. Ensure products are "Ready to Submit"\n\n' +
+      '3. Wait 2-4 hours after creating products\n\n' +
+      '4. Verify Bundle ID is: com.elitemacrotracker.app\n\n' +
+      '5. Use a Sandbox Tester Account (not your real Apple ID)\n\n' +
+      '6. Make sure you\'re on a physical device (not simulator)\n\n' +
+      'See IAP_PRODUCT_NOT_FOUND_COMPLETE_FIX.md for more details.',
+      [{ text: 'Got It' }]
     );
   };
 
@@ -240,63 +240,63 @@ export default function IAPDiagnosticsScreen() {
     const diagnosticResults: DiagnosticResult[] = [];
 
     console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[IAP Diagnostics] 🔍 Iniciando diagnóstico completo de IAP');
+    console.log('[IAP Diagnostics] 🔍 Starting complete IAP diagnostics');
     console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Test 1: Platform Check
-    console.log('[IAP Diagnostics] Test 1: Verificación de Plataforma');
+    console.log('[IAP Diagnostics] Test 1: Platform Verification');
     const isIOS = Platform.OS === 'ios';
     diagnosticResults.push({
-      test: 'Plataforma',
+      test: 'Platform',
       status: isIOS ? 'pass' : 'fail',
       message: isIOS 
-        ? '✅ Ejecutando en iOS - IAP soportado' 
-        : `❌ Ejecutando en ${Platform.OS} - IAP solo funciona en iOS`,
-      details: `Plataforma: ${Platform.OS}, Versión: ${Platform.Version}`,
+        ? '✅ Running on iOS - IAP supported' 
+        : `❌ Running on ${Platform.OS} - IAP only works on iOS`,
+      details: `Platform: ${Platform.OS}, Version: ${Platform.Version}`,
     });
 
     if (!isIOS) {
-      console.error('[IAP Diagnostics] ❌ No estás en iOS. IAP no funcionará.');
+      console.error('[IAP Diagnostics] ❌ Not on iOS. IAP will not work.');
       setResults(diagnosticResults);
       setIsRunning(false);
       return;
     }
 
     // Test 2: Product ID Validation
-    console.log('[IAP Diagnostics] Test 2: Validación de Product IDs');
+    console.log('[IAP Diagnostics] Test 2: Product ID Validation');
     const productIds = getAllProductIds();
     const validationResults = productIds.map(id => validateProductId(id));
     const allValid = validationResults.every(r => r.valid);
     
     diagnosticResults.push({
-      test: 'Formato de Product IDs',
+      test: 'Product ID Format',
       status: allValid ? 'pass' : 'fail',
       message: allValid 
-        ? '✅ Todos los Product IDs tienen formato válido' 
-        : '❌ Algunos Product IDs tienen formato inválido',
+        ? '✅ All Product IDs have valid format' 
+        : '❌ Some Product IDs have invalid format',
       details: productIds.map((id, i) => 
         `${id}: ${validationResults[i].message}`
       ).join('\n'),
     });
 
     // Test 3: IAP Module Available
-    console.log('[IAP Diagnostics] Test 3: Disponibilidad del Módulo IAP');
+    console.log('[IAP Diagnostics] Test 3: IAP Module Availability');
     try {
       const connected = await InAppPurchases.connectAsync();
       diagnosticResults.push({
-        test: 'Módulo IAP Disponible',
+        test: 'IAP Module Available',
         status: connected ? 'pass' : 'fail',
         message: connected 
-          ? '✅ Módulo expo-in-app-purchases disponible' 
-          : '❌ No se pudo conectar al módulo IAP',
+          ? '✅ expo-in-app-purchases module available' 
+          : '❌ Could not connect to IAP module',
       });
-      console.log('[IAP Diagnostics] ✅ Módulo IAP disponible');
+      console.log('[IAP Diagnostics] ✅ IAP module available');
     } catch (error) {
-      console.error('[IAP Diagnostics] ❌ Error en módulo IAP:', error);
+      console.error('[IAP Diagnostics] ❌ Error in IAP module:', error);
       diagnosticResults.push({
-        test: 'Módulo IAP Disponible',
+        test: 'IAP Module Available',
         status: 'fail',
-        message: '❌ Error al verificar disponibilidad de IAP',
+        message: '❌ Error checking IAP availability',
         details: error instanceof Error ? error.message : String(error),
       });
       setResults(diagnosticResults);
@@ -305,35 +305,35 @@ export default function IAPDiagnosticsScreen() {
     }
 
     // Test 4: Store Connection
-    console.log('[IAP Diagnostics] Test 4: Conexión a la App Store');
+    console.log('[IAP Diagnostics] Test 4: App Store Connection');
     diagnosticResults.push({
-      test: 'Conexión a App Store',
+      test: 'App Store Connection',
       status: 'pass',
-      message: '✅ Conectado exitosamente a la App Store',
+      message: '✅ Successfully connected to App Store',
     });
 
     // Test 5: Fetch Products (CRITICAL TEST)
-    console.log('[IAP Diagnostics] Test 5: Obtención de Productos (CRÍTICO)');
-    console.log('[IAP Diagnostics] Product IDs a buscar:', productIds);
+    console.log('[IAP Diagnostics] Test 5: Product Fetch (CRITICAL)');
+    console.log('[IAP Diagnostics] Product IDs to fetch:', productIds);
     try {
       const { results: products, responseCode } = await InAppPurchases.getProductsAsync(productIds);
       
-      console.log('[IAP Diagnostics] Código de respuesta:', responseCode);
-      console.log('[IAP Diagnostics] Productos retornados:', products?.length || 0);
+      console.log('[IAP Diagnostics] Response code:', responseCode);
+      console.log('[IAP Diagnostics] Products returned:', products?.length || 0);
       
       if (products && products.length > 0) {
         setProductsFound(products.length);
-        console.log('[IAP Diagnostics] ✅ Productos encontrados:');
+        console.log('[IAP Diagnostics] ✅ Products found:');
         products.forEach((p, i) => {
           console.log(`[IAP Diagnostics]   ${i + 1}. ${p.productId}`);
-          console.log(`[IAP Diagnostics]      Título: ${p.title}`);
-          console.log(`[IAP Diagnostics]      Precio: ${p.priceString}`);
+          console.log(`[IAP Diagnostics]      Title: ${p.title}`);
+          console.log(`[IAP Diagnostics]      Price: ${p.priceString}`);
         });
         
         diagnosticResults.push({
-          test: 'Obtención de Productos',
+          test: 'Product Fetch',
           status: 'pass',
-          message: `✅ Encontrados ${products.length} producto(s)`,
+          message: `✅ Found ${products.length} product(s)`,
           details: JSON.stringify(products.map(p => ({
             productId: p.productId,
             title: p.title,
@@ -347,78 +347,78 @@ export default function IAPDiagnosticsScreen() {
         const missingIds = productIds.filter(id => !foundIds.includes(id));
         
         if (missingIds.length > 0) {
-          console.warn('[IAP Diagnostics] ⚠️ Productos faltantes:', missingIds);
+          console.warn('[IAP Diagnostics] ⚠️ Missing products:', missingIds);
           diagnosticResults.push({
-            test: 'Completitud de Productos',
+            test: 'Product Completeness',
             status: 'warning',
-            message: `⚠️ ${missingIds.length} producto(s) no encontrado(s)`,
-            details: `Faltantes: ${missingIds.join(', ')}\n\nVerifica que estos productos existan en App Store Connect con estos IDs EXACTOS.`,
+            message: `⚠️ ${missingIds.length} product(s) not found`,
+            details: `Missing: ${missingIds.join(', ')}\n\nVerify these products exist in App Store Connect with these EXACT IDs.`,
           });
         } else {
           diagnosticResults.push({
-            test: 'Completitud de Productos',
+            test: 'Product Completeness',
             status: 'pass',
-            message: '✅ Todos los productos esperados fueron encontrados',
+            message: '✅ All expected products were found',
           });
         }
       } else {
         setProductsFound(0);
-        console.error('[IAP Diagnostics] ❌ NO SE ENCONTRARON PRODUCTOS');
+        console.error('[IAP Diagnostics] ❌ NO PRODUCTS FOUND');
         console.error('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('[IAP Diagnostics] DIAGNÓSTICO DEL PROBLEMA:');
+        console.error('[IAP Diagnostics] PROBLEM DIAGNOSIS:');
         console.error('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('[IAP Diagnostics] Product IDs esperados:', productIds);
+        console.error('[IAP Diagnostics] Expected Product IDs:', productIds);
         console.error('[IAP Diagnostics]');
-        console.error('[IAP Diagnostics] POSIBLES CAUSAS:');
-        console.error('[IAP Diagnostics] 1. ❌ Los productos NO existen en App Store Connect');
-        console.error('[IAP Diagnostics] 2. ❌ Los Product IDs en el código NO coinciden con App Store Connect');
-        console.error('[IAP Diagnostics] 3. ❌ Los productos NO están en estado "Ready to Submit"');
-        console.error('[IAP Diagnostics] 4. ⏰ Acabas de crear los productos (espera 2-4 horas)');
-        console.error('[IAP Diagnostics] 5. ❌ El Bundle ID no coincide');
-        console.error('[IAP Diagnostics] 6. ❌ No estás usando un Sandbox Tester Account');
+        console.error('[IAP Diagnostics] POSSIBLE CAUSES:');
+        console.error('[IAP Diagnostics] 1. ❌ Products DO NOT exist in App Store Connect');
+        console.error('[IAP Diagnostics] 2. ❌ Product IDs in code DO NOT match App Store Connect');
+        console.error('[IAP Diagnostics] 3. ❌ Products are NOT in "Ready to Submit" status');
+        console.error('[IAP Diagnostics] 4. ⏰ Just created products (wait 2-4 hours)');
+        console.error('[IAP Diagnostics] 5. ❌ Bundle ID does not match');
+        console.error('[IAP Diagnostics] 6. ❌ Not using a Sandbox Tester Account');
         console.error('[IAP Diagnostics]');
-        console.error('[IAP Diagnostics] SOLUCIÓN:');
-        console.error('[IAP Diagnostics] 1. Ve a App Store Connect');
-        console.error('[IAP Diagnostics] 2. Verifica que tu app tenga Bundle ID: com.elitemacrotracker.app');
-        console.error('[IAP Diagnostics] 3. Ve a In-App Purchases');
-        console.error('[IAP Diagnostics] 4. Crea productos con estos IDs EXACTOS:');
+        console.error('[IAP Diagnostics] SOLUTION:');
+        console.error('[IAP Diagnostics] 1. Go to App Store Connect');
+        console.error('[IAP Diagnostics] 2. Verify your app has Bundle ID: com.elitemacrotracker.app');
+        console.error('[IAP Diagnostics] 3. Go to In-App Purchases');
+        console.error('[IAP Diagnostics] 4. Create products with these EXACT IDs:');
         productIds.forEach(id => {
           console.error(`[IAP Diagnostics]    - ${id}`);
         });
-        console.error('[IAP Diagnostics] 5. Asegúrate de que estén "Ready to Submit"');
-        console.error('[IAP Diagnostics] 6. Espera 2-4 horas');
-        console.error('[IAP Diagnostics] 7. Usa un Sandbox Tester Account');
+        console.error('[IAP Diagnostics] 5. Ensure they are "Ready to Submit"');
+        console.error('[IAP Diagnostics] 6. Wait 2-4 hours');
+        console.error('[IAP Diagnostics] 7. Use a Sandbox Tester Account');
         console.error('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         diagnosticResults.push({
-          test: 'Obtención de Productos',
+          test: 'Product Fetch',
           status: 'fail',
-          message: '❌ NO se encontraron productos - Productos no configurados en App Store Connect',
-          details: `Product IDs esperados:\n${productIds.join('\n')}\n\nCódigo de respuesta: ${responseCode}\n\nVer guía completa en IAP_PRODUCT_NOT_FOUND_COMPLETE_FIX.md`,
+          message: '❌ NO products found - Products not configured in App Store Connect',
+          details: `Expected Product IDs:\n${productIds.join('\n')}\n\nResponse code: ${responseCode}\n\nSee complete guide in IAP_PRODUCT_NOT_FOUND_COMPLETE_FIX.md`,
         });
       }
     } catch (error) {
-      console.error('[IAP Diagnostics] ❌ Error al obtener productos:', error);
+      console.error('[IAP Diagnostics] ❌ Error fetching products:', error);
       diagnosticResults.push({
-        test: 'Obtención de Productos',
+        test: 'Product Fetch',
         status: 'fail',
-        message: '❌ Error al obtener productos',
+        message: '❌ Error fetching products',
         details: error instanceof Error ? error.message : String(error),
       });
     }
 
     // Test 6: Purchase History
-    console.log('[IAP Diagnostics] Test 6: Historial de Compras');
+    console.log('[IAP Diagnostics] Test 6: Purchase History');
     try {
       const history = await InAppPurchases.getPurchaseHistoryAsync();
-      console.log('[IAP Diagnostics] Historial de compras:', history.results?.length || 0, 'items');
+      console.log('[IAP Diagnostics] Purchase history:', history.results?.length || 0, 'items');
       
       diagnosticResults.push({
-        test: 'Historial de Compras',
+        test: 'Purchase History',
         status: 'pass',
         message: history.results.length > 0 
-          ? `✅ Encontradas ${history.results.length} compra(s) previa(s)` 
-          : 'ℹ️ Sin compras previas',
+          ? `✅ Found ${history.results.length} previous purchase(s)` 
+          : 'ℹ️ No previous purchases',
         details: history.results.length > 0 
           ? JSON.stringify(history.results.map(p => ({
               productId: p.productId,
@@ -428,11 +428,11 @@ export default function IAPDiagnosticsScreen() {
           : undefined,
       });
     } catch (error) {
-      console.error('[IAP Diagnostics] ⚠️ Error al obtener historial:', error);
+      console.error('[IAP Diagnostics] ⚠️ Error fetching history:', error);
       diagnosticResults.push({
-        test: 'Historial de Compras',
+        test: 'Purchase History',
         status: 'warning',
-        message: '⚠️ No se pudo obtener el historial de compras',
+        message: '⚠️ Could not fetch purchase history',
         details: error instanceof Error ? error.message : String(error),
       });
     }
@@ -440,13 +440,13 @@ export default function IAPDiagnosticsScreen() {
     // Disconnect
     try {
       await InAppPurchases.disconnectAsync();
-      console.log('[IAP Diagnostics] Desconectado de la App Store');
+      console.log('[IAP Diagnostics] Disconnected from App Store');
     } catch (error) {
-      console.log('[IAP Diagnostics] Error al desconectar:', error);
+      console.log('[IAP Diagnostics] Error disconnecting:', error);
     }
 
     console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[IAP Diagnostics] ✅ Diagnóstico completo');
+    console.log('[IAP Diagnostics] ✅ Diagnostics complete');
     console.log('[IAP Diagnostics] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     setResults(diagnosticResults);
@@ -493,7 +493,7 @@ export default function IAPDiagnosticsScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow-back" size={24} color={textColor} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: textColor }]}>Diagnóstico IAP</Text>
+        <Text style={[styles.headerTitle, { color: textColor }]}>IAP Diagnostics</Text>
       </View>
 
       <ScrollView style={styles.content}>
@@ -502,18 +502,18 @@ export default function IAPDiagnosticsScreen() {
           <React.Fragment>
             {allTestsPassed && productsFound === productIds.length ? (
               <View style={styles.successBox}>
-                <Text style={styles.successTitle}>✅ ¡Todo Configurado Correctamente!</Text>
+                <Text style={styles.successTitle}>✅ Everything Configured Correctly!</Text>
                 <Text style={styles.successText}>
-                  Todos los productos fueron encontrados. Las compras in-app deberían funcionar correctamente.
+                  All products were found. In-app purchases should work correctly.
                 </Text>
               </View>
             ) : hasFailures ? (
               <View style={styles.warningBox}>
-                <Text style={styles.warningTitle}>⚠️ Problemas Detectados</Text>
+                <Text style={styles.warningTitle}>⚠️ Problems Detected</Text>
                 <Text style={styles.warningText}>
                   {productsFound === 0 
-                    ? 'No se encontraron productos. Verifica tu configuración en App Store Connect.'
-                    : `Solo se encontraron ${productsFound} de ${productIds.length} productos. Revisa los detalles abajo.`}
+                    ? 'No products found. Check your App Store Connect configuration.'
+                    : `Only found ${productsFound} of ${productIds.length} products. Review details below.`}
                 </Text>
               </View>
             ) : null}
@@ -522,7 +522,7 @@ export default function IAPDiagnosticsScreen() {
 
         {/* Configuration Info */}
         <View style={[styles.infoBox, { backgroundColor: cardBackground, borderColor }]}>
-          <Text style={[styles.infoTitle, { color: textColor }]}>Configuración Actual</Text>
+          <Text style={[styles.infoTitle, { color: textColor }]}>Current Configuration</Text>
           
           <View style={styles.configSection}>
             <View style={styles.configRow}>
@@ -534,14 +534,14 @@ export default function IAPDiagnosticsScreen() {
               <Text style={[styles.configValue, { color: textColor }]}>{APP_STORE_CONFIG.appName}</Text>
             </View>
             <View style={styles.configRow}>
-              <Text style={[styles.configLabel, { color: textColor }]}>Productos:</Text>
+              <Text style={[styles.configLabel, { color: textColor }]}>Products:</Text>
               <Text style={[styles.configValue, { color: textColor }]}>{productsFound}/{productIds.length}</Text>
             </View>
           </View>
 
           <View style={[styles.productIdBox, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
             <Text style={[styles.infoText, { color: textColor, fontSize: 12, fontWeight: '600' }]}>
-              Product IDs Configurados:
+              Configured Product IDs:
             </Text>
             {productIds.map((id, index) => (
               <Text key={index} style={[styles.infoText, { color: textColor, fontSize: 12, marginTop: 4 }]}>
@@ -561,14 +561,14 @@ export default function IAPDiagnosticsScreen() {
               color="#FFFFFF"
             />
             <Text style={[styles.copyButtonText, { color: '#FFFFFF' }]}>
-              {copiedText === 'Product IDs' ? '✅ Copiado!' : 'Copiar Product IDs'}
+              {copiedText === 'Product IDs' ? '✅ Copied!' : 'Copy Product IDs'}
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Test Results */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Resultados de Pruebas</Text>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Test Results</Text>
           
           {results.map((result, index) => (
             <View
@@ -593,7 +593,7 @@ export default function IAPDiagnosticsScreen() {
 
           {results.length === 0 && !isRunning && (
             <Text style={[styles.infoText, { color: textColor, textAlign: 'center' }]}>
-              Sin resultados. Ejecuta el diagnóstico para verificar tu configuración IAP.
+              No results. Run diagnostics to check your IAP configuration.
             </Text>
           )}
         </View>
@@ -607,7 +607,7 @@ export default function IAPDiagnosticsScreen() {
           {isRunning ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={[styles.runButtonText, { color: '#fff' }]}>Ejecutar Diagnóstico Nuevamente</Text>
+            <Text style={[styles.runButtonText, { color: '#fff' }]}>Run Diagnostics Again</Text>
           )}
         </TouchableOpacity>
 
@@ -622,34 +622,34 @@ export default function IAPDiagnosticsScreen() {
             color={colors.primary}
           />
           <Text style={[styles.helpButtonText, { color: colors.primary }]}>
-            Ver Guía de Solución
+            View Troubleshooting Guide
           </Text>
         </TouchableOpacity>
 
         {/* Troubleshooting Info */}
         <View style={[styles.infoBox, { backgroundColor: cardBackground, borderColor, marginTop: spacing.lg }]}>
-          <Text style={[styles.infoTitle, { color: textColor }]}>Solución Rápida</Text>
+          <Text style={[styles.infoTitle, { color: textColor }]}>Quick Fix</Text>
           <Text style={[styles.infoText, { color: textColor }]}>
-            Si "Obtención de Productos" falla:{'\n\n'}
+            If "Product Fetch" fails:{'\n\n'}
             
-            1️⃣ Verifica App Store Connect{'\n'}
-            • Los Product IDs deben coincidir EXACTAMENTE{'\n'}
-            • Estado debe ser "Ready to Submit"{'\n'}
+            1️⃣ Check App Store Connect{'\n'}
+            • Product IDs must match EXACTLY{'\n'}
+            • Status must be "Ready to Submit"{'\n'}
             • Bundle ID: com.elitemacrotracker.app{'\n\n'}
             
-            2️⃣ Espera Sincronización{'\n'}
-            • Nuevos productos: 2-4 horas{'\n'}
-            • Cambios: 15-30 minutos{'\n\n'}
+            2️⃣ Wait for Sync{'\n'}
+            • New products: 2-4 hours{'\n'}
+            • Changes: 15-30 minutes{'\n\n'}
             
-            3️⃣ Usa Sandbox Tester{'\n'}
+            3️⃣ Use Sandbox Tester{'\n'}
             • Settings → App Store → Sandbox Account{'\n'}
-            • NO uses tu Apple ID real{'\n\n'}
+            • DO NOT use your real Apple ID{'\n\n'}
             
-            4️⃣ Dispositivo Físico{'\n'}
-            • IAP NO funciona en simulador{'\n'}
-            • IAP NO funciona en Expo Go{'\n\n'}
+            4️⃣ Physical Device{'\n'}
+            • IAP does NOT work on simulator{'\n'}
+            • IAP does NOT work in Expo Go{'\n\n'}
             
-            📚 Ver IAP_PRODUCT_NOT_FOUND_COMPLETE_FIX.md para guía completa.
+            📚 See IAP_PRODUCT_NOT_FOUND_COMPLETE_FIX.md for complete guide.
           </Text>
         </View>
       </ScrollView>
