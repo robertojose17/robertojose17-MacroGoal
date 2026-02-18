@@ -37,7 +37,7 @@ export const IAP_PRICING = {
  * Bundle ID must match what's in app.json and App Store Connect
  */
 export const APP_STORE_CONFIG = {
-  bundleId: 'com.elitemacrotracker.app',
+  bundleId: 'com.robertojose17.macrogoal',
   appName: 'Macro Goal',
 } as const;
 
