@@ -1,7 +1,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, Alert } from 'react-native';
+import * as InAppPurchases from 'expo-in-app-purchases';
+import { IAP_PRODUCT_IDS } from '@/config/iapConfig';
 
 export type SubscriptionStatus = 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid';
 export type PlanType = 'monthly' | 'yearly' | null;
@@ -32,6 +34,9 @@ export interface UseSubscriptionReturn {
   isSubscribed: boolean;
   hasActiveSubscription: boolean;
   planType: PlanType;
+  products: InAppPurchases.IAPItemDetails[];
+  purchase: (productId: string) => Promise<void>;
+  restore: () => Promise<void>;
   refreshSubscription: () => Promise<void>;
   syncSubscription: () => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -65,15 +70,17 @@ function hasPremiumAccess(subscription: Subscription | null): boolean {
 
 /**
  * iOS-specific subscription hook using Apple In-App Purchases
- * Falls back to database-only mode if IAP is not available (e.g., in Expo Go)
+ * Integrates with StoreKit via expo-in-app-purchases
  */
 export function useSubscription(): UseSubscriptionReturn {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<InAppPurchases.IAPItemDetails[]>([]);
+  const [iapConnected, setIapConnected] = useState(false);
 
   const fetchSubscription = useCallback(async () => {
     try {
-      console.log('[useSubscription iOS] 🔄 Fetching subscription...');
+      console.log('[useSubscription iOS] 🔄 Fetching subscription from database...');
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -119,9 +126,256 @@ export function useSubscription(): UseSubscriptionReturn {
     }
   }, []);
 
+  /**
+   * Verify purchase with backend and update subscription
+   */
+  const verifyPurchaseWithBackend = useCallback(async (purchase: InAppPurchases.InAppPurchase) => {
+    try {
+      console.log('[useSubscription iOS] 🔐 Verifying purchase with backend...');
+      console.log('[useSubscription iOS] Transaction ID:', purchase.transactionId);
+      console.log('[useSubscription iOS] Product ID:', purchase.productId);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[useSubscription iOS] ❌ No user session found for verification');
+        throw new Error('Please log in to complete your purchase.');
+      }
+
+      // Send receipt to Supabase Edge Function for verification
+      const { data, error } = await supabase.functions.invoke('verify-apple-receipt', {
+        body: {
+          receipt: purchase.transactionReceipt,
+          productId: purchase.productId,
+          transactionId: purchase.transactionId,
+          userId: user.id,
+        },
+      });
+
+      if (error) {
+        console.error('[useSubscription iOS] ❌ Edge Function error:', error);
+        throw new Error(`Verification failed: ${error.message}`);
+      }
+
+      if (!data || !data.success) {
+        console.error('[useSubscription iOS] ❌ Backend rejected verification:', data);
+        throw new Error('Backend verification failed. Please contact support.');
+      }
+
+      console.log('[useSubscription iOS] ✅ Purchase verified by backend:', data);
+      return true;
+    } catch (error: any) {
+      console.error('[useSubscription iOS] ❌ Verification error:', error);
+      throw error;
+    }
+  }, []);
+
+  /**
+   * Handle purchase events from StoreKit
+   */
+  const handlePurchases = useCallback(async (purchaseUpdate: InAppPurchases.InAppPurchaseResult) => {
+    const { responseCode, results } = purchaseUpdate;
+
+    console.log('[useSubscription iOS] 📦 Purchase update received');
+    console.log('[useSubscription iOS] Response code:', responseCode);
+    console.log('[useSubscription iOS] Results count:', results?.length || 0);
+
+    if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+      for (const purchase of results || []) {
+        console.log('[useSubscription iOS] 🔄 Processing purchase:', purchase.productId);
+        
+        try {
+          setLoading(true);
+
+          // Verify with backend BEFORE finishing transaction
+          await verifyPurchaseWithBackend(purchase);
+
+          // Backend confirmed - finish transaction with Apple
+          await InAppPurchases.finishTransactionAsync(purchase, true);
+          console.log('[useSubscription iOS] ✅ Transaction finished successfully');
+
+          // Refresh subscription from database
+          await fetchSubscription();
+
+          Alert.alert(
+            'Purchase Successful',
+            'Your subscription is now active!',
+            [{ text: 'OK' }]
+          );
+        } catch (error: any) {
+          console.error('[useSubscription iOS] ❌ Error processing purchase:', error);
+          
+          // DO NOT finish transaction if verification failed
+          Alert.alert(
+            'Purchase Error',
+            error.message || 'Failed to verify your purchase. Please try restoring purchases later.',
+            [{ text: 'OK' }]
+          );
+        } finally {
+          setLoading(false);
+        }
+      }
+    } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
+      console.log('[useSubscription iOS] ℹ️ User canceled purchase');
+      setLoading(false);
+    } else if (responseCode === InAppPurchases.IAPResponseCode.DEFERRED) {
+      console.log('[useSubscription iOS] ⏳ Purchase deferred (Ask to Buy)');
+      Alert.alert(
+        'Purchase Pending',
+        'Your purchase is pending approval. You will be notified when it is approved.',
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
+    } else {
+      console.error('[useSubscription iOS] ❌ Purchase failed with code:', responseCode);
+      Alert.alert(
+        'Purchase Failed',
+        `Unable to complete your purchase. Error code: ${responseCode}`,
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
+    }
+  }, [verifyPurchaseWithBackend, fetchSubscription]);
+
+  /**
+   * Initialize IAP connection and fetch products
+   */
+  const initializeIAP = useCallback(async () => {
+    try {
+      console.log('[useSubscription iOS] 🚀 Initializing IAP...');
+      
+      // Connect to App Store
+      const connectionResult = await InAppPurchases.connectAsync();
+      if (connectionResult.responseCode !== InAppPurchases.IAPResponseCode.OK) {
+        console.error('[useSubscription iOS] ❌ IAP connection failed:', connectionResult.debugMessage);
+        return;
+      }
+      
+      setIapConnected(true);
+      console.log('[useSubscription iOS] ✅ Connected to App Store');
+
+      // Fetch available products
+      const productIds = Object.values(IAP_PRODUCT_IDS);
+      console.log('[useSubscription iOS] 📦 Fetching products:', productIds);
+      
+      const { responseCode, results } = await InAppPurchases.getProductsAsync(productIds);
+
+      if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
+        setProducts(results);
+        console.log('[useSubscription iOS] ✅ Products loaded:', results.length);
+        results.forEach(product => {
+          console.log(`[useSubscription iOS]   - ${product.productId}: ${product.priceString}`);
+        });
+      } else {
+        console.warn('[useSubscription iOS] ⚠️ No products found or fetch failed');
+      }
+
+      // Set up purchase listener
+      InAppPurchases.setPurchaseListener(handlePurchases);
+      console.log('[useSubscription iOS] ✅ Purchase listener registered');
+
+      // Fetch initial subscription status
+      await fetchSubscription();
+    } catch (error: any) {
+      console.error('[useSubscription iOS] ❌ IAP initialization error:', error);
+    }
+  }, [handlePurchases, fetchSubscription]);
+
+  /**
+   * Purchase a subscription product
+   */
+  const purchase = useCallback(async (productId: string) => {
+    if (!iapConnected) {
+      Alert.alert('Not Connected', 'Please wait while we connect to the App Store...');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('[useSubscription iOS] 💳 Initiating purchase for:', productId);
+      
+      await InAppPurchases.purchaseItemAsync(productId);
+      // Purchase listener will handle the result
+    } catch (error: any) {
+      console.error('[useSubscription iOS] ❌ Purchase initiation error:', error);
+      Alert.alert(
+        'Purchase Error',
+        error.message || 'Failed to initiate purchase. Please try again.',
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
+    }
+  }, [iapConnected]);
+
+  /**
+   * Restore previous purchases
+   */
+  const restore = useCallback(async () => {
+    if (!iapConnected) {
+      Alert.alert('Not Connected', 'Please wait while we connect to the App Store...');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('[useSubscription iOS] 🔄 Restoring purchases...');
+
+      const { responseCode, results } = await InAppPurchases.getPurchaseHistoryAsync();
+
+      console.log('[useSubscription iOS] Restore response code:', responseCode);
+      console.log('[useSubscription iOS] Purchase history count:', results?.length || 0);
+
+      if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+        if (results && results.length > 0) {
+          console.log('[useSubscription iOS] ✅ Found', results.length, 'previous purchases');
+
+          // Process each purchase through verification
+          for (const purchase of results) {
+            try {
+              await verifyPurchaseWithBackend(purchase);
+              await InAppPurchases.finishTransactionAsync(purchase, true);
+            } catch (error) {
+              console.error('[useSubscription iOS] ⚠️ Failed to verify restored purchase:', error);
+              // Continue with other purchases
+            }
+          }
+
+          await fetchSubscription();
+
+          Alert.alert(
+            'Restore Successful',
+            'Your purchases have been restored!',
+            [{ text: 'OK' }]
+          );
+        } else {
+          console.log('[useSubscription iOS] ℹ️ No previous purchases found');
+          Alert.alert(
+            'No Purchases Found',
+            'We could not find any previous purchases to restore.',
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        console.error('[useSubscription iOS] ❌ Restore failed with code:', responseCode);
+        Alert.alert(
+          'Restore Failed',
+          'Unable to restore purchases. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('[useSubscription iOS] ❌ Restore error:', error);
+      Alert.alert(
+        'Restore Error',
+        error.message || 'An unexpected error occurred. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [iapConnected, verifyPurchaseWithBackend, fetchSubscription]);
+
   const syncSubscription = useCallback(async () => {
-    console.log('[useSubscription iOS] ℹ️ syncSubscription called - IAP sync not available in this build');
-    // Just refresh from database
+    console.log('[useSubscription iOS] 🔄 Syncing subscription...');
     await fetchSubscription();
   }, [fetchSubscription]);
 
@@ -149,9 +403,17 @@ export function useSubscription(): UseSubscriptionReturn {
     }
   }, []);
 
+  // Initialize IAP on mount
   useEffect(() => {
-    fetchSubscription();
-  }, [fetchSubscription]);
+    initializeIAP();
+
+    return () => {
+      console.log('[useSubscription iOS] 🔌 Cleaning up IAP connection');
+      InAppPurchases.disconnectAsync().catch(err => 
+        console.error('[useSubscription iOS] Error disconnecting:', err)
+      );
+    };
+  }, [initializeIAP]);
 
   // Set up real-time subscription to subscription changes
   useEffect(() => {
@@ -183,7 +445,7 @@ export function useSubscription(): UseSubscriptionReturn {
   useEffect(() => {
     console.log('[useSubscription iOS] 📱 Setting up app state listener');
     
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
         console.log('[useSubscription iOS] 🔄 App became active, refreshing subscription...');
         fetchSubscription();
@@ -192,7 +454,7 @@ export function useSubscription(): UseSubscriptionReturn {
 
     return () => {
       console.log('[useSubscription iOS] 🔌 Cleaning up app state listener');
-      subscription.remove();
+      appStateSubscription.remove();
     };
   }, [fetchSubscription]);
 
@@ -216,6 +478,9 @@ export function useSubscription(): UseSubscriptionReturn {
     isSubscribed,
     hasActiveSubscription,
     planType: subscription?.plan_type || null,
+    products,
+    purchase,
+    restore,
     refreshSubscription: fetchSubscription,
     syncSubscription,
     refreshUserProfile,
