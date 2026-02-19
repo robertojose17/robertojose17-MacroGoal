@@ -337,8 +337,10 @@ export default function RootLayout() {
       if (!session) {
         if (!inAuthGroup) {
           console.log('[Navigation] No session, redirecting to welcome');
-          // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-          router.replace('/auth/welcome');
+          // CRITICAL FIX: Defer navigation to next tick
+          setTimeout(() => {
+            router.replace('/auth/welcome');
+          }, 0);
         }
         return;
       }
@@ -387,8 +389,10 @@ export default function RootLayout() {
             }
             
             // Always go to onboarding if there's an error
-            // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-            router.replace('/onboarding/complete');
+            // CRITICAL FIX: Defer navigation to next tick
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
             return;
           }
 
@@ -414,20 +418,26 @@ export default function RootLayout() {
             }
             
             // Go to onboarding
-            // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-            router.replace('/onboarding/complete');
+            // CRITICAL FIX: Defer navigation to next tick
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
             return;
           }
 
           // User exists, check onboarding status
           if (userData.onboarding_completed) {
             console.log('[Navigation] ✅ Onboarding complete, redirecting to home');
-            // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-            router.replace('/(tabs)/(home)/');
+            // CRITICAL FIX: Defer navigation to next tick
+            setTimeout(() => {
+              router.replace('/(tabs)/(home)/');
+            }, 0);
           } else {
             console.log('[Navigation] ⚠️ Onboarding not complete, redirecting to onboarding');
-            // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-            router.replace('/onboarding/complete');
+            // CRITICAL FIX: Defer navigation to next tick
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
           }
         } catch (error) {
           console.error('[Navigation] ❌ Onboarding check failed:', error);
@@ -450,15 +460,19 @@ export default function RootLayout() {
           }
           
           // CRITICAL: On any error, default to onboarding (safe fallback)
-          // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-          router.replace('/onboarding/complete');
+          // CRITICAL FIX: Defer navigation to next tick
+          setTimeout(() => {
+            router.replace('/onboarding/complete');
+          }, 0);
         }
       }
     } catch (error) {
       console.error('[Navigation] ❌ CRITICAL: Navigation error:', error);
       // CRITICAL: On catastrophic error, go to welcome screen
-      // CRITICAL FIX: Already wrapped in setTimeout by parent useEffect
-      router.replace('/auth/welcome');
+      // CRITICAL FIX: Defer navigation to next tick
+      setTimeout(() => {
+        router.replace('/auth/welcome');
+      }, 0);
     }
   };
 
