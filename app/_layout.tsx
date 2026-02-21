@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -305,6 +305,7 @@ export default function RootLayout() {
     };
   }, []);
 
+  // CRITICAL FIX: Navigation logic moved directly into useEffect
   useEffect(() => {
     if (!isReady || initializing) {
       console.log('[Navigation] Waiting for initialization...', { isReady, initializing });
@@ -312,169 +313,165 @@ export default function RootLayout() {
     }
 
     // CRITICAL FIX: Use setTimeout to ensure navigation happens after component mount
-    const navigationTimer = setTimeout(() => {
-      handleNavigation();
+    const navigationTimer = setTimeout(async () => {
+      try {
+        const inAuthGroup = segments[0] === 'auth';
+        const inOnboardingGroup = segments[0] === 'onboarding';
+        const inTabsGroup = segments[0] === '(tabs)';
+
+        console.log('[Navigation] Current state:', { 
+          hasSession: !!session, 
+          segments, 
+          inAuthGroup, 
+          inOnboardingGroup, 
+          inTabsGroup 
+        });
+
+        // Not logged in - redirect to auth
+        if (!session) {
+          if (!inAuthGroup) {
+            console.log('[Navigation] No session, redirecting to welcome');
+            // CRITICAL FIX: Defer navigation to next tick
+            setTimeout(() => {
+              router.replace('/auth/welcome');
+            }, 0);
+          }
+          return;
+        }
+
+        // Logged in - check onboarding status
+        if (session && (inAuthGroup || segments.length === 0)) {
+          console.log('[Navigation] Checking onboarding status for user:', session.user.id);
+          
+          // CRITICAL FIX: Add timeout to onboarding check
+          const onboardingPromise = supabase
+            .from('users')
+            .select('onboarding_completed')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          
+          const onboardingTimeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Onboarding check timeout')), 5000)
+          );
+          
+          try {
+            const { data: userData, error } = await Promise.race([
+              onboardingPromise, 
+              onboardingTimeout
+            ]) as any;
+
+            // CRITICAL FIX: Handle all error cases gracefully
+            if (error) {
+              console.error('[Navigation] ⚠️ Error checking onboarding:', error);
+              
+              // Try to create user record if it doesn't exist
+              console.log('[Navigation] Attempting to create user record...');
+              const { error: insertError } = await supabase
+                .from('users')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  user_type: 'free',
+                  onboarding_completed: false,
+                });
+              
+              if (insertError && insertError.code !== '23505') {
+                console.error('[Navigation] ❌ Failed to create user record:', insertError);
+              } else {
+                console.log('[Navigation] ✅ User record created or already exists');
+              }
+              
+              // Always go to onboarding if there's an error
+              // CRITICAL FIX: Defer navigation to next tick
+              setTimeout(() => {
+                router.replace('/onboarding/complete');
+              }, 0);
+              return;
+            }
+
+            // CRITICAL FIX: Handle missing user data (user not in database)
+            if (!userData) {
+              console.log('[Navigation] ⚠️ User not in database, creating record...');
+              
+              // Try to create user record
+              const { error: insertError } = await supabase
+                .from('users')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  user_type: 'free',
+                  onboarding_completed: false,
+                });
+              
+              if (insertError && insertError.code !== '23505') {
+                console.error('[Navigation] ❌ Failed to create user record:', insertError);
+              } else {
+                console.log('[Navigation] ✅ User record created');
+              }
+              
+              // Go to onboarding
+              // CRITICAL FIX: Defer navigation to next tick
+              setTimeout(() => {
+                router.replace('/onboarding/complete');
+              }, 0);
+              return;
+            }
+
+            // User exists, check onboarding status
+            if (userData.onboarding_completed) {
+              console.log('[Navigation] ✅ Onboarding complete, redirecting to home');
+              // CRITICAL FIX: Defer navigation to next tick
+              setTimeout(() => {
+                router.replace('/(tabs)/(home)/');
+              }, 0);
+            } else {
+              console.log('[Navigation] ⚠️ Onboarding not complete, redirecting to onboarding');
+              // CRITICAL FIX: Defer navigation to next tick
+              setTimeout(() => {
+                router.replace('/onboarding/complete');
+              }, 0);
+            }
+          } catch (error) {
+            console.error('[Navigation] ❌ Onboarding check failed:', error);
+            
+            // Try to create user record as last resort
+            try {
+              console.log('[Navigation] Last resort: Creating user record...');
+              await supabase
+                .from('users')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  user_type: 'free',
+                  onboarding_completed: false,
+                });
+              console.log('[Navigation] ✅ User record created');
+            } catch (insertError) {
+              console.error('[Navigation] ❌ Failed to create user record:', insertError);
+            }
+            
+            // CRITICAL: On any error, default to onboarding (safe fallback)
+            // CRITICAL FIX: Defer navigation to next tick
+            setTimeout(() => {
+              router.replace('/onboarding/complete');
+            }, 0);
+          }
+        }
+      } catch (error) {
+        console.error('[Navigation] ❌ CRITICAL: Navigation error:', error);
+        // CRITICAL: On catastrophic error, go to welcome screen
+        // CRITICAL FIX: Defer navigation to next tick
+        setTimeout(() => {
+          router.replace('/auth/welcome');
+        }, 0);
+      }
     }, 100);
 
     return () => clearTimeout(navigationTimer);
-  }, [session, segments, isReady, initializing, handleNavigation]);
-
-  const handleNavigation = useCallback(async () => {
-    try {
-      const inAuthGroup = segments[0] === 'auth';
-      const inOnboardingGroup = segments[0] === 'onboarding';
-      const inTabsGroup = segments[0] === '(tabs)';
-
-      console.log('[Navigation] Current state:', { 
-        hasSession: !!session, 
-        segments, 
-        inAuthGroup, 
-        inOnboardingGroup, 
-        inTabsGroup 
-      });
-
-      // Not logged in - redirect to auth
-      if (!session) {
-        if (!inAuthGroup) {
-          console.log('[Navigation] No session, redirecting to welcome');
-          // CRITICAL FIX: Defer navigation to next tick
-          setTimeout(() => {
-            router.replace('/auth/welcome');
-          }, 0);
-        }
-        return;
-      }
-
-      // Logged in - check onboarding status
-      if (session && (inAuthGroup || segments.length === 0)) {
-        console.log('[Navigation] Checking onboarding status for user:', session.user.id);
-        
-        // CRITICAL FIX: Add timeout to onboarding check
-        const onboardingPromise = supabase
-          .from('users')
-          .select('onboarding_completed')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        
-        const onboardingTimeout = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Onboarding check timeout')), 5000)
-        );
-        
-        try {
-          const { data: userData, error } = await Promise.race([
-            onboardingPromise, 
-            onboardingTimeout
-          ]) as any;
-
-          // CRITICAL FIX: Handle all error cases gracefully
-          if (error) {
-            console.error('[Navigation] ⚠️ Error checking onboarding:', error);
-            
-            // Try to create user record if it doesn't exist
-            console.log('[Navigation] Attempting to create user record...');
-            const { error: insertError } = await supabase
-              .from('users')
-              .insert({
-                id: session.user.id,
-                email: session.user.email,
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                user_type: 'free',
-                onboarding_completed: false,
-              });
-            
-            if (insertError && insertError.code !== '23505') {
-              console.error('[Navigation] ❌ Failed to create user record:', insertError);
-            } else {
-              console.log('[Navigation] ✅ User record created or already exists');
-            }
-            
-            // Always go to onboarding if there's an error
-            // CRITICAL FIX: Defer navigation to next tick
-            setTimeout(() => {
-              router.replace('/onboarding/complete');
-            }, 0);
-            return;
-          }
-
-          // CRITICAL FIX: Handle missing user data (user not in database)
-          if (!userData) {
-            console.log('[Navigation] ⚠️ User not in database, creating record...');
-            
-            // Try to create user record
-            const { error: insertError } = await supabase
-              .from('users')
-              .insert({
-                id: session.user.id,
-                email: session.user.email,
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                user_type: 'free',
-                onboarding_completed: false,
-              });
-            
-            if (insertError && insertError.code !== '23505') {
-              console.error('[Navigation] ❌ Failed to create user record:', insertError);
-            } else {
-              console.log('[Navigation] ✅ User record created');
-            }
-            
-            // Go to onboarding
-            // CRITICAL FIX: Defer navigation to next tick
-            setTimeout(() => {
-              router.replace('/onboarding/complete');
-            }, 0);
-            return;
-          }
-
-          // User exists, check onboarding status
-          if (userData.onboarding_completed) {
-            console.log('[Navigation] ✅ Onboarding complete, redirecting to home');
-            // CRITICAL FIX: Defer navigation to next tick
-            setTimeout(() => {
-              router.replace('/(tabs)/(home)/');
-            }, 0);
-          } else {
-            console.log('[Navigation] ⚠️ Onboarding not complete, redirecting to onboarding');
-            // CRITICAL FIX: Defer navigation to next tick
-            setTimeout(() => {
-              router.replace('/onboarding/complete');
-            }, 0);
-          }
-        } catch (error) {
-          console.error('[Navigation] ❌ Onboarding check failed:', error);
-          
-          // Try to create user record as last resort
-          try {
-            console.log('[Navigation] Last resort: Creating user record...');
-            await supabase
-              .from('users')
-              .insert({
-                id: session.user.id,
-                email: session.user.email,
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                user_type: 'free',
-                onboarding_completed: false,
-              });
-            console.log('[Navigation] ✅ User record created');
-          } catch (insertError) {
-            console.error('[Navigation] ❌ Failed to create user record:', insertError);
-          }
-          
-          // CRITICAL: On any error, default to onboarding (safe fallback)
-          // CRITICAL FIX: Defer navigation to next tick
-          setTimeout(() => {
-            router.replace('/onboarding/complete');
-          }, 0);
-        }
-      }
-    } catch (error) {
-      console.error('[Navigation] ❌ CRITICAL: Navigation error:', error);
-      // CRITICAL: On catastrophic error, go to welcome screen
-      // CRITICAL FIX: Defer navigation to next tick
-      setTimeout(() => {
-        router.replace('/auth/welcome');
-      }, 0);
-    }
-  }, [session, segments]);
+  }, [session, segments, isReady, initializing]);
 
   React.useEffect(() => {
     if (
