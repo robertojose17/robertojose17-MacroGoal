@@ -15,7 +15,7 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
   const isDark = colorScheme === 'dark';
   const [showModal, setShowModal] = useState(false);
   
-  const { products, purchaseProduct, restorePurchases, isSubscribed, loading, error } = useSubscription();
+  const { products, purchaseProduct, restorePurchases, isSubscribed, loading, error, storeConnected } = useSubscription();
 
   const handlePurchase = async (productId: string) => {
     await purchaseProduct(productId);
@@ -72,6 +72,9 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
     );
   }
 
+  const canPurchase = storeConnected && products.length > 0 && !loading;
+  const canRestore = storeConnected && !loading;
+
   return (
     <>
       <TouchableOpacity
@@ -127,7 +130,7 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
               {/* Features */}
               <View style={styles.featuresSection}>
                 <FeatureItem
-                  icon="chart-line"
+                  icon="trending-up"
                   title="Advanced Analytics"
                   description="7/30-day charts, trends, and adherence tracking"
                   isDark={isDark}
@@ -139,7 +142,7 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                   isDark={isDark}
                 />
                 <FeatureItem
-                  icon="trending-up"
+                  icon="flag"
                   title="Multiple Goal Phases"
                   description="Switch between cut, maintain, and bulk"
                   isDark={isDark}
@@ -164,15 +167,8 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                 />
               </View>
 
-              {/* Pricing */}
-              {loading && products.length === 0 ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Loading subscription options...
-                  </Text>
-                </View>
-              ) : error ? (
+              {/* Error Display */}
+              {error && (
                 <View style={styles.errorContainer}>
                   <IconSymbol
                     ios_icon_name="exclamationmark.triangle"
@@ -187,14 +183,31 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                     Make sure you&apos;re testing on a real device or TestFlight
                   </Text>
                 </View>
-              ) : products.length > 0 ? (
+              )}
+
+              {/* Loading State */}
+              {loading && products.length === 0 && (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    Loading subscription options...
+                  </Text>
+                </View>
+              )}
+
+              {/* Pricing */}
+              {!loading && products.length > 0 && (
                 <View style={styles.pricingSection}>
                   {products.map((product) => (
                     <TouchableOpacity
                       key={product.productId}
-                      style={[styles.priceCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+                      style={[
+                        styles.priceCard,
+                        { backgroundColor: isDark ? colors.cardDark : colors.card },
+                        !canPurchase && styles.priceCardDisabled,
+                      ]}
                       onPress={() => handlePurchase(product.productId)}
-                      disabled={loading}
+                      disabled={!canPurchase}
                     >
                       <View style={styles.priceCardHeader}>
                         <Text style={[styles.priceCardTitle, { color: isDark ? colors.textDark : colors.text }]}>
@@ -220,7 +233,10 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                     </TouchableOpacity>
                   ))}
                 </View>
-              ) : (
+              )}
+
+              {/* No Products State */}
+              {!loading && !error && products.length === 0 && (
                 <View style={styles.noProductsContainer}>
                   <Text style={[styles.noProductsText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     No subscription options available at the moment
@@ -230,14 +246,14 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
 
               {/* Restore Button */}
               <TouchableOpacity
-                style={styles.restoreButton}
+                style={[styles.restoreButton, !canRestore && styles.restoreButtonDisabled]}
                 onPress={handleRestore}
-                disabled={loading}
+                disabled={!canRestore}
               >
                 {loading ? (
                   <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
-                  <Text style={[styles.restoreButtonText, { color: colors.primary }]}>
+                  <Text style={[styles.restoreButtonText, { color: canRestore ? colors.primary : colors.textSecondary }]}>
                     Restore Purchases
                   </Text>
                 )}
@@ -388,6 +404,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary + '40',
   },
+  priceCardDisabled: {
+    opacity: 0.5,
+  },
   priceCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -435,6 +454,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.xl,
     gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   errorText: {
     ...typography.bodyBold,
@@ -456,6 +476,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.md,
     marginBottom: spacing.lg,
+  },
+  restoreButtonDisabled: {
+    opacity: 0.5,
   },
   restoreButtonText: {
     ...typography.bodyBold,
