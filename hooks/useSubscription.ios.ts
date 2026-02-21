@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -41,7 +41,8 @@ export const useSubscription = (): UseSubscriptionHook => {
   const initializedRef = useRef(false);
   const listenerRef = useRef<{ remove?: () => void } | null>(null);
 
-  const productIds = [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly];
+  // Memoize productIds to prevent unnecessary re-renders
+  const productIds = useMemo(() => [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly], []);
 
   const addDiagnostic = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -154,12 +155,16 @@ export const useSubscription = (): UseSubscriptionHook => {
       return;
     }
 
-    if (initializedRef.current) return;
+    if (initializedRef.current) {
+      log('INIT', 'Already initialized, skipping');
+      return;
+    }
     initializedRef.current = true;
 
     let cancelled = false;
 
     const init = async () => {
+      log('INIT', 'Starting initialization sequence');
       setLoading(true);
       setError(null);
       setDiagnostics([]);
@@ -174,6 +179,11 @@ export const useSubscription = (): UseSubscriptionHook => {
         const conn = await InAppPurchases.connectAsync();
         log('CONNECT', 'Result', conn);
 
+        if (cancelled) {
+          log('INIT', 'Cancelled after connect');
+          return;
+        }
+
         if (conn.responseCode !== InAppPurchases.IAPResponseCode.OK) {
           const errorMsg = conn.debugMessage || `connectAsync failed (${conn.responseCode})`;
           addDiagnostic(`❌ StoreKit connection failed: ${errorMsg}`);
@@ -181,13 +191,19 @@ export const useSubscription = (): UseSubscriptionHook => {
           addDiagnostic('  1. Are you testing on a real iOS device or TestFlight?');
           addDiagnostic('  2. Is the device signed in to a valid Apple ID?');
           addDiagnostic('  3. Is the app properly configured in App Store Connect?');
-          throw new Error(errorMsg);
+          setError(errorMsg);
+          setStoreConnected(false);
+          setLoading(false);
+          return;
         }
 
         addDiagnostic('✅ Connected to StoreKit successfully');
-
-        if (cancelled) return;
         setStoreConnected(true);
+
+        if (cancelled) {
+          log('INIT', 'Cancelled after setting storeConnected');
+          return;
+        }
 
         log('PRODUCTS', 'Fetching productIds', productIds);
         addDiagnostic('📦 Fetching product information from App Store...');
@@ -195,11 +211,18 @@ export const useSubscription = (): UseSubscriptionHook => {
         const prodRes = await InAppPurchases.getProductsAsync(productIds);
         log('PRODUCTS', 'Result', prodRes);
 
+        if (cancelled) {
+          log('INIT', 'Cancelled after getProductsAsync');
+          return;
+        }
+
         const results = prodRes.results ?? [];
         
         if (prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK) {
           addDiagnostic(`❌ Product fetch failed with code: ${prodRes.responseCode}`);
-          throw new Error('Failed to fetch products from App Store');
+          setError('Failed to fetch products from App Store');
+          setLoading(false);
+          return;
         }
 
         if (results.length === 0) {
@@ -211,7 +234,10 @@ export const useSubscription = (): UseSubscriptionHook => {
           addDiagnostic('  4. Testing on Simulator (use real device/TestFlight)');
           addDiagnostic('  5. Products not configured as Auto-Renewable Subscriptions');
           addDiagnostic(`  6. Expected IDs: ${productIds.join(', ')}`);
-          throw new Error('No products returned. Check App Store Connect setup.');
+          setError('No products returned. Check App Store Connect setup.');
+          setProducts([]);
+          setLoading(false);
+          return;
         }
 
         addDiagnostic(`✅ Loaded ${results.length} product(s) successfully`);
@@ -219,7 +245,6 @@ export const useSubscription = (): UseSubscriptionHook => {
           addDiagnostic(`  ${i + 1}. ${p.title} (${p.productId}) - ${p.price}`);
         });
 
-        if (cancelled) return;
         setProducts(
           results.map((p) => ({
             productId: p.productId,
@@ -229,6 +254,11 @@ export const useSubscription = (): UseSubscriptionHook => {
             currencyCode: p.currencyCode,
           }))
         );
+
+        if (cancelled) {
+          log('INIT', 'Cancelled after setting products');
+          return;
+        }
 
         log('LISTENER', 'Setting purchase listener...');
         addDiagnostic('🎧 Setting up purchase listener...');
@@ -274,6 +304,10 @@ export const useSubscription = (): UseSubscriptionHook => {
         addDiagnostic('🎉 IAP initialization complete!');
 
         await fetchSubscriptionStatusFromDB();
+        
+        // Ensure loading is set to false after everything completes successfully
+        setLoading(false);
+        log('INIT', 'Initialization complete, loading set to false');
       } catch (e: any) {
         log('INIT', 'Error', e);
         if (!cancelled) {
@@ -282,20 +316,25 @@ export const useSubscription = (): UseSubscriptionHook => {
           addDiagnostic(`❌ Initialization failed: ${errorMessage}`);
           setStoreConnected(false);
           setProducts([]);
+          setLoading(false);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
 
     init();
 
     return () => {
+      log('CLEANUP', 'Cleaning up IAP resources');
       cancelled = true;
       try {
         listenerRef.current?.remove?.();
-      } catch {}
-      InAppPurchases.disconnectAsync().catch(() => {});
+        listenerRef.current = null;
+      } catch (e) {
+        log('CLEANUP', 'Error removing listener', e);
+      }
+      InAppPurchases.disconnectAsync().catch((e) => {
+        log('CLEANUP', 'Error disconnecting', e);
+      });
     };
   }, [fetchSubscriptionStatusFromDB, productIds, verifyReceipt, addDiagnostic]);
 
