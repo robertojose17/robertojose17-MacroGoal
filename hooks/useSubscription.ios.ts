@@ -1,24 +1,18 @@
-
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
 import { supabase } from '@/app/integrations/supabase/client';
 import { IAP_PRODUCT_IDS } from '@/config/iapConfig';
 
-interface Product {
+type Product = {
   productId: string;
   title: string;
   description: string;
   price: string;
   currencyCode: string;
-  subscriptionPeriod?: string;
-  introductoryPrice?: string;
-  introductoryPricePaymentMode?: InAppPurchases.PaymentMode;
-  introductoryPriceNumberOfPeriods?: string;
-  introductoryPriceSubscriptionPeriod?: string;
-}
+};
 
-interface UseSubscriptionHook {
+type UseSubscriptionHook = {
   products: Product[];
   purchaseProduct: (productId: string) => Promise<void>;
   restorePurchases: () => Promise<void>;
@@ -26,345 +20,254 @@ interface UseSubscriptionHook {
   loading: boolean;
   error: string | null;
   storeConnected: boolean;
-}
+};
 
-const logWithTimestamp = (tag: string, message: string, data?: any) => {
-  const timestamp = new Date().toISOString();
-  if (data !== undefined) {
-    console.log(`[IAP ${timestamp}] ${tag}: ${message}`, data);
-  } else {
-    console.log(`[IAP ${timestamp}] ${tag}: ${message}`);
-  }
+const log = (tag: string, msg: string, data?: any) => {
+  const ts = new Date().toISOString();
+  if (data !== undefined) console.log(`[IAP ${ts}] ${tag}: ${msg}`, data);
+  else console.log(`[IAP ${ts}] ${tag}: ${msg}`);
 };
 
 export const useSubscription = (): UseSubscriptionHook => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [storeConnected, setStoreConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [storeConnected, setStoreConnected] = useState<boolean>(false);
-  
-  const purchaseListenerRef = useRef<any>(null);
-  const isInitializedRef = useRef<boolean>(false);
 
-  // Fetch subscription status from Supabase
-  const fetchSubscriptionStatus = useCallback(async () => {
+  const initializedRef = useRef(false);
+  const listenerRef = useRef<{ remove?: () => void } | null>(null);
+
+  const productIds = [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly];
+
+  const fetchSubscriptionStatusFromDB = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        logWithTimestamp('SUBSCRIPTION_STATUS', 'No authenticated user');
         setIsSubscribed(false);
         return;
       }
 
       const { data, error: dbError } = await supabase
         .from('subscriptions')
-        .select('*')
+        .select('status')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .maybeSingle();
 
       if (dbError && dbError.code !== 'PGRST116') {
-        logWithTimestamp('SUBSCRIPTION_STATUS', 'Error fetching subscription', dbError);
+        log('DB', 'Error reading subscription', dbError);
         setIsSubscribed(false);
-      } else if (data) {
-        logWithTimestamp('SUBSCRIPTION_STATUS', 'Active subscription found', data);
-        setIsSubscribed(true);
-      } else {
-        logWithTimestamp('SUBSCRIPTION_STATUS', 'No active subscription');
-        setIsSubscribed(false);
+        return;
       }
-    } catch (err: any) {
-      logWithTimestamp('SUBSCRIPTION_STATUS', 'Unexpected error', err);
+
+      setIsSubscribed(!!data);
+    } catch (e) {
+      log('DB', 'Unexpected error', e);
       setIsSubscribed(false);
     }
   }, []);
 
-  // Initialize IAP with deterministic flow
+  const verifyReceipt = useCallback(
+    async (purchase: InAppPurchases.InAppPurchase) => {
+      // Always finish transactions at the end (but NEVER consume subscriptions)
+      const finish = async () => {
+        try {
+          await InAppPurchases.finishTransactionAsync(purchase, false); // <- IMPORTANT: false for subs
+        } catch (e) {
+          log('FINISH', 'finishTransactionAsync failed', e);
+        }
+      };
+
+      try {
+        if (!purchase?.transactionReceipt) {
+          log('VERIFY', 'No receipt on purchase', purchase);
+          await finish();
+          return { ok: false, reason: 'no_receipt' as const };
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          log('VERIFY', 'No authenticated user');
+          await finish();
+          return { ok: false, reason: 'no_user' as const };
+        }
+
+        log('VERIFY', 'Sending receipt to Edge Function', {
+          productId: purchase.productId,
+          transactionId: purchase.transactionId,
+        });
+
+        const { data, error: fnError } = await supabase.functions.invoke('verify-apple-receipt', {
+          body: {
+            receipt: purchase.transactionReceipt,
+            productId: purchase.productId,
+            transactionId: purchase.transactionId,
+            userId: user.id,
+          },
+        });
+
+        if (fnError) {
+          log('VERIFY', 'Edge Function error', fnError);
+          await finish();
+          return { ok: false, reason: 'fn_error' as const };
+        }
+
+        if (data?.success) {
+          setIsSubscribed(true);
+          await finish();
+          return { ok: true as const };
+        }
+
+        log('VERIFY', 'Verification failed response', data);
+        await finish();
+        return { ok: false, reason: 'verify_failed' as const };
+      } catch (e) {
+        log('VERIFY', 'Unexpected verify error', e);
+        await finish();
+        return { ok: false, reason: 'unexpected' as const };
+      }
+    },
+    []
+  );
+
   useEffect(() => {
-    if (isInitializedRef.current) {
-      logWithTimestamp('INIT', 'Already initialized, skipping');
+    if (Platform.OS !== 'ios') {
+      setLoading(false);
+      setError('IAP hook loaded on non-iOS platform');
       return;
     }
 
-    const initializeIAP = async () => {
-      logWithTimestamp('INIT', '🚀 Starting IAP initialization...');
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    let cancelled = false;
+
+    const init = async () => {
       setLoading(true);
       setError(null);
-      setStoreConnected(false);
 
       try {
-        // STEP 1: Connect to App Store
-        logWithTimestamp('CONNECT', '🔌 Attempting to connect to App Store...');
-        const connectionResult = await InAppPurchases.connectAsync();
-        
-        logWithTimestamp('CONNECT', 'Connection result received', {
-          responseCode: connectionResult.responseCode,
-          responseCodeName: InAppPurchases.IAPResponseCode[connectionResult.responseCode],
-          debugMessage: connectionResult.debugMessage,
-        });
+        log('INIT', 'Connecting...');
+        const conn = await InAppPurchases.connectAsync();
+        log('CONNECT', 'Result', conn);
 
-        if (connectionResult.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-          const errorMsg = `Store connection failed: ${connectionResult.debugMessage || 'Unknown error'} (Code: ${connectionResult.responseCode})`;
-          logWithTimestamp('CONNECT', `❌ ${errorMsg}`);
-          setError(errorMsg);
-          setStoreConnected(false);
-          setLoading(false);
-          return; // STOP - cannot proceed without connection
+        if (conn.responseCode !== InAppPurchases.IAPResponseCode.OK) {
+          throw new Error(conn.debugMessage || `connectAsync failed (${conn.responseCode})`);
         }
 
-        logWithTimestamp('CONNECT', '✅ Successfully connected to App Store');
+        if (cancelled) return;
         setStoreConnected(true);
 
-        // STEP 2: Fetch Products
-        const productIds = Object.values(IAP_PRODUCT_IDS);
-        logWithTimestamp('PRODUCTS', '📦 Fetching products with IDs:', productIds);
+        log('PRODUCTS', 'Fetching productIds', productIds);
+        const prodRes = await InAppPurchases.getProductsAsync(productIds);
+        log('PRODUCTS', 'Result', prodRes);
 
-        const productsResult = await InAppPurchases.getProductsAsync(productIds);
-        
-        logWithTimestamp('PRODUCTS', 'Products fetch result', {
-          responseCode: productsResult.responseCode,
-          responseCodeName: InAppPurchases.IAPResponseCode[productsResult.responseCode],
-          resultsCount: productsResult.results?.length || 0,
-          results: productsResult.results,
-        });
-
-        // Guard: Check if results exist
-        const results = productsResult.results ?? [];
-
-        if (productsResult.responseCode !== InAppPurchases.IAPResponseCode.OK || results.length === 0) {
-          const warningMsg = 'No products returned from App Store. Check App Store Connect attachment/status.';
-          logWithTimestamp('PRODUCTS', `⚠️ ${warningMsg}`);
-          logWithTimestamp('PRODUCTS', '⚠️ TROUBLESHOOTING CHECKLIST:');
-          logWithTimestamp('PRODUCTS', '⚠️ 1. Product IDs match App Store Connect exactly:', productIds);
-          logWithTimestamp('PRODUCTS', '⚠️ 2. Products are in "Ready to Submit" status');
-          logWithTimestamp('PRODUCTS', '⚠️ 3. Bundle ID matches: com.robertojose17.macrogoal');
-          logWithTimestamp('PRODUCTS', '⚠️ 4. Testing on real device or TestFlight (not Simulator)');
-          logWithTimestamp('PRODUCTS', '⚠️ 5. Products configured as Auto-Renewable Subscriptions');
-          logWithTimestamp('PRODUCTS', '⚠️ 6. Sandbox tester account signed in (Settings > App Store > Sandbox Account)');
-          
-          setError(warningMsg);
-          setProducts([]);
-          setLoading(false);
-          return; // STOP - cannot proceed without products
+        const results = prodRes.results ?? [];
+        if (prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK || results.length === 0) {
+          throw new Error('No products returned. App Store Connect setup/attachment is the issue.');
         }
 
-        // Map products
-        const mappedProducts = results.map((p, index) => {
-          logWithTimestamp('PRODUCTS', `📦 Product ${index + 1} details:`, {
-            productId: p.productId,
-            title: p.title,
-            price: p.price,
-            description: p.description,
-            currencyCode: p.currencyCode,
-          });
-          
-          return {
+        if (cancelled) return;
+        setProducts(
+          results.map((p) => ({
             productId: p.productId,
             title: p.title,
             description: p.description,
             price: p.price,
             currencyCode: p.currencyCode,
-            subscriptionPeriod: p.subscriptionPeriod,
-            introductoryPrice: p.introductoryPrice,
-            introductoryPricePaymentMode: p.introductoryPricePaymentMode,
-            introductoryPriceNumberOfPeriods: p.introductoryPriceNumberOfPeriods,
-            introductoryPriceSubscriptionPeriod: p.introductoryPriceSubscriptionPeriod,
-          };
-        });
+          }))
+        );
 
-        setProducts(mappedProducts);
-        logWithTimestamp('PRODUCTS', `✅ Successfully loaded ${mappedProducts.length} products`);
+        // Listener AFTER products are loaded
+        log('LISTENER', 'Setting purchase listener...');
+        listenerRef.current = InAppPurchases.setPurchaseListener(async (update) => {
+          log('LISTENER', 'Update', update);
 
-        // STEP 3: Set up Purchase Listener (only after products are confirmed)
-        logWithTimestamp('LISTENER', '🎧 Setting up purchase listener...');
-        
-        const listener = InAppPurchases.setPurchaseListener(async (purchaseUpdate) => {
-          logWithTimestamp('LISTENER', '🔔 Purchase listener triggered', {
-            responseCode: purchaseUpdate.responseCode,
-            responseCodeName: InAppPurchases.IAPResponseCode[purchaseUpdate.responseCode],
-            resultsCount: purchaseUpdate.results?.length || 0,
-            rawPayload: purchaseUpdate,
-          });
+          if (!update) return;
 
-          // Guard: Check if response is valid
-          if (!purchaseUpdate || purchaseUpdate.responseCode === undefined) {
-            logWithTimestamp('LISTENER', '⚠️ Purchase update is undefined or invalid, ignoring');
+          const code = update.responseCode;
+
+          if (code === InAppPurchases.IAPResponseCode.OK) {
+            const purchases = update.results ?? [];
+            for (const p of purchases) {
+              const res = await verifyReceipt(p);
+              if (!res.ok) {
+                // optional: show a single alert; don’t spam
+                Alert.alert('Purchase verification failed', 'We could not verify your purchase. Try Restore Purchases.');
+              } else {
+                Alert.alert('Success', 'Subscription active!');
+              }
+            }
             return;
           }
 
-          // Guard: Check if results exist
-          const purchaseResults = purchaseUpdate.results ?? [];
-
-          if (purchaseUpdate.responseCode === InAppPurchases.IAPResponseCode.OK) {
-            logWithTimestamp('LISTENER', `✅ Purchase successful, processing ${purchaseResults.length} transaction(s)`);
-
-            for (const purchase of purchaseResults) {
-              logWithTimestamp('LISTENER', 'Processing purchase:', {
-                productId: purchase.productId,
-                transactionId: purchase.transactionId,
-                acknowledged: purchase.acknowledged,
-                hasReceipt: !!purchase.transactionReceipt,
-              });
-
-              // Guard: Check if receipt exists
-              if (!purchase.transactionReceipt) {
-                logWithTimestamp('LISTENER', '❌ No transaction receipt found for purchase');
-                Alert.alert('Purchase Error', 'Could not verify your purchase. Please contact support.');
-                await InAppPurchases.finishTransactionAsync(purchase, false);
-                continue;
-              }
-
-              try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                  logWithTimestamp('LISTENER', '❌ No authenticated user for verification');
-                  Alert.alert('Authentication Error', 'Please log in to verify your purchase.');
-                  await InAppPurchases.finishTransactionAsync(purchase, false);
-                  continue;
-                }
-
-                logWithTimestamp('LISTENER', '📤 Sending receipt to backend for verification...');
-                
-                const { data, error: edgeFunctionError } = await supabase.functions.invoke('verify-apple-receipt', {
-                  body: {
-                    receipt: purchase.transactionReceipt,
-                    productId: purchase.productId,
-                    transactionId: purchase.transactionId,
-                    userId: user.id,
-                  },
-                });
-
-                if (edgeFunctionError) {
-                  logWithTimestamp('LISTENER', '❌ Receipt verification failed', edgeFunctionError);
-                  Alert.alert('Verification Failed', 'Your purchase could not be verified. Please contact support.');
-                  await InAppPurchases.finishTransactionAsync(purchase, false);
-                  continue;
-                }
-
-                if (data?.success) {
-                  logWithTimestamp('LISTENER', '✅ Purchase verified successfully', data.subscription);
-                  setIsSubscribed(true);
-                  Alert.alert('Success', 'Your subscription is now active!');
-                  await InAppPurchases.finishTransactionAsync(purchase, true);
-                } else {
-                  logWithTimestamp('LISTENER', '❌ Backend verification failed', data);
-                  Alert.alert('Verification Failed', data?.error || 'Your purchase could not be verified.');
-                  await InAppPurchases.finishTransactionAsync(purchase, false);
-                }
-              } catch (err: any) {
-                logWithTimestamp('LISTENER', '❌ Error during verification process', err);
-                Alert.alert('Error', 'An unexpected error occurred. Please contact support.');
-                await InAppPurchases.finishTransactionAsync(purchase, false);
-              }
-            }
-          } else if (purchaseUpdate.responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
-            logWithTimestamp('LISTENER', '🚫 Purchase canceled by user');
-            Alert.alert('Purchase Canceled', 'You have cancelled the purchase.');
-          } else {
-            logWithTimestamp('LISTENER', '❌ Purchase failed', {
-              responseCode: purchaseUpdate.responseCode,
-              responseCodeName: InAppPurchases.IAPResponseCode[purchaseUpdate.responseCode],
-            });
-            Alert.alert('Purchase Failed', `An error occurred: ${InAppPurchases.IAPResponseCode[purchaseUpdate.responseCode]}`);
+          if (code === InAppPurchases.IAPResponseCode.USER_CANCELED) {
+            Alert.alert('Canceled', 'Purchase canceled.');
+            return;
           }
 
-          setLoading(false);
+          Alert.alert('Purchase error', `Store error: ${InAppPurchases.IAPResponseCode[code]}`);
         });
 
-        purchaseListenerRef.current = listener;
-        logWithTimestamp('LISTENER', '✅ Purchase listener set up successfully');
+        await fetchSubscriptionStatusFromDB();
+      } catch (e: any) {
+        log('INIT', 'Error', e);
+        if (!cancelled) {
+          setError(e?.message || 'Failed to init IAP');
+          setStoreConnected(false);
+          setProducts([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-        // Fetch subscription status
-        await fetchSubscriptionStatus();
+    init();
 
-        isInitializedRef.current = true;
-        logWithTimestamp('INIT', '✅ IAP initialization complete');
+    return () => {
+      cancelled = true;
+      try {
+        listenerRef.current?.remove?.();
+      } catch {}
+      InAppPurchases.disconnectAsync().catch(() => {});
+    };
+  }, [fetchSubscriptionStatusFromDB, productIds, verifyReceipt]);
 
-      } catch (err: any) {
-        logWithTimestamp('INIT', '❌ Fatal error during initialization', err);
-        setError(err.message || 'Failed to initialize In-App Purchases');
-        setStoreConnected(false);
+  const purchaseProduct = useCallback(
+    async (productId: string) => {
+      if (!storeConnected) {
+        Alert.alert('Store not connected', 'IAP not connected.');
+        return;
+      }
+
+      const exists = products.some((p) => p.productId === productId);
+      if (!exists) {
+        Alert.alert('Product not loaded', `Product not found: ${productId}`);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        log('PURCHASE', `purchaseItemAsync(${productId})`);
+        await InAppPurchases.purchaseItemAsync(productId);
+        // Listener will handle verification + finishTransaction
+      } catch (e: any) {
+        log('PURCHASE', 'Error', e);
+        setError(e?.message || 'Purchase failed to start');
+        Alert.alert('Purchase error', e?.message || 'Purchase failed');
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [products, storeConnected]
+  );
 
-    initializeIAP();
-
-    // Cleanup
-    return () => {
-      logWithTimestamp('CLEANUP', '🧹 Cleaning up IAP...');
-      
-      if (purchaseListenerRef.current) {
-        purchaseListenerRef.current.remove();
-        logWithTimestamp('CLEANUP', '✅ Purchase listener removed');
-      }
-
-      InAppPurchases.disconnectAsync()
-        .then(() => {
-          logWithTimestamp('CLEANUP', '✅ Disconnected from App Store');
-        })
-        .catch((err) => {
-          logWithTimestamp('CLEANUP', '⚠️ Error disconnecting', err);
-        });
-    };
-  }, [fetchSubscriptionStatus]);
-
-  // Purchase a product
-  const purchaseProduct = useCallback(async (productId: string) => {
-    logWithTimestamp('PURCHASE', `🛒 Initiating purchase for product: ${productId}`);
-
-    if (!storeConnected) {
-      const msg = 'Store not connected. Cannot purchase.';
-      logWithTimestamp('PURCHASE', `❌ ${msg}`);
-      setError(msg);
-      Alert.alert('Store Error', msg);
-      return;
-    }
-
-    if (products.length === 0) {
-      const msg = 'No products available. Cannot purchase.';
-      logWithTimestamp('PURCHASE', `❌ ${msg}`);
-      setError(msg);
-      Alert.alert('Products Error', msg);
-      return;
-    }
-
-    const productToPurchase = products.find(p => p.productId === productId);
-    if (!productToPurchase) {
-      const msg = `Product ${productId} not found in available products.`;
-      logWithTimestamp('PURCHASE', `❌ ${msg}`);
-      setError(msg);
-      Alert.alert('Product Error', msg);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      logWithTimestamp('PURCHASE', '📤 Calling purchaseItemAsync...');
-      await InAppPurchases.purchaseItemAsync(productId);
-      logWithTimestamp('PURCHASE', '✅ Purchase request sent, waiting for listener callback...');
-      // The listener will handle the rest
-    } catch (err: any) {
-      logWithTimestamp('PURCHASE', '❌ Error initiating purchase', err);
-      setError(err.message);
-      Alert.alert('Purchase Error', `Failed to initiate purchase: ${err.message}`);
-      setLoading(false);
-    }
-  }, [products, storeConnected]);
-
-  // Restore purchases
   const restorePurchases = useCallback(async () => {
-    logWithTimestamp('RESTORE', '🔄 Initiating restore purchases...');
-
     if (!storeConnected) {
-      const msg = 'Store not connected. Cannot restore purchases.';
-      logWithTimestamp('RESTORE', `❌ ${msg}`);
-      setError(msg);
-      Alert.alert('Store Error', msg);
+      Alert.alert('Store not connected', 'IAP not connected.');
       return;
     }
 
@@ -372,57 +275,42 @@ export const useSubscription = (): UseSubscriptionHook => {
     setError(null);
 
     try {
-      logWithTimestamp('RESTORE', '📤 Calling getPurchaseHistoryAsync...');
-      const historyResult = await InAppPurchases.getPurchaseHistoryAsync();
+      log('RESTORE', 'getPurchaseHistoryAsync()');
+      const history = await InAppPurchases.getPurchaseHistoryAsync();
+      log('RESTORE', 'History result', history);
 
-      logWithTimestamp('RESTORE', 'Purchase history result', {
-        responseCode: historyResult.responseCode,
-        responseCodeName: InAppPurchases.IAPResponseCode[historyResult.responseCode],
-        resultsCount: historyResult.results?.length || 0,
-        results: historyResult.results,
-      });
-
-      // Guard: Check if results exist
-      const historyResults = historyResult.results ?? [];
-
-      if (historyResult.responseCode === InAppPurchases.IAPResponseCode.OK) {
-        if (historyResults.length > 0) {
-          logWithTimestamp('RESTORE', `✅ Found ${historyResults.length} previous purchase(s)`);
-          
-          // Process each restored purchase
-          for (const purchase of historyResults) {
-            logWithTimestamp('RESTORE', 'Restored purchase:', {
-              productId: purchase.productId,
-              transactionId: purchase.transactionId,
-            });
-          }
-
-          Alert.alert('Restore Initiated', 'Checking previous purchases. You will be notified once complete.');
-          
-          // The purchase listener will handle verification
-          // Trigger a refresh of subscription status
-          await fetchSubscriptionStatus();
-        } else {
-          logWithTimestamp('RESTORE', '⚠️ No previous purchases found');
-          Alert.alert('No Purchases Found', 'No previous purchases were found for this account.');
-          setIsSubscribed(false);
-        }
-      } else {
-        logWithTimestamp('RESTORE', '❌ Restore failed', {
-          responseCode: historyResult.responseCode,
-          responseCodeName: InAppPurchases.IAPResponseCode[historyResult.responseCode],
-        });
-        setError(`Restore failed: ${InAppPurchases.IAPResponseCode[historyResult.responseCode]}`);
-        Alert.alert('Restore Failed', `Could not restore purchases: ${InAppPurchases.IAPResponseCode[historyResult.responseCode]}`);
+      if (history.responseCode !== InAppPurchases.IAPResponseCode.OK) {
+        throw new Error(`Restore failed: ${InAppPurchases.IAPResponseCode[history.responseCode]}`);
       }
-    } catch (err: any) {
-      logWithTimestamp('RESTORE', '❌ Error during restore', err);
-      setError(err.message);
-      Alert.alert('Restore Error', `An unexpected error occurred: ${err.message}`);
+
+      const items = history.results ?? [];
+      if (items.length === 0) {
+        Alert.alert('No purchases', 'No previous purchases found for this Apple ID.');
+        setIsSubscribed(false);
+        return;
+      }
+
+      // IMPORTANT: verify receipts from history (this is what you were missing)
+      let activated = false;
+      for (const p of items) {
+        const res = await verifyReceipt(p);
+        if (res.ok) activated = true;
+      }
+
+      await fetchSubscriptionStatusFromDB();
+
+      Alert.alert(
+        'Restore complete',
+        activated ? 'Subscription restored.' : 'No active subscription found to restore.'
+      );
+    } catch (e: any) {
+      log('RESTORE', 'Error', e);
+      setError(e?.message || 'Restore failed');
+      Alert.alert('Restore error', e?.message || 'Restore failed');
     } finally {
       setLoading(false);
     }
-  }, [storeConnected, fetchSubscriptionStatus]);
+  }, [storeConnected, verifyReceipt, fetchSubscriptionStatusFromDB]);
 
   return {
     products,
