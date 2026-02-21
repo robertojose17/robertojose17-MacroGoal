@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -317,9 +317,9 @@ export default function RootLayout() {
     }, 100);
 
     return () => clearTimeout(navigationTimer);
-  }, [session, segments, isReady, initializing]);
+  }, [session, segments, isReady, initializing, handleNavigation]);
 
-  const handleNavigation = async () => {
+  const handleNavigation = useCallback(async () => {
     try {
       const inAuthGroup = segments[0] === 'auth';
       const inOnboardingGroup = segments[0] === 'onboarding';
@@ -474,7 +474,7 @@ export default function RootLayout() {
         router.replace('/auth/welcome');
       }, 0);
     }
-  };
+  }, [session, segments]);
 
   React.useEffect(() => {
     if (
