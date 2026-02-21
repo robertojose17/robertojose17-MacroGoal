@@ -19,8 +19,8 @@
  */
 
 export const IAP_PRODUCT_IDS = {
-  monthly: 'macrogoal_premium_monthly',
-  yearly: 'macrogoal_premium_yearly',
+  monthly: 'mg_monthly',
+  yearly: 'mg_yearly',
 } as const;
 
 /**
