@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -41,7 +41,8 @@ export const useSubscription = (): UseSubscriptionHook => {
   const initializedRef = useRef(false);
   const listenerRef = useRef<{ remove?: () => void } | null>(null);
 
-  const productIds = [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly];
+  // Memoize productIds to prevent unnecessary re-renders
+  const productIds = useMemo(() => [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly], []);
 
   const addDiagnostic = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();

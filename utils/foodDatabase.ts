@@ -8,13 +8,44 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Food, Meal, MealItem, DailySummary, MealType } from '@/types';
-import { mockFoods } from '@/data/mockData';
 import { supabase } from '@/app/integrations/supabase/client';
 
 const FOODS_STORAGE_KEY = '@elite_macro_foods';
 const MEALS_STORAGE_KEY = '@elite_macro_meals';
 const MEAL_ITEMS_STORAGE_KEY = '@elite_macro_meal_items';
 const DAILY_SUMMARY_STORAGE_KEY = '@elite_macro_daily_summary';
+
+// Mock foods data (inline to avoid import issues)
+const mockFoods: Food[] = [
+  {
+    id: 'food-1',
+    name: 'Chicken Breast',
+    brand: 'Generic',
+    serving_amount: 100,
+    serving_unit: 'g',
+    calories: 165,
+    protein: 31,
+    carbs: 0,
+    fats: 3.6,
+    fiber: 0,
+    user_created: false,
+    is_favorite: false,
+  },
+  {
+    id: 'food-2',
+    name: 'Brown Rice',
+    brand: 'Generic',
+    serving_amount: 100,
+    serving_unit: 'g',
+    calories: 111,
+    protein: 2.6,
+    carbs: 23,
+    fats: 0.9,
+    fiber: 1.8,
+    user_created: false,
+    is_favorite: false,
+  },
+];
 
 /**
  * Initialize food database with mock data
