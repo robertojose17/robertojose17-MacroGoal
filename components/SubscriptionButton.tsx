@@ -14,8 +14,9 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const [showModal, setShowModal] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   
-  const { products, purchaseProduct, restorePurchases, isSubscribed, loading, error, storeConnected } = useSubscription();
+  const { products, purchaseProduct, restorePurchases, isSubscribed, loading, error, storeConnected, diagnostics } = useSubscription();
 
   const handlePurchase = async (productId: string) => {
     await purchaseProduct(productId);
@@ -61,7 +62,7 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
       <View style={[styles.subscribedContainer, { backgroundColor: colors.success + '20' }]}>
         <IconSymbol
           ios_icon_name="checkmark.circle.fill"
-          android_material_icon_name="check_circle"
+          android_material_icon_name="check-circle"
           size={32}
           color={colors.success}
         />
@@ -98,7 +99,6 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-            {/* Header */}
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setShowModal(false)} style={styles.closeButton}>
                 <IconSymbol
@@ -111,7 +111,6 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Title */}
               <View style={styles.titleSection}>
                 <IconSymbol
                   ios_icon_name="star.fill"
@@ -127,7 +126,6 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                 </Text>
               </View>
 
-              {/* Features */}
               <View style={styles.featuresSection}>
                 <FeatureItem
                   icon="trending-up"
@@ -167,7 +165,6 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                 />
               </View>
 
-              {/* Error Display */}
               {error && (
                 <View style={styles.errorContainer}>
                   <IconSymbol
@@ -182,20 +179,47 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                   <Text style={[styles.errorHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     Make sure you&apos;re testing on a real device or TestFlight
                   </Text>
+                  
+                  {diagnostics.length > 0 && (
+                    <TouchableOpacity 
+                      style={styles.diagnosticsButton}
+                      onPress={() => setShowDiagnostics(!showDiagnostics)}
+                    >
+                      <Text style={[styles.diagnosticsButtonText, { color: colors.primary }]}>
+                        {showDiagnostics ? 'Hide' : 'Show'} Diagnostics
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
-              {/* Loading State */}
+              {showDiagnostics && diagnostics.length > 0 && (
+                <View style={[styles.diagnosticsContainer, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                  <Text style={[styles.diagnosticsTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                    Connection Diagnostics
+                  </Text>
+                  <ScrollView style={styles.diagnosticsScroll} nestedScrollEnabled>
+                    {diagnostics.map((diag, index) => (
+                      <Text 
+                        key={index} 
+                        style={[styles.diagnosticLine, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}
+                      >
+                        {diag}
+                      </Text>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
               {loading && products.length === 0 && (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color={colors.primary} />
                   <Text style={[styles.loadingText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    Loading subscription options...
+                    Connecting to App Store...
                   </Text>
                 </View>
               )}
 
-              {/* Pricing */}
               {!loading && products.length > 0 && (
                 <View style={styles.pricingSection}>
                   {products.map((product) => (
@@ -235,16 +259,24 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                 </View>
               )}
 
-              {/* No Products State */}
               {!loading && !error && products.length === 0 && (
                 <View style={styles.noProductsContainer}>
                   <Text style={[styles.noProductsText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     No subscription options available at the moment
                   </Text>
+                  {diagnostics.length > 0 && (
+                    <TouchableOpacity 
+                      style={styles.diagnosticsButton}
+                      onPress={() => setShowDiagnostics(!showDiagnostics)}
+                    >
+                      <Text style={[styles.diagnosticsButtonText, { color: colors.primary }]}>
+                        {showDiagnostics ? 'Hide' : 'Show'} Diagnostics
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
-              {/* Restore Button */}
               <TouchableOpacity
                 style={[styles.restoreButton, !canRestore && styles.restoreButtonDisabled]}
                 onPress={handleRestore}
@@ -259,7 +291,6 @@ export default function SubscriptionButton({ onSubscribed }: SubscriptionButtonP
                 )}
               </TouchableOpacity>
 
-              {/* Footer */}
               <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Subscriptions auto-renew unless canceled 24 hours before the end of the current period.
               </Text>
@@ -463,6 +494,36 @@ const styles = StyleSheet.create({
   errorHint: {
     ...typography.caption,
     textAlign: 'center',
+  },
+  diagnosticsButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  diagnosticsButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  diagnosticsContainer: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    maxHeight: 200,
+  },
+  diagnosticsTitle: {
+    ...typography.bodyBold,
+    marginBottom: spacing.sm,
+  },
+  diagnosticsScroll: {
+    maxHeight: 150,
+  },
+  diagnosticLine: {
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    marginBottom: spacing.xs,
   },
   noProductsContainer: {
     alignItems: 'center',

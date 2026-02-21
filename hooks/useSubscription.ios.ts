@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
@@ -20,6 +21,7 @@ type UseSubscriptionHook = {
   loading: boolean;
   error: string | null;
   storeConnected: boolean;
+  diagnostics: string[];
 };
 
 const log = (tag: string, msg: string, data?: any) => {
@@ -34,11 +36,18 @@ export const useSubscription = (): UseSubscriptionHook => {
   const [storeConnected, setStoreConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
 
   const initializedRef = useRef(false);
   const listenerRef = useRef<{ remove?: () => void } | null>(null);
 
   const productIds = [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly];
+
+  const addDiagnostic = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDiagnostics(prev => [...prev, `[${timestamp}] ${message}`]);
+    log('DIAGNOSTIC', message);
+  }, []);
 
   const fetchSubscriptionStatusFromDB = useCallback(async () => {
     try {
@@ -70,10 +79,9 @@ export const useSubscription = (): UseSubscriptionHook => {
 
   const verifyReceipt = useCallback(
     async (purchase: InAppPurchases.InAppPurchase) => {
-      // Always finish transactions at the end (but NEVER consume subscriptions)
       const finish = async () => {
         try {
-          await InAppPurchases.finishTransactionAsync(purchase, false); // <- IMPORTANT: false for subs
+          await InAppPurchases.finishTransactionAsync(purchase, false);
         } catch (e) {
           log('FINISH', 'finishTransactionAsync failed', e);
         }
@@ -82,6 +90,7 @@ export const useSubscription = (): UseSubscriptionHook => {
       try {
         if (!purchase?.transactionReceipt) {
           log('VERIFY', 'No receipt on purchase', purchase);
+          addDiagnostic('❌ Purchase has no receipt');
           await finish();
           return { ok: false, reason: 'no_receipt' as const };
         }
@@ -89,6 +98,7 @@ export const useSubscription = (): UseSubscriptionHook => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           log('VERIFY', 'No authenticated user');
+          addDiagnostic('❌ No authenticated user for verification');
           await finish();
           return { ok: false, reason: 'no_user' as const };
         }
@@ -97,6 +107,7 @@ export const useSubscription = (): UseSubscriptionHook => {
           productId: purchase.productId,
           transactionId: purchase.transactionId,
         });
+        addDiagnostic(`📤 Verifying receipt with Apple (Product: ${purchase.productId})`);
 
         const { data, error: fnError } = await supabase.functions.invoke('verify-apple-receipt', {
           body: {
@@ -109,32 +120,37 @@ export const useSubscription = (): UseSubscriptionHook => {
 
         if (fnError) {
           log('VERIFY', 'Edge Function error', fnError);
+          addDiagnostic(`❌ Verification failed: ${fnError.message}`);
           await finish();
           return { ok: false, reason: 'fn_error' as const };
         }
 
         if (data?.success) {
+          addDiagnostic('✅ Receipt verified successfully!');
           setIsSubscribed(true);
           await finish();
           return { ok: true as const };
         }
 
         log('VERIFY', 'Verification failed response', data);
+        addDiagnostic(`❌ Verification failed: ${data?.error || 'Unknown error'}`);
         await finish();
         return { ok: false, reason: 'verify_failed' as const };
-      } catch (e) {
+      } catch (e: any) {
         log('VERIFY', 'Unexpected verify error', e);
+        addDiagnostic(`❌ Verification error: ${e?.message || 'Unknown'}`);
         await finish();
         return { ok: false, reason: 'unexpected' as const };
       }
     },
-    []
+    [addDiagnostic]
   );
 
   useEffect(() => {
     if (Platform.OS !== 'ios') {
       setLoading(false);
       setError('IAP hook loaded on non-iOS platform');
+      addDiagnostic('⚠️ Not running on iOS - IAP unavailable');
       return;
     }
 
@@ -146,27 +162,62 @@ export const useSubscription = (): UseSubscriptionHook => {
     const init = async () => {
       setLoading(true);
       setError(null);
+      setDiagnostics([]);
 
       try {
-        log('INIT', 'Connecting...');
+        addDiagnostic('🚀 Starting IAP initialization...');
+        addDiagnostic(`📦 Product IDs: ${productIds.join(', ')}`);
+        
+        log('INIT', 'Connecting to StoreKit...');
+        addDiagnostic('🔌 Connecting to Apple StoreKit...');
+        
         const conn = await InAppPurchases.connectAsync();
         log('CONNECT', 'Result', conn);
 
         if (conn.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-          throw new Error(conn.debugMessage || `connectAsync failed (${conn.responseCode})`);
+          const errorMsg = conn.debugMessage || `connectAsync failed (${conn.responseCode})`;
+          addDiagnostic(`❌ StoreKit connection failed: ${errorMsg}`);
+          addDiagnostic('💡 Troubleshooting:');
+          addDiagnostic('  1. Are you testing on a real iOS device or TestFlight?');
+          addDiagnostic('  2. Is the device signed in to a valid Apple ID?');
+          addDiagnostic('  3. Is the app properly configured in App Store Connect?');
+          throw new Error(errorMsg);
         }
+
+        addDiagnostic('✅ Connected to StoreKit successfully');
 
         if (cancelled) return;
         setStoreConnected(true);
 
         log('PRODUCTS', 'Fetching productIds', productIds);
+        addDiagnostic('📦 Fetching product information from App Store...');
+        
         const prodRes = await InAppPurchases.getProductsAsync(productIds);
         log('PRODUCTS', 'Result', prodRes);
 
         const results = prodRes.results ?? [];
-        if (prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK || results.length === 0) {
-          throw new Error('No products returned. App Store Connect setup/attachment is the issue.');
+        
+        if (prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK) {
+          addDiagnostic(`❌ Product fetch failed with code: ${prodRes.responseCode}`);
+          throw new Error('Failed to fetch products from App Store');
         }
+
+        if (results.length === 0) {
+          addDiagnostic('❌ No products returned from App Store');
+          addDiagnostic('💡 Common causes:');
+          addDiagnostic('  1. Product IDs don\'t match App Store Connect exactly');
+          addDiagnostic('  2. Products not in "Ready to Submit" status');
+          addDiagnostic('  3. Bundle ID mismatch (app.json vs App Store Connect)');
+          addDiagnostic('  4. Testing on Simulator (use real device/TestFlight)');
+          addDiagnostic('  5. Products not configured as Auto-Renewable Subscriptions');
+          addDiagnostic(`  6. Expected IDs: ${productIds.join(', ')}`);
+          throw new Error('No products returned. Check App Store Connect setup.');
+        }
+
+        addDiagnostic(`✅ Loaded ${results.length} product(s) successfully`);
+        results.forEach((p, i) => {
+          addDiagnostic(`  ${i + 1}. ${p.title} (${p.productId}) - ${p.price}`);
+        });
 
         if (cancelled) return;
         setProducts(
@@ -179,21 +230,28 @@ export const useSubscription = (): UseSubscriptionHook => {
           }))
         );
 
-        // Listener AFTER products are loaded
         log('LISTENER', 'Setting purchase listener...');
+        addDiagnostic('🎧 Setting up purchase listener...');
+        
         listenerRef.current = InAppPurchases.setPurchaseListener(async (update) => {
           log('LISTENER', 'Update', update);
 
-          if (!update) return;
+          if (!update) {
+            addDiagnostic('⚠️ Received empty purchase update');
+            return;
+          }
 
           const code = update.responseCode;
+          addDiagnostic(`📥 Purchase update received (code: ${code})`);
 
           if (code === InAppPurchases.IAPResponseCode.OK) {
             const purchases = update.results ?? [];
+            addDiagnostic(`✅ Purchase successful (${purchases.length} transaction(s))`);
+            
             for (const p of purchases) {
+              addDiagnostic(`🔍 Verifying transaction: ${p.transactionId}`);
               const res = await verifyReceipt(p);
               if (!res.ok) {
-                // optional: show a single alert; don’t spam
                 Alert.alert('Purchase verification failed', 'We could not verify your purchase. Try Restore Purchases.');
               } else {
                 Alert.alert('Success', 'Subscription active!');
@@ -203,18 +261,25 @@ export const useSubscription = (): UseSubscriptionHook => {
           }
 
           if (code === InAppPurchases.IAPResponseCode.USER_CANCELED) {
+            addDiagnostic('ℹ️ User canceled the purchase');
             Alert.alert('Canceled', 'Purchase canceled.');
             return;
           }
 
+          addDiagnostic(`❌ Purchase failed with code: ${code}`);
           Alert.alert('Purchase error', `Store error: ${InAppPurchases.IAPResponseCode[code]}`);
         });
+
+        addDiagnostic('✅ Purchase listener active');
+        addDiagnostic('🎉 IAP initialization complete!');
 
         await fetchSubscriptionStatusFromDB();
       } catch (e: any) {
         log('INIT', 'Error', e);
         if (!cancelled) {
-          setError(e?.message || 'Failed to init IAP');
+          const errorMessage = e?.message || 'Failed to init IAP';
+          setError(errorMessage);
+          addDiagnostic(`❌ Initialization failed: ${errorMessage}`);
           setStoreConnected(false);
           setProducts([]);
         }
@@ -232,18 +297,20 @@ export const useSubscription = (): UseSubscriptionHook => {
       } catch {}
       InAppPurchases.disconnectAsync().catch(() => {});
     };
-  }, [fetchSubscriptionStatusFromDB, productIds, verifyReceipt]);
+  }, [fetchSubscriptionStatusFromDB, productIds, verifyReceipt, addDiagnostic]);
 
   const purchaseProduct = useCallback(
     async (productId: string) => {
       if (!storeConnected) {
         Alert.alert('Store not connected', 'IAP not connected.');
+        addDiagnostic('❌ Purchase attempt failed: Store not connected');
         return;
       }
 
       const exists = products.some((p) => p.productId === productId);
       if (!exists) {
         Alert.alert('Product not loaded', `Product not found: ${productId}`);
+        addDiagnostic(`❌ Purchase attempt failed: Product ${productId} not found`);
         return;
       }
 
@@ -252,22 +319,26 @@ export const useSubscription = (): UseSubscriptionHook => {
 
       try {
         log('PURCHASE', `purchaseItemAsync(${productId})`);
+        addDiagnostic(`🛒 Initiating purchase for: ${productId}`);
         await InAppPurchases.purchaseItemAsync(productId);
-        // Listener will handle verification + finishTransaction
+        addDiagnostic('✅ Purchase initiated - waiting for App Store response...');
       } catch (e: any) {
         log('PURCHASE', 'Error', e);
-        setError(e?.message || 'Purchase failed to start');
-        Alert.alert('Purchase error', e?.message || 'Purchase failed');
+        const errorMessage = e?.message || 'Purchase failed to start';
+        setError(errorMessage);
+        addDiagnostic(`❌ Purchase failed: ${errorMessage}`);
+        Alert.alert('Purchase error', errorMessage);
       } finally {
         setLoading(false);
       }
     },
-    [products, storeConnected]
+    [products, storeConnected, addDiagnostic]
   );
 
   const restorePurchases = useCallback(async () => {
     if (!storeConnected) {
       Alert.alert('Store not connected', 'IAP not connected.');
+      addDiagnostic('❌ Restore attempt failed: Store not connected');
       return;
     }
 
@@ -276,41 +347,50 @@ export const useSubscription = (): UseSubscriptionHook => {
 
     try {
       log('RESTORE', 'getPurchaseHistoryAsync()');
+      addDiagnostic('🔄 Restoring purchases from Apple...');
+      
       const history = await InAppPurchases.getPurchaseHistoryAsync();
       log('RESTORE', 'History result', history);
 
       if (history.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-        throw new Error(`Restore failed: ${InAppPurchases.IAPResponseCode[history.responseCode]}`);
+        const errorMsg = `Restore failed: ${InAppPurchases.IAPResponseCode[history.responseCode]}`;
+        addDiagnostic(`❌ ${errorMsg}`);
+        throw new Error(errorMsg);
       }
 
       const items = history.results ?? [];
+      addDiagnostic(`📦 Found ${items.length} previous purchase(s)`);
+      
       if (items.length === 0) {
+        addDiagnostic('ℹ️ No previous purchases found for this Apple ID');
         Alert.alert('No purchases', 'No previous purchases found for this Apple ID.');
         setIsSubscribed(false);
         return;
       }
 
-      // IMPORTANT: verify receipts from history (this is what you were missing)
       let activated = false;
       for (const p of items) {
+        addDiagnostic(`🔍 Verifying restored transaction: ${p.transactionId}`);
         const res = await verifyReceipt(p);
         if (res.ok) activated = true;
       }
 
       await fetchSubscriptionStatusFromDB();
 
-      Alert.alert(
-        'Restore complete',
-        activated ? 'Subscription restored.' : 'No active subscription found to restore.'
-      );
+      const message = activated ? 'Subscription restored successfully!' : 'No active subscription found to restore.';
+      addDiagnostic(activated ? '✅ Restore successful!' : 'ℹ️ No active subscription found');
+      
+      Alert.alert('Restore complete', message);
     } catch (e: any) {
       log('RESTORE', 'Error', e);
-      setError(e?.message || 'Restore failed');
-      Alert.alert('Restore error', e?.message || 'Restore failed');
+      const errorMessage = e?.message || 'Restore failed';
+      setError(errorMessage);
+      addDiagnostic(`❌ Restore failed: ${errorMessage}`);
+      Alert.alert('Restore error', errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [storeConnected, verifyReceipt, fetchSubscriptionStatusFromDB]);
+  }, [storeConnected, verifyReceipt, fetchSubscriptionStatusFromDB, addDiagnostic]);
 
   return {
     products,
@@ -320,5 +400,6 @@ export const useSubscription = (): UseSubscriptionHook => {
     loading,
     error,
     storeConnected,
+    diagnostics,
   };
 };
