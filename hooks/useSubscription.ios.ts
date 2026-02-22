@@ -488,8 +488,9 @@ export const useSubscription = (): UseSubscriptionHook => {
 };
 
 // Helper function for logging with timestamp
-export const logWithTimestamp = (tag: string, message: string, data?: any) => {
+export const logWithTimestamp = (tag: string, message: string, data?: any): string => {
   log(tag, message, data);
+  return `[${tag}] ${message}`;
 };
 </write file>
 
