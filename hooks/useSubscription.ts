@@ -18,6 +18,8 @@ interface UseSubscriptionHook {
   isSubscribed: boolean;
   loading: boolean;
   error: string | null;
+  storeConnected: boolean;
+  diagnostics: string[];
 }
 
 export const useSubscription = (): UseSubscriptionHook => {
@@ -25,6 +27,8 @@ export const useSubscription = (): UseSubscriptionHook => {
   const [isSubscribed] = useState<boolean>(false);
   const [loading] = useState<boolean>(false);
   const [error] = useState<string | null>('In-App Purchases are only available on iOS');
+  const [storeConnected] = useState<boolean>(false);
+  const [diagnostics] = useState<string[]>([`[${new Date().toLocaleTimeString()}] ⚠️ IAP only available on iOS`]);
 
   const purchaseProduct = useCallback(async (productId: string) => {
     console.log(`[useSubscription] Purchase not available on ${Platform.OS}`);
@@ -41,5 +45,7 @@ export const useSubscription = (): UseSubscriptionHook => {
     isSubscribed,
     loading,
     error,
+    storeConnected,
+    diagnostics,
   };
 };
