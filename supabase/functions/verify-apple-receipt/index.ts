@@ -1,5 +1,5 @@
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -59,8 +59,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('[verify-apple-receipt] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -97,102 +98,152 @@ async function verifyWithStoreKit2(
     console.log(`[StoreKit2] Using ${isProduction ? 'PRODUCTION' : 'SANDBOX'} environment`);
     console.log(`[StoreKit2] Fetching transaction info for: ${transactionId}`);
 
-    // Get transaction info from App Store Server API
-    const response = await fetch(`${baseUrl}/inApps/v1/transactions/${transactionId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${jwt}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[StoreKit2] API error:', response.status, errorText);
+    try {
+      // Get transaction info from App Store Server API with proper SSL/TLS handling
+      const response = await fetch(`${baseUrl}/inApps/v1/transactions/${transactionId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'MacroGoal/1.0',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[StoreKit2] API error:', response.status, errorText);
+        
+        // Provide more specific error messages
+        if (response.status === 401) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Authentication failed with Apple. Please check your API credentials (APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY).' 
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `App Store Server API error: ${response.status}` 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const data = await response.json();
+      console.log('[StoreKit2] Transaction data received');
+
+      // Decode the signed transaction (JWS format)
+      const signedTransaction = data.signedTransaction;
+      if (!signedTransaction) {
+        console.error('[StoreKit2] No signed transaction in response');
+        return new Response(
+          JSON.stringify({ success: false, error: 'No transaction data received' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Decode JWT payload (middle part of JWS)
+      const transactionInfo = decodeJWT(signedTransaction);
+      console.log('[StoreKit2] Transaction info:', {
+        productId: transactionInfo.productId,
+        transactionId: transactionInfo.transactionId,
+        expiresDate: transactionInfo.expiresDate,
+      });
+
+      // Check if subscription is active
+      const expiresDateMs = transactionInfo.expiresDate || 0;
+      const now = Date.now();
+      const isActive = expiresDateMs > now;
+
+      console.log('[StoreKit2] Subscription active:', isActive);
+
+      // Determine plan type
+      const planType = productId.includes('yearly') ? 'yearly' : 'monthly';
+
+      // Upsert subscription in database
+      const { data: subscription, error: dbError } = await supabaseClient
+        .from('subscriptions')
+        .upsert({
+          user_id: userId,
+          status: isActive ? 'active' : 'inactive',
+          plan_type: planType,
+          apple_product_id: productId,
+          apple_transaction_id: transactionId,
+          apple_original_transaction_id: transactionInfo.originalTransactionId || transactionId,
+          current_period_start: new Date(transactionInfo.purchaseDate).toISOString(),
+          current_period_end: new Date(expiresDateMs).toISOString(),
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id',
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('[StoreKit2] Database error:', dbError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to update subscription in database' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('[StoreKit2] Subscription updated successfully');
+
       return new Response(
         JSON.stringify({ 
-          success: false, 
-          error: `App Store Server API error: ${response.status}` 
+          success: true, 
+          subscription,
+          isActive,
+          expiresAt: new Date(expiresDateMs).toISOString(),
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('[StoreKit2] Request timeout');
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Request to Apple servers timed out. Please try again.' 
+          }),
+          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      throw fetchError;
     }
-
-    const data = await response.json();
-    console.log('[StoreKit2] Transaction data received');
-
-    // Decode the signed transaction (JWS format)
-    const signedTransaction = data.signedTransaction;
-    if (!signedTransaction) {
-      console.error('[StoreKit2] No signed transaction in response');
-      return new Response(
-        JSON.stringify({ success: false, error: 'No transaction data received' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Decode JWT payload (middle part of JWS)
-    const transactionInfo = decodeJWT(signedTransaction);
-    console.log('[StoreKit2] Transaction info:', {
-      productId: transactionInfo.productId,
-      transactionId: transactionInfo.transactionId,
-      expiresDate: transactionInfo.expiresDate,
-    });
-
-    // Check if subscription is active
-    const expiresDateMs = transactionInfo.expiresDate || 0;
-    const now = Date.now();
-    const isActive = expiresDateMs > now;
-
-    console.log('[StoreKit2] Subscription active:', isActive);
-
-    // Determine plan type
-    const planType = productId.includes('yearly') ? 'yearly' : 'monthly';
-
-    // Upsert subscription in database
-    const { data: subscription, error: dbError } = await supabaseClient
-      .from('subscriptions')
-      .upsert({
-        user_id: userId,
-        status: isActive ? 'active' : 'inactive',
-        plan_type: planType,
-        apple_product_id: productId,
-        apple_transaction_id: transactionId,
-        apple_original_transaction_id: transactionInfo.originalTransactionId || transactionId,
-        current_period_start: new Date(transactionInfo.purchaseDate).toISOString(),
-        current_period_end: new Date(expiresDateMs).toISOString(),
-        cancel_at_period_end: false,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id',
-      })
-      .select()
-      .single();
-
-    if (dbError) {
-      console.error('[StoreKit2] Database error:', dbError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Failed to update subscription in database' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('[StoreKit2] Subscription updated successfully');
-
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        subscription,
-        isActive,
-        expiresAt: new Date(expiresDateMs).toISOString(),
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('[StoreKit2] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check for SSL/TLS specific errors
+    if (errorMessage.includes('SSL') || errorMessage.includes('TLS') || errorMessage.includes('handshake')) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'SSL connection error. This may be a temporary network issue. Please try again in a few moments.' 
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -227,58 +278,105 @@ async function verifyWithStoreKit1(
     );
   }
 
-  // Verify receipt with Apple
-  console.log('[StoreKit1] Sending receipt to Apple...');
-  const appleResponse = await fetch(verifyUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      'receipt-data': receipt,
-      'password': sharedSecret,
-      'exclude-old-transactions': true,
-    }),
-  });
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-  const appleData = await appleResponse.json();
-  console.log('[StoreKit1] Apple response status:', appleData.status);
-
-  // Status codes:
-  // 0 = valid
-  // 21007 = sandbox receipt sent to production (retry with sandbox)
-  // 21008 = production receipt sent to sandbox (retry with production)
-  if (appleData.status === 21007 && isProduction) {
-    console.log('[StoreKit1] Retrying with sandbox...');
-    const sandboxResponse = await fetch('https://sandbox.itunes.apple.com/verifyReceipt', {
+  try {
+    // Verify receipt with Apple
+    console.log('[StoreKit1] Sending receipt to Apple...');
+    const appleResponse = await fetch(verifyUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'MacroGoal/1.0',
+      },
       body: JSON.stringify({
         'receipt-data': receipt,
         'password': sharedSecret,
         'exclude-old-transactions': true,
       }),
+      signal: controller.signal,
     });
-    const sandboxData = await sandboxResponse.json();
-    console.log('[StoreKit1] Sandbox retry status:', sandboxData.status);
-    return await processStoreKit1Response(sandboxData, productId, transactionId, userId, supabaseClient);
-  }
 
-  if (appleData.status === 21008 && !isProduction) {
-    console.log('[StoreKit1] Retrying with production...');
-    const prodResponse = await fetch('https://buy.itunes.apple.com/verifyReceipt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        'receipt-data': receipt,
-        'password': sharedSecret,
-        'exclude-old-transactions': true,
-      }),
-    });
-    const prodData = await prodResponse.json();
-    console.log('[StoreKit1] Production retry status:', prodData.status);
-    return await processStoreKit1Response(prodData, productId, transactionId, userId, supabaseClient);
-  }
+    clearTimeout(timeoutId);
 
-  return await processStoreKit1Response(appleData, productId, transactionId, userId, supabaseClient);
+    const appleData = await appleResponse.json();
+    console.log('[StoreKit1] Apple response status:', appleData.status);
+
+    // Status codes:
+    // 0 = valid
+    // 21007 = sandbox receipt sent to production (retry with sandbox)
+    // 21008 = production receipt sent to sandbox (retry with production)
+    if (appleData.status === 21007 && isProduction) {
+      console.log('[StoreKit1] Retrying with sandbox...');
+      const sandboxResponse = await fetch('https://sandbox.itunes.apple.com/verifyReceipt', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'MacroGoal/1.0',
+        },
+        body: JSON.stringify({
+          'receipt-data': receipt,
+          'password': sharedSecret,
+          'exclude-old-transactions': true,
+        }),
+      });
+      const sandboxData = await sandboxResponse.json();
+      console.log('[StoreKit1] Sandbox retry status:', sandboxData.status);
+      return await processStoreKit1Response(sandboxData, productId, transactionId, userId, supabaseClient);
+    }
+
+    if (appleData.status === 21008 && !isProduction) {
+      console.log('[StoreKit1] Retrying with production...');
+      const prodResponse = await fetch('https://buy.itunes.apple.com/verifyReceipt', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'MacroGoal/1.0',
+        },
+        body: JSON.stringify({
+          'receipt-data': receipt,
+          'password': sharedSecret,
+          'exclude-old-transactions': true,
+        }),
+      });
+      const prodData = await prodResponse.json();
+      console.log('[StoreKit1] Production retry status:', prodData.status);
+      return await processStoreKit1Response(prodData, productId, transactionId, userId, supabaseClient);
+    }
+
+    return await processStoreKit1Response(appleData, productId, transactionId, userId, supabaseClient);
+  } catch (fetchError) {
+    clearTimeout(timeoutId);
+    
+    if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+      console.error('[StoreKit1] Request timeout');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Request to Apple servers timed out. Please try again.' 
+        }),
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+    
+    // Check for SSL/TLS specific errors
+    if (errorMessage.includes('SSL') || errorMessage.includes('TLS') || errorMessage.includes('handshake')) {
+      console.error('[StoreKit1] SSL/TLS error:', errorMessage);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'SSL connection error. This may be a temporary network issue. Please try again in a few moments.' 
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    throw fetchError;
+  }
 }
 
 async function processStoreKit1Response(
