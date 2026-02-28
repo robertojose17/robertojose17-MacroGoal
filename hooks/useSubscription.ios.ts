@@ -1,10 +1,10 @@
-
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
 import { supabase } from '@/app/integrations/supabase/client';
 import { IAP_PRODUCT_IDS } from '@/config/iapConfig';
 
+// --- Types ---
 type Product = {
   productId: string;
   title: string;
@@ -26,8 +26,7 @@ type UseSubscriptionHook = {
 
 const log = (tag: string, msg: string, data?: any) => {
   const ts = new Date().toISOString();
-  if (data !== undefined) console.log(`[IAP ${ts}] ${tag}: ${msg}`, data);
-  else console.log(`[IAP ${ts}] ${tag}: ${msg}`);
+  console.log(`[IAP ${ts}] ${tag}: ${msg}`, data ?? '');
 };
 
 export const useSubscription = (): UseSubscriptionHook => {
@@ -42,25 +41,25 @@ export const useSubscription = (): UseSubscriptionHook => {
   const listenerRef = useRef<{ remove?: () => void } | null>(null);
   const isMountedRef = useRef(true);
 
-  // Memoize productIds to prevent unnecessary re-renders
   const productIds = useMemo(() => [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly], []);
+
+  // Helper to ensure state updates only happen if component is mounted
+  const safeSet = useCallback((updateFn: () => void) => {
+    if (isMountedRef.current) updateFn();
+  }, []);
 
   const addDiagnostic = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
-    const diagnosticMessage = `[${timestamp}] ${message}`;
-    if (isMountedRef.current) {
-      setDiagnostics(prev => [...prev, diagnosticMessage]);
-    }
+    safeSet(() => setDiagnostics(prev => [...prev, `[${timestamp}] ${message}`]));
     log('DIAGNOSTIC', message);
-  }, []);
+  }, [safeSet]);
 
+  // --- Subscription Verification Logic ---
   const fetchSubscriptionStatusFromDB = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        if (isMountedRef.current) {
-          setIsSubscribed(false);
-        }
+        safeSet(() => setIsSubscribed(false));
         return;
       }
 
@@ -71,420 +70,195 @@ export const useSubscription = (): UseSubscriptionHook => {
         .eq('status', 'active')
         .maybeSingle();
 
-      if (dbError && dbError.code !== 'PGRST116') {
-        log('DB', 'Error reading subscription', dbError);
-        if (isMountedRef.current) {
-          setIsSubscribed(false);
-        }
-        return;
-      }
-
-      if (isMountedRef.current) {
-        setIsSubscribed(!!data);
-      }
+      if (dbError && dbError.code !== 'PGRST116') throw dbError;
+      safeSet(() => setIsSubscribed(!!data));
     } catch (e) {
-      log('DB', 'Unexpected error', e);
-      if (isMountedRef.current) {
-        setIsSubscribed(false);
-      }
+      log('DB_ERROR', 'Failed to fetch status', e);
+      safeSet(() => setIsSubscribed(false));
     }
-  }, []);
+  }, [safeSet]);
 
-  const verifyReceipt = useCallback(
-    async (purchase: InAppPurchases.InAppPurchase) => {
-      const finish = async () => {
-        try {
-          await InAppPurchases.finishTransactionAsync(purchase, false);
-        } catch (e) {
-          log('FINISH', 'finishTransactionAsync failed', e);
-        }
-      };
-
+  const verifyReceipt = useCallback(async (purchase: InAppPurchases.InAppPurchase) => {
+    const finish = async () => {
       try {
-        if (!purchase?.transactionReceipt) {
-          log('VERIFY', 'No receipt on purchase', purchase);
-          addDiagnostic('❌ Purchase has no receipt');
-          await finish();
-          return { ok: false, reason: 'no_receipt' as const };
-        }
+        await InAppPurchases.finishTransactionAsync(purchase, false);
+      } catch (e) {
+        log('FINISH_ERROR', 'Failed to finish transaction', e);
+      }
+    };
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          log('VERIFY', 'No authenticated user');
-          addDiagnostic('❌ No authenticated user for verification');
-          await finish();
-          return { ok: false, reason: 'no_user' as const };
-        }
+    try {
+      if (!purchase?.transactionReceipt) {
+        addDiagnostic('❌ Purchase has no receipt');
+        await finish();
+        return { ok: false };
+      }
 
-        log('VERIFY', 'Sending receipt to Edge Function', {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      addDiagnostic(`📤 Verifying ${purchase.productId} with backend...`);
+
+      const { data, error: fnError } = await supabase.functions.invoke('verify-apple-receipt', {
+        body: {
+          receipt: purchase.transactionReceipt,
           productId: purchase.productId,
           transactionId: purchase.transactionId,
-        });
-        addDiagnostic(`📤 Verifying receipt with Apple (Product: ${purchase.productId})`);
-        addDiagnostic('🔄 Using StoreKit 2 (App Store Server API) if configured');
+          userId: user.id,
+        },
+      });
 
-        const { data, error: fnError } = await supabase.functions.invoke('verify-apple-receipt', {
-          body: {
-            receipt: purchase.transactionReceipt,
-            productId: purchase.productId,
-            transactionId: purchase.transactionId,
-            userId: user.id,
-          },
-        });
-
-        if (fnError) {
-          log('VERIFY', 'Edge Function error', fnError);
-          addDiagnostic(`❌ Verification failed: ${fnError.message}`);
-          await finish();
-          return { ok: false, reason: 'fn_error' as const };
-        }
-
-        if (data?.success) {
-          addDiagnostic('✅ Receipt verified successfully with Apple!');
-          if (isMountedRef.current) {
-            setIsSubscribed(true);
-          }
-          await finish();
-          return { ok: true as const };
-        }
-
-        log('VERIFY', 'Verification failed response', data);
-        addDiagnostic(`❌ Verification failed: ${data?.error || 'Unknown error'}`);
-        await finish();
-        return { ok: false, reason: 'verify_failed' as const };
-      } catch (e: any) {
-        log('VERIFY', 'Unexpected verify error', e);
-        addDiagnostic(`❌ Verification error: ${e?.message || 'Unknown'}`);
-        await finish();
-        return { ok: false, reason: 'unexpected' as const };
+      if (fnError || !data?.success) {
+        throw new Error(data?.error || fnError?.message || 'Verification failed');
       }
-    },
-    [addDiagnostic]
-  );
 
+      addDiagnostic('✅ Receipt verified successfully!');
+      safeSet(() => setIsSubscribed(true));
+      await finish();
+      return { ok: true };
+    } catch (e: any) {
+      addDiagnostic(`❌ Verification error: ${e.message}`);
+      await finish();
+      return { ok: false };
+    }
+  }, [addDiagnostic, safeSet]);
+
+  // --- Initialization ---
   useEffect(() => {
     isMountedRef.current = true;
 
     if (Platform.OS !== 'ios') {
-      setLoading(false);
-      setError('IAP only available on iOS');
-      addDiagnostic('⚠️ Not running on iOS - IAP unavailable');
+      safeSet(() => {
+        setLoading(false);
+        setError('IAP only available on iOS');
+      });
       return;
     }
 
-    if (initializedRef.current) {
-      log('INIT', 'Already initialized, skipping');
-      return;
-    }
+    if (initializedRef.current) return;
     initializedRef.current = true;
 
-    const init = async () => {
-      log('INIT', 'Starting initialization sequence');
-      
-      if (!isMountedRef.current) return;
-      
-      setLoading(true);
-      setError(null);
-      setDiagnostics([]);
+    const initIAP = async () => {
+      safeSet(() => {
+        setLoading(true);
+        setError(null);
+        setDiagnostics([]);
+      });
 
       try {
-        addDiagnostic('🚀 Starting IAP initialization...');
-        addDiagnostic('📦 Product IDs: ' + productIds.join(', '));
-        addDiagnostic('🔧 Backend: StoreKit 2 (App Store Server API) with StoreKit 1 fallback');
+        addDiagnostic('🚀 Initializing StoreKit...');
         
-        log('INIT', 'Connecting to StoreKit...');
-        addDiagnostic('🔌 Connecting to Apple StoreKit...');
-        
+        // FIX: Added guard for undefined response
         const conn = await InAppPurchases.connectAsync();
-        log('CONNECT', 'Result', conn);
-
-        if (!isMountedRef.current) {
-          log('INIT', 'Component unmounted after connect');
-          return;
+        
+        if (!conn) {
+          throw new Error('StoreKit connection returned undefined. Ensure you have a valid Bundle ID.');
         }
 
         if (conn.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-          const errorMsg = conn.debugMessage || `StoreKit connection failed (code: ${conn.responseCode})`;
-          addDiagnostic(`❌ StoreKit connection failed: ${errorMsg}`);
-          addDiagnostic('💡 Troubleshooting:');
-          addDiagnostic('  1. Are you testing on a real iOS device or TestFlight?');
-          addDiagnostic('  2. Is the device signed in to a valid Apple ID?');
-          addDiagnostic('  3. Is the app properly configured in App Store Connect?');
-          addDiagnostic('  4. Check Bundle ID matches: com.robertojose17.macrogoal');
-          
-          if (isMountedRef.current) {
-            setError(errorMsg);
-            setStoreConnected(false);
-            setLoading(false);
-          }
-          return;
+          throw new Error(`Connection failed: ${conn.responseCode}`);
         }
 
-        addDiagnostic('✅ Connected to StoreKit successfully');
-        
-        if (isMountedRef.current) {
-          setStoreConnected(true);
-        }
+        addDiagnostic('✅ Connected to StoreKit');
+        safeSet(() => setStoreConnected(true));
 
-        if (!isMountedRef.current) {
-          log('INIT', 'Component unmounted after setting storeConnected');
-          return;
-        }
-
-        log('PRODUCTS', 'Fetching productIds', productIds);
-        addDiagnostic('📦 Fetching product information from App Store...');
-        
+        addDiagnostic('📦 Fetching product details...');
         const prodRes = await InAppPurchases.getProductsAsync(productIds);
-        log('PRODUCTS', 'Result', prodRes);
-
-        if (!isMountedRef.current) {
-          log('INIT', 'Component unmounted after getProductsAsync');
-          return;
+        
+        if (!prodRes || prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK) {
+          throw new Error('Failed to fetch products from Apple.');
         }
 
         const results = prodRes.results ?? [];
-        
-        if (prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-          addDiagnostic(`❌ Product fetch failed with code: ${prodRes.responseCode}`);
-          
-          if (isMountedRef.current) {
-            setError('Failed to fetch products from App Store');
-            setLoading(false);
-          }
-          return;
-        }
-
         if (results.length === 0) {
-          addDiagnostic('❌ No products returned from App Store');
-          addDiagnostic('💡 Common causes:');
-          addDiagnostic('  1. Product IDs don\'t match App Store Connect exactly');
-          addDiagnostic('  2. Products not in "Ready to Submit" status');
-          addDiagnostic('  3. Bundle ID mismatch (app.json vs App Store Connect)');
-          addDiagnostic('  4. Testing on Simulator (use real device/TestFlight)');
-          addDiagnostic('  5. Products not configured as Auto-Renewable Subscriptions');
-          addDiagnostic('  6. Expected IDs: ' + productIds.join(', '));
-          
-          if (isMountedRef.current) {
-            setError('No products available. Check App Store Connect setup.');
-            setProducts([]);
-            setLoading(false);
-          }
-          return;
+          addDiagnostic('⚠️ No products returned. Check App Store Connect configuration.');
         }
 
-        addDiagnostic(`✅ Loaded ${results.length} product(s) successfully`);
-        results.forEach((p, i) => {
-          addDiagnostic(`  ${i + 1}. ${p.title} (${p.productId}) - ${p.price}`);
+        safeSet(() => {
+          setProducts(results.map(p => ({
+            productId: p.productId,
+            title: p.title,
+            description: p.description,
+            price: p.price,
+            currencyCode: p.currencyCode,
+          })));
         });
 
-        if (isMountedRef.current) {
-          setProducts(
-            results.map((p) => ({
-              productId: p.productId,
-              title: p.title,
-              description: p.description,
-              price: p.price,
-              currencyCode: p.currencyCode,
-            }))
-          );
-        }
-
-        if (!isMountedRef.current) {
-          log('INIT', 'Component unmounted after setting products');
-          return;
-        }
-
-        log('LISTENER', 'Setting purchase listener...');
-        addDiagnostic('🎧 Setting up purchase listener...');
-        
+        // Set Listener
         listenerRef.current = InAppPurchases.setPurchaseListener(async (update) => {
-          log('LISTENER', 'Update', update);
-
-          if (!update) {
-            addDiagnostic('⚠️ Received empty purchase update');
-            return;
-          }
-
+          if (!update) return;
           const code = update.responseCode;
-          addDiagnostic(`📥 Purchase update received (code: ${code})`);
+          addDiagnostic(`📥 Purchase Update: ${code}`);
 
           if (code === InAppPurchases.IAPResponseCode.OK) {
-            const purchases = update.results ?? [];
-            addDiagnostic(`✅ Purchase successful (${purchases.length} transaction(s))`);
-            
-            for (const p of purchases) {
-              addDiagnostic(`🔍 Verifying transaction: ${p.transactionId}`);
+            for (const p of (update.results ?? [])) {
               const res = await verifyReceipt(p);
-              if (!res.ok) {
-                Alert.alert('Purchase verification failed', 'We could not verify your purchase. Try Restore Purchases.');
-              } else {
-                Alert.alert('Success', 'Subscription active!');
-              }
+              if (res.ok) Alert.alert('Success', 'Subscription active!');
             }
-            return;
+          } else if (code !== InAppPurchases.IAPResponseCode.USER_CANCELED) {
+            Alert.alert('Purchase Error', `Error code: ${code}`);
           }
-
-          if (code === InAppPurchases.IAPResponseCode.USER_CANCELED) {
-            addDiagnostic('ℹ️ User canceled the purchase');
-            Alert.alert('Canceled', 'Purchase canceled.');
-            return;
-          }
-
-          addDiagnostic(`❌ Purchase failed with code: ${code}`);
-          Alert.alert('Purchase error', `Store error: ${InAppPurchases.IAPResponseCode[code]}`);
         });
 
-        addDiagnostic('✅ Purchase listener active');
-        addDiagnostic('🎉 IAP initialization complete!');
-
         await fetchSubscriptionStatusFromDB();
-        
-        // Ensure loading is set to false after everything completes successfully
-        if (isMountedRef.current) {
-          setLoading(false);
-        }
-        log('INIT', 'Initialization complete, loading set to false');
+        safeSet(() => setLoading(false));
+
       } catch (e: any) {
-        log('INIT', 'Error', e);
-        if (isMountedRef.current) {
-          const errorMessage = e?.message || 'Failed to initialize IAP';
-          setError(errorMessage);
-          addDiagnostic(`❌ Initialization failed: ${errorMessage}`);
-          setStoreConnected(false);
-          setProducts([]);
+        const msg = e?.message || 'Unknown Initialization Error';
+        addDiagnostic(`❌ FAILED: ${msg}`);
+        safeSet(() => {
+          setError(msg);
           setLoading(false);
-        }
+          setStoreConnected(false);
+        });
       }
     };
 
-    init();
+    initIAP();
 
     return () => {
-      log('CLEANUP', 'Cleaning up IAP resources');
       isMountedRef.current = false;
-      try {
-        listenerRef.current?.remove?.();
-        listenerRef.current = null;
-      } catch (e) {
-        log('CLEANUP', 'Error removing listener', e);
-      }
-      InAppPurchases.disconnectAsync().catch((e) => {
-        log('CLEANUP', 'Error disconnecting', e);
-      });
+      listenerRef.current?.remove?.();
+      InAppPurchases.disconnectAsync().catch(() => {});
     };
-  }, [fetchSubscriptionStatusFromDB, productIds, verifyReceipt, addDiagnostic]);
+  }, [productIds, fetchSubscriptionStatusFromDB, verifyReceipt, addDiagnostic, safeSet]);
 
-  const purchaseProduct = useCallback(
-    async (productId: string) => {
-      if (!storeConnected) {
-        Alert.alert('Store not connected', 'Cannot connect to App Store. Please try again later.');
-        addDiagnostic('❌ Purchase attempt failed: Store not connected');
-        return;
-      }
-
-      const exists = products.some((p) => p.productId === productId);
-      if (!exists) {
-        Alert.alert('Product not available', `Product not found: ${productId}`);
-        addDiagnostic(`❌ Purchase attempt failed: Product ${productId} not found`);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        log('PURCHASE', `purchaseItemAsync(${productId})`);
-        addDiagnostic(`🛒 Initiating purchase for: ${productId}`);
-        await InAppPurchases.purchaseItemAsync(productId);
-        addDiagnostic('✅ Purchase initiated - waiting for App Store response...');
-      } catch (e: any) {
-        log('PURCHASE', 'Error', e);
-        const errorMessage = e?.message || 'Purchase failed to start';
-        if (isMountedRef.current) {
-          setError(errorMessage);
-        }
-        addDiagnostic(`❌ Purchase failed: ${errorMessage}`);
-        Alert.alert('Purchase error', errorMessage);
-      } finally {
-        if (isMountedRef.current) {
-          setLoading(false);
-        }
-      }
-    },
-    [products, storeConnected, addDiagnostic]
-  );
-
-  const restorePurchases = useCallback(async () => {
+  // --- Actions ---
+  const purchaseProduct = useCallback(async (productId: string) => {
     if (!storeConnected) {
-      Alert.alert('Store not connected', 'Cannot connect to App Store. Please try again later.');
-      addDiagnostic('❌ Restore attempt failed: Store not connected');
+      Alert.alert('Error', 'Store not connected.');
       return;
     }
-
-    setLoading(true);
-    setError(null);
-
+    safeSet(() => setLoading(true));
     try {
-      log('RESTORE', 'getPurchaseHistoryAsync()');
-      addDiagnostic('🔄 Restoring purchases from Apple...');
-      
-      const history = await InAppPurchases.getPurchaseHistoryAsync();
-      log('RESTORE', 'History result', history);
-
-      if (history.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-        const errorMsg = `Restore failed: ${InAppPurchases.IAPResponseCode[history.responseCode]}`;
-        addDiagnostic(`❌ ${errorMsg}`);
-        throw new Error(errorMsg);
-      }
-
-      const items = history.results ?? [];
-      addDiagnostic(`📦 Found ${items.length} previous purchase(s)`);
-      
-      if (items.length === 0) {
-        addDiagnostic('ℹ️ No previous purchases found for this Apple ID');
-        Alert.alert('No purchases', 'No previous purchases found for this Apple ID.');
-        if (isMountedRef.current) {
-          setIsSubscribed(false);
-        }
-        return;
-      }
-
-      let activated = false;
-      for (const p of items) {
-        addDiagnostic(`🔍 Verifying restored transaction: ${p.transactionId}`);
-        const res = await verifyReceipt(p);
-        if (res.ok) activated = true;
-      }
-
-      await fetchSubscriptionStatusFromDB();
-
-      const message = activated ? 'Subscription restored successfully!' : 'No active subscription found to restore.';
-      addDiagnostic(activated ? '✅ Restore successful!' : 'ℹ️ No active subscription found');
-      
-      Alert.alert('Restore complete', message);
+      addDiagnostic(`🛒 Starting purchase for: ${productId}`);
+      await InAppPurchases.purchaseItemAsync(productId);
     } catch (e: any) {
-      log('RESTORE', 'Error', e);
-      const errorMessage = e?.message || 'Restore failed';
-      if (isMountedRef.current) {
-        setError(errorMessage);
-      }
-      addDiagnostic(`❌ Restore failed: ${errorMessage}`);
-      Alert.alert('Restore error', errorMessage);
+      addDiagnostic(`❌ Purchase failed: ${e.message}`);
+      Alert.alert('Error', e.message);
     } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+      safeSet(() => setLoading(false));
     }
-  }, [storeConnected, verifyReceipt, fetchSubscriptionStatusFromDB, addDiagnostic]);
+  }, [storeConnected, addDiagnostic, safeSet]);
 
-  return {
-    products,
-    purchaseProduct,
-    restorePurchases,
-    isSubscribed,
-    loading,
-    error,
-    storeConnected,
-    diagnostics,
-  };
+  const restorePurchases = useCallback(async () => {
+    if (!storeConnected) return;
+    safeSet(() => setLoading(true));
+    try {
+      addDiagnostic('🔄 Restoring purchases...');
+      const history = await InAppPurchases.getPurchaseHistoryAsync();
+      if (history.responseCode === InAppPurchases.IAPResponseCode.OK) {
+        const items = history.results ?? [];
+        if (items.length === 0) Alert.alert('Restore', 'No purchases found.');
+        for (const p of items) await verifyReceipt(p);
+        await fetchSubscriptionStatusFromDB();
+      }
+    } catch (e: any) {
+      addDiagnostic(`❌ Restore failed: ${e.message}`);
+    } finally {
+      safeSet(() => setLoading(false));
+    }
+  }, [storeConnected, verifyReceipt, fetchSubscriptionStatusFromDB, addDiagnostic, safeSet]);
+
+  return { products, purchaseProduct, restorePurchases, isSubscribed, loading, error, storeConnected, diagnostics };
 };
