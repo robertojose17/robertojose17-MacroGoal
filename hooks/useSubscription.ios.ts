@@ -121,6 +121,7 @@ export const useSubscription = (): UseSubscriptionHook => {
           transactionId: purchase.transactionId,
         });
         addDiagnostic(`📤 Verifying receipt with Apple (Product: ${purchase.productId})`);
+        addDiagnostic('🔄 Using StoreKit 2 (App Store Server API) if configured');
 
         const { data, error: fnError } = await supabase.functions.invoke('verify-apple-receipt', {
           body: {
@@ -139,7 +140,7 @@ export const useSubscription = (): UseSubscriptionHook => {
         }
 
         if (data?.success) {
-          addDiagnostic('✅ Receipt verified successfully!');
+          addDiagnostic('✅ Receipt verified successfully with Apple!');
           if (isMountedRef.current) {
             setIsSubscribed(true);
           }
@@ -188,7 +189,8 @@ export const useSubscription = (): UseSubscriptionHook => {
 
       try {
         addDiagnostic('🚀 Starting IAP initialization...');
-        addDiagnostic(`📦 Product IDs: ${productIds.join(', ')}`);
+        addDiagnostic('📦 Product IDs: ' + productIds.join(', '));
+        addDiagnostic('🔧 Backend: StoreKit 2 (App Store Server API) with StoreKit 1 fallback');
         
         log('INIT', 'Connecting to StoreKit...');
         addDiagnostic('🔌 Connecting to Apple StoreKit...');
@@ -260,7 +262,7 @@ export const useSubscription = (): UseSubscriptionHook => {
           addDiagnostic('  3. Bundle ID mismatch (app.json vs App Store Connect)');
           addDiagnostic('  4. Testing on Simulator (use real device/TestFlight)');
           addDiagnostic('  5. Products not configured as Auto-Renewable Subscriptions');
-          addDiagnostic(`  6. Expected IDs: ${productIds.join(', ')}`);
+          addDiagnostic('  6. Expected IDs: ' + productIds.join(', '));
           
           if (isMountedRef.current) {
             setError('No products available. Check App Store Connect setup.');
