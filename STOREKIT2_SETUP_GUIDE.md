@@ -31,8 +31,10 @@ Open the downloaded `.p8` file in a text editor. It looks like this:
 
 ```
 -----BEGIN PRIVATE KEY-----
-MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
-...more lines...
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgaNnC6SAZI0OSlx9Y
+qKoA39mjvRf+M1yAkw/E7xOH/wagCgYIKoZIzj0DAQehRANCAASmeGPdmwAc6PEU
+PB4A9WNQRVIWIEdfDtPdsJiALsvuMu+zCF+wSHeL862yuAQm/OoY8KOFZwcphLFl
+hGYsKTvN
 -----END PRIVATE KEY-----
 ```
 
