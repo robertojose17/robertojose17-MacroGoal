@@ -1,10 +1,17 @@
 
 /**
- * Apple In-App Purchase Configuration
+ * Apple In-App Purchase Configuration for StoreKit 2
  * 
- * Product IDs must match EXACTLY with App Store Connect
+ * CRITICAL: Product IDs must match EXACTLY with App Store Connect
  * Bundle ID: com.robertojose17.macrogoal
  * Apple ID: 6755788871
+ * 
+ * SETUP CHECKLIST:
+ * 1. ✅ Products created in App Store Connect with these exact IDs
+ * 2. ✅ Products approved and "Ready to Submit"
+ * 3. ✅ Testing on real device or TestFlight (NOT Simulator)
+ * 4. ✅ Signed in with Sandbox Apple ID in Settings > App Store
+ * 5. ✅ Bundle ID matches in app.json and App Store Connect
  */
 
 export const IAP_PRODUCT_IDS = {
