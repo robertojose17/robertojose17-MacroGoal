@@ -1,7 +1,8 @@
+
 {
   "expo": {
     "name": "Macro Goal",
-    "slug": "Macro Goal",
+    "slug": "macro-goal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
@@ -19,7 +20,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator",
         "NSPhotoLibraryUsageDescription": "Macro Goal needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
-      }
+      },
+      "appleTeamId": "RQ6JHH38HA"
     },
     "android": {
       "adaptiveIcon": {
@@ -65,7 +67,10 @@
     },
     "extra": {
       "router": {},
-      "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW"
+      "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW",
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
     }
   }
 }
