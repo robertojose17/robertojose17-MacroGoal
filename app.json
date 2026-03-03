@@ -1,7 +1,8 @@
+
 {
   "expo": {
     "name": "Macro Goal",
-    "slug": "Macro Goal",
+    "slug": "macrogoal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
@@ -16,7 +17,6 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.robertojose17.macrogoal",
       "appleTeamId": "RQ6JHH38HA",
-      "usesStoreKit2": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator",
@@ -63,7 +63,7 @@
         }
       ]
     ],
-    "scheme": "Macro Goal",
+    "scheme": "macrogoal",
     "experiments": {
       "typedRoutes": true
     },

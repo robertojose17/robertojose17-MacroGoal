@@ -12,6 +12,8 @@
  * - Restore purchases functionality
  * - Entitlement checking for "Macrogoal Pro"
  * - Cross-platform support (iOS/Android)
+ * 
+ * DIAGNOSTIC MODE: Enhanced logging for debugging connection issues
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -85,53 +87,93 @@ export const useRevenueCat = (): UseRevenueCatHook => {
           setError(null);
         });
 
-        log('INIT', 'Starting RevenueCat initialization...');
+        log('INIT', '========================================');
+        log('INIT', '🚀 STARTING REVENUECAT INITIALIZATION');
+        log('INIT', '========================================');
+        log('INIT', `Platform: ${Platform.OS}`);
+        log('INIT', `API Key: ${REVENUECAT_API_KEY.substring(0, 15)}...`);
+        log('INIT', `Entitlement ID: ${ENTITLEMENT_ID}`);
 
-        // Enable debug logging in development
-        if (__DEV__) {
-          Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-          log('INIT', 'Debug logging enabled');
-        }
+        // STEP 1: Enable debug logging
+        Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+        log('INIT', '✅ Step 1: Debug logging enabled');
 
-        // Configure RevenueCat SDK
+        // STEP 2: Configure RevenueCat SDK
+        log('INIT', '⏳ Step 2: Configuring RevenueCat SDK...');
         await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-        log('INIT', '✅ RevenueCat configured successfully');
+        log('INIT', '✅ Step 2: RevenueCat SDK configured successfully');
+        console.log('RevenueCat configured'); // Explicit log as requested
 
-        // Set user ID from Supabase auth (optional but recommended)
+        // STEP 3: Set user ID from Supabase auth (optional but recommended)
+        log('INIT', '⏳ Step 3: Attempting to identify user...');
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
             await Purchases.logIn(user.id);
-            log('INIT', `✅ User logged in: ${user.id}`);
+            log('INIT', `✅ Step 3: User identified: ${user.id}`);
+          } else {
+            log('INIT', '⚠️ Step 3: No user found, continuing anonymously');
           }
         } catch (authError) {
-          log('INIT', '⚠️ Could not set user ID (continuing anonymously)', authError);
+          log('INIT', '⚠️ Step 3: Could not identify user (non-critical)', authError);
         }
 
-        // Set up listener for customer info updates
+        // STEP 4: Set up listener for customer info updates
+        log('INIT', '⏳ Step 4: Registering customer info listener...');
         Purchases.addCustomerInfoUpdateListener((info) => {
-          log('LISTENER', 'Customer info updated', {
+          log('LISTENER', '📡 Customer info updated', {
             entitlements: Object.keys(info.entitlements.active),
             activeSubscriptions: info.activeSubscriptions,
           });
           safeSet(() => setCustomerInfo(info));
         });
+        log('INIT', '✅ Step 4: Customer info listener registered');
 
-        log('INIT', '✅ Customer info listener registered');
-
-        // Get initial customer info
+        // STEP 5: Get initial customer info
+        log('INIT', '⏳ Step 5: Fetching initial customer info...');
         const initialCustomerInfo = await Purchases.getCustomerInfo();
-        log('INIT', 'Initial customer info retrieved', {
+        log('INIT', '✅ Step 5: Customer info retrieved', {
           entitlements: Object.keys(initialCustomerInfo.entitlements.active),
           activeSubscriptions: initialCustomerInfo.activeSubscriptions,
+          originalAppUserId: initialCustomerInfo.originalAppUserId,
         });
+        
+        // Check if user has entitlement
+        if (initialCustomerInfo.entitlements.active[ENTITLEMENT_ID]) {
+          log('INIT', `🎉 User has active "${ENTITLEMENT_ID}" entitlement!`);
+        } else {
+          log('INIT', `ℹ️ User does not have "${ENTITLEMENT_ID}" entitlement`);
+        }
+        
         safeSet(() => setCustomerInfo(initialCustomerInfo));
 
-        // Fetch offerings from RevenueCat
+        // STEP 6: Fetch offerings from RevenueCat
+        log('INIT', '⏳ Step 6: Fetching offerings...');
+        console.log('Fetching offerings...'); // Explicit log as requested
+        
         const offeringsResult = await Purchases.getOfferings();
+        
+        log('INIT', '📦 Offerings result:', {
+          current: offeringsResult.current?.identifier || 'null',
+          all: Object.keys(offeringsResult.all),
+        });
+        console.log('Offerings fetched:', offeringsResult); // Explicit log as requested
+        console.log('Offerings.current:', offeringsResult.current); // Explicit log as requested
+        console.log('Offerings.all:', offeringsResult.all); // Explicit log as requested
+
         if (offeringsResult.current) {
-          log('INIT', `✅ Current offering found: ${offeringsResult.current.identifier}`);
-          log('INIT', `Available packages: ${offeringsResult.current.availablePackages.length}`);
+          log('INIT', `✅ Step 6: Current offering found: "${offeringsResult.current.identifier}"`);
+          log('INIT', `📦 Available packages: ${offeringsResult.current.availablePackages.length}`);
+
+          offeringsResult.current.availablePackages.forEach((pkg, index) => {
+            log('INIT', `   Package ${index + 1}:`, {
+              identifier: pkg.identifier,
+              packageType: pkg.packageType,
+              productId: pkg.product.identifier,
+              price: pkg.product.priceString,
+              title: pkg.product.title,
+            });
+          });
 
           const productList = offeringsResult.current.availablePackages.map((pkg) => ({
             productId: pkg.product.identifier,
@@ -148,18 +190,38 @@ export const useRevenueCat = (): UseRevenueCatHook => {
             setProducts(productList);
           });
 
-          log('INIT', 'Products loaded', productList.map(p => `${p.productId}: ${p.priceString}`));
+          log('INIT', '✅ Products loaded successfully');
         } else {
-          log('INIT', '⚠️ No current offering found. Check RevenueCat dashboard configuration.');
-          safeSet(() => setError('No subscription offerings available. Please check configuration.'));
+          log('INIT', '❌ Step 6: NO CURRENT OFFERING FOUND');
+          log('INIT', '⚠️ DIAGNOSIS: Check RevenueCat dashboard:');
+          log('INIT', '   1. Is there an Offering marked as "Current"?');
+          log('INIT', '   2. Does the Offering have at least 1 Package?');
+          log('INIT', '   3. Is the Package linked to a product?');
+          log('INIT', `   4. Does the Bundle ID match: com.robertojose17.macrogoal?`);
+          log('INIT', `   5. Is the API key correct: ${REVENUECAT_API_KEY.substring(0, 15)}...?`);
+          
+          safeSet(() => setError('No subscription offerings available. Check RevenueCat dashboard configuration.'));
         }
 
         safeSet(() => setLoading(false));
-        log('INIT', '✅ Initialization complete');
+        
+        log('INIT', '========================================');
+        log('INIT', '✅ INITIALIZATION COMPLETE');
+        log('INIT', '========================================');
 
       } catch (e: any) {
         const errorMsg = e?.message || 'Unknown initialization error';
-        log('INIT', `❌ Initialization failed: ${errorMsg}`, e);
+        log('INIT', '========================================');
+        log('INIT', '❌ INITIALIZATION FAILED');
+        log('INIT', '========================================');
+        log('INIT', `Error: ${errorMsg}`, e);
+        log('INIT', 'Error details:', {
+          name: e?.name,
+          message: e?.message,
+          code: e?.code,
+          stack: e?.stack,
+        });
+        
         safeSet(() => {
           setError(errorMsg);
           setLoading(false);
@@ -181,7 +243,7 @@ export const useRevenueCat = (): UseRevenueCatHook => {
   const purchasePackage = useCallback(async (pkg: PurchasesPackage): Promise<boolean> => {
     try {
       safeSet(() => setLoading(true));
-      log('PURCHASE', `Starting purchase for: ${pkg.product.identifier}`);
+      log('PURCHASE', `⏳ Starting purchase for: ${pkg.product.identifier}`);
 
       const { customerInfo: newCustomerInfo } = await Purchases.purchasePackage(pkg);
       
@@ -210,7 +272,7 @@ export const useRevenueCat = (): UseRevenueCatHook => {
       
       // User cancelled - don't show error
       if (purchasesError.userCancelled) {
-        log('PURCHASE', 'User cancelled purchase');
+        log('PURCHASE', 'ℹ️ User cancelled purchase');
         return false;
       }
 
@@ -231,7 +293,7 @@ export const useRevenueCat = (): UseRevenueCatHook => {
   const restorePurchases = useCallback(async () => {
     try {
       safeSet(() => setLoading(true));
-      log('RESTORE', 'Starting restore purchases...');
+      log('RESTORE', '⏳ Starting restore purchases...');
 
       const restoredInfo = await Purchases.restorePurchases();
       
@@ -247,7 +309,7 @@ export const useRevenueCat = (): UseRevenueCatHook => {
         log('RESTORE', `✅ Entitlement "${ENTITLEMENT_ID}" restored`);
         Alert.alert('Success', 'Your purchases have been restored!');
       } else {
-        log('RESTORE', 'No active subscriptions found');
+        log('RESTORE', 'ℹ️ No active subscriptions found');
         Alert.alert('No Purchases Found', 'No active subscriptions to restore.');
       }
 
@@ -266,10 +328,10 @@ export const useRevenueCat = (): UseRevenueCatHook => {
   // Manually check subscription status
   const checkSubscriptionStatus = useCallback(async () => {
     try {
-      log('STATUS', 'Checking subscription status...');
+      log('STATUS', '⏳ Checking subscription status...');
       const info = await Purchases.getCustomerInfo();
       
-      log('STATUS', 'Status retrieved', {
+      log('STATUS', '✅ Status retrieved', {
         entitlements: Object.keys(info.entitlements.active),
         activeSubscriptions: info.activeSubscriptions,
       });
