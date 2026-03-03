@@ -57,10 +57,10 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
 4. **Add Yearly Subscription**
    - Type: Auto-Renewable Subscription
    - Reference Name: "Macrogoal Pro Yearly"
-   - Product ID: `yearly` (must match `config/revenueCatConfig.ts`)
+   - Product ID: `Yearly_MG` (must match `config/revenueCatConfig.ts`)
    - Subscription Group: Same group as monthly
    - Subscription Duration: 1 Year
-   - Price: Set your price (e.g., $79.99/year)
+   - Price: Set your price (e.g., $49.99/year)
    - Localization: Add display name and description
 
 5. **Submit for Review**
@@ -84,9 +84,9 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
 3. **Configure App Store Connect**
    - Go to "App Settings" → "Apple App Store"
    - Add your App Store Connect credentials:
-     - Issuer ID
-     - Key ID
-     - Private Key (.p8 file)
+     - Issuer ID 4b32a345-b13e-4b90-8d4d-571bb896e1f3
+     - Key ID 3WXAKLB7WU
+     - Private Key (.p8 file) 
    - Follow RevenueCat's guide: https://www.revenuecat.com/docs/itunesconnect-app-specific-shared-secret
 
 4. **Create Products**
@@ -95,12 +95,12 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
      - Identifier: `monthly`
      - Type: Subscription
      - Store: App Store
-     - Store Product ID: `monthly` (must match App Store Connect)
+     - Store Product ID: `Monthly_MG` (must match App Store Connect)
    - Add Yearly Product:
      - Identifier: `yearly`
      - Type: Subscription
      - Store: App Store
-     - Store Product ID: `yearly` (must match App Store Connect)
+     - Store Product ID: `Yearly_MG` (must match App Store Connect)
 
 5. **Create Entitlement**
    - Go to "Entitlements" → "Add Entitlement"
@@ -109,11 +109,11 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
 
 6. **Create Offering**
    - Go to "Offerings" → "Add Offering"
-   - Identifier: `default`
+   - Identifier: `Monthly_MG`
    - Mark as "Current Offering"
    - Add Packages:
-     - Package 1: Monthly (`monthly` product)
-     - Package 2: Yearly (`yearly` product)
+     - Package 1: Monthly (`Monthly_MG` product)
+     - Package 2: Yearly (`YearlyMG` product)
    - Attach to Entitlement: `Macrogoal Pro`
 
 7. **Get API Key**
@@ -127,7 +127,7 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
    - Open `config/revenueCatConfig.ts`
    - Replace the `apiKey` with your actual PUBLIC SDK KEY from RevenueCat
    ```typescript
-   apiKey: 'appl_YOUR_ACTUAL_KEY_HERE',
+   apiKey: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
    ```
 
 2. **Verify Product IDs Match**
@@ -136,8 +136,8 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
      - RevenueCat product identifiers
    ```typescript
    products: {
-     monthly: 'monthly',  // Must match everywhere
-     yearly: 'yearly',    // Must match everywhere
+     monthly: 'Monthly_MG',  // Must match everywhere
+     yearly: 'Yearly_MG',    // Must match everywhere
    },
    ```
 
