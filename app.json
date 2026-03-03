@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Macro Goal",
-    "slug": "macrogoal",
+    "slug": "Macro Goal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
@@ -62,7 +62,7 @@
         }
       ]
     ],
-    "scheme": "macrogoal",
+    "scheme": "Macro Goal",
     "experiments": {
       "typedRoutes": true
     },
