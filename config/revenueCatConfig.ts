@@ -10,8 +10,8 @@
 
 import { Platform } from 'react-native';
 
-// RevenueCat API Key (provided by user)
-export const REVENUECAT_API_KEY = 'test_occIMDaPJIrXQAMTrAgFTrDnKJS';
+// RevenueCat API Key (PRODUCTION)
+export const REVENUECAT_API_KEY = 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE';
 
 // Entitlement ID configured in RevenueCat dashboard
 export const ENTITLEMENT_ID = 'Macrogoal Pro';
