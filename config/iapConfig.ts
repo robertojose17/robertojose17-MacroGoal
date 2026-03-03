@@ -16,8 +16,8 @@
  */
 
 export const IAP_PRODUCT_IDS = {
-  monthly: 'Monthly_MG',
-  yearly: 'Yearly_MG',
+  MONTHLY: 'Monthly_MG',
+  YEARLY: 'Yearly_MG',
 } as const;
 
 export const IAP_CONFIG = {

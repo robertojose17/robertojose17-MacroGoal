@@ -42,7 +42,7 @@ export const useSubscription = (): UseSubscriptionHook => {
   const listenerRef = useRef<{ remove?: () => void } | null>(null);
   const isMountedRef = useRef(true);
 
-  const productIds = useMemo(() => [IAP_PRODUCT_IDS.monthly, IAP_PRODUCT_IDS.yearly], []);
+  const productIds = useMemo(() => [IAP_PRODUCT_IDS.MONTHLY, IAP_PRODUCT_IDS.YEARLY], []);
 
   // Helper to ensure state updates only happen if component is mounted
   const safeSet = useCallback((updateFn: () => void) => {
