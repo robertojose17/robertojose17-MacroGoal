@@ -47,8 +47,8 @@ The RevenueCat integration for monthly and yearly subscriptions has been success
 
 3. **Add Monthly Subscription**
    - Type: Auto-Renewable Subscription
-   - Reference Name: "Macrogoal Pro Monthly"
-   - Product ID: `monthly` (must match `config/revenueCatConfig.ts`)
+   - Reference Name: "Monthly_MG"
+   - Product ID: `Monthly_MG` (must match `config/revenueCatConfig.ts`)
    - Subscription Group: Select the group you created
    - Subscription Duration: 1 Month
    - Price: Set your price (e.g., $9.99/month)

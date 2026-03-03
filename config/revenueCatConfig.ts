@@ -24,8 +24,8 @@ export const REVENUECAT_CONFIG = {
   
   // Product identifiers (must match App Store Connect)
   products: {
-    monthly: 'monthly',
-    yearly: 'yearly',
+    monthly: 'Monthly_MG',
+    yearly: 'Yearly_MG',
   },
   
   // Offering identifier (use 'default' or your custom offering)
