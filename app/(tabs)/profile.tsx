@@ -11,6 +11,8 @@ import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToK
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SubscriptionButton from '@/components/SubscriptionButton';
+import CustomerCenter from '@/components/CustomerCenter';
+import { useRevenueCat } from '@/hooks/useRevenueCat';
 
 type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
@@ -23,6 +25,10 @@ export default function ProfileScreen() {
   const [goal, setGoal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Customer Center state
+  const [showCustomerCenter, setShowCustomerCenter] = useState(false);
+  const { isPro } = useRevenueCat();
 
   // Edit modal state
   const [editingField, setEditingField] = useState<EditField>(null);
@@ -756,6 +762,30 @@ export default function ProfileScreen() {
           <SubscriptionButton onSubscribed={() => loadUserData()} />
         </View>
 
+        {/* Customer Center Button (only show if subscribed) */}
+        {isPro && (
+          <TouchableOpacity
+            style={[styles.customerCenterButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+            onPress={() => setShowCustomerCenter(true)}
+          >
+            <IconSymbol
+              ios_icon_name="gear"
+              android_material_icon_name="settings"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={[styles.customerCenterText, { color: isDark ? colors.textDark : colors.text }]}>
+              Manage Subscription
+            </Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={16}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
@@ -800,6 +830,12 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Customer Center Modal */}
+      <CustomerCenter
+        visible={showCustomerCenter}
+        onClose={() => setShowCustomerCenter(false)}
+      />
 
       {/* Edit Modal */}
       <Modal
@@ -1249,6 +1285,21 @@ const styles = StyleSheet.create({
   },
   subscriptionSection: {
     marginBottom: spacing.md,
+  },
+  customerCenterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  customerCenterText: {
+    flex: 1,
+    fontWeight: '600',
+    fontSize: 16,
   },
   logoutButton: {
     borderRadius: borderRadius.lg,

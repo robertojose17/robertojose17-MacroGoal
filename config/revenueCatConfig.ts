@@ -2,52 +2,38 @@
 /**
  * RevenueCat Configuration
  * 
- * This file will be used when RevenueCat integration is available.
- * Currently using expo-in-app-purchases as fallback.
- * 
- * SETUP INSTRUCTIONS (When RevenueCat is available):
- * 1. Create account at https://app.revenuecat.com/
- * 2. Create new app in RevenueCat dashboard
- * 3. Add iOS app with Bundle ID: com.robertojose17.macrogoal
- * 4. Add Android app (when ready)
- * 5. Configure products in RevenueCat (use existing product IDs)
- * 6. Get API keys from RevenueCat dashboard
- * 7. Add keys to .env file
- * 8. Uncomment and configure this file
+ * Complete setup for RevenueCat SDK integration with StoreKit 2
+ * Bundle ID: com.robertojose17.macrogoal
+ * Apple ID: 6755788871
+ * Team ID: RQ6JHH38HA
  */
 
-// TODO: Uncomment when RevenueCat is available
-// import { Platform } from 'react-native';
+import { Platform } from 'react-native';
 
-export const REVENUECAT_CONFIG = {
-  // API Keys (from RevenueCat dashboard)
-  // TODO: Add these to .env file when RevenueCat is available
-  // apiKey: Platform.select({
-  //   ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY || '',
-  //   android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY || '',
-  // }),
+// RevenueCat API Key (provided by user)
+export const REVENUECAT_API_KEY = 'test_occIMDaPJIrXQAMTrAgFTrDnKJS';
 
-  // Product IDs (must match App Store Connect and Google Play Console)
-  productIds: {
-    monthly: 'Monthly_MG',
-    yearly: 'Yearly_MG',
-  },
+// Entitlement ID configured in RevenueCat dashboard
+export const ENTITLEMENT_ID = 'Macrogoal Pro';
 
-  // Entitlement identifier (configured in RevenueCat dashboard)
-  entitlementId: 'premium',
-
-  // App configuration
-  appConfig: {
-    bundleId: 'com.robertojose17.macrogoal',
-    appleId: '6755788871',
-    appleTeamId: 'RQ6JHH38HA',
-  },
+// Product IDs (must match App Store Connect and RevenueCat dashboard)
+export const PRODUCT_IDS = {
+  MONTHLY: 'monthly',
+  YEARLY: 'yearly',
 } as const;
 
-// Subscription plan metadata
+// App configuration
+export const APP_CONFIG = {
+  bundleId: 'com.robertojose17.macrogoal',
+  appleId: '6755788871',
+  appleTeamId: 'RQ6JHH38HA',
+  scheme: 'macrogoal',
+} as const;
+
+// Subscription plan metadata for UI display
 export const SUBSCRIPTION_PLANS = {
   monthly: {
-    id: 'Monthly_MG',
+    id: 'monthly',
     name: 'Monthly Premium',
     description: 'Full access to all premium features',
     period: 'month',
@@ -61,7 +47,7 @@ export const SUBSCRIPTION_PLANS = {
     ],
   },
   yearly: {
-    id: 'Yearly_MG',
+    id: 'yearly',
     name: 'Annual Premium',
     description: 'Full access to all premium features',
     period: 'year',
@@ -111,4 +97,9 @@ export const PREMIUM_FEATURES = [
   },
 ] as const;
 
-export default REVENUECAT_CONFIG;
+export default {
+  apiKey: REVENUECAT_API_KEY,
+  entitlementId: ENTITLEMENT_ID,
+  productIds: PRODUCT_IDS,
+  appConfig: APP_CONFIG,
+};
