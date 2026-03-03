@@ -5,6 +5,7 @@
  * CRITICAL: Product IDs must match EXACTLY with App Store Connect
  * Bundle ID: com.robertojose17.macrogoal
  * Apple ID: 6755788871
+ * Team ID: RQ6JHH38HA
  * 
  * SETUP CHECKLIST:
  * 1. ✅ Products created in App Store Connect with these exact IDs
@@ -22,5 +23,6 @@ export const IAP_PRODUCT_IDS = {
 export const IAP_CONFIG = {
   bundleId: 'com.robertojose17.macrogoal',
   appleId: '6755788871',
-  sku: 'EX1764179298648',
+  appleTeamId: 'RQ6JHH38HA',
+  scheme: 'macrogoal',
 } as const;
