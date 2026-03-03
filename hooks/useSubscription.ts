@@ -1,51 +1,50 @@
 
-import { useState, useCallback } from 'react';
-import { Platform } from 'react-native';
+/**
+ * DEPRECATED: This file has been replaced by useRevenueCat.ts
+ * 
+ * All in-app purchase functionality now uses RevenueCat SDK.
+ * Import useRevenueCat instead:
+ * 
+ * import { useRevenueCat } from '@/hooks/useRevenueCat';
+ * 
+ * This file is kept as a stub to prevent import errors during migration.
+ * It will be removed in a future cleanup.
+ */
 
-// Fallback for non-iOS platforms
-interface Product {
-  productId: string;
-  title: string;
-  description: string;
-  price: string;
-  currencyCode: string;
-}
+import { useRevenueCat } from './useRevenueCat';
 
-interface UseSubscriptionHook {
-  products: Product[];
-  purchaseProduct: (productId: string) => Promise<void>;
-  restorePurchases: () => Promise<void>;
-  isSubscribed: boolean;
-  loading: boolean;
-  error: string | null;
-  storeConnected: boolean;
-  diagnostics: string[];
-}
-
-export const useSubscription = (): UseSubscriptionHook => {
-  const [products] = useState<Product[]>([]);
-  const [isSubscribed] = useState<boolean>(false);
-  const [loading] = useState<boolean>(false);
-  const [error] = useState<string | null>('In-App Purchases are only available on iOS');
-  const [storeConnected] = useState<boolean>(false);
-  const [diagnostics] = useState<string[]>([`[${new Date().toLocaleTimeString()}] ⚠️ IAP only available on iOS`]);
-
-  const purchaseProduct = useCallback(async (productId: string) => {
-    console.log(`[useSubscription] Purchase not available on ${Platform.OS}`);
-  }, []);
-
-  const restorePurchases = useCallback(async () => {
-    console.log(`[useSubscription] Restore not available on ${Platform.OS}`);
-  }, []);
-
+/**
+ * @deprecated Use useRevenueCat instead
+ */
+export const useSubscription = () => {
+  console.warn('[useSubscription] DEPRECATED: Use useRevenueCat instead');
+  
+  const revenueCat = useRevenueCat();
+  
+  // Map RevenueCat interface to old useSubscription interface for backward compatibility
   return {
-    products,
-    purchaseProduct,
-    restorePurchases,
-    isSubscribed,
-    loading,
-    error,
-    storeConnected,
-    diagnostics,
+    products: revenueCat.products.map(p => ({
+      productId: p.productId,
+      title: p.title,
+      description: p.description,
+      price: p.price,
+      currencyCode: p.currencyCode,
+    })),
+    purchaseProduct: async (productId: string) => {
+      const pkg = revenueCat.offerings?.availablePackages.find(
+        p => p.product.identifier === productId
+      );
+      if (pkg) {
+        await revenueCat.purchasePackage(pkg);
+      }
+    },
+    restorePurchases: revenueCat.restorePurchases,
+    isSubscribed: revenueCat.isPro,
+    loading: revenueCat.loading,
+    error: revenueCat.error,
+    storeConnected: !revenueCat.loading && !revenueCat.error,
+    diagnostics: [
+      '[DEPRECATED] This hook uses RevenueCat. Please migrate to useRevenueCat directly.',
+    ],
   };
 };

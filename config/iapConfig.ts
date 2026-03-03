@@ -1,28 +1,34 @@
 
 /**
- * Apple In-App Purchase Configuration for StoreKit 2
+ * DEPRECATED: This file has been replaced by revenueCatConfig.ts
  * 
- * CRITICAL: Product IDs must match EXACTLY with App Store Connect
- * Bundle ID: com.robertojose17.macrogoal
- * Apple ID: 6755788871
- * Team ID: RQ6JHH38HA
+ * All in-app purchase configuration now uses RevenueCat.
+ * Import from revenueCatConfig instead:
  * 
- * SETUP CHECKLIST:
- * 1. ✅ Products created in App Store Connect with these exact IDs
- * 2. ✅ Products approved and "Ready to Submit"
- * 3. ✅ Testing on real device or TestFlight (NOT Simulator)
- * 4. ✅ Signed in with Sandbox Apple ID in Settings > App Store
- * 5. ✅ Bundle ID matches in app.json and App Store Connect
+ * import { PRODUCT_IDS, ENTITLEMENT_ID } from '@/config/revenueCatConfig';
+ * 
+ * This file is kept as a stub to prevent import errors during migration.
+ * It will be removed in a future cleanup.
  */
 
+import { PRODUCT_IDS, APP_CONFIG } from './revenueCatConfig';
+
+/**
+ * @deprecated Use PRODUCT_IDS from revenueCatConfig.ts instead
+ */
 export const IAP_PRODUCT_IDS = {
-  MONTHLY: 'Monthly_MG',
-  YEARLY: 'Yearly_MG',
+  MONTHLY: PRODUCT_IDS.MONTHLY,
+  YEARLY: PRODUCT_IDS.YEARLY,
 } as const;
 
+/**
+ * @deprecated Use APP_CONFIG from revenueCatConfig.ts instead
+ */
 export const IAP_CONFIG = {
-  bundleId: 'com.robertojose17.macrogoal',
-  appleId: '6755788871',
-  appleTeamId: 'RQ6JHH38HA',
-  scheme: 'macrogoal',
+  bundleId: APP_CONFIG.bundleId,
+  appleId: APP_CONFIG.appleId,
+  appleTeamId: APP_CONFIG.appleTeamId,
+  scheme: APP_CONFIG.scheme,
 } as const;
+
+console.warn('[iapConfig] DEPRECATED: Use revenueCatConfig.ts instead');
