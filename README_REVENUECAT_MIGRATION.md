@@ -87,10 +87,13 @@ You must create these products in App Store Connect:
 
 ## 📊 Current Configuration
 
-- **API Key:** `appl_TZdEZxwrVNJdRUPcoavoXaVUCSE` (Production)
+- **Public SDK Key (iOS):** `appl_TZdEZxwrVNJdRUPcoavoXaVUCSE` (Production)
+- **Secret API Key:** `sk_INEvrnxfxYJYlZwDPaxSqeeGsYbhE` (Backend only - NOT in app code)
 - **Entitlement ID:** `Macrogoal Pro`
 - **Product IDs:** `monthly`, `yearly`
 - **Bundle ID:** `com.robertojose17.macrogoal`
+
+⚠️ **Important:** The secret API key should NEVER be included in your app code. It's documented here for backend use only (Supabase Edge Functions, webhooks, etc.). See `docs/REVENUECAT_API_KEYS_GUIDE.md` for details.
 
 ## 🐛 Troubleshooting
 
@@ -121,6 +124,7 @@ You must create these products in App Store Connect:
 
 Detailed documentation is available in the `docs/` folder:
 
+- **`REVENUECAT_API_KEYS_GUIDE.md`** - 🔑 API keys explained (public vs secret)
 - **`REVENUECAT_CONFIGURATION_GUIDE.md`** - Complete setup guide
 - **`REVENUECAT_MIGRATION_COMPLETE.md`** - Detailed migration notes
 - **`STOREKIT_REMOVAL_VERIFICATION.md`** - Verification commands

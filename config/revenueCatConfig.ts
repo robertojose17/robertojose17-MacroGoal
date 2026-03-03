@@ -6,11 +6,19 @@
  * Bundle ID: com.robertojose17.macrogoal
  * Apple ID: 6755788871
  * Team ID: RQ6JHH38HA
+ * 
+ * 🔑 API KEYS:
+ * - Public SDK Key (iOS): appl_TZdEZxwrVNJdRUPcoavoXaVUCSE (✅ Safe in app code)
+ * - Secret API Key: sk_INEvrnxfxYJYlZwDPaxSqeeGsYbhE (⚠️ BACKEND ONLY - NOT in this file!)
+ * 
+ * See docs/REVENUECAT_API_KEYS_GUIDE.md for details on when to use each key.
  */
 
 import { Platform } from 'react-native';
 
-// RevenueCat API Key (PRODUCTION)
+// RevenueCat Public SDK Key (PRODUCTION)
+// ✅ Safe to include in app code - used for SDK initialization
+// ⚠️ DO NOT confuse with Secret API Key (sk_...) which is for backend only
 export const REVENUECAT_API_KEY = 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE';
 
 // Entitlement ID configured in RevenueCat dashboard

@@ -168,8 +168,8 @@ import CustomerCenter from '@/components/CustomerCenter';
 
 3. **Configure Products**
    - Create two products:
-     - **Monthly**: Product ID = `monthly`
-     - **Yearly**: Product ID = `yearly`
+     - **Monthly**: Product ID = `Monthly_MG`
+     - **Yearly**: Product ID = `Yearly_MG`
    - These must match your App Store Connect product IDs
 
 4. **Create Entitlement**
@@ -184,7 +184,7 @@ import CustomerCenter from '@/components/CustomerCenter';
 6. **Get API Keys**
    - Navigate to Project Settings → API Keys
    - Copy your iOS API key
-   - Replace `test_occIMDaPJIrXQAMTrAgFTrDnKJS` in `config/revenueCatConfig.ts`
+   - Replace `appl_TZdEZxwrVNJdRUPcoavoXaVUCSE`
 
 ---
 
