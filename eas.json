@@ -1,3 +1,4 @@
+
 {
   "build": {
     "development": {
@@ -5,26 +6,20 @@
       "distribution": "internal",
       "autoIncrement": true,
       "ios": {
-        "simulator": false,
-        "appleTeamId": "RQ6JHH38HA"
+        "simulator": false
       }
     },
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
       "ios": {
-        "simulator": false,
-        "appleTeamId": "RQ6JHH38HA"
+        "simulator": false
       }
     },
     "production": {
       "autoIncrement": true,
       "ios": {
-        "simulator": false,
-        "appleId": "rivera76115@gmail.com",
-        "ascAppId": "6755788871",
-        "appleTeamId": "RQ6JHH38HA",
-        "ascApiKeyPath": "./credentials.json"
+        "simulator": false
       }
     }
   },
