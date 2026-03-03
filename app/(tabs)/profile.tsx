@@ -805,6 +805,13 @@ export default function ProfileScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+          <View style={styles.footerLinksRow}>
+            <TouchableOpacity onPress={() => router.push('/revenuecat-diagnostics')}>
+              <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                RevenueCat Diagnostics
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
