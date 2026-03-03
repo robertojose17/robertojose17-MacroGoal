@@ -10,6 +10,9 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import SubscriptionButton from '@/components/SubscriptionButton';
+import RevenueCatPaywall from '@/components/RevenueCatPaywall';
+import CustomerCenter from '@/components/CustomerCenter';
 
 type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
@@ -35,6 +38,10 @@ export default function ProfileScreen() {
 
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
+
+  // Subscription modals
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [showCustomerCenter, setShowCustomerCenter] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -482,6 +489,18 @@ export default function ProfileScreen() {
     closeEditModal();
   };
 
+  // Format the journey start date for display
+  const formatJourneyStartDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Set Date';
+    try {
+      const date = new Date(dateStr + 'T00:00:00');
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (error) {
+      console.error('[Profile] Error formatting date:', error);
+      return 'Set Date';
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -515,18 +534,6 @@ export default function ProfileScreen() {
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
 
-  // Format the journey start date for display
-  const formatJourneyStartDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Set Date';
-    try {
-      const date = new Date(dateStr + 'T00:00:00');
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch (error) {
-      console.error('[Profile] Error formatting date:', error);
-      return 'Set Date';
-    }
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -556,6 +563,12 @@ export default function ProfileScreen() {
           <Text style={[styles.email, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {user.email || 'Guest User'}
           </Text>
+
+          {/* Subscription Button */}
+          <SubscriptionButton
+            onPress={() => setShowPaywall(true)}
+            style={{ marginTop: spacing.md, width: '100%' }}
+          />
         </View>
 
         {/* Calorie & Goals Settings Card */}
@@ -1018,6 +1031,12 @@ export default function ProfileScreen() {
           />
         )
       )}
+
+      {/* RevenueCat Paywall */}
+      <RevenueCatPaywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
+
+      {/* Customer Center */}
+      <CustomerCenter visible={showCustomerCenter} onClose={() => setShowCustomerCenter(false)} />
     </SafeAreaView>
   );
 }
