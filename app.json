@@ -1,7 +1,8 @@
+
 {
   "expo": {
-    "name": "Macro Goal",
-    "slug": "macro-goal",
+    "name": "Elite Macro Tracker",
+    "slug": "elite-macro-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
@@ -14,11 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.robertojose17.macrogoal",
+      "bundleIdentifier": "com.elitemacrotracker.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator",
-        "NSPhotoLibraryUsageDescription": "Macro Goal needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
+        "NSPhotoLibraryUsageDescription": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
       }
     },
     "android": {
@@ -27,7 +28,7 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.robertojose17.macrogoal",
+      "package": "com.elitemacrotracker.app",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -43,23 +44,23 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Macro Goal to access your camera for barcode scanning"
+          "cameraPermission": "Allow Elite Macro Tracker to access your camera for barcode scanning"
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Macro Goal to access your microphone for voice input"
+          "microphonePermission": "Allow Elite Macro Tracker to access your microphone for voice input"
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Macro Goal needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
+          "photosPermission": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
         }
       ]
     ],
-    "scheme": "macrogoal",
+    "scheme": "elitemacrotracker",
     "experiments": {
       "typedRoutes": true
     },
