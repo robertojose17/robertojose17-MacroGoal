@@ -16,7 +16,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as InAppPurchases from 'expo-in-app-purchases';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 interface SubscriptionPlan {
   productId: string;
@@ -68,12 +68,7 @@ export default function SubscriptionScreen() {
     },
   ];
 
-  useEffect(() => {
-    initializeIAP();
-    checkPremiumStatus();
-  }, [initializeIAP]);
-
-  const initializeIAP = async () => {
+  const initializeIAP = React.useCallback(async () => {
     try {
       console.log('[Subscription] Initializing IAP...');
       
@@ -124,7 +119,14 @@ export default function SubscriptionScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    initializeIAP();
+    checkPremiumStatus();
+  }, [initializeIAP]);
+
+
 
   const checkPremiumStatus = async () => {
     try {

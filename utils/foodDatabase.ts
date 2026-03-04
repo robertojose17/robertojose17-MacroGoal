@@ -9,7 +9,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Food, Meal, MealItem, DailySummary, MealType } from '@/types';
 import { mockFoods } from '@/data/mockData';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 const FOODS_STORAGE_KEY = '@elite_macro_foods';
 const MEALS_STORAGE_KEY = '@elite_macro_meals';

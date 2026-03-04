@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 interface PhotoProgressCardProps {
   userId: string;

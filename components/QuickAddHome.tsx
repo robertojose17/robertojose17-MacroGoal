@@ -5,7 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 
 interface MyFood {

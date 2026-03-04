@@ -2,7 +2,7 @@
 import "react-native-reanimated";
 import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, router, useSegments } from "expo-router";
+import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,7 +18,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
-import { supabase } from "@/app/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 
 SplashScreen.preventAutoHideAsync();
@@ -30,14 +30,11 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
-  const segments = useSegments();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [initializing, setInitializing] = useState(true);
-  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -48,14 +45,6 @@ export default function RootLayout() {
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
     
-    // CRITICAL: Set a hard timeout for initialization
-    const initTimeout = setTimeout(() => {
-      console.error('[App] ⏱️ INITIALIZATION TIMEOUT - Forcing app to load');
-      setIsReady(true);
-      setInitializing(false);
-      SplashScreen.hideAsync().catch(e => console.error('[App] Error hiding splash:', e));
-    }, 10000); // 10 second hard timeout
-
     try {
       console.log('[App] Step 1: Initialize food database (non-blocking)');
       
@@ -67,21 +56,10 @@ export default function RootLayout() {
 
       console.log('[App] Step 2: Get current session');
       
-      // CRITICAL FIX: Add timeout to session fetch
-      const sessionPromise = supabase.auth.getSession();
-      const sessionTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session fetch timeout')), 5000)
-      );
-      
-      let currentSession: Session | null = null;
-      try {
-        const { data } = await Promise.race([sessionPromise, sessionTimeout]) as any;
-        currentSession = data?.session || null;
-        console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
-      } catch (error) {
-        console.error('[App] ⚠️ Session fetch failed (non-blocking):', error);
-        currentSession = null;
-      }
+      // Get session with timeout
+      const { data } = await supabase.auth.getSession();
+      const currentSession = data?.session || null;
+      console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
       setSession(currentSession);
 
@@ -95,12 +73,10 @@ export default function RootLayout() {
 
       console.log('[App] ✅ Initialization complete');
       
-      clearTimeout(initTimeout);
       setIsReady(true);
-      setInitializing(false);
       
       // Hide splash screen with error handling
-      SplashScreen.hideAsync().catch(e => console.error('[App] Error hiding splash:', e));
+      await SplashScreen.hideAsync();
 
       return () => {
         subscription.unsubscribe();
@@ -109,10 +85,8 @@ export default function RootLayout() {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
       // CRITICAL: Even on error, app must load
-      clearTimeout(initTimeout);
       setIsReady(true);
-      setInitializing(false);
-      SplashScreen.hideAsync().catch(e => console.error('[App] Error hiding splash:', e));
+      await SplashScreen.hideAsync().catch(e => console.error('[App] Error hiding splash:', e));
     }
   };
 
@@ -160,7 +134,6 @@ export default function RootLayout() {
         );
         
         // Navigate to profile immediately
-        // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
         setTimeout(() => {
           router.replace('/(tabs)/profile');
         }, 100);
@@ -240,9 +213,8 @@ export default function RootLayout() {
       // Handle checkout cancel
       else if (queryParams?.subscription_cancelled === 'true') {
         console.log('[DeepLink] ❌ Checkout cancelled');
-        // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
         setTimeout(() => {
-          router.replace('/paywall');
+          router.replace('/subscription');
         }, 100);
         Alert.alert(
           'Checkout Cancelled',
@@ -254,7 +226,6 @@ export default function RootLayout() {
       // Handle subscription error
       else if (queryParams?.subscription_error === 'true') {
         console.log('[DeepLink] ⚠️ Subscription error detected');
-        // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
         setTimeout(() => {
           router.replace('/(tabs)/profile');
         }, 100);
@@ -305,194 +276,6 @@ export default function RootLayout() {
       subscription.remove();
     };
   }, []);
-
-  // CRITICAL FIX: Navigation logic with proper guards to prevent multiple navigations
-  useEffect(() => {
-    if (!isReady || initializing) {
-      console.log('[Navigation] Waiting for initialization...', { isReady, initializing });
-      return;
-    }
-
-    // CRITICAL: Prevent multiple navigation attempts
-    if (hasNavigated) {
-      console.log('[Navigation] Already navigated, skipping...');
-      return;
-    }
-
-    // CRITICAL FIX: Use setTimeout to ensure navigation happens after component mount
-    const navigationTimer = setTimeout(async () => {
-      try {
-        const inAuthGroup = segments[0] === 'auth';
-        const inOnboardingGroup = segments[0] === 'onboarding';
-        const inTabsGroup = segments[0] === '(tabs)';
-        const isRootIndex = segments.length === 0 || segments[0] === 'index';
-
-        console.log('[Navigation] Current state:', { 
-          hasSession: !!session, 
-          segments, 
-          inAuthGroup, 
-          inOnboardingGroup, 
-          inTabsGroup,
-          isRootIndex
-        });
-
-        // Not logged in - redirect to auth
-        if (!session) {
-          if (!inAuthGroup) {
-            console.log('[Navigation] No session, redirecting to welcome');
-            setHasNavigated(true);
-            // CRITICAL FIX: Defer navigation to next tick
-            setTimeout(() => {
-              router.replace('/auth/welcome');
-            }, 50);
-          }
-          return;
-        }
-
-        // Logged in - check onboarding status
-        if (session && (inAuthGroup || isRootIndex)) {
-          console.log('[Navigation] Checking onboarding status for user:', session.user.id);
-          
-          // CRITICAL FIX: Add timeout to onboarding check
-          const onboardingPromise = supabase
-            .from('users')
-            .select('onboarding_completed')
-            .eq('id', session.user.id)
-            .maybeSingle();
-          
-          const onboardingTimeout = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Onboarding check timeout')), 5000)
-          );
-          
-          try {
-            const { data: userData, error } = await Promise.race([
-              onboardingPromise, 
-              onboardingTimeout
-            ]) as any;
-
-            // CRITICAL FIX: Handle all error cases gracefully
-            if (error) {
-              console.error('[Navigation] ⚠️ Error checking onboarding:', error);
-              
-              // Try to create user record if it doesn't exist
-              console.log('[Navigation] Attempting to create user record...');
-              const { error: insertError } = await supabase
-                .from('users')
-                .insert({
-                  id: session.user.id,
-                  email: session.user.email,
-                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                  user_type: 'free',
-                  onboarding_completed: false,
-                });
-              
-              if (insertError && insertError.code !== '23505') {
-                console.error('[Navigation] ❌ Failed to create user record:', insertError);
-              } else {
-                console.log('[Navigation] ✅ User record created or already exists');
-              }
-              
-              // Always go to onboarding if there's an error
-              setHasNavigated(true);
-              // CRITICAL FIX: Defer navigation to next tick
-              setTimeout(() => {
-                router.replace('/onboarding/complete');
-              }, 50);
-              return;
-            }
-
-            // CRITICAL FIX: Handle missing user data (user not in database)
-            if (!userData) {
-              console.log('[Navigation] ⚠️ User not in database, creating record...');
-              
-              // Try to create user record
-              const { error: insertError } = await supabase
-                .from('users')
-                .insert({
-                  id: session.user.id,
-                  email: session.user.email,
-                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                  user_type: 'free',
-                  onboarding_completed: false,
-                });
-              
-              if (insertError && insertError.code !== '23505') {
-                console.error('[Navigation] ❌ Failed to create user record:', insertError);
-              } else {
-                console.log('[Navigation] ✅ User record created');
-              }
-              
-              // Go to onboarding
-              setHasNavigated(true);
-              // CRITICAL FIX: Defer navigation to next tick
-              setTimeout(() => {
-                router.replace('/onboarding/complete');
-              }, 50);
-              return;
-            }
-
-            // User exists, check onboarding status
-            if (userData.onboarding_completed) {
-              console.log('[Navigation] ✅ Onboarding complete, redirecting to home');
-              setHasNavigated(true);
-              // CRITICAL FIX: Defer navigation to next tick
-              setTimeout(() => {
-                router.replace('/(tabs)/(home)/');
-              }, 50);
-            } else {
-              console.log('[Navigation] ⚠️ Onboarding not complete, redirecting to onboarding');
-              setHasNavigated(true);
-              // CRITICAL FIX: Defer navigation to next tick
-              setTimeout(() => {
-                router.replace('/onboarding/complete');
-              }, 50);
-            }
-          } catch (error) {
-            console.error('[Navigation] ❌ Onboarding check failed:', error);
-            
-            // Try to create user record as last resort
-            try {
-              console.log('[Navigation] Last resort: Creating user record...');
-              await supabase
-                .from('users')
-                .insert({
-                  id: session.user.id,
-                  email: session.user.email,
-                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                  user_type: 'free',
-                  onboarding_completed: false,
-                });
-              console.log('[Navigation] ✅ User record created');
-            } catch (insertError) {
-              console.error('[Navigation] ❌ Failed to create user record:', insertError);
-            }
-            
-            // CRITICAL: On any error, default to onboarding (safe fallback)
-            setHasNavigated(true);
-            // CRITICAL FIX: Defer navigation to next tick
-            setTimeout(() => {
-              router.replace('/onboarding/complete');
-            }, 50);
-          }
-        }
-      } catch (error) {
-        console.error('[Navigation] ❌ CRITICAL: Navigation error:', error);
-        // CRITICAL: On catastrophic error, go to welcome screen
-        setHasNavigated(true);
-        // CRITICAL FIX: Defer navigation to next tick
-        setTimeout(() => {
-          router.replace('/auth/welcome');
-        }, 50);
-      }
-    }, 200);
-
-    return () => clearTimeout(navigationTimer);
-  }, [session, segments, isReady, initializing, hasNavigated]);
-
-  // Reset hasNavigated when session changes (user logs in/out)
-  useEffect(() => {
-    setHasNavigated(false);
-  }, [session?.user?.id]);
 
   React.useEffect(() => {
     if (
@@ -549,6 +332,7 @@ export default function RootLayout() {
               <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
               <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
               <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+              <Stack.Screen name="auth/verify" options={{ headerShown: false }} />
               
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               
@@ -585,7 +369,7 @@ export default function RootLayout() {
               />
               
               <Stack.Screen
-                name="barcode-scan"
+                name="barcode-scanner"
                 options={{
                   headerShown: false,
                   presentation: "fullScreenModal",
@@ -593,15 +377,7 @@ export default function RootLayout() {
               />
               
               <Stack.Screen
-                name="quick-add"
-                options={{
-                  headerShown: false,
-                  presentation: "modal",
-                }}
-              />
-              
-              <Stack.Screen
-                name="publish"
+                name="subscription"
                 options={{
                   headerShown: false,
                   presentation: "modal",
