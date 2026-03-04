@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
@@ -146,32 +147,35 @@ export const useSubscription = (): UseSubscriptionHook => {
       });
 
       try {
-        addDiagnostic('🚀 Initializing StoreKit...');
+        addDiagnostic('🚀 Initializing StoreKit 2 connection...');
         
-        // FIX: Added guard for undefined response
+        // CRITICAL: Clean connection to StoreKit 2
+        // This is the ONLY place we connect - no previous code interferes
         const conn = await InAppPurchases.connectAsync();
         
         if (!conn) {
-          throw new Error('StoreKit connection returned undefined. Ensure you have a valid Bundle ID.');
+          throw new Error('StoreKit connection returned undefined. Ensure you have a valid Bundle ID and are testing on a real device or TestFlight.');
         }
 
         if (conn.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-          throw new Error(`Connection failed: ${conn.responseCode}`);
+          throw new Error(`StoreKit connection failed with code: ${conn.responseCode}. Make sure you are on a real device or TestFlight, not Simulator.`);
         }
 
-        addDiagnostic('✅ Connected to StoreKit');
+        addDiagnostic('✅ StoreKit 2 connected successfully');
         safeSet(() => setStoreConnected(true));
 
-        addDiagnostic('📦 Fetching product details...');
+        addDiagnostic('📦 Fetching product details from App Store...');
         const prodRes = await InAppPurchases.getProductsAsync(productIds);
         
         if (!prodRes || prodRes.responseCode !== InAppPurchases.IAPResponseCode.OK) {
-          throw new Error('Failed to fetch products from Apple.');
+          throw new Error('Failed to fetch products from Apple. Check App Store Connect configuration.');
         }
 
         const results = prodRes.results ?? [];
         if (results.length === 0) {
-          addDiagnostic('⚠️ No products returned. Check App Store Connect configuration.');
+          addDiagnostic('⚠️ No products returned. Verify product IDs in App Store Connect match config/iapConfig.ts');
+        } else {
+          addDiagnostic(`✅ Found ${results.length} product(s): ${results.map(p => p.productId).join(', ')}`);
         }
 
         safeSet(() => {
@@ -184,7 +188,8 @@ export const useSubscription = (): UseSubscriptionHook => {
           })));
         });
 
-        // Set Listener
+        // Set up purchase listener
+        addDiagnostic('🎧 Setting up purchase listener...');
         listenerRef.current = InAppPurchases.setPurchaseListener(async (update) => {
           if (!update) return;
           const code = update.responseCode;
@@ -200,6 +205,9 @@ export const useSubscription = (): UseSubscriptionHook => {
           }
         });
 
+        addDiagnostic('✅ Purchase listener active');
+
+        // Check existing subscription status
         await fetchSubscriptionStatusFromDB();
         safeSet(() => setLoading(false));
 
@@ -218,7 +226,10 @@ export const useSubscription = (): UseSubscriptionHook => {
 
     return () => {
       isMountedRef.current = false;
-      listenerRef.current?.remove?.();
+      if (listenerRef.current?.remove) {
+        listenerRef.current.remove();
+      }
+      // Clean disconnect on unmount
       InAppPurchases.disconnectAsync().catch(() => {});
     };
   }, [productIds, fetchSubscriptionStatusFromDB, verifyReceipt, addDiagnostic, safeSet]);
@@ -226,7 +237,7 @@ export const useSubscription = (): UseSubscriptionHook => {
   // --- Actions ---
   const purchaseProduct = useCallback(async (productId: string) => {
     if (!storeConnected) {
-      Alert.alert('Error', 'Store not connected.');
+      Alert.alert('Error', 'Store not connected. Please restart the app.');
       return;
     }
     safeSet(() => setLoading(true));
@@ -242,19 +253,30 @@ export const useSubscription = (): UseSubscriptionHook => {
   }, [storeConnected, addDiagnostic, safeSet]);
 
   const restorePurchases = useCallback(async () => {
-    if (!storeConnected) return;
+    if (!storeConnected) {
+      Alert.alert('Error', 'Store not connected. Please restart the app.');
+      return;
+    }
     safeSet(() => setLoading(true));
     try {
       addDiagnostic('🔄 Restoring purchases...');
       const history = await InAppPurchases.getPurchaseHistoryAsync();
       if (history.responseCode === InAppPurchases.IAPResponseCode.OK) {
         const items = history.results ?? [];
-        if (items.length === 0) Alert.alert('Restore', 'No purchases found.');
+        if (items.length === 0) {
+          Alert.alert('Restore', 'No purchases found.');
+          addDiagnostic('ℹ️ No purchase history found');
+        } else {
+          addDiagnostic(`✅ Found ${items.length} purchase(s) in history`);
+        }
         for (const p of items) await verifyReceipt(p);
         await fetchSubscriptionStatusFromDB();
+      } else {
+        addDiagnostic(`❌ Restore failed with code: ${history.responseCode}`);
       }
     } catch (e: any) {
       addDiagnostic(`❌ Restore failed: ${e.message}`);
+      Alert.alert('Error', e.message);
     } finally {
       safeSet(() => setLoading(false));
     }
