@@ -526,6 +526,7 @@ export default function ProfileScreen() {
 
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
+  const isPremium = user.user_type === 'premium';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -556,7 +557,50 @@ export default function ProfileScreen() {
           <Text style={[styles.email, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {user.email || 'Guest User'}
           </Text>
+
+          {isPremium && (
+            <View style={[styles.premiumBadgeSmall, { backgroundColor: colors.primary }]}>
+              <IconSymbol
+                ios_icon_name="star.fill"
+                android_material_icon_name="star"
+                size={14}
+                color="#FFFFFF"
+              />
+              <Text style={styles.premiumBadgeText}>Premium</Text>
+            </View>
+          )}
         </View>
+
+        {/* Subscription Card */}
+        {!isPremium && (
+          <TouchableOpacity
+            style={[styles.subscriptionCard, { backgroundColor: colors.primary }]}
+            onPress={() => router.push('/subscription')}
+          >
+            <View style={styles.subscriptionContent}>
+              <View style={styles.subscriptionIcon}>
+                <IconSymbol
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="star"
+                  size={32}
+                  color="#FFFFFF"
+                />
+              </View>
+              <View style={styles.subscriptionText}>
+                <Text style={styles.subscriptionTitle}>Upgrade to Premium</Text>
+                <Text style={styles.subscriptionSubtitle}>
+                  Unlock advanced analytics, custom recipes, and more
+                </Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="arrow-forward"
+                size={20}
+                color="#FFFFFF"
+              />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Calorie & Goals Settings Card */}
         {user.onboarding_completed && (
@@ -1117,6 +1161,53 @@ const styles = StyleSheet.create({
   email: {
     ...typography.body,
     marginBottom: spacing.xs,
+  },
+  premiumBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.xs,
+  },
+  premiumBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  subscriptionCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    elevation: 4,
+  },
+  subscriptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  subscriptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscriptionText: {
+    flex: 1,
+  },
+  subscriptionTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  subscriptionSubtitle: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
   },
   goalsCard: {
     borderRadius: borderRadius.lg,
