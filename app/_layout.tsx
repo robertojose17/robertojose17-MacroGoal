@@ -37,6 +37,7 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -162,7 +163,7 @@ export default function RootLayout() {
         // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
         setTimeout(() => {
           router.replace('/(tabs)/profile');
-        }, 0);
+        }, 100);
         
         // Sync subscription in background with retries
         console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
@@ -242,7 +243,7 @@ export default function RootLayout() {
         // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
         setTimeout(() => {
           router.replace('/paywall');
-        }, 0);
+        }, 100);
         Alert.alert(
           'Checkout Cancelled',
           'You can subscribe anytime to unlock premium features.',
@@ -256,7 +257,7 @@ export default function RootLayout() {
         // CRITICAL FIX: Wrap in setTimeout to prevent React state update error
         setTimeout(() => {
           router.replace('/(tabs)/profile');
-        }, 0);
+        }, 100);
         Alert.alert(
           'Processing Issue',
           'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
@@ -305,10 +306,16 @@ export default function RootLayout() {
     };
   }, []);
 
-  // CRITICAL FIX: Navigation logic moved directly into useEffect
+  // CRITICAL FIX: Navigation logic with proper guards to prevent multiple navigations
   useEffect(() => {
     if (!isReady || initializing) {
       console.log('[Navigation] Waiting for initialization...', { isReady, initializing });
+      return;
+    }
+
+    // CRITICAL: Prevent multiple navigation attempts
+    if (hasNavigated) {
+      console.log('[Navigation] Already navigated, skipping...');
       return;
     }
 
@@ -318,29 +325,32 @@ export default function RootLayout() {
         const inAuthGroup = segments[0] === 'auth';
         const inOnboardingGroup = segments[0] === 'onboarding';
         const inTabsGroup = segments[0] === '(tabs)';
+        const isRootIndex = segments.length === 0 || segments[0] === 'index';
 
         console.log('[Navigation] Current state:', { 
           hasSession: !!session, 
           segments, 
           inAuthGroup, 
           inOnboardingGroup, 
-          inTabsGroup 
+          inTabsGroup,
+          isRootIndex
         });
 
         // Not logged in - redirect to auth
         if (!session) {
           if (!inAuthGroup) {
             console.log('[Navigation] No session, redirecting to welcome');
+            setHasNavigated(true);
             // CRITICAL FIX: Defer navigation to next tick
             setTimeout(() => {
               router.replace('/auth/welcome');
-            }, 0);
+            }, 50);
           }
           return;
         }
 
         // Logged in - check onboarding status
-        if (session && (inAuthGroup || segments.length === 0)) {
+        if (session && (inAuthGroup || isRootIndex)) {
           console.log('[Navigation] Checking onboarding status for user:', session.user.id);
           
           // CRITICAL FIX: Add timeout to onboarding check
@@ -383,10 +393,11 @@ export default function RootLayout() {
               }
               
               // Always go to onboarding if there's an error
+              setHasNavigated(true);
               // CRITICAL FIX: Defer navigation to next tick
               setTimeout(() => {
                 router.replace('/onboarding/complete');
-              }, 0);
+              }, 50);
               return;
             }
 
@@ -412,26 +423,29 @@ export default function RootLayout() {
               }
               
               // Go to onboarding
+              setHasNavigated(true);
               // CRITICAL FIX: Defer navigation to next tick
               setTimeout(() => {
                 router.replace('/onboarding/complete');
-              }, 0);
+              }, 50);
               return;
             }
 
             // User exists, check onboarding status
             if (userData.onboarding_completed) {
               console.log('[Navigation] ✅ Onboarding complete, redirecting to home');
+              setHasNavigated(true);
               // CRITICAL FIX: Defer navigation to next tick
               setTimeout(() => {
                 router.replace('/(tabs)/(home)/');
-              }, 0);
+              }, 50);
             } else {
               console.log('[Navigation] ⚠️ Onboarding not complete, redirecting to onboarding');
+              setHasNavigated(true);
               // CRITICAL FIX: Defer navigation to next tick
               setTimeout(() => {
                 router.replace('/onboarding/complete');
-              }, 0);
+              }, 50);
             }
           } catch (error) {
             console.error('[Navigation] ❌ Onboarding check failed:', error);
@@ -454,24 +468,31 @@ export default function RootLayout() {
             }
             
             // CRITICAL: On any error, default to onboarding (safe fallback)
+            setHasNavigated(true);
             // CRITICAL FIX: Defer navigation to next tick
             setTimeout(() => {
               router.replace('/onboarding/complete');
-            }, 0);
+            }, 50);
           }
         }
       } catch (error) {
         console.error('[Navigation] ❌ CRITICAL: Navigation error:', error);
         // CRITICAL: On catastrophic error, go to welcome screen
+        setHasNavigated(true);
         // CRITICAL FIX: Defer navigation to next tick
         setTimeout(() => {
           router.replace('/auth/welcome');
-        }, 0);
+        }, 50);
       }
-    }, 100);
+    }, 200);
 
     return () => clearTimeout(navigationTimer);
-  }, [session, segments, isReady, initializing]);
+  }, [session, segments, isReady, initializing, hasNavigated]);
+
+  // Reset hasNavigated when session changes (user logs in/out)
+  useEffect(() => {
+    setHasNavigated(false);
+  }, [session?.user?.id]);
 
   React.useEffect(() => {
     if (
