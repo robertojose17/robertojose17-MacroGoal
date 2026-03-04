@@ -455,7 +455,7 @@ export default function HomeScreen() {
               >
                 <IconSymbol
                   ios_icon_name="arrow.left"
-                  android_material_icon_name="arrow_back"
+                  android_material_icon_name="arrow-back"
                   size={24}
                   color={isDark ? colors.textDark : colors.text}
                   style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
@@ -479,7 +479,7 @@ export default function HomeScreen() {
               >
                 <IconSymbol
                   ios_icon_name="arrow.right"
-                  android_material_icon_name="arrow_forward"
+                  android_material_icon_name="arrow-forward"
                   size={24}
                   color={isDark ? colors.textDark : colors.text}
                   style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
@@ -594,7 +594,7 @@ export default function HomeScreen() {
                   >
                     <IconSymbol
                       ios_icon_name="plus.circle.fill"
-                      android_material_icon_name="add_circle"
+                      android_material_icon_name="add"
                       size={28}
                       color={colors.info}
                     />

@@ -1,12 +1,13 @@
 
 import { View, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase/client';
 
 export default function Index() {
   const hasNavigated = useRef(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     // Prevent multiple navigation attempts
@@ -24,10 +25,11 @@ export default function Index() {
         if (!session) {
           console.log('[Index] No session, navigating to welcome');
           hasNavigated.current = true;
-          // Defer navigation to next tick to ensure component is mounted
-          setTimeout(() => {
+          setIsReady(true);
+          // Use requestAnimationFrame to ensure component is mounted
+          requestAnimationFrame(() => {
             router.replace('/auth/welcome');
-          }, 300);
+          });
           return;
         }
 
@@ -43,39 +45,43 @@ export default function Index() {
         if (error || !userData) {
           console.log('[Index] User not in database or error, navigating to onboarding');
           hasNavigated.current = true;
-          setTimeout(() => {
+          setIsReady(true);
+          requestAnimationFrame(() => {
             router.replace('/onboarding/complete');
-          }, 300);
+          });
           return;
         }
 
         if (userData.onboarding_completed) {
           console.log('[Index] Onboarding complete, navigating to home');
           hasNavigated.current = true;
-          setTimeout(() => {
+          setIsReady(true);
+          requestAnimationFrame(() => {
             router.replace('/(tabs)/(home)/');
-          }, 300);
+          });
         } else {
           console.log('[Index] Onboarding not complete, navigating to onboarding');
           hasNavigated.current = true;
-          setTimeout(() => {
+          setIsReady(true);
+          requestAnimationFrame(() => {
             router.replace('/onboarding/complete');
-          }, 300);
+          });
         }
       } catch (error) {
         console.error('[Index] Error checking auth:', error);
         // On error, go to welcome screen
         hasNavigated.current = true;
-        setTimeout(() => {
+        setIsReady(true);
+        requestAnimationFrame(() => {
           router.replace('/auth/welcome');
-        }, 300);
+        });
       }
     };
 
-    // Delay initial check to ensure everything is mounted
+    // Small delay to ensure everything is mounted
     const timer = setTimeout(() => {
       checkAuthAndNavigate();
-    }, 600);
+    }, 100);
 
     return () => {
       clearTimeout(timer);

@@ -1,8 +1,12 @@
+
 /**
  * Protected Route Component Template
  *
  * A wrapper component that ensures a user is authenticated before
  * allowing access to a screen. Redirects to login if not authenticated.
+ *
+ * Note: This app uses Supabase auth directly in _layout.tsx for routing.
+ * This component is kept as a template for future use if needed.
  *
  * Usage:
  * ```tsx
@@ -10,46 +14,47 @@
  *   <ProfileScreen />
  * </ProtectedRoute>
  * ```
- *
- * Or wrap route in _layout.tsx:
- * ```tsx
- * <Stack.Screen name="profile" options={{ title: "Profile" }}>
- *   {() => (
- *     <ProtectedRoute>
- *       <ProfileScreen />
- *     </ProtectedRoute>
- *   )}
- * </Stack.Screen>
- * ```
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { useAuth } from "@/contexts/AuthContext"; // TODO: Update import path
+import { supabase } from "@/lib/supabase/client";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  redirectTo?: string; // Default is "/auth"
+  redirectTo?: string;
   loadingComponent?: React.ReactNode;
 }
 
 export function ProtectedRoute({
   children,
-  redirectTo = "/auth",
+  redirectTo = "/auth/welcome",
   loadingComponent,
 }: ProtectedRouteProps) {
-  const { user, loading } = useAuth();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
-      // User is not authenticated, redirect to login
-      router.replace(redirectTo as any);
-    }
-  }, [user, loading, router, redirectTo]);
+    checkUser();
+  }, []);
 
-  // Show loading state while checking authentication
+  const checkUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+      
+      if (!session?.user) {
+        router.replace(redirectTo as any);
+      }
+    } catch (error) {
+      console.error('[ProtectedRoute] Error checking user:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return loadingComponent || (
       <View style={styles.container}>
@@ -58,12 +63,10 @@ export function ProtectedRoute({
     );
   }
 
-  // User not authenticated, will redirect (show nothing)
   if (!user) {
     return null;
   }
 
-  // User is authenticated, render children
   return <>{children}</>;
 }
 

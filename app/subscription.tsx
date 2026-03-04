@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import * as InAppPurchases from 'expo-in-app-purchases';
 import { supabase } from '@/lib/supabase/client';
+import * as InAppPurchases from 'expo-in-app-purchases';
 
 interface SubscriptionPlan {
   productId: string;
@@ -34,11 +34,11 @@ export default function SubscriptionScreen() {
 
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [products, setProducts] = useState<InAppPurchases.IAPItemDetails[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
 
-  const subscriptionPlans: SubscriptionPlan[] = [
+  const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
       productId: 'Monthly_MG',
       title: 'Monthly Premium',
@@ -66,20 +66,18 @@ export default function SubscriptionScreen() {
       ],
       popular: true,
     },
-  ];
+  ], []);
 
-  const handlePurchaseSuccess = React.useCallback(async (purchase: InAppPurchases.InAppPurchase) => {
+  const handlePurchaseSuccess = React.useCallback(async (purchase: any) => {
     try {
       console.log('[Subscription] Processing purchase:', purchase);
 
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('[Subscription] No user found');
         return;
       }
 
-      // Update user to premium
       const { error: updateError } = await supabase
         .from('users')
         .update({ 
@@ -95,9 +93,10 @@ export default function SubscriptionScreen() {
 
       console.log('[Subscription] User upgraded to premium');
 
-      // Finish transaction
-      await InAppPurchases.finishTransactionAsync(purchase, true);
-      console.log('[Subscription] Transaction finished');
+      if (Platform.OS !== 'web') {
+        await InAppPurchases.finishTransactionAsync(purchase, true);
+        console.log('[Subscription] Transaction finished');
+      }
 
       setPurchasing(false);
       setIsPremium(true);
@@ -121,18 +120,20 @@ export default function SubscriptionScreen() {
   }, [router]);
 
   const initializeIAP = React.useCallback(async () => {
+    if (Platform.OS === 'web') {
+      setLoading(false);
+      return;
+    }
+
     try {
       console.log('[Subscription] Initializing IAP...');
       
-      // Connect to store
       await InAppPurchases.connectAsync();
       console.log('[Subscription] Connected to store');
 
-      // Get product IDs
       const productIds = subscriptionPlans.map(plan => plan.productId);
       console.log('[Subscription] Fetching products:', productIds);
 
-      // Fetch products from store
       const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
       
       if (responseCode === InAppPurchases.IAPResponseCode.OK) {
@@ -146,12 +147,11 @@ export default function SubscriptionScreen() {
         );
       }
 
-      // Set up purchase listener
-      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }) => {
+      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
         console.log('[Subscription] Purchase listener triggered:', { responseCode, errorCode });
         
         if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          results?.forEach(purchase => {
+          results?.forEach((purchase: any) => {
             console.log('[Subscription] Purchase successful:', purchase);
             handlePurchaseSuccess(purchase);
           });
@@ -198,12 +198,19 @@ export default function SubscriptionScreen() {
   };
 
   const handlePurchase = async (productId: string) => {
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Not Available on Web',
+        'In-app purchases are only available on iOS and Android. Please use the mobile app to subscribe.'
+      );
+      return;
+    }
+
     try {
       console.log('[Subscription] Starting purchase for:', productId);
       setPurchasing(true);
       setSelectedPlan(productId);
 
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'Please log in to purchase a subscription');
@@ -211,10 +218,8 @@ export default function SubscriptionScreen() {
         return;
       }
 
-      // Set customer ID for RevenueCat (user's Supabase ID)
       console.log('[Subscription] Setting customer ID:', user.id);
 
-      // Purchase the product
       await InAppPurchases.purchaseItemAsync(productId);
       console.log('[Subscription] Purchase initiated');
 
@@ -236,6 +241,14 @@ export default function SubscriptionScreen() {
   };
 
   const handleRestore = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Not Available on Web',
+        'Purchase restoration is only available on iOS and Android. Please use the mobile app.'
+      );
+      return;
+    }
+
     try {
       console.log('[Subscription] Restoring purchases...');
       setLoading(true);
@@ -245,7 +258,6 @@ export default function SubscriptionScreen() {
       if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
         console.log('[Subscription] Found purchases to restore:', results);
         
-        // Process the most recent purchase
         const latestPurchase = results[0];
         await handlePurchaseSuccess(latestPurchase);
         
@@ -264,10 +276,74 @@ export default function SubscriptionScreen() {
   };
 
   const getProductPrice = (productId: string): string => {
-    const product = products.find(p => p.productId === productId);
+    const product = products.find((p: any) => p.productId === productId);
     const priceText = product?.price || '';
     return priceText;
   };
+
+  if (Platform.OS === 'web') {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Go Premium
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.webMessageContainer}>
+          <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={64}
+              color={colors.primary}
+            />
+          </View>
+          <Text style={[styles.webMessageTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Premium Subscriptions
+          </Text>
+          <Text style={[styles.webMessageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            In-app purchases are only available on iOS and Android devices.
+          </Text>
+          <Text style={[styles.webMessageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Please download the mobile app to subscribe to Premium and unlock:
+          </Text>
+          
+          <View style={styles.featuresList}>
+            {subscriptionPlans[0].features.map((feature, index) => (
+              <View key={index} style={styles.featureRow}>
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text }]}>
+                  {feature}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: colors.primary }]}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.buttonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading) {
     return (
@@ -383,7 +459,7 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
 
-        {subscriptionPlans.map((plan, index) => {
+        {subscriptionPlans.map((plan) => {
           const displayPrice = getProductPrice(plan.productId) || plan.price;
           const isSelected = selectedPlan === plan.productId;
           const isPurchasingThis = purchasing && isSelected;
@@ -646,5 +722,28 @@ const styles = StyleSheet.create({
   buttonText: {
     ...typography.bodyBold,
     fontSize: 16,
+  },
+  webMessageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  webMessageTitle: {
+    ...typography.h1,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  webMessageText: {
+    ...typography.body,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  featuresList: {
+    width: '100%',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
   },
 });
