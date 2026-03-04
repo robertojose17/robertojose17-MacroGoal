@@ -68,6 +68,58 @@ export default function SubscriptionScreen() {
     },
   ];
 
+  const handlePurchaseSuccess = React.useCallback(async (purchase: InAppPurchases.InAppPurchase) => {
+    try {
+      console.log('[Subscription] Processing purchase:', purchase);
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[Subscription] No user found');
+        return;
+      }
+
+      // Update user to premium
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          user_type: 'premium',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('[Subscription] Error updating user:', updateError);
+        throw updateError;
+      }
+
+      console.log('[Subscription] User upgraded to premium');
+
+      // Finish transaction
+      await InAppPurchases.finishTransactionAsync(purchase, true);
+      console.log('[Subscription] Transaction finished');
+
+      setPurchasing(false);
+      setIsPremium(true);
+
+      Alert.alert(
+        'Welcome to Premium! 🎉',
+        'You now have access to all premium features.',
+        [
+          {
+            text: 'Get Started',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+
+    } catch (error: any) {
+      console.error('[Subscription] Error processing purchase:', error);
+      Alert.alert('Error', 'Failed to activate premium: ' + error.message);
+      setPurchasing(false);
+    }
+  }, [router]);
+
   const initializeIAP = React.useCallback(async () => {
     try {
       console.log('[Subscription] Initializing IAP...');
@@ -119,14 +171,12 @@ export default function SubscriptionScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [handlePurchaseSuccess, subscriptionPlans]);
 
   useEffect(() => {
     initializeIAP();
     checkPremiumStatus();
   }, [initializeIAP]);
-
-
 
   const checkPremiumStatus = async () => {
     try {
@@ -144,58 +194,6 @@ export default function SubscriptionScreen() {
       }
     } catch (error) {
       console.error('[Subscription] Error checking premium status:', error);
-    }
-  };
-
-  const handlePurchaseSuccess = async (purchase: InAppPurchases.InAppPurchase) => {
-    try {
-      console.log('[Subscription] Processing purchase:', purchase);
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('[Subscription] No user found');
-        return;
-      }
-
-      // Update user to premium
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ 
-          user_type: 'premium',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-
-      if (updateError) {
-        console.error('[Subscription] Error updating user:', updateError);
-        throw updateError;
-      }
-
-      console.log('[Subscription] User upgraded to premium');
-
-      // Finish transaction
-      await InAppPurchases.finishTransactionAsync(purchase, true);
-      console.log('[Subscription] Transaction finished');
-
-      setPurchasing(false);
-      setIsPremium(true);
-
-      Alert.alert(
-        'Welcome to Premium! 🎉',
-        'You now have access to all premium features.',
-        [
-          {
-            text: 'Get Started',
-            onPress: () => router.back(),
-          },
-        ]
-      );
-
-    } catch (error: any) {
-      console.error('[Subscription] Error processing purchase:', error);
-      Alert.alert('Error', 'Failed to activate premium: ' + error.message);
-      setPurchasing(false);
     }
   };
 
