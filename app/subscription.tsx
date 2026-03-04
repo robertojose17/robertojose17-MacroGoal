@@ -71,7 +71,7 @@ export default function SubscriptionScreen() {
   useEffect(() => {
     initializeIAP();
     checkPremiumStatus();
-  }, []);
+  }, [initializeIAP]);
 
   const initializeIAP = async () => {
     try {

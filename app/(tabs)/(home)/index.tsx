@@ -8,7 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '../../integrations/supabase/client';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
