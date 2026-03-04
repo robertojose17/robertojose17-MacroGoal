@@ -8,7 +8,7 @@ import Purchases, {
 } from 'react-native-purchases';
 import { Platform, Alert } from 'react-native';
 import { REVENUECAT_CONFIG } from '@/config/revenueCatConfig';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 export interface RevenueCatState {
   isPro: boolean;

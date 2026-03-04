@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Sex, GoalType, ActivityLevel } from '@/types';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import { calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { IconSymbol } from '@/components/IconSymbol';
 

@@ -1,7 +1,7 @@
 
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 import { useRouter } from 'expo-router';

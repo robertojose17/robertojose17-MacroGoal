@@ -18,7 +18,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
-import { supabase } from "@/app/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 
 SplashScreen.preventAutoHideAsync();
@@ -472,21 +472,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               
-              {/* Exclude Supabase integration files from routing */}
-              <Stack.Screen 
-                name="integrations/supabase/client" 
-                options={{ 
-                  href: null,
-                  headerShown: false 
-                }} 
-              />
-              <Stack.Screen 
-                name="integrations/supabase/types" 
-                options={{ 
-                  href: null,
-                  headerShown: false 
-                }} 
-              />
+
               
               <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
               <Stack.Screen name="auth/signup" options={{ headerShown: false }} />

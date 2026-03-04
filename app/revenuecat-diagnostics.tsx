@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import { useRevenueCat } from '@/hooks/useRevenueCat';
 import Purchases from 'react-native-purchases';
 

@@ -24,7 +24,7 @@ console.log('[Supabase] Project ID from URL:', SUPABASE_URL.split('//')[1]?.spli
 console.log('[Supabase] ========================================');
 
 // Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+// import { supabase } from "@/lib/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {

@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 

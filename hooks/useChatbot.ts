@@ -1,6 +1,6 @@
 
 import { useCallback, useState, useRef } from 'react';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
