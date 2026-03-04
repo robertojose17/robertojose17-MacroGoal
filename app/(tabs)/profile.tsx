@@ -10,7 +10,6 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import SubscriptionButton from '@/components/SubscriptionButton';
 
 type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
@@ -751,11 +750,6 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Subscription Button */}
-        <View style={styles.subscriptionSection}>
-          <SubscriptionButton onSubscribed={() => loadUserData()} />
-        </View>
-
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
@@ -1246,9 +1240,6 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
-  },
-  subscriptionSection: {
-    marginBottom: spacing.md,
   },
   logoutButton: {
     borderRadius: borderRadius.lg,
