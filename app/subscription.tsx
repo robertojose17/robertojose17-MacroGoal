@@ -40,7 +40,7 @@ export default function SubscriptionScreen() {
 
   const subscriptionPlans: SubscriptionPlan[] = [
     {
-      productId: 'elite_macro_tracker_premium_monthly',
+      productId: 'Monthly_MG',
       title: 'Monthly Premium',
       price: '$9.99/month',
       description: 'Full access to all premium features',
@@ -54,7 +54,7 @@ export default function SubscriptionScreen() {
       ],
     },
     {
-      productId: 'elite_macro_tracker_premium_yearly',
+      productId: 'Yearly_MG',
       title: 'Yearly Premium',
       price: '$79.99/year',
       description: 'Save 33% with annual billing',
@@ -95,7 +95,7 @@ export default function SubscriptionScreen() {
         console.error('[Subscription] Failed to fetch products. Response code:', responseCode);
         Alert.alert(
           'Products Not Available',
-          'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with IDs:\n   • elite_macro_tracker_premium_monthly\n   • elite_macro_tracker_premium_yearly\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)'
+          'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)'
         );
       }
 
@@ -224,7 +224,7 @@ export default function SubscriptionScreen() {
       if (error.code === 'E_IAP_PRODUCT_NOT_FOUND') {
         Alert.alert(
           'Product Not Found',
-          'The subscription product was not found. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with exact IDs:\n   • elite_macro_tracker_premium_monthly\n   • elite_macro_tracker_premium_yearly\n\n2. Products are approved and available\n\n3. You are testing on a real device'
+          'The subscription product was not found. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with exact IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device'
         );
       } else {
         Alert.alert('Purchase Error', error.message || 'Failed to start purchase');

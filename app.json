@@ -1,8 +1,8 @@
 
 {
   "expo": {
-    "name": "Elite Macro Tracker",
-    "slug": "elite-macro-tracker",
+    "name": "Macro Goal",
+    "slug": "macro-goal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.elitemacrotracker.app",
+      "bundleIdentifier": "com.robertojose17.macrogoal",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator",
@@ -28,7 +28,7 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.elitemacrotracker.app",
+      "package": "com.robertojose17.macrogoal",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -60,7 +60,7 @@
         }
       ]
     ],
-    "scheme": "elitemacrotracker",
+    "scheme": "macrogoal",
     "experiments": {
       "typedRoutes": true
     },
