@@ -20,6 +20,7 @@ import { WidgetProvider } from "@/contexts/WidgetContext";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -45,6 +46,8 @@ export default function RootLayout() {
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
     
+    let subscription: any = null;
+    
     try {
       console.log('[App] Step 1: Initialize food database (non-blocking)');
       
@@ -69,13 +72,15 @@ export default function RootLayout() {
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const authListener = supabase.auth.onAuthStateChange((_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
         // CRITICAL: Use setTimeout to defer state update
         setTimeout(() => {
           setSession(session);
         }, 0);
       });
+      
+      subscription = authListener.data.subscription;
 
       console.log('[App] ✅ Initialization complete');
       
@@ -93,10 +98,6 @@ export default function RootLayout() {
           console.error('[App] Error hiding splash:', e);
         }
       }, 100);
-
-      return () => {
-        subscription.unsubscribe();
-      };
     } catch (error) {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
@@ -113,6 +114,13 @@ export default function RootLayout() {
         }
       }, 100);
     }
+    
+    // Return cleanup function
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   };
 
   // Handle deep links for Stripe checkout success/cancel
@@ -344,13 +352,13 @@ export default function RootLayout() {
   };
 
   return (
-    <>
-      <StatusBar style="dark" animated />
-      <ThemeProvider
-        value={CustomDefaultTheme}
-      >
-        <WidgetProvider>
-          <GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style="dark" animated />
+        <ThemeProvider
+          value={CustomDefaultTheme}
+        >
+          <WidgetProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               
@@ -410,9 +418,9 @@ export default function RootLayout() {
               />
             </Stack>
             <SystemBars style={"dark"} />
-          </GestureHandlerRootView>
-        </WidgetProvider>
-      </ThemeProvider>
-    </>
+          </WidgetProvider>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

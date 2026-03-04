@@ -1,11 +1,17 @@
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
-import { ExtensionStorage } from "@bacons/apple-targets";
+import { Platform } from "react-native";
 
-// Initialize storage with your group ID
-const storage = new ExtensionStorage(
-  "group.com.<user_name>.<app_name>"
-);
+// Conditionally import ExtensionStorage only on iOS
+let ExtensionStorage: any = null;
+if (Platform.OS === 'ios') {
+  try {
+    const appleTargets = require("@bacons/apple-targets");
+    ExtensionStorage = appleTargets.ExtensionStorage;
+  } catch (error) {
+    console.log('[WidgetContext] @bacons/apple-targets not available, widget features disabled');
+  }
+}
 
 type WidgetContextType = {
   refreshWidget: () => void;
@@ -16,15 +22,24 @@ const WidgetContext = createContext<WidgetContextType | null>(null);
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
   // Update widget state whenever what we want to show changes
   React.useEffect(() => {
-    // set widget_state to null if we want to reset the widget
-    // storage.set("widget_state", null);
-
-    // Refresh widget
-    ExtensionStorage.reloadWidget();
+    if (Platform.OS === 'ios' && ExtensionStorage) {
+      try {
+        // Refresh widget
+        ExtensionStorage.reloadWidget();
+      } catch (error) {
+        console.log('[WidgetContext] Error reloading widget:', error);
+      }
+    }
   }, []);
 
   const refreshWidget = useCallback(() => {
-    ExtensionStorage.reloadWidget();
+    if (Platform.OS === 'ios' && ExtensionStorage) {
+      try {
+        ExtensionStorage.reloadWidget();
+      } catch (error) {
+        console.log('[WidgetContext] Error refreshing widget:', error);
+      }
+    }
   }, []);
 
   return (

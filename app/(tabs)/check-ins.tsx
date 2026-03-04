@@ -335,34 +335,33 @@ export default function CheckInsScreen() {
         ) : (
           <View style={styles.checkInsList}>
             {filteredCheckIns.map((checkIn, index) => (
-              <React.Fragment key={checkIn.id}>
-                <SwipeToDeleteRow
-                  onDelete={() => handleDeleteCheckIn(checkIn)}
+              <SwipeToDeleteRow
+                key={checkIn.id}
+                onDelete={() => handleDeleteCheckIn(checkIn)}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.checkInRow,
+                    { backgroundColor: isDark ? colors.cardDark : colors.card }
+                  ]}
+                  onPress={() => handleViewCheckIn(checkIn)}
+                  activeOpacity={0.6}
                 >
-                  <TouchableOpacity
-                    style={[
-                      styles.checkInRow,
-                      { backgroundColor: isDark ? colors.cardDark : colors.card }
-                    ]}
-                    onPress={() => handleViewCheckIn(checkIn)}
-                    activeOpacity={0.6}
-                  >
-                    <View style={styles.checkInRowContent}>
-                      <Text style={[styles.checkInRowDate, { color: isDark ? colors.textDark : colors.text }]}>
-                        {formatDate(checkIn.date)}
-                      </Text>
-                      <Text style={[styles.checkInRowSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                        —
-                      </Text>
-                      <Text style={[styles.checkInRowValue, { color: isDark ? colors.textDark : colors.text }]}>
-                        {selectedType === 'weight' && checkIn.weight && formatWeight(checkIn.weight)}
-                        {selectedType === 'steps' && checkIn.steps !== null && `${checkIn.steps.toLocaleString()} steps`}
-                        {selectedType === 'gym' && checkIn.went_to_gym && 'Workout: Yes'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </SwipeToDeleteRow>
-              </React.Fragment>
+                  <View style={styles.checkInRowContent}>
+                    <Text style={[styles.checkInRowDate, { color: isDark ? colors.textDark : colors.text }]}>
+                      {formatDate(checkIn.date)}
+                    </Text>
+                    <Text style={[styles.checkInRowSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      —
+                    </Text>
+                    <Text style={[styles.checkInRowValue, { color: isDark ? colors.textDark : colors.text }]}>
+                      {selectedType === 'weight' && checkIn.weight && formatWeight(checkIn.weight)}
+                      {selectedType === 'steps' && checkIn.steps !== null && `${checkIn.steps.toLocaleString()} steps`}
+                      {selectedType === 'gym' && checkIn.went_to_gym && 'Workout: Yes'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </SwipeToDeleteRow>
             ))}
           </View>
         )}
