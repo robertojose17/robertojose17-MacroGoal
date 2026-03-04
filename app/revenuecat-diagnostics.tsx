@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,9 +34,13 @@ export default function RevenueCatDiagnosticsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
 
-  useEffect(() => {
+  const runDiagnosticsCallback = useCallback(() => {
     runDiagnostics();
   }, []);
+
+  useEffect(() => {
+    runDiagnosticsCallback();
+  }, [runDiagnosticsCallback]);
 
   const runDiagnostics = async () => {
     setIsLoading(true);

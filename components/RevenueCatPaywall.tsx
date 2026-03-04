@@ -31,18 +31,20 @@ export default function RevenueCatPaywall({ visible, onClose }: RevenueCatPaywal
   const [purchasing, setPurchasing] = React.useState(false);
 
   const currentOffering = offerings?.current;
-  const packages = currentOffering?.availablePackages || [];
+  const availablePackages = React.useMemo(() => {
+    return currentOffering?.availablePackages || [];
+  }, [currentOffering]);
 
   // Auto-select yearly package by default
   React.useEffect(() => {
-    if (packages.length > 0 && !selectedPackage) {
-      const yearlyPackage = packages.find(pkg => 
+    if (availablePackages.length > 0 && !selectedPackage) {
+      const yearlyPackage = availablePackages.find(pkg => 
         pkg.identifier.toLowerCase().includes('annual') || 
         pkg.identifier.toLowerCase().includes('yearly')
       );
-      setSelectedPackage(yearlyPackage || packages[0]);
+      setSelectedPackage(yearlyPackage || availablePackages[0]);
     }
-  }, [packages, selectedPackage]);
+  }, [availablePackages, selectedPackage]);
 
   const handlePurchase = async () => {
     if (!selectedPackage) return;
@@ -86,8 +88,8 @@ export default function RevenueCatPaywall({ visible, onClose }: RevenueCatPaywal
   };
 
   const calculateSavings = () => {
-    const monthlyPackage = packages.find(pkg => pkg.identifier.toLowerCase().includes('monthly'));
-    const yearlyPackage = packages.find(pkg => 
+    const monthlyPackage = availablePackages.find(pkg => pkg.identifier.toLowerCase().includes('monthly'));
+    const yearlyPackage = availablePackages.find(pkg => 
       pkg.identifier.toLowerCase().includes('annual') || 
       pkg.identifier.toLowerCase().includes('yearly')
     );
@@ -96,8 +98,8 @@ export default function RevenueCatPaywall({ visible, onClose }: RevenueCatPaywal
       const monthlyPrice = monthlyPackage.product.price;
       const yearlyPrice = yearlyPackage.product.price;
       const monthlyCostPerYear = monthlyPrice * 12;
-      const savings = monthlyCostPerYear - yearlyPrice;
-      const savingsPercent = Math.round((savings / monthlyCostPerYear) * 100);
+      const savingsAmount = monthlyCostPerYear - yearlyPrice;
+      const savingsPercent = Math.round((savingsAmount / monthlyCostPerYear) * 100);
       return savingsPercent;
     }
     return null;
@@ -192,7 +194,7 @@ export default function RevenueCatPaywall({ visible, onClose }: RevenueCatPaywal
                 Loading subscription plans...
               </Text>
             </View>
-          ) : packages.length === 0 ? (
+          ) : availablePackages.length === 0 ? (
             <View style={styles.errorContainer}>
               <Text style={[styles.errorText, { color: colors.error }]}>
                 No subscription plans available
@@ -203,7 +205,7 @@ export default function RevenueCatPaywall({ visible, onClose }: RevenueCatPaywal
             </View>
           ) : (
             <View style={styles.pricingSection}>
-              {packages.map((pkg) => {
+              {availablePackages.map((pkg) => {
                 const isYearly = pkg.identifier.toLowerCase().includes('annual') || 
                                 pkg.identifier.toLowerCase().includes('yearly');
                 const isSelected = selectedPackage?.identifier === pkg.identifier;

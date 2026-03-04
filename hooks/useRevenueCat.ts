@@ -5,10 +5,14 @@ import Purchases, {
   PurchasesOfferings,
   PurchasesPackage,
   LOG_LEVEL,
+  PurchasesError,
 } from 'react-native-purchases';
-import { Platform, Alert } from 'react-native';
+import { Platform, Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { REVENUECAT_CONFIG } from '@/config/revenueCatConfig';
 import { supabase } from '@/lib/supabase/client';
+import { checkRevenueCap, formatRevenueCapMessage } from '@/utils/revenueCap';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import React from 'react';
 
 export interface RevenueCatState {
   isPro: boolean;
@@ -124,12 +128,48 @@ export function useRevenueCat() {
     };
   }, []);
 
-  // Purchase a package
-  const purchasePackage = useCallback(async (packageToPurchase: PurchasesPackage) => {
+  // Purchase a package with revenue cap enforcement
+  const purchasePackage = useCallback(async (packageToPurchase: PurchasesPackage): Promise<any> => {
     try {
       console.log('[RevenueCat] 💳 Starting purchase:', packageToPurchase.identifier);
       setState(prev => ({ ...prev, isLoading: true, error: null }));
 
+      // CRITICAL: Check revenue cap BEFORE initiating purchase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[RevenueCat] ❌ User not authenticated');
+        setState(prev => ({ ...prev, isLoading: false }));
+        
+        return new Promise<{ success: boolean; error?: string }>((resolve) => {
+          showCustomAlert(
+            'Authentication Required',
+            'Please log in to make a purchase.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, error: 'Not authenticated' }) }]
+          );
+        });
+      }
+
+      console.log('[RevenueCap] 🔍 Checking revenue cap before purchase...');
+      const revenueCapStatus = await checkRevenueCap(user.id);
+
+      if (revenueCapStatus.capReached) {
+        console.warn('[RevenueCap] ❌ Revenue cap reached. Blocking purchase.');
+        setState(prev => ({ ...prev, isLoading: false }));
+        
+        const message = formatRevenueCapMessage(revenueCapStatus);
+        
+        return new Promise<{ success: boolean; capReached: boolean }>((resolve) => {
+          showCustomAlert(
+            'Spending Limit Reached',
+            message,
+            [{ text: 'OK', onPress: () => resolve({ success: false, capReached: true }) }]
+          );
+        });
+      }
+
+      console.log('[RevenueCap] ✅ Revenue cap check passed. Proceeding with purchase...');
+
+      // Proceed with purchase
       const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
       console.log('[RevenueCat] ✅ Purchase successful');
       console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active));
@@ -144,43 +184,117 @@ export function useRevenueCat() {
         isLoading: false,
       }));
 
-      Alert.alert(
-        'Success! 🎉',
-        'Welcome to Macrogoal Pro! You now have access to all premium features.',
-        [{ text: 'OK' }]
-      );
+      return new Promise<{ success: boolean; customerInfo: CustomerInfo }>((resolve) => {
+        showCustomAlert(
+          'Success! 🎉',
+          'Welcome to Macrogoal Pro! You now have access to all premium features.',
+          [{ text: 'OK', onPress: () => resolve({ success: true, customerInfo }) }]
+        );
+      });
 
-      return { success: true, customerInfo };
     } catch (error: any) {
       console.error('[RevenueCat] ❌ Purchase error:', error);
       
+      // Handle specific error types
+      const purchasesError = error as PurchasesError;
+      
       // User cancelled
-      if (error.userCancelled) {
+      if (purchasesError.userCancelled) {
         console.log('[RevenueCat] User cancelled purchase');
         setState(prev => ({ ...prev, isLoading: false }));
         return { success: false, cancelled: true };
       }
 
-      // Other errors
-      const errorMessage = error.message || 'Purchase failed';
+      // Network error
+      if (purchasesError.code === 'NETWORK_ERROR') {
+        console.error('[RevenueCat] Network error during purchase');
+        setState(prev => ({ ...prev, isLoading: false, error: 'Network error' }));
+        
+        return new Promise<{ success: boolean; error: string }>((resolve) => {
+          showCustomAlert(
+            'Network Error',
+            'Please check your internet connection and try again.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, error: 'Network error' }) }]
+          );
+        });
+      }
+
+      // Store problem
+      if (purchasesError.code === 'STORE_PROBLEM_ERROR') {
+        console.error('[RevenueCat] Store problem error');
+        setState(prev => ({ ...prev, isLoading: false, error: 'Store problem' }));
+        
+        return new Promise<{ success: boolean; error: string }>((resolve) => {
+          showCustomAlert(
+            'Store Error',
+            'There was a problem with the App Store. Please try again later.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, error: 'Store problem' }) }]
+          );
+        });
+      }
+
+      // Product not available
+      if (purchasesError.code === 'PRODUCT_NOT_AVAILABLE_FOR_PURCHASE_ERROR') {
+        console.error('[RevenueCat] Product not available');
+        setState(prev => ({ ...prev, isLoading: false, error: 'Product not available' }));
+        
+        return new Promise<{ success: boolean; error: string }>((resolve) => {
+          showCustomAlert(
+            'Product Unavailable',
+            'This product is currently not available for purchase. Please try again later.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, error: 'Product not available' }) }]
+          );
+        });
+      }
+
+      // Purchase not allowed
+      if (purchasesError.code === 'PURCHASE_NOT_ALLOWED_ERROR') {
+        console.error('[RevenueCat] Purchase not allowed');
+        setState(prev => ({ ...prev, isLoading: false, error: 'Purchase not allowed' }));
+        
+        return new Promise<{ success: boolean; error: string }>((resolve) => {
+          showCustomAlert(
+            'Purchase Not Allowed',
+            'Purchases are not allowed on this device. Please check your device settings.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, error: 'Purchase not allowed' }) }]
+          );
+        });
+      }
+
+      // Payment pending
+      if (purchasesError.code === 'PAYMENT_PENDING_ERROR') {
+        console.warn('[RevenueCat] Payment pending');
+        setState(prev => ({ ...prev, isLoading: false }));
+        
+        return new Promise<{ success: boolean; pending: boolean }>((resolve) => {
+          showCustomAlert(
+            'Payment Pending',
+            'Your purchase is pending. We will notify you when it completes.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, pending: true }) }]
+          );
+        });
+      }
+
+      // Generic error
+      const errorMessage = purchasesError.message || 'Purchase failed. Please try again.';
       setState(prev => ({
         ...prev,
         isLoading: false,
         error: errorMessage,
       }));
 
-      Alert.alert(
-        'Purchase Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
-
-      return { success: false, error: errorMessage };
+      return new Promise<{ success: boolean; error: string }>((resolve) => {
+        showCustomAlert(
+          'Purchase Failed',
+          errorMessage,
+          [{ text: 'OK', onPress: () => resolve({ success: false, error: errorMessage }) }]
+        );
+      });
     }
   }, []);
 
   // Restore purchases
-  const restorePurchases = useCallback(async () => {
+  const restorePurchases = useCallback(async (): Promise<any> => {
     try {
       console.log('[RevenueCat] 🔄 Restoring purchases...');
       setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -200,22 +314,39 @@ export function useRevenueCat() {
       }));
 
       if (isPro) {
-        Alert.alert(
-          'Success! 🎉',
-          'Your purchases have been restored. Welcome back to Macrogoal Pro!',
-          [{ text: 'OK' }]
-        );
+        return new Promise<{ success: boolean; isPro: boolean }>((resolve) => {
+          showCustomAlert(
+            'Success! 🎉',
+            'Your purchases have been restored. Welcome back to Macrogoal Pro!',
+            [{ text: 'OK', onPress: () => resolve({ success: true, isPro: true }) }]
+          );
+        });
       } else {
-        Alert.alert(
-          'No Purchases Found',
-          'We couldn\'t find any previous purchases to restore.',
-          [{ text: 'OK' }]
-        );
+        return new Promise<{ success: boolean; isPro: boolean }>((resolve) => {
+          showCustomAlert(
+            'No Purchases Found',
+            'We couldn\'t find any previous purchases to restore.',
+            [{ text: 'OK', onPress: () => resolve({ success: true, isPro: false }) }]
+          );
+        });
       }
 
-      return { success: true, isPro };
     } catch (error: any) {
       console.error('[RevenueCat] ❌ Restore error:', error);
+      
+      // Handle network errors
+      if (error.code === 'NETWORK_ERROR') {
+        setState(prev => ({ ...prev, isLoading: false, error: 'Network error' }));
+        
+        return new Promise<{ success: boolean; error: string }>((resolve) => {
+          showCustomAlert(
+            'Network Error',
+            'Please check your internet connection and try again.',
+            [{ text: 'OK', onPress: () => resolve({ success: false, error: 'Network error' }) }]
+          );
+        });
+      }
+
       const errorMessage = error.message || 'Failed to restore purchases';
       
       setState(prev => ({
@@ -224,13 +355,13 @@ export function useRevenueCat() {
         error: errorMessage,
       }));
 
-      Alert.alert(
-        'Restore Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
-
-      return { success: false, error: errorMessage };
+      return new Promise<{ success: boolean; error: string }>((resolve) => {
+        showCustomAlert(
+          'Restore Failed',
+          errorMessage,
+          [{ text: 'OK', onPress: () => resolve({ success: false, error: errorMessage }) }]
+        );
+      });
     }
   }, []);
 
@@ -239,4 +370,23 @@ export function useRevenueCat() {
     purchasePackage,
     restorePurchases,
   };
+}
+
+// Custom Alert Modal Component (works on both iOS and Web)
+function showCustomAlert(
+  title: string,
+  message: string,
+  buttons: Array<{ text: string; onPress: () => void }>
+) {
+  // This is a simplified version - in production, you'd use a proper modal component
+  // For now, we'll use the native Alert which works on iOS
+  // On web, this will use window.alert/confirm
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+    buttons[0].onPress();
+  } else {
+    // Use React Native Alert for native platforms
+    const Alert = require('react-native').Alert;
+    Alert.alert(title, message, buttons);
+  }
 }

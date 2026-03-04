@@ -44,10 +44,31 @@ interface RevenueCatEvent {
     expiration_at_ms: number;
     store: string;
     environment: string;
+    price_in_purchased_currency?: number;
+    currency?: string;
     is_trial_conversion?: boolean;
     cancel_reason?: string;
   };
   api_version: string;
+}
+
+// Currency conversion rates (approximate - use real-time API in production)
+const CONVERSION_RATES: { [key: string]: number } = {
+  'USD': 1.0,
+  'EUR': 1.10,
+  'GBP': 1.27,
+  'CAD': 0.74,
+  'AUD': 0.66,
+  'JPY': 0.0068,
+  'MXN': 0.050,
+  'BRL': 0.20,
+  'INR': 0.012,
+  'CNY': 0.14,
+};
+
+function convertToUSD(amount: number, currency: string): number {
+  const rate = CONVERSION_RATES[currency] || 1.0;
+  return amount * rate;
 }
 
 serve(async (req) => {
@@ -72,6 +93,14 @@ serve(async (req) => {
     const event = payload.event;
     const userId = event.app_user_id;
 
+    // Extract price information
+    const priceInPurchasedCurrency = event.price_in_purchased_currency || 0;
+    const currency = event.currency || 'USD';
+    const amountUSD = convertToUSD(priceInPurchasedCurrency, currency);
+
+    console.log('[RevenueCat Webhook] Price:', priceInPurchasedCurrency, currency);
+    console.log('[RevenueCat Webhook] Amount USD:', amountUSD.toFixed(2));
+
     // Store raw event for audit trail
     const { error: eventError } = await supabase
       .from('revenuecat_events')
@@ -86,6 +115,9 @@ serve(async (req) => {
         expiration_at: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null,
         store: event.store,
         environment: event.environment,
+        price_in_purchased_currency: priceInPurchasedCurrency,
+        currency: currency,
+        amount_usd: amountUSD,
         raw_event: payload,
       });
 
@@ -200,6 +232,7 @@ serve(async (req) => {
         message: 'Webhook processed successfully',
         event_type: event.type,
         user_id: userId,
+        amount_usd: amountUSD.toFixed(2),
       }),
       { 
         status: 200, 
