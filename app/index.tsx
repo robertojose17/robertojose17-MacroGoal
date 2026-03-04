@@ -1,15 +1,17 @@
 
 import { View, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase/client';
 
 export default function Index() {
   const hasNavigated = useRef(false);
-  const [isReady, setIsReady] = useState(false);
+  const isMounted = useRef(false);
 
   useEffect(() => {
+    isMounted.current = true;
+    
     // Prevent multiple navigation attempts
     if (hasNavigated.current) {
       console.log('[Index] Already navigated, skipping');
@@ -22,14 +24,21 @@ export default function Index() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
+        // Only navigate if component is still mounted
+        if (!isMounted.current) {
+          console.log('[Index] Component unmounted, skipping navigation');
+          return;
+        }
+        
         if (!session) {
           console.log('[Index] No session, navigating to welcome');
           hasNavigated.current = true;
-          setIsReady(true);
-          // Use requestAnimationFrame to ensure component is mounted
-          requestAnimationFrame(() => {
-            router.replace('/auth/welcome');
-          });
+          // Use setTimeout to defer navigation to next tick
+          setTimeout(() => {
+            if (isMounted.current) {
+              router.replace('/auth/welcome');
+            }
+          }, 0);
           return;
         }
 
@@ -42,48 +51,63 @@ export default function Index() {
           .eq('id', session.user.id)
           .maybeSingle();
 
+        // Only navigate if component is still mounted
+        if (!isMounted.current) {
+          console.log('[Index] Component unmounted, skipping navigation');
+          return;
+        }
+
         if (error || !userData) {
           console.log('[Index] User not in database or error, navigating to onboarding');
           hasNavigated.current = true;
-          setIsReady(true);
-          requestAnimationFrame(() => {
-            router.replace('/onboarding/complete');
-          });
+          setTimeout(() => {
+            if (isMounted.current) {
+              router.replace('/onboarding/complete');
+            }
+          }, 0);
           return;
         }
 
         if (userData.onboarding_completed) {
           console.log('[Index] Onboarding complete, navigating to home');
           hasNavigated.current = true;
-          setIsReady(true);
-          requestAnimationFrame(() => {
-            router.replace('/(tabs)/(home)/');
-          });
+          setTimeout(() => {
+            if (isMounted.current) {
+              router.replace('/(tabs)/(home)/');
+            }
+          }, 0);
         } else {
           console.log('[Index] Onboarding not complete, navigating to onboarding');
           hasNavigated.current = true;
-          setIsReady(true);
-          requestAnimationFrame(() => {
-            router.replace('/onboarding/complete');
-          });
+          setTimeout(() => {
+            if (isMounted.current) {
+              router.replace('/onboarding/complete');
+            }
+          }, 0);
         }
       } catch (error) {
         console.error('[Index] Error checking auth:', error);
         // On error, go to welcome screen
-        hasNavigated.current = true;
-        setIsReady(true);
-        requestAnimationFrame(() => {
-          router.replace('/auth/welcome');
-        });
+        if (isMounted.current) {
+          hasNavigated.current = true;
+          setTimeout(() => {
+            if (isMounted.current) {
+              router.replace('/auth/welcome');
+            }
+          }, 0);
+        }
       }
     };
 
     // Small delay to ensure everything is mounted
     const timer = setTimeout(() => {
-      checkAuthAndNavigate();
+      if (isMounted.current) {
+        checkAuthAndNavigate();
+      }
     }, 100);
 
     return () => {
+      isMounted.current = false;
       clearTimeout(timer);
     };
   }, []); // Empty dependency array - only run once on mount
