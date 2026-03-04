@@ -1,16 +1,19 @@
 
 import { View, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase/client';
 
 export default function Index() {
-  const [isNavigating, setIsNavigating] = useState(false);
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     // Prevent multiple navigation attempts
-    if (isNavigating) return;
+    if (hasNavigated.current) {
+      console.log('[Index] Already navigated, skipping');
+      return;
+    }
 
     const checkAuthAndNavigate = async () => {
       console.log('[Index] Checking auth state...');
@@ -20,10 +23,11 @@ export default function Index() {
         
         if (!session) {
           console.log('[Index] No session, navigating to welcome');
-          setIsNavigating(true);
+          hasNavigated.current = true;
+          // Defer navigation to next tick to ensure component is mounted
           setTimeout(() => {
             router.replace('/auth/welcome');
-          }, 100);
+          }, 300);
           return;
         }
 
@@ -38,43 +42,45 @@ export default function Index() {
 
         if (error || !userData) {
           console.log('[Index] User not in database or error, navigating to onboarding');
-          setIsNavigating(true);
+          hasNavigated.current = true;
           setTimeout(() => {
             router.replace('/onboarding/complete');
-          }, 100);
+          }, 300);
           return;
         }
 
         if (userData.onboarding_completed) {
           console.log('[Index] Onboarding complete, navigating to home');
-          setIsNavigating(true);
+          hasNavigated.current = true;
           setTimeout(() => {
             router.replace('/(tabs)/(home)/');
-          }, 100);
+          }, 300);
         } else {
           console.log('[Index] Onboarding not complete, navigating to onboarding');
-          setIsNavigating(true);
+          hasNavigated.current = true;
           setTimeout(() => {
             router.replace('/onboarding/complete');
-          }, 100);
+          }, 300);
         }
       } catch (error) {
         console.error('[Index] Error checking auth:', error);
         // On error, go to welcome screen
-        setIsNavigating(true);
+        hasNavigated.current = true;
         setTimeout(() => {
           router.replace('/auth/welcome');
-        }, 100);
+        }, 300);
       }
     };
 
     // Delay initial check to ensure everything is mounted
     const timer = setTimeout(() => {
       checkAuthAndNavigate();
-    }, 500);
+    }, 600);
 
-    return () => clearTimeout(timer);
-  }, [isNavigating]);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []); // Empty dependency array - only run once on mount
   
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>

@@ -133,10 +133,10 @@ export default function RootLayout() {
           [{ text: 'OK' }]
         );
         
-        // Navigate to profile immediately
+        // Navigate to profile with proper delay
         setTimeout(() => {
           router.replace('/(tabs)/profile');
-        }, 100);
+        }, 300);
         
         // Sync subscription in background with retries
         console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
@@ -215,7 +215,7 @@ export default function RootLayout() {
         console.log('[DeepLink] ❌ Checkout cancelled');
         setTimeout(() => {
           router.replace('/subscription');
-        }, 100);
+        }, 300);
         Alert.alert(
           'Checkout Cancelled',
           'You can subscribe anytime to unlock premium features.',
@@ -228,7 +228,7 @@ export default function RootLayout() {
         console.log('[DeepLink] ⚠️ Subscription error detected');
         setTimeout(() => {
           router.replace('/(tabs)/profile');
-        }, 100);
+        }, 300);
         Alert.alert(
           'Processing Issue',
           'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
