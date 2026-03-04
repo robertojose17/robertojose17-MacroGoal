@@ -423,8 +423,10 @@ export default function RootLayout() {
   }, [session, segments, isReady, initializing]);
 
   React.useEffect(() => {
+    // Add null checks for networkState
     if (
-      !networkState.isConnected &&
+      networkState &&
+      networkState.isConnected === false &&
       networkState.isInternetReachable === false
     ) {
       Alert.alert(
@@ -432,7 +434,7 @@ export default function RootLayout() {
         "You can keep using the app! Your changes will be saved locally and synced when you are back online."
       );
     }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
+  }, [networkState?.isConnected, networkState?.isInternetReachable]);
 
   if (!loaded || !isReady) {
     return null;
