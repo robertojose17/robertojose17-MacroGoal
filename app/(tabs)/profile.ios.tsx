@@ -6,13 +6,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SubscriptionButton from '@/components/SubscriptionButton';
-import RevenueCatPaywall from '@/components/RevenueCatPaywall';
-import CustomerCenter from '@/components/CustomerCenter';
 
 type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
@@ -39,13 +37,9 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
-  // Subscription modals
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [showCustomerCenter, setShowCustomerCenter] = useState(false);
-
   useFocusEffect(
     useCallback(() => {
-      console.log('[Profile] Screen focused, loading data');
+      console.log('[Profile iOS] Screen focused, loading data');
       loadUserData();
     }, [])
   );
@@ -55,12 +49,12 @@ export default function ProfileScreen() {
       setLoading(true);
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
-        console.log('[Profile] No authenticated user found');
+        console.log('[Profile iOS] No authenticated user found');
         setLoading(false);
         return;
       }
 
-      console.log('[Profile] Loading profile for user:', authUser.id);
+      console.log('[Profile iOS] Loading profile for user:', authUser.id);
 
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -69,18 +63,18 @@ export default function ProfileScreen() {
         .maybeSingle();
 
       if (userError) {
-        console.error('[Profile] Error loading user data:', userError);
+        console.error('[Profile iOS] Error loading user data:', userError);
       } else if (userData) {
-        console.log('[Profile] User data loaded:', userData);
+        console.log('[Profile iOS] User data loaded:', userData);
         setUser({ ...authUser, ...userData });
         
         // Check if goal weight is missing and user has completed onboarding
         if (userData.onboarding_completed && !userData.goal_weight) {
-          console.log('[Profile] Goal weight is missing, showing prompt');
+          console.log('[Profile iOS] Goal weight is missing, showing prompt');
           setShowGoalWeightPrompt(true);
         }
       } else {
-        console.log('[Profile] No user data found in database');
+        console.log('[Profile iOS] No user data found in database');
         setUser(authUser);
       }
 
@@ -94,19 +88,19 @@ export default function ProfileScreen() {
         .limit(1);
 
       if (goalError) {
-        console.error('[Profile] Error loading goal:', goalError);
+        console.error('[Profile iOS] Error loading goal:', goalError);
         setGoal(null);
       } else if (goalData && goalData.length > 0) {
         const activeGoal = goalData[0];
-        console.log('[Profile] Active goal loaded:', activeGoal);
-        console.log('[Profile] Journey Start Date from goal:', activeGoal.start_date);
+        console.log('[Profile iOS] Active goal loaded:', activeGoal);
+        console.log('[Profile iOS] Journey Start Date from goal:', activeGoal.start_date);
         setGoal(activeGoal);
       } else {
-        console.log('[Profile] No active goal found for user');
+        console.log('[Profile iOS] No active goal found for user');
         setGoal(null);
       }
     } catch (error) {
-      console.error('[Profile] Error in loadUserData:', error);
+      console.error('[Profile iOS] Error in loadUserData:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -233,11 +227,11 @@ export default function ProfileScreen() {
 
   const recalculateGoals = async (updatedUser: any, updatedGoal: any) => {
     try {
-      console.log('[Profile] Recalculating goals with updated data...');
+      console.log('[Profile iOS] Recalculating goals with updated data...');
       
       const age = calculateAge(updatedUser.date_of_birth);
       if (!age || !updatedUser.height || !updatedUser.current_weight || !updatedUser.sex || !updatedUser.activity_level) {
-        console.log('[Profile] Missing required data for calculation');
+        console.log('[Profile iOS] Missing required data for calculation');
         return;
       }
 
@@ -252,7 +246,7 @@ export default function ProfileScreen() {
       // Use balanced preset for macro calculation
       const macros = calculateMacrosWithPreset(targetCalories, updatedUser.current_weight, 'balanced');
 
-      console.log('[Profile] New calculations:', { bmr, tdee, targetCalories, macros });
+      console.log('[Profile iOS] New calculations:', { bmr, tdee, targetCalories, macros });
 
       // Deactivate current goals
       await supabase
@@ -285,12 +279,12 @@ export default function ProfileScreen() {
 
       if (goalError) throw goalError;
 
-      console.log('[Profile] ✅ Goals recalculated and updated');
+      console.log('[Profile iOS] ✅ Goals recalculated and updated');
       
       // Reload data
       await loadUserData();
     } catch (error) {
-      console.error('[Profile] Error recalculating goals:', error);
+      console.error('[Profile iOS] Error recalculating goals:', error);
       throw error;
     }
   };
@@ -390,7 +384,7 @@ export default function ProfileScreen() {
 
         if (error) throw error;
 
-        console.log('[Profile] User data updated:', updateData);
+        console.log('[Profile iOS] User data updated:', updateData);
 
         if (needsRecalculation && goal) {
           const updatedUser = { ...user, ...updateData };
@@ -402,7 +396,7 @@ export default function ProfileScreen() {
 
       closeEditModal();
     } catch (error: any) {
-      console.error('[Profile] Error saving field:', error);
+      console.error('[Profile iOS] Error saving field:', error);
       Alert.alert('Error', error.message || 'Failed to save changes');
     } finally {
       setSaving(false);
@@ -431,7 +425,7 @@ export default function ProfileScreen() {
       setSaving(true);
       const dateString = date.toISOString().split('T')[0];
       
-      console.log('[Profile] Saving Journey Start Date:', dateString);
+      console.log('[Profile iOS] Saving Journey Start Date:', dateString);
       
       const { error } = await supabase
         .from('goals')
@@ -440,7 +434,7 @@ export default function ProfileScreen() {
 
       if (error) throw error;
 
-      console.log('[Profile] ✅ Journey Start Date saved successfully:', dateString);
+      console.log('[Profile iOS] ✅ Journey Start Date saved successfully:', dateString);
       
       // Reload data to ensure sync
       await loadUserData();
@@ -451,7 +445,7 @@ export default function ProfileScreen() {
       
       Alert.alert('Success', 'Journey Start Date updated successfully');
     } catch (error: any) {
-      console.error('[Profile] Error saving start date:', error);
+      console.error('[Profile iOS] Error saving start date:', error);
       Alert.alert('Error', error.message || 'Failed to save start date');
     } finally {
       setSaving(false);
@@ -467,10 +461,10 @@ export default function ProfileScreen() {
     // Initialize with stored date or today
     if (goal.start_date) {
       const storedDate = new Date(goal.start_date + 'T00:00:00');
-      console.log('[Profile] Opening date picker with stored date:', goal.start_date, '→', storedDate.toISOString());
+      console.log('[Profile iOS] Opening date picker with stored date:', goal.start_date, '→', storedDate.toISOString());
       setSelectedDate(storedDate);
     } else {
-      console.log('[Profile] Opening date picker with today (no stored date)');
+      console.log('[Profile iOS] Opening date picker with today (no stored date)');
       setSelectedDate(new Date());
     }
     setShowDatePicker(true);
@@ -496,7 +490,7 @@ export default function ProfileScreen() {
       const date = new Date(dateStr + 'T00:00:00');
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch (error) {
-      console.error('[Profile] Error formatting date:', error);
+      console.error('[Profile iOS] Error formatting date:', error);
       return 'Set Date';
     }
   };
@@ -505,7 +499,6 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading profile...
           </Text>
@@ -564,12 +557,6 @@ export default function ProfileScreen() {
           <Text style={[styles.email, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {user.email || 'Guest User'}
           </Text>
-
-          {/* Subscription Button */}
-          <SubscriptionButton
-            onPress={() => setShowPaywall(true)}
-            style={{ marginTop: spacing.md, width: '100%' }}
-          />
         </View>
 
         {/* Calorie & Goals Settings Card */}
@@ -764,6 +751,11 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Subscription Button */}
+        <View style={styles.subscriptionSection}>
+          <SubscriptionButton onSubscribed={() => loadUserData()} />
+        </View>
+
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
@@ -803,13 +795,6 @@ export default function ProfileScreen() {
             <TouchableOpacity onPress={() => router.push('/delete-account')}>
               <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Delete Account
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.footerLinksRow}>
-            <TouchableOpacity onPress={() => router.push('/revenuecat-diagnostics')}>
-              <Text style={[styles.footerLink, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                RevenueCat Diagnostics
               </Text>
             </TouchableOpacity>
           </View>
@@ -1039,12 +1024,6 @@ export default function ProfileScreen() {
           />
         )
       )}
-
-      {/* RevenueCat Paywall */}
-      <RevenueCatPaywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
-
-      {/* Customer Center */}
-      <CustomerCenter visible={showCustomerCenter} onClose={() => setShowCustomerCenter(false)} />
     </SafeAreaView>
   );
 }
@@ -1267,6 +1246,9 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  subscriptionSection: {
+    marginBottom: spacing.md,
   },
   logoutButton: {
     borderRadius: borderRadius.lg,

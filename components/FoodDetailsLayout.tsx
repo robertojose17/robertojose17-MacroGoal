@@ -1,7 +1,7 @@
 
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
 import { useRouter } from 'expo-router';
@@ -28,12 +28,6 @@ interface FoodDetailsLayoutProps {
   returnTo?: string;
   itemId?: string;
   onSaveComplete?: () => void;
-}
-
-interface BannerEvent {
-  id: number;
-  message: string;
-  timestamp: number;
 }
 
 const UNIT_CONVERSIONS: Record<ServingUnit, number> = {
@@ -234,7 +228,7 @@ export default function FoodDetailsLayout({
   const [numberOfServings, setNumberOfServings] = useState('1');
   const [showUnitOptions, setShowUnitOptions] = useState(false);
 
-  const [bannerQueue, setBannerQueue] = useState<BannerEvent[]>([]);
+  const [bannerQueue, setBannerQueue] = useState<{ id: number; message: string; timestamp: number }[]>([]);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
 
   const backgroundColor = isDark ? colors.dark.background : colors.light.background;

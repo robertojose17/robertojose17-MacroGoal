@@ -7,7 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { TouchableOpacity } from 'react-native';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function DeleteAccountScreen() {
   const router = useRouter();

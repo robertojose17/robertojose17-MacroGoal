@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import * as Linking from 'expo-linking';
 
 export default function VerifyScreen() {

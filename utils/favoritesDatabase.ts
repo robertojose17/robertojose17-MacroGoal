@@ -4,7 +4,7 @@
  * Handles CRUD operations for favorite foods
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export interface Favorite {
   id: string;

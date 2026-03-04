@@ -3,45 +3,14 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoIncrement": true,
-      "ios": {
-        "simulator": false,
-        "appleTeamId": "RQ6JHH38HA",
-        "appleId": "rivera76115@gmail.com",
-        "ascAppId": "6755788871",
-        "ascApiKeyPath": "./credentials.json"
-      }
+      "autoIncrement": true
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true,
-      "ios": {
-        "simulator": false,
-        "appleTeamId": "RQ6JHH38HA",
-        "appleId": "rivera76115@gmail.com",
-        "ascAppId": "6755788871",
-        "ascApiKeyPath": "./credentials.json"
-      }
+      "autoIncrement": true
     },
     "production": {
-      "autoIncrement": true,
-      "ios": {
-        "simulator": false,
-        "appleTeamId": "RQ6JHH38HA",
-        "appleId": "rivera76115@gmail.com",
-        "ascAppId": "6755788871",
-        "ascApiKeyPath": "./credentials.json"
-      }
-    }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "rivera76115@gmail.com",
-        "ascAppId": "6755788871",
-        "appleTeamId": "RQ6JHH38HA",
-        "ascApiKeyPath": "./credentials.json"
-      }
+      "autoIncrement": true
     }
   }
 }

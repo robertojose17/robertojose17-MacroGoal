@@ -15,7 +15,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import { TouchableOpacity } from 'react-native-gesture-handler';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';

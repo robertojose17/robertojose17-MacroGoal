@@ -24,7 +24,7 @@ import ProgressCard from '@/components/ProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import PhotoProgressCard from '@/components/PhotoProgressCard';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
 
