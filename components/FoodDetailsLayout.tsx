@@ -30,6 +30,12 @@ interface FoodDetailsLayoutProps {
   onSaveComplete?: () => void;
 }
 
+interface BannerEvent {
+  id: number;
+  message: string;
+  timestamp: number;
+}
+
 const UNIT_CONVERSIONS: Record<ServingUnit, number> = {
   'g': 1,
   'oz': 28.35,
@@ -228,7 +234,7 @@ export default function FoodDetailsLayout({
   const [numberOfServings, setNumberOfServings] = useState('1');
   const [showUnitOptions, setShowUnitOptions] = useState(false);
 
-  const [bannerQueue, setBannerQueue] = useState<{ id: number; message: string; timestamp: number }[]>([]);
+  const [bannerQueue, setBannerQueue] = useState<BannerEvent[]>([]);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
 
   const backgroundColor = isDark ? colors.dark.background : colors.light.background;

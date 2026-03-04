@@ -25,7 +25,15 @@ const shouldMuteMessage = (message: string): boolean => {
 };
 
 // Queue for batching logs
-let logQueue: Array<{ level: string; message: string; source: string; timestamp: string; platform: string }> = [];
+interface LogEntry {
+  level: string;
+  message: string;
+  source: string;
+  timestamp: string;
+  platform: string;
+}
+
+let logQueue: LogEntry[] = [];
 let flushTimeout: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 500; // Flush every 500ms
 

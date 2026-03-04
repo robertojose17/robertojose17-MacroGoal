@@ -82,9 +82,9 @@ export default function RootLayout() {
 
       console.log('[App] Step 3: Setup auth listener');
       
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
-        setSession(session);
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+        console.log('[App] Auth state changed:', _event, newSession?.user?.id || 'none');
+        setSession(newSession);
       });
 
       console.log('[App] ✅ Initialization complete');
@@ -157,15 +157,15 @@ export default function RootLayout() {
             try {
               console.log(`[DeepLink] 🔄 Sync attempt ${attempt}/${maxRetries}`);
               
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session) {
+              const { data: { session: currentSession } } = await supabase.auth.getSession();
+              if (!currentSession) {
                 console.error('[DeepLink] ❌ No session found');
                 break;
               }
 
               const { data, error } = await supabase.functions.invoke('sync-subscription', {
                 headers: {
-                  Authorization: `Bearer ${session.access_token}`,
+                  Authorization: `Bearer ${currentSession.access_token}`,
                 },
               });
 
@@ -178,7 +178,7 @@ export default function RootLayout() {
               const { data: userData } = await supabase
                 .from('users')
                 .select('user_type')
-                .eq('id', session.user.id)
+                .eq('id', currentSession.user.id)
                 .maybeSingle();
 
               if (userData?.user_type === 'premium') {
@@ -251,11 +251,11 @@ export default function RootLayout() {
         console.log('[AppState] App became active, checking for subscription updates...');
         
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          if (currentSession) {
             const { data, error } = await supabase.functions.invoke('sync-subscription', {
               headers: {
-                Authorization: `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${currentSession.access_token}`,
               },
             });
 
@@ -683,6 +683,14 @@ export default function RootLayout() {
               
               <Stack.Screen
                 name="terms-of-use-eula"
+                options={{
+                  headerShown: false,
+                  presentation: "card",
+                }}
+              />
+              
+              <Stack.Screen
+                name="revenuecat-diagnostics"
                 options={{
                   headerShown: false,
                   presentation: "card",

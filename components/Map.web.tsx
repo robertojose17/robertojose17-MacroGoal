@@ -2,10 +2,16 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 
+interface MapMarker {
+  latitude: number;
+  longitude: number;
+  title?: string;
+}
+
 interface MapProps {
   latitude: number;
   longitude: number;
-  markers?: Array<{ latitude: number; longitude: number; title?: string }>;
+  markers?: MapMarker[];
   style?: any;
 }
 
