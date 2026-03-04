@@ -171,7 +171,7 @@ export default function SubscriptionScreen() {
     } finally {
       setLoading(false);
     }
-  }, [handlePurchaseSuccess, subscriptionPlans, setLoading, setProducts, setPurchasing]);
+  }, [handlePurchaseSuccess, subscriptionPlans]);
 
   useEffect(() => {
     initializeIAP();

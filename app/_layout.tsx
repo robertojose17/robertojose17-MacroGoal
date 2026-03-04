@@ -61,22 +61,38 @@ export default function RootLayout() {
       const currentSession = data?.session || null;
       console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
-      setSession(currentSession);
+      // CRITICAL: Use setTimeout to defer state update
+      setTimeout(() => {
+        setSession(currentSession);
+      }, 0);
 
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
-        setSession(session);
+        // CRITICAL: Use setTimeout to defer state update
+        setTimeout(() => {
+          setSession(session);
+        }, 0);
       });
 
       console.log('[App] ✅ Initialization complete');
       
-      setIsReady(true);
+      // CRITICAL: Use setTimeout to defer state update
+      setTimeout(() => {
+        setIsReady(true);
+      }, 0);
       
-      // Hide splash screen with error handling
-      await SplashScreen.hideAsync();
+      // Hide splash screen with error handling after a delay
+      setTimeout(async () => {
+        try {
+          await SplashScreen.hideAsync();
+          console.log('[App] ✅ Splash screen hidden');
+        } catch (e) {
+          console.error('[App] Error hiding splash:', e);
+        }
+      }, 100);
 
       return () => {
         subscription.unsubscribe();
@@ -85,8 +101,17 @@ export default function RootLayout() {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
       // CRITICAL: Even on error, app must load
-      setIsReady(true);
-      await SplashScreen.hideAsync().catch(e => console.error('[App] Error hiding splash:', e));
+      setTimeout(() => {
+        setIsReady(true);
+      }, 0);
+      
+      setTimeout(async () => {
+        try {
+          await SplashScreen.hideAsync();
+        } catch (e) {
+          console.error('[App] Error hiding splash:', e);
+        }
+      }, 100);
     }
   };
 
