@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
-  Platform,
   Alert,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +16,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
-import Purchases, { PurchasesPackage, CustomerInfo, PurchasesOffering } from 'react-native-purchases';
+import * as InAppPurchases from 'expo-in-app-purchases';
 
 interface SubscriptionPlan {
   productId: string;
@@ -26,36 +25,7 @@ interface SubscriptionPlan {
   description: string;
   features: string[];
   popular?: boolean;
-  rcPackage?: PurchasesPackage;
 }
-
-/**
- * RevenueCat In-App Purchase Configuration
- * 
- * SETUP REQUIRED:
- * 1. Create a RevenueCat account at https://app.revenuecat.com
- * 2. Create products in RevenueCat Dashboard with IDs: Monthly_MG, Yearly_MG
- * 3. Get your API keys from Project Settings > API Keys
- * 4. Replace the placeholder keys below with your actual keys
- * 5. Configure products in App Store Connect (iOS) and Google Play Console (Android)
- * 6. Set up the webhook in RevenueCat to sync with Supabase
- * 
- * See REVENUECAT_SETUP.md for detailed setup instructions
- */
-
-// RevenueCat API Keys
-// TODO: Replace these with your actual RevenueCat API keys from https://app.revenuecat.com
-// iOS: Project Settings > API Keys > App-specific API Keys > iOS
-// Android: Project Settings > API Keys > App-specific API Keys > Android
-const REVENUECAT_API_KEY = Platform.select({
-  ios: 'appl_YOUR_IOS_KEY_HERE', // Replace with your iOS API key
-  android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with your Android API key
-}) || '';
-
-// Product identifiers should match your RevenueCat product setup
-// These should be configured in RevenueCat Dashboard > Products
-const MONTHLY_PRODUCT_ID = 'Monthly_MG';
-const YEARLY_PRODUCT_ID = 'Yearly_MG';
 
 export default function SubscriptionScreen() {
   const router = useRouter();
@@ -64,12 +34,11 @@ export default function SubscriptionScreen() {
 
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
-  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const defaultPlans: SubscriptionPlan[] = useMemo(() => [
+  const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
       productId: 'Monthly_MG',
       title: 'Monthly Premium',
@@ -99,261 +68,220 @@ export default function SubscriptionScreen() {
     },
   ], []);
 
-  useEffect(() => {
-    console.log('[Subscription] Initializing subscription screen with RevenueCat');
-    initializeRevenueCat();
-  }, []);
-
-  const initializeRevenueCat = async () => {
+  const handlePurchaseSuccess = React.useCallback(async (purchase: any) => {
     try {
-      console.log('[Subscription] Configuring RevenueCat SDK');
-      
-      // Check if API keys are configured
-      if (!REVENUECAT_API_KEY || REVENUECAT_API_KEY.includes('YOUR_')) {
-        console.warn('[Subscription] ⚠️ RevenueCat API keys not configured');
-        console.warn('[Subscription] Please update the API keys in app/subscription.tsx');
-        console.warn('[Subscription] See REVENUECAT_SETUP.md for setup instructions');
-        setErrorMessage(
-          'In-app purchases are not configured yet. Please contact support or check back later.'
-        );
-        setSubscriptionPlans(defaultPlans);
-        setLoading(false);
-        return;
-      }
-      
-      // Get current user ID from Supabase
+      console.log('[Subscription] Processing purchase:', purchase);
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('[Subscription] No user found, cannot initialize RevenueCat');
-        setErrorMessage('Please log in to view subscription options');
-        setLoading(false);
+        console.error('[Subscription] No user found');
         return;
       }
 
-      // Configure RevenueCat with user ID
-      await Purchases.configure({
-        apiKey: REVENUECAT_API_KEY,
-        appUserID: user.id,
-      });
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          user_type: 'premium',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
 
-      console.log('[Subscription] RevenueCat configured for user:', user.id);
-
-      // Check current subscription status
-      await checkSubscriptionStatus();
-
-      // Load available offerings
-      await loadOfferings();
-
-      setLoading(false);
-    } catch (error: any) {
-      console.error('[Subscription] Error initializing RevenueCat:', error);
-      setErrorMessage('Failed to load subscription options. Please try again.');
-      setSubscriptionPlans(defaultPlans);
-      setLoading(false);
-    }
-  };
-
-  const checkSubscriptionStatus = async () => {
-    try {
-      console.log('[Subscription] Checking subscription status via RevenueCat');
-      const customerInfo: CustomerInfo = await Purchases.getCustomerInfo();
-      
-      console.log('[Subscription] Customer info:', {
-        activeSubscriptions: customerInfo.activeSubscriptions,
-        entitlements: Object.keys(customerInfo.entitlements.active),
-      });
-
-      // Check if user has any active entitlements
-      const hasActiveEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
-      
-      if (hasActiveEntitlement) {
-        console.log('[Subscription] User has active premium subscription');
-        setIsPremium(true);
-        
-        // Sync with Supabase
-        await syncPremiumStatusToSupabase(true);
-      } else {
-        console.log('[Subscription] User does not have active subscription');
-        setIsPremium(false);
-        await syncPremiumStatusToSupabase(false);
+      if (updateError) {
+        console.error('[Subscription] Error updating user:', updateError);
+        throw updateError;
       }
-    } catch (error: any) {
-      console.error('[Subscription] Error checking subscription status:', error);
-    }
-  };
 
-  const syncPremiumStatusToSupabase = async (isPremium: boolean) => {
+      console.log('[Subscription] User upgraded to premium');
+
+      if (Platform.OS !== 'web') {
+        await InAppPurchases.finishTransactionAsync(purchase, true);
+        console.log('[Subscription] Transaction finished');
+      }
+
+      setPurchasing(false);
+      setIsPremium(true);
+
+      Alert.alert(
+        'Welcome to Premium! 🎉',
+        'You now have access to all premium features.',
+        [
+          {
+            text: 'Get Started',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+
+    } catch (error: any) {
+      console.error('[Subscription] Error processing purchase:', error);
+      Alert.alert('Error', 'Failed to activate premium: ' + error.message);
+      setPurchasing(false);
+    }
+  }, [router]);
+
+  const initializeIAP = React.useCallback(async () => {
+    if (Platform.OS === 'web') {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log('[Subscription] Initializing IAP...');
+      
+      await InAppPurchases.connectAsync();
+      console.log('[Subscription] Connected to store');
+
+      const productIds = subscriptionPlans.map(plan => plan.productId);
+      console.log('[Subscription] Fetching products:', productIds);
+
+      const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
+      
+      if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+        console.log('[Subscription] Products fetched:', results);
+        setProducts(results);
+      } else {
+        console.error('[Subscription] Failed to fetch products. Response code:', responseCode);
+        Alert.alert(
+          'Products Not Available',
+          'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)'
+        );
+      }
+
+      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
+        console.log('[Subscription] Purchase listener triggered:', { responseCode, errorCode });
+        
+        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+          results?.forEach((purchase: any) => {
+            console.log('[Subscription] Purchase successful:', purchase);
+            handlePurchaseSuccess(purchase);
+          });
+        } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
+          console.log('[Subscription] User canceled purchase');
+          setPurchasing(false);
+        } else {
+          console.error('[Subscription] Purchase failed:', errorCode);
+          Alert.alert('Purchase Failed', 'Unable to complete purchase. Please try again.');
+          setPurchasing(false);
+        }
+      });
+
+    } catch (error: any) {
+      console.error('[Subscription] IAP initialization error:', error);
+      Alert.alert('Error', 'Failed to initialize in-app purchases: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [handlePurchaseSuccess, subscriptionPlans]);
+
+  useEffect(() => {
+    initializeIAP();
+    checkPremiumStatus();
+  }, [initializeIAP]);
+
+  const checkPremiumStatus = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const userType = isPremium ? 'premium' : 'free';
-      
-      const { error } = await supabase
+      const { data: userData } = await supabase
         .from('users')
-        .update({ user_type: userType })
-        .eq('id', user.id);
+        .select('user_type')
+        .eq('id', user.id)
+        .single();
 
-      if (error) {
-        console.error('[Subscription] Error syncing premium status to Supabase:', error);
-      } else {
-        console.log('[Subscription] Premium status synced to Supabase:', userType);
+      if (userData?.user_type === 'premium') {
+        setIsPremium(true);
       }
     } catch (error) {
-      console.error('[Subscription] Error syncing to Supabase:', error);
-    }
-  };
-
-  const loadOfferings = async () => {
-    try {
-      console.log('[Subscription] Loading RevenueCat offerings');
-      const offerings = await Purchases.getOfferings();
-      
-      if (offerings.current && offerings.current.availablePackages.length > 0) {
-        console.log('[Subscription] Found', offerings.current.availablePackages.length, 'packages');
-        
-        const plans: SubscriptionPlan[] = offerings.current.availablePackages.map((pkg) => {
-          const isMonthly = pkg.identifier.toLowerCase().includes('monthly');
-          const isYearly = pkg.identifier.toLowerCase().includes('yearly') || pkg.identifier.toLowerCase().includes('annual');
-          
-          return {
-            productId: pkg.identifier,
-            title: isMonthly ? 'Monthly Premium' : isYearly ? 'Yearly Premium' : pkg.product.title,
-            price: pkg.product.priceString,
-            description: isMonthly 
-              ? 'Full access to all premium features' 
-              : isYearly 
-                ? 'Save 33% with annual billing' 
-                : pkg.product.description,
-            features: defaultPlans[0].features,
-            popular: isYearly,
-            rcPackage: pkg,
-          };
-        });
-        
-        setSubscriptionPlans(plans);
-        console.log('[Subscription] Loaded plans:', plans.map(p => p.title));
-      } else {
-        console.log('[Subscription] No offerings found, using default plans');
-        setSubscriptionPlans(defaultPlans);
-      }
-    } catch (error: any) {
-      console.error('[Subscription] Error loading offerings:', error);
-      setSubscriptionPlans(defaultPlans);
+      console.error('[Subscription] Error checking premium status:', error);
     }
   };
 
   const handlePurchase = async (productId: string) => {
-    console.log('[Subscription] Purchase initiated for:', productId);
-    setSelectedPlan(productId);
-    setPurchasing(true);
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Not Available on Web',
+        'In-app purchases are only available on iOS and Android. Please use the mobile app to subscribe.'
+      );
+      return;
+    }
 
     try {
-      const plan = subscriptionPlans.find(p => p.productId === productId);
-      
-      if (!plan?.rcPackage) {
-        console.error('[Subscription] No RevenueCat package found for product:', productId);
-        Alert.alert('Error', 'Unable to process purchase. Please try again.');
+      console.log('[Subscription] Starting purchase for:', productId);
+      setPurchasing(true);
+      setSelectedPlan(productId);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'Please log in to purchase a subscription');
         setPurchasing(false);
-        setSelectedPlan(null);
         return;
       }
 
-      console.log('[Subscription] Making purchase with RevenueCat');
-      const { customerInfo } = await Purchases.purchasePackage(plan.rcPackage);
-      
-      console.log('[Subscription] Purchase successful!');
-      console.log('[Subscription] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+      console.log('[Subscription] Setting customer ID:', user.id);
 
-      // Check if purchase granted premium access
-      const hasActiveEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
-      
-      if (hasActiveEntitlement) {
-        console.log('[Subscription] Premium access granted!');
-        setIsPremium(true);
-        await syncPremiumStatusToSupabase(true);
-        
-        Alert.alert(
-          'Success!',
-          'Welcome to Premium! You now have access to all premium features.',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
-      } else {
-        console.log('[Subscription] Purchase completed but no active entitlement found');
-        Alert.alert('Purchase Complete', 'Your purchase is being processed. Premium features will be available shortly.');
-      }
+      await InAppPurchases.purchaseItemAsync(productId);
+      console.log('[Subscription] Purchase initiated');
+
     } catch (error: any) {
       console.error('[Subscription] Purchase error:', error);
       
-      if (error.userCancelled) {
-        console.log('[Subscription] User cancelled purchase');
-      } else {
+      if (error.code === 'E_IAP_PRODUCT_NOT_FOUND') {
         Alert.alert(
-          'Purchase Failed',
-          error.message || 'Unable to complete purchase. Please try again.'
+          'Product Not Found',
+          'The subscription product was not found. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with exact IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device'
         );
+      } else {
+        Alert.alert('Purchase Error', error.message || 'Failed to start purchase');
       }
-    } finally {
+      
       setPurchasing(false);
       setSelectedPlan(null);
     }
   };
 
   const handleRestore = async () => {
-    console.log('[Subscription] Restore purchases initiated');
-    setLoading(true);
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Not Available on Web',
+        'Purchase restoration is only available on iOS and Android. Please use the mobile app.'
+      );
+      return;
+    }
 
     try {
-      console.log('[Subscription] Restoring purchases via RevenueCat');
-      const customerInfo = await Purchases.restorePurchases();
-      
-      console.log('[Subscription] Restore complete');
-      console.log('[Subscription] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+      console.log('[Subscription] Restoring purchases...');
+      setLoading(true);
 
-      const hasActiveEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
-      
-      if (hasActiveEntitlement) {
-        console.log('[Subscription] Premium access restored!');
-        setIsPremium(true);
-        await syncPremiumStatusToSupabase(true);
+      const { results, responseCode } = await InAppPurchases.getPurchaseHistoryAsync();
+
+      if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
+        console.log('[Subscription] Found purchases to restore:', results);
         
-        Alert.alert(
-          'Success!',
-          'Your premium subscription has been restored.',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        const latestPurchase = results[0];
+        await handlePurchaseSuccess(latestPurchase);
+        
+        Alert.alert('Success', 'Your purchases have been restored!');
       } else {
-        console.log('[Subscription] No active subscriptions found to restore');
-        Alert.alert(
-          'No Subscriptions Found',
-          'We could not find any active subscriptions to restore.'
-        );
+        console.log('[Subscription] No purchases to restore');
+        Alert.alert('No Purchases Found', 'You have no previous purchases to restore.');
       }
+
     } catch (error: any) {
       console.error('[Subscription] Restore error:', error);
-      Alert.alert(
-        'Restore Failed',
-        error.message || 'Unable to restore purchases. Please try again.'
-      );
+      Alert.alert('Restore Failed', error.message || 'Failed to restore purchases');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Loading subscription options...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const getProductPrice = (productId: string): string => {
+    const product = products.find((p: any) => p.productId === productId);
+    const priceText = product?.price || '';
+    return priceText;
+  };
 
-  if (errorMessage) {
+  if (Platform.OS === 'web') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.header}>
@@ -366,30 +294,65 @@ export default function SubscriptionScreen() {
             />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Subscription
+            Go Premium
           </Text>
           <View style={{ width: 24 }} />
         </View>
-        <View style={styles.errorContainer}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle"
-            android_material_icon_name="warning"
-            size={48}
-            color={colors.primary}
-          />
-          <Text style={[styles.errorText, { color: isDark ? colors.textDark : colors.text }]}>
-            {errorMessage}
+
+        <View style={styles.webMessageContainer}>
+          <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={64}
+              color={colors.primary}
+            />
+          </View>
+          <Text style={[styles.webMessageTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Premium Subscriptions
           </Text>
+          <Text style={[styles.webMessageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            In-app purchases are only available on iOS and Android devices.
+          </Text>
+          <Text style={[styles.webMessageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Please download the mobile app to subscribe to Premium and unlock:
+          </Text>
+          
+          <View style={styles.featuresList}>
+            {subscriptionPlans[0].features.map((feature, index) => (
+              <View key={index} style={styles.featureRow}>
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text }]}>
+                  {feature}
+                </Text>
+              </View>
+            ))}
+          </View>
+
           <TouchableOpacity
             style={[styles.button, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              setErrorMessage(null);
-              setLoading(true);
-              initializeRevenueCat();
-            }}
+            onPress={() => router.back()}
           >
-            <Text style={styles.buttonText}>Try Again</Text>
+            <Text style={styles.buttonText}>Go Back</Text>
           </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
+            Loading subscription options...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -497,6 +460,7 @@ export default function SubscriptionScreen() {
         </View>
 
         {subscriptionPlans.map((plan) => {
+          const displayPrice = getProductPrice(plan.productId) || plan.price;
           const isSelected = selectedPlan === plan.productId;
           const isPurchasingThis = purchasing && isSelected;
 
@@ -519,7 +483,7 @@ export default function SubscriptionScreen() {
                 {plan.title}
               </Text>
               <Text style={[styles.planPrice, { color: colors.primary }]}>
-                {plan.price}
+                {displayPrice}
               </Text>
               <Text style={[styles.planDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 {plan.description}
@@ -579,8 +543,6 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
       </ScrollView>
-
-
     </SafeAreaView>
   );
 }
@@ -597,17 +559,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
-  },
-  errorText: {
-    ...typography.body,
-    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -769,8 +720,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: {
-    color: '#FFFFFF',
     ...typography.bodyBold,
     fontSize: 16,
+  },
+  webMessageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  webMessageTitle: {
+    ...typography.h1,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  webMessageText: {
+    ...typography.body,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  featuresList: {
+    width: '100%',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
   },
 });

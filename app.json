@@ -1,15 +1,14 @@
-
 {
   "expo": {
     "name": "Macro Goal",
     "slug": "macro-goal",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
+    "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
+      "image": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -19,24 +18,22 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator",
-        "NSPhotoLibraryUsageDescription": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements.",
-        "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized subscription offers to you."
+        "NSPhotoLibraryUsageDescription": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
+        "foregroundImage": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.robertojose17.macrogoal",
       "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "com.android.vending.BILLING"
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
-      "favicon": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
+      "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -67,12 +64,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {
-        "origin": false
-      },
-      "eas": {
-        "projectId": "b374d7d3-6b24-4cc0-a0ff-07afeb17af36"
-      },
+      "router": {},
       "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW"
     }
   }
