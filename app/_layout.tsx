@@ -1,8 +1,8 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, router } from "expo-router";
+import { Stack, router, useSegments, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -31,21 +31,18 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
+  const segments = useSegments();
+  const navigationState = useRootNavigationState();
+  
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const isMounted = useRef(false);
-  const subscriptionRef = useRef<any>(null);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
-
+  // Initialize app and auth
   useEffect(() => {
     if (loaded) {
       initializeApp();
@@ -58,45 +55,31 @@ export default function RootLayout() {
     try {
       console.log('[App] Step 1: Initialize food database (non-blocking)');
       
-      // CRITICAL FIX: Do NOT await food database initialization
-      // Let it run in background, app must load regardless
+      // Let food database init run in background
       initializeFoodDatabase()
         .then(() => console.log('[App] ✅ Food database initialized'))
         .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
 
       console.log('[App] Step 2: Get current session');
       
-      // Get session with timeout
       const { data } = await supabase.auth.getSession();
       const currentSession = data?.session || null;
       console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
-      // CRITICAL: Only update state if component is still mounted
-      if (isMounted.current) {
-        setSession(currentSession);
-      }
+      setSession(currentSession);
 
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
-      const authListener = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
-        // CRITICAL: Only update state if component is still mounted
-        if (isMounted.current) {
-          setSession(session);
-        }
+        setSession(session);
       });
-      
-      subscriptionRef.current = authListener.data.subscription;
 
       console.log('[App] ✅ Initialization complete');
+      setIsReady(true);
       
-      // CRITICAL: Only update state if component is still mounted
-      if (isMounted.current) {
-        setIsReady(true);
-      }
-      
-      // Hide splash screen with error handling after a delay
+      // Hide splash screen
       setTimeout(async () => {
         try {
           await SplashScreen.hideAsync();
@@ -105,13 +88,15 @@ export default function RootLayout() {
           console.error('[App] Error hiding splash:', e);
         }
       }, 300);
+
+      return () => {
+        subscription.unsubscribe();
+      };
     } catch (error) {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
-      // CRITICAL: Even on error, app must load
-      if (isMounted.current) {
-        setIsReady(true);
-      }
+      // Even on error, app must load
+      setIsReady(true);
       
       setTimeout(async () => {
         try {
@@ -123,14 +108,80 @@ export default function RootLayout() {
     }
   };
 
-  // Cleanup subscription on unmount
+  // Handle navigation based on auth state
   useEffect(() => {
-    return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe();
+    if (!isReady || !navigationState?.key) {
+      console.log('[Navigation] Not ready yet, waiting...');
+      return;
+    }
+
+    if (hasNavigated) {
+      console.log('[Navigation] Already navigated, skipping');
+      return;
+    }
+
+    const handleNavigation = async () => {
+      console.log('[Navigation] ========== CHECKING AUTH STATE ==========');
+      console.log('[Navigation] Current segments:', segments);
+      console.log('[Navigation] Session:', session?.user?.id || 'none');
+
+      const inAuthGroup = segments[0] === 'auth';
+      const inTabsGroup = segments[0] === '(tabs)';
+      const inOnboarding = segments[0] === 'onboarding';
+
+      // If no session, ensure we're in auth flow
+      if (!session) {
+        if (!inAuthGroup) {
+          console.log('[Navigation] No session, redirecting to welcome');
+          setHasNavigated(true);
+          router.replace('/auth/welcome');
+        }
+        return;
       }
+
+      // If we have a session, check onboarding status
+      console.log('[Navigation] Session found, checking onboarding...');
+      
+      try {
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('onboarding_completed')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (error || !userData) {
+          console.log('[Navigation] User data not found, redirecting to onboarding');
+          if (!inOnboarding) {
+            setHasNavigated(true);
+            router.replace('/onboarding/complete');
+          }
+          return;
+        }
+
+        if (userData.onboarding_completed) {
+          console.log('[Navigation] Onboarding complete, redirecting to home');
+          if (!inTabsGroup) {
+            setHasNavigated(true);
+            router.replace('/(tabs)/(home)/');
+          }
+        } else {
+          console.log('[Navigation] Onboarding incomplete, redirecting to onboarding');
+          if (!inOnboarding) {
+            setHasNavigated(true);
+            router.replace('/onboarding/complete');
+          }
+        }
+      } catch (error) {
+        console.error('[Navigation] Error checking onboarding:', error);
+      }
+
+      console.log('[Navigation] ========== NAVIGATION CHECK COMPLETE ==========');
     };
-  }, []);
+
+    // Small delay to ensure navigation is ready
+    const timer = setTimeout(handleNavigation, 100);
+    return () => clearTimeout(timer);
+  }, [isReady, session, segments, navigationState, hasNavigated]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
