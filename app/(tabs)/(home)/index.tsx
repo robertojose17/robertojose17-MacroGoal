@@ -82,6 +82,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [earliestLogDate, setEarliestLogDate] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadEarliestLogDate = useCallback(async () => {
     try {
@@ -107,15 +108,27 @@ export default function HomeScreen() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      setError(null);
+      
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('[Home] Error getting user:', userError);
+        setError('Failed to authenticate. Please try logging in again.');
+        setLoading(false);
+        return;
+      }
+      
       if (!user) {
         console.log('[Home] No user found');
+        setError('No user session found. Please log in.');
         setLoading(false);
         return;
       }
 
       console.log('[Home] Loading data for user:', user.id);
 
+      // Load goal data
       const { data: goalData, error: goalError } = await supabase
         .from('goals')
         .select('*')
@@ -125,6 +138,14 @@ export default function HomeScreen() {
 
       if (goalError) {
         console.error('[Home] Error loading goal:', goalError);
+        // Use defaults if goal loading fails
+        setGoal({
+          daily_calories: 2000,
+          protein_g: 150,
+          carbs_g: 200,
+          fats_g: 65,
+          fiber_g: 30,
+        });
       } else if (goalData) {
         console.log('[Home] Goal loaded:', goalData);
         setGoal(goalData);
@@ -139,6 +160,7 @@ export default function HomeScreen() {
         });
       }
 
+      // Load meals data
       const dateString = formatDateForStorage(selectedDate);
       console.log('[Home] Loading meals for date:', dateString);
       
@@ -173,6 +195,7 @@ export default function HomeScreen() {
 
       if (mealsError) {
         console.error('[Home] Error loading meals:', mealsError);
+        setError('Failed to load meals. Please try refreshing.');
       } else {
         console.log('[Home] Meals loaded for', dateString, ':', mealsData?.length || 0, 'meals');
         
@@ -235,8 +258,9 @@ export default function HomeScreen() {
         setTotalCalories(totalCals);
         setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Home] Error in loadData:', error);
+      setError(error?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -396,6 +420,30 @@ export default function HomeScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading...
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={48}
+            color={colors.error}
+          />
+          <Text style={[styles.errorText, { color: isDark ? colors.textDark : colors.text }]}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            onPress={loadData}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -646,6 +694,28 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  errorText: {
+    ...typography.body,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  retryButton: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.md,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
   },
   scrollContent: {
     paddingTop: Platform.OS === 'android' ? spacing.lg : 0,

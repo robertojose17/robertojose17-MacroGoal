@@ -1,17 +1,25 @@
 
 import { View, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase/client';
 
 export default function Index() {
   const hasNavigated = useRef(false);
   const isMounted = useRef(false);
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
     isMounted.current = true;
     
+    return () => {
+      console.log('[Index] Component unmounting, cleaning up...');
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     // Prevent multiple navigation attempts
     if (hasNavigated.current) {
       console.log('[Index] Already navigated, skipping');
@@ -23,7 +31,7 @@ export default function Index() {
       
       try {
         // Wait for component to be fully mounted and navigation context to be ready
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         if (!isMounted.current) {
           console.log('[Index] Component unmounted during delay, aborting');
@@ -44,13 +52,13 @@ export default function Index() {
           console.log('[Index] 🔄 Navigating to welcome screen...');
           hasNavigated.current = true;
           
-          // Use requestAnimationFrame for smoother navigation
-          requestAnimationFrame(() => {
-            if (isMounted.current && hasNavigated.current) {
-              console.log('[Index] ✅ Executing navigation to /auth/welcome');
-              router.replace('/auth/welcome');
-            }
-          });
+          // Wait a bit before navigation
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (isMounted.current && hasNavigated.current) {
+            console.log('[Index] ✅ Executing navigation to /auth/welcome');
+            router.replace('/auth/welcome');
+          }
           return;
         }
 
@@ -75,12 +83,12 @@ export default function Index() {
           console.log('[Index] 🔄 Navigating to onboarding...');
           hasNavigated.current = true;
           
-          requestAnimationFrame(() => {
-            if (isMounted.current && hasNavigated.current) {
-              console.log('[Index] ✅ Executing navigation to /onboarding/complete');
-              router.replace('/onboarding/complete');
-            }
-          });
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (isMounted.current && hasNavigated.current) {
+            console.log('[Index] ✅ Executing navigation to /onboarding/complete');
+            router.replace('/onboarding/complete');
+          }
           return;
         }
 
@@ -89,12 +97,12 @@ export default function Index() {
           console.log('[Index] 🔄 Navigating to onboarding...');
           hasNavigated.current = true;
           
-          requestAnimationFrame(() => {
-            if (isMounted.current && hasNavigated.current) {
-              console.log('[Index] ✅ Executing navigation to /onboarding/complete');
-              router.replace('/onboarding/complete');
-            }
-          });
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (isMounted.current && hasNavigated.current) {
+            console.log('[Index] ✅ Executing navigation to /onboarding/complete');
+            router.replace('/onboarding/complete');
+          }
           return;
         }
 
@@ -103,23 +111,23 @@ export default function Index() {
           console.log('[Index] 🔄 Navigating to home...');
           hasNavigated.current = true;
           
-          requestAnimationFrame(() => {
-            if (isMounted.current && hasNavigated.current) {
-              console.log('[Index] ✅ Executing navigation to /(tabs)/(home)/');
-              router.replace('/(tabs)/(home)/');
-            }
-          });
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (isMounted.current && hasNavigated.current) {
+            console.log('[Index] ✅ Executing navigation to /(tabs)/(home)/');
+            router.replace('/(tabs)/(home)/');
+          }
         } else {
           console.log('[Index] ⚠️ Onboarding not complete');
           console.log('[Index] 🔄 Navigating to onboarding...');
           hasNavigated.current = true;
           
-          requestAnimationFrame(() => {
-            if (isMounted.current && hasNavigated.current) {
-              console.log('[Index] ✅ Executing navigation to /onboarding/complete');
-              router.replace('/onboarding/complete');
-            }
-          });
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (isMounted.current && hasNavigated.current) {
+            console.log('[Index] ✅ Executing navigation to /onboarding/complete');
+            router.replace('/onboarding/complete');
+          }
         }
         
         console.log('[Index] ========== AUTH CHECK COMPLETE ==========');
@@ -128,12 +136,17 @@ export default function Index() {
         // On error, go to welcome screen
         if (isMounted.current) {
           hasNavigated.current = true;
-          requestAnimationFrame(() => {
-            if (isMounted.current && hasNavigated.current) {
-              console.log('[Index] ✅ Executing fallback navigation to /auth/welcome');
-              router.replace('/auth/welcome');
-            }
-          });
+          
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          if (isMounted.current && hasNavigated.current) {
+            console.log('[Index] ✅ Executing fallback navigation to /auth/welcome');
+            router.replace('/auth/welcome');
+          }
+        }
+      } finally {
+        if (isMounted.current) {
+          setIsChecking(false);
         }
       }
     };
@@ -143,11 +156,9 @@ export default function Index() {
       if (isMounted.current) {
         checkAuthAndNavigate();
       }
-    }, 200);
+    }, 500);
 
     return () => {
-      console.log('[Index] Component unmounting, cleaning up...');
-      isMounted.current = false;
       clearTimeout(timer);
     };
   }, []); // Empty dependency array - only run once on mount

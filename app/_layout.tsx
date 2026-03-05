@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -36,6 +36,15 @@ export default function RootLayout() {
   });
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const isMounted = useRef(false);
+  const subscriptionRef = useRef<any>(null);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (loaded) {
@@ -45,8 +54,6 @@ export default function RootLayout() {
 
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
-    
-    let subscription: any = null;
     
     try {
       console.log('[App] Step 1: Initialize food database (non-blocking)');
@@ -64,30 +71,30 @@ export default function RootLayout() {
       const currentSession = data?.session || null;
       console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
-      // CRITICAL: Use requestAnimationFrame to defer state update to next frame
-      requestAnimationFrame(() => {
+      // CRITICAL: Only update state if component is still mounted
+      if (isMounted.current) {
         setSession(currentSession);
-      });
+      }
 
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
       const authListener = supabase.auth.onAuthStateChange((_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
-        // CRITICAL: Use requestAnimationFrame to defer state update to next frame
-        requestAnimationFrame(() => {
+        // CRITICAL: Only update state if component is still mounted
+        if (isMounted.current) {
           setSession(session);
-        });
+        }
       });
       
-      subscription = authListener.data.subscription;
+      subscriptionRef.current = authListener.data.subscription;
 
       console.log('[App] ✅ Initialization complete');
       
-      // CRITICAL: Use requestAnimationFrame to defer state update to next frame
-      requestAnimationFrame(() => {
+      // CRITICAL: Only update state if component is still mounted
+      if (isMounted.current) {
         setIsReady(true);
-      });
+      }
       
       // Hide splash screen with error handling after a delay
       setTimeout(async () => {
@@ -97,14 +104,14 @@ export default function RootLayout() {
         } catch (e) {
           console.error('[App] Error hiding splash:', e);
         }
-      }, 200);
+      }, 300);
     } catch (error) {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
       // CRITICAL: Even on error, app must load
-      requestAnimationFrame(() => {
+      if (isMounted.current) {
         setIsReady(true);
-      });
+      }
       
       setTimeout(async () => {
         try {
@@ -112,16 +119,18 @@ export default function RootLayout() {
         } catch (e) {
           console.error('[App] Error hiding splash:', e);
         }
-      }, 200);
+      }, 300);
     }
-    
-    // Return cleanup function
+  };
+
+  // Cleanup subscription on unmount
+  useEffect(() => {
     return () => {
-      if (subscription) {
-        subscription.unsubscribe();
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
       }
     };
-  };
+  }, []);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
