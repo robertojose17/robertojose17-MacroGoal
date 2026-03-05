@@ -1,14 +1,15 @@
+
 {
   "expo": {
     "name": "Macro Goal",
     "slug": "macro-goal",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+    "icon": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+      "image": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -23,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+        "foregroundImage": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
@@ -33,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+      "favicon": "./assets/images/52551f99-dfb0-48fb-988f-fe07d9e50447.png",
       "bundler": "metro"
     },
     "plugins": [
