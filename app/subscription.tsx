@@ -7,7 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  Modal,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -16,7 +16,6 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
-import * as InAppPurchases from 'expo-in-app-purchases';
 
 interface SubscriptionPlan {
   productId: string;
@@ -34,9 +33,9 @@ export default function SubscriptionScreen() {
 
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [products, setProducts] = useState<any[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
+  const [showComingSoonModal, setShowComingSoonModal] = useState(false);
 
   const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
@@ -68,129 +67,37 @@ export default function SubscriptionScreen() {
     },
   ], []);
 
-  const handlePurchaseSuccess = React.useCallback(async (purchase: any) => {
-    try {
-      console.log('[Subscription] Processing purchase:', purchase);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('[Subscription] No user found');
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ 
-          user_type: 'premium',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-
-      if (updateError) {
-        console.error('[Subscription] Error updating user:', updateError);
-        throw updateError;
-      }
-
-      console.log('[Subscription] User upgraded to premium');
-
-      if (Platform.OS !== 'web') {
-        await InAppPurchases.finishTransactionAsync(purchase, true);
-        console.log('[Subscription] Transaction finished');
-      }
-
-      setPurchasing(false);
-      setIsPremium(true);
-
-      Alert.alert(
-        'Welcome to Premium! 🎉',
-        'You now have access to all premium features.',
-        [
-          {
-            text: 'Get Started',
-            onPress: () => router.back(),
-          },
-        ]
-      );
-
-    } catch (error: any) {
-      console.error('[Subscription] Error processing purchase:', error);
-      Alert.alert('Error', 'Failed to activate premium: ' + error.message);
-      setPurchasing(false);
-    }
-  }, [router]);
-
-  const initializeIAP = React.useCallback(async () => {
-    if (Platform.OS === 'web') {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      console.log('[Subscription] Initializing IAP...');
-      
-      await InAppPurchases.connectAsync();
-      console.log('[Subscription] Connected to store');
-
-      const productIds = subscriptionPlans.map(plan => plan.productId);
-      console.log('[Subscription] Fetching products:', productIds);
-
-      const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
-      
-      if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-        console.log('[Subscription] Products fetched:', results);
-        setProducts(results);
-      } else {
-        console.error('[Subscription] Failed to fetch products. Response code:', responseCode);
-        Alert.alert(
-          'Products Not Available',
-          'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)'
-        );
-      }
-
-      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
-        console.log('[Subscription] Purchase listener triggered:', { responseCode, errorCode });
-        
-        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          results?.forEach((purchase: any) => {
-            console.log('[Subscription] Purchase successful:', purchase);
-            handlePurchaseSuccess(purchase);
-          });
-        } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
-          console.log('[Subscription] User canceled purchase');
-          setPurchasing(false);
-        } else {
-          console.error('[Subscription] Purchase failed:', errorCode);
-          Alert.alert('Purchase Failed', 'Unable to complete purchase. Please try again.');
-          setPurchasing(false);
-        }
-      });
-
-    } catch (error: any) {
-      console.error('[Subscription] IAP initialization error:', error);
-      Alert.alert('Error', 'Failed to initialize in-app purchases: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [handlePurchaseSuccess, subscriptionPlans]);
-
   useEffect(() => {
-    initializeIAP();
+    console.log('[Subscription] Initializing subscription screen (IAP stubbed)');
     checkPremiumStatus();
-  }, [initializeIAP]);
+    setLoading(false);
+  }, []);
 
   const checkPremiumStatus = async () => {
     try {
+      console.log('[Subscription] Checking premium status');
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.log('[Subscription] No user found');
+        return;
+      }
 
-      const { data: userData } = await supabase
+      const { data: userData, error } = await supabase
         .from('users')
         .select('user_type')
         .eq('id', user.id)
         .single();
 
+      if (error) {
+        console.error('[Subscription] Error checking premium status:', error);
+        return;
+      }
+
       if (userData?.user_type === 'premium') {
+        console.log('[Subscription] User is premium');
         setIsPremium(true);
+      } else {
+        console.log('[Subscription] User is not premium');
       }
     } catch (error) {
       console.error('[Subscription] Error checking premium status:', error);
@@ -198,152 +105,20 @@ export default function SubscriptionScreen() {
   };
 
   const handlePurchase = async (productId: string) => {
-    if (Platform.OS === 'web') {
-      Alert.alert(
-        'Not Available on Web',
-        'In-app purchases are only available on iOS and Android. Please use the mobile app to subscribe.'
-      );
-      return;
-    }
-
-    try {
-      console.log('[Subscription] Starting purchase for:', productId);
-      setPurchasing(true);
-      setSelectedPlan(productId);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Error', 'Please log in to purchase a subscription');
-        setPurchasing(false);
-        return;
-      }
-
-      console.log('[Subscription] Setting customer ID:', user.id);
-
-      await InAppPurchases.purchaseItemAsync(productId);
-      console.log('[Subscription] Purchase initiated');
-
-    } catch (error: any) {
-      console.error('[Subscription] Purchase error:', error);
-      
-      if (error.code === 'E_IAP_PRODUCT_NOT_FOUND') {
-        Alert.alert(
-          'Product Not Found',
-          'The subscription product was not found. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with exact IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device'
-        );
-      } else {
-        Alert.alert('Purchase Error', error.message || 'Failed to start purchase');
-      }
-      
-      setPurchasing(false);
-      setSelectedPlan(null);
-    }
+    console.log('[Subscription] Purchase attempted for:', productId);
+    setSelectedPlan(productId);
+    setShowComingSoonModal(true);
   };
 
   const handleRestore = async () => {
-    if (Platform.OS === 'web') {
-      Alert.alert(
-        'Not Available on Web',
-        'Purchase restoration is only available on iOS and Android. Please use the mobile app.'
-      );
-      return;
-    }
-
-    try {
-      console.log('[Subscription] Restoring purchases...');
-      setLoading(true);
-
-      const { results, responseCode } = await InAppPurchases.getPurchaseHistoryAsync();
-
-      if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
-        console.log('[Subscription] Found purchases to restore:', results);
-        
-        const latestPurchase = results[0];
-        await handlePurchaseSuccess(latestPurchase);
-        
-        Alert.alert('Success', 'Your purchases have been restored!');
-      } else {
-        console.log('[Subscription] No purchases to restore');
-        Alert.alert('No Purchases Found', 'You have no previous purchases to restore.');
-      }
-
-    } catch (error: any) {
-      console.error('[Subscription] Restore error:', error);
-      Alert.alert('Restore Failed', error.message || 'Failed to restore purchases');
-    } finally {
-      setLoading(false);
-    }
+    console.log('[Subscription] Restore purchases attempted');
+    setShowComingSoonModal(true);
   };
 
-  const getProductPrice = (productId: string): string => {
-    const product = products.find((p: any) => p.productId === productId);
-    const priceText = product?.price || '';
-    return priceText;
+  const handleCloseModal = () => {
+    setShowComingSoonModal(false);
+    setSelectedPlan(null);
   };
-
-  if (Platform.OS === 'web') {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow-back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Go Premium
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <View style={styles.webMessageContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.primary + '20' }]}>
-            <IconSymbol
-              ios_icon_name="star.fill"
-              android_material_icon_name="star"
-              size={64}
-              color={colors.primary}
-            />
-          </View>
-          <Text style={[styles.webMessageTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Premium Subscriptions
-          </Text>
-          <Text style={[styles.webMessageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            In-app purchases are only available on iOS and Android devices.
-          </Text>
-          <Text style={[styles.webMessageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Please download the mobile app to subscribe to Premium and unlock:
-          </Text>
-          
-          <View style={styles.featuresList}>
-            {subscriptionPlans[0].features.map((feature, index) => (
-              <View key={index} style={styles.featureRow}>
-                <IconSymbol
-                  ios_icon_name="checkmark.circle.fill"
-                  android_material_icon_name="check-circle"
-                  size={20}
-                  color={colors.primary}
-                />
-                <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text }]}>
-                  {feature}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: colors.primary }]}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.buttonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (loading) {
     return (
@@ -460,7 +235,6 @@ export default function SubscriptionScreen() {
         </View>
 
         {subscriptionPlans.map((plan) => {
-          const displayPrice = getProductPrice(plan.productId) || plan.price;
           const isSelected = selectedPlan === plan.productId;
           const isPurchasingThis = purchasing && isSelected;
 
@@ -483,7 +257,7 @@ export default function SubscriptionScreen() {
                 {plan.title}
               </Text>
               <Text style={[styles.planPrice, { color: colors.primary }]}>
-                {displayPrice}
+                {plan.price}
               </Text>
               <Text style={[styles.planDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 {plan.description}
@@ -543,6 +317,45 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showComingSoonModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <View style={[styles.modalIconCircle, { backgroundColor: colors.primary + '20' }]}>
+              <IconSymbol
+                ios_icon_name="star.fill"
+                android_material_icon_name="star"
+                size={48}
+                color={colors.primary}
+              />
+            </View>
+            
+            <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Coming Soon!
+            </Text>
+            
+            <Text style={[styles.modalMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              In-app purchases are currently being set up. Premium subscriptions will be available soon!
+            </Text>
+            
+            <Text style={[styles.modalSubMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              We&apos;re working on integrating RevenueCat for a seamless subscription experience across all platforms.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={handleCloseModal}
+            >
+              <Text style={styles.modalButtonText}>Got It</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -723,27 +536,56 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     fontSize: 16,
   },
-  webMessageContainer: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
+    elevation: 8,
+  },
+  modalIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
-  webMessageTitle: {
-    ...typography.h1,
+  modalTitle: {
+    ...typography.h2,
     textAlign: 'center',
-    marginTop: spacing.md,
+    marginBottom: spacing.md,
   },
-  webMessageText: {
+  modalMessage: {
     ...typography.body,
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: spacing.md,
   },
-  featuresList: {
-    width: '100%',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+  modalSubMessage: {
+    ...typography.caption,
+    textAlign: 'center',
+    lineHeight: 18,
     marginBottom: spacing.xl,
+  },
+  modalButton: {
+    width: '100%',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
