@@ -16,7 +16,16 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
-import * as InAppPurchases from 'expo-in-app-purchases';
+
+// Dynamic import for IAP - only load on native platforms
+let InAppPurchases: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    InAppPurchases = require('expo-in-app-purchases');
+  } catch (error) {
+    console.warn('[Subscription] expo-in-app-purchases not available:', error);
+  }
+}
 
 interface SubscriptionPlan {
   productId: string;
@@ -93,7 +102,7 @@ export default function SubscriptionScreen() {
 
       console.log('[Subscription] User upgraded to premium');
 
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== 'web' && InAppPurchases) {
         await InAppPurchases.finishTransactionAsync(purchase, true);
         console.log('[Subscription] Transaction finished');
       }
@@ -120,7 +129,7 @@ export default function SubscriptionScreen() {
   }, [router]);
 
   const initializeIAP = React.useCallback(async () => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || !InAppPurchases) {
       setLoading(false);
       return;
     }
@@ -198,7 +207,7 @@ export default function SubscriptionScreen() {
   };
 
   const handlePurchase = async (productId: string) => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || !InAppPurchases) {
       Alert.alert(
         'Not Available on Web',
         'In-app purchases are only available on iOS and Android. Please use the mobile app to subscribe.'
@@ -241,7 +250,7 @@ export default function SubscriptionScreen() {
   };
 
   const handleRestore = async () => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || !InAppPurchases) {
       Alert.alert(
         'Not Available on Web',
         'Purchase restoration is only available on iOS and Android. Please use the mobile app.'
