@@ -1,14 +1,13 @@
 
 import { View, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase/client';
 
 export default function Index() {
   const hasNavigated = useRef(false);
   const isMounted = useRef(false);
-  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
     isMounted.current = true;
@@ -23,8 +22,8 @@ export default function Index() {
       console.log('[Index] ========== STARTING AUTH CHECK ==========');
       
       try {
-        // Wait for component to be fully mounted
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Wait for component to be fully mounted and navigation context to be ready
+        await new Promise(resolve => setTimeout(resolve, 800));
         
         if (!isMounted.current) {
           console.log('[Index] Component unmounted during delay, aborting');
@@ -42,17 +41,16 @@ export default function Index() {
         
         if (!session) {
           console.log('[Index] ❌ No session found');
-          console.log('[Index] 🔄 Navigating to welcome screen in 300ms...');
+          console.log('[Index] 🔄 Navigating to welcome screen...');
           hasNavigated.current = true;
           
-          setTimeout(() => {
-            if (isMounted.current && !hasNavigated.current) {
-              console.log('[Index] ⚠️ Navigation was cancelled');
-              return;
+          // Use requestAnimationFrame for smoother navigation
+          requestAnimationFrame(() => {
+            if (isMounted.current && hasNavigated.current) {
+              console.log('[Index] ✅ Executing navigation to /auth/welcome');
+              router.replace('/auth/welcome');
             }
-            console.log('[Index] ✅ Executing navigation to /auth/welcome');
-            router.replace('/auth/welcome');
-          }, 300);
+          });
           return;
         }
 
@@ -74,54 +72,54 @@ export default function Index() {
 
         if (error) {
           console.error('[Index] ❌ Error fetching user data:', error);
-          console.log('[Index] 🔄 Navigating to onboarding in 300ms...');
+          console.log('[Index] 🔄 Navigating to onboarding...');
           hasNavigated.current = true;
           
-          setTimeout(() => {
+          requestAnimationFrame(() => {
             if (isMounted.current && hasNavigated.current) {
               console.log('[Index] ✅ Executing navigation to /onboarding/complete');
               router.replace('/onboarding/complete');
             }
-          }, 300);
+          });
           return;
         }
 
         if (!userData) {
           console.log('[Index] ⚠️ User not found in database');
-          console.log('[Index] 🔄 Navigating to onboarding in 300ms...');
+          console.log('[Index] 🔄 Navigating to onboarding...');
           hasNavigated.current = true;
           
-          setTimeout(() => {
+          requestAnimationFrame(() => {
             if (isMounted.current && hasNavigated.current) {
               console.log('[Index] ✅ Executing navigation to /onboarding/complete');
               router.replace('/onboarding/complete');
             }
-          }, 300);
+          });
           return;
         }
 
         if (userData.onboarding_completed) {
           console.log('[Index] ✅ Onboarding complete');
-          console.log('[Index] 🔄 Navigating to home in 300ms...');
+          console.log('[Index] 🔄 Navigating to home...');
           hasNavigated.current = true;
           
-          setTimeout(() => {
+          requestAnimationFrame(() => {
             if (isMounted.current && hasNavigated.current) {
               console.log('[Index] ✅ Executing navigation to /(tabs)/(home)/');
               router.replace('/(tabs)/(home)/');
             }
-          }, 300);
+          });
         } else {
           console.log('[Index] ⚠️ Onboarding not complete');
-          console.log('[Index] 🔄 Navigating to onboarding in 300ms...');
+          console.log('[Index] 🔄 Navigating to onboarding...');
           hasNavigated.current = true;
           
-          setTimeout(() => {
+          requestAnimationFrame(() => {
             if (isMounted.current && hasNavigated.current) {
               console.log('[Index] ✅ Executing navigation to /onboarding/complete');
               router.replace('/onboarding/complete');
             }
-          }, 300);
+          });
         }
         
         console.log('[Index] ========== AUTH CHECK COMPLETE ==========');
@@ -130,16 +128,12 @@ export default function Index() {
         // On error, go to welcome screen
         if (isMounted.current) {
           hasNavigated.current = true;
-          setTimeout(() => {
+          requestAnimationFrame(() => {
             if (isMounted.current && hasNavigated.current) {
               console.log('[Index] ✅ Executing fallback navigation to /auth/welcome');
               router.replace('/auth/welcome');
             }
-          }, 300);
-        }
-      } finally {
-        if (isMounted.current) {
-          setIsChecking(false);
+          });
         }
       }
     };
@@ -149,7 +143,7 @@ export default function Index() {
       if (isMounted.current) {
         checkAuthAndNavigate();
       }
-    }, 100);
+    }, 200);
 
     return () => {
       console.log('[Index] Component unmounting, cleaning up...');

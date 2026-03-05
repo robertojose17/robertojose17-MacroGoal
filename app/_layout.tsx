@@ -64,30 +64,30 @@ export default function RootLayout() {
       const currentSession = data?.session || null;
       console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
-      // CRITICAL: Use setTimeout to defer state update
-      setTimeout(() => {
+      // CRITICAL: Use requestAnimationFrame to defer state update to next frame
+      requestAnimationFrame(() => {
         setSession(currentSession);
-      }, 0);
+      });
 
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
       const authListener = supabase.auth.onAuthStateChange((_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
-        // CRITICAL: Use setTimeout to defer state update
-        setTimeout(() => {
+        // CRITICAL: Use requestAnimationFrame to defer state update to next frame
+        requestAnimationFrame(() => {
           setSession(session);
-        }, 0);
+        });
       });
       
       subscription = authListener.data.subscription;
 
       console.log('[App] ✅ Initialization complete');
       
-      // CRITICAL: Use setTimeout to defer state update
-      setTimeout(() => {
+      // CRITICAL: Use requestAnimationFrame to defer state update to next frame
+      requestAnimationFrame(() => {
         setIsReady(true);
-      }, 0);
+      });
       
       // Hide splash screen with error handling after a delay
       setTimeout(async () => {
@@ -97,14 +97,14 @@ export default function RootLayout() {
         } catch (e) {
           console.error('[App] Error hiding splash:', e);
         }
-      }, 100);
+      }, 200);
     } catch (error) {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
       // CRITICAL: Even on error, app must load
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         setIsReady(true);
-      }, 0);
+      });
       
       setTimeout(async () => {
         try {
@@ -112,7 +112,7 @@ export default function RootLayout() {
         } catch (e) {
           console.error('[App] Error hiding splash:', e);
         }
-      }, 100);
+      }, 200);
     }
     
     // Return cleanup function
