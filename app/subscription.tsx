@@ -81,13 +81,53 @@ export default function SubscriptionScreen() {
   const handlePurchaseSuccess = React.useCallback(async (purchase: any) => {
     try {
       console.log('[Subscription] Processing purchase:', purchase);
+      console.log('[Subscription] Purchase details:', {
+        productId: purchase.productId,
+        transactionId: purchase.transactionId,
+        acknowledged: purchase.acknowledged,
+      });
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('[Subscription] No user found');
+        setPurchasing(false);
         return;
       }
 
+      console.log('[Subscription] User ID:', user.id);
+
+      // CRITICAL: Verify receipt with Apple/Google servers via Supabase Edge Function
+      console.log('[Subscription] Verifying receipt with Apple/Google...');
+      
+      const verifyPayload = {
+        receipt: purchase.transactionReceipt || '',
+        productId: purchase.productId,
+        transactionId: purchase.transactionId,
+        userId: user.id,
+      };
+
+      console.log('[Subscription] Sending verification request...');
+      
+      const { data: verifyData, error: verifyError } = await supabase.functions.invoke(
+        'verify-apple-receipt',
+        {
+          body: verifyPayload,
+        }
+      );
+
+      if (verifyError) {
+        console.error('[Subscription] Receipt verification failed:', verifyError);
+        Alert.alert(
+          'Verification Failed',
+          'Could not verify your purchase with Apple/Google. Please try again or contact support if the issue persists.'
+        );
+        setPurchasing(false);
+        return;
+      }
+
+      console.log('[Subscription] Receipt verified successfully:', verifyData);
+
+      // Update user type to premium
       const { error: updateError } = await supabase
         .from('users')
         .update({ 
@@ -103,6 +143,7 @@ export default function SubscriptionScreen() {
 
       console.log('[Subscription] User upgraded to premium');
 
+      // Finish the transaction
       if (Platform.OS !== 'web' && InAppPurchases) {
         await InAppPurchases.finishTransactionAsync(purchase, true);
         console.log('[Subscription] Transaction finished');
