@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import Purchases, { CustomerInfo } from 'react-native-purchases';
+import { Platform } from 'react-native';
 
 interface UsePremiumReturn {
   isPremium: boolean;
@@ -14,8 +14,7 @@ interface UsePremiumReturn {
 /**
  * Hook to check if the current user has an active premium subscription
  * 
- * This hook checks both RevenueCat and Supabase to determine premium status.
- * It automatically syncs the status between both systems.
+ * This hook checks Supabase to determine premium status.
  * 
  * @returns {UsePremiumReturn} Premium status, loading state, and refresh function
  * 
@@ -58,46 +57,22 @@ export function usePremium(): UsePremiumReturn {
         return;
       }
 
-      // First check RevenueCat (source of truth for subscriptions)
-      try {
-        const customerInfo: CustomerInfo = await Purchases.getCustomerInfo();
-        const hasActiveEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
-        
-        console.log('[usePremium] RevenueCat status:', {
-          hasActiveEntitlement,
-          activeEntitlements: Object.keys(customerInfo.entitlements.active),
-        });
+      // Check Supabase for premium status
+      const { data: userData, error: fetchError } = await supabase
+        .from('users')
+        .select('user_type')
+        .eq('id', user.id)
+        .single();
 
-        setIsPremium(hasActiveEntitlement);
-
-        // Sync to Supabase if status differs
-        const { data: userData } = await supabase
-          .from('users')
-          .select('user_type')
-          .eq('id', user.id)
-          .single();
-
-        const supabaseIsPremium = userData?.user_type === 'premium';
-        
-        if (supabaseIsPremium !== hasActiveEntitlement) {
-          console.log('[usePremium] Syncing status to Supabase');
-          await supabase
-            .from('users')
-            .update({ user_type: hasActiveEntitlement ? 'premium' : 'free' })
-            .eq('id', user.id);
-        }
-      } catch (rcError: any) {
-        console.error('[usePremium] RevenueCat error, falling back to Supabase:', rcError);
-        
-        // Fallback to Supabase if RevenueCat fails
-        const { data: userData } = await supabase
-          .from('users')
-          .select('user_type')
-          .eq('id', user.id)
-          .single();
-
-        setIsPremium(userData?.user_type === 'premium');
+      if (fetchError) {
+        console.error('[usePremium] Error fetching user data:', fetchError);
+        throw fetchError;
       }
+
+      const userIsPremium = userData?.user_type === 'premium';
+      console.log('[usePremium] User premium status:', userIsPremium);
+      setIsPremium(userIsPremium);
+
     } catch (err: any) {
       console.error('[usePremium] Error checking premium status:', err);
       setError(err.message || 'Failed to check premium status');

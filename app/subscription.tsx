@@ -22,6 +22,7 @@ let InAppPurchases: any = null;
 if (Platform.OS !== 'web') {
   try {
     InAppPurchases = require('expo-in-app-purchases');
+    console.log('[Subscription] expo-in-app-purchases loaded successfully');
   } catch (error) {
     console.warn('[Subscription] expo-in-app-purchases not available:', error);
   }
@@ -129,60 +130,91 @@ export default function SubscriptionScreen() {
   }, [router]);
 
   const initializeIAP = React.useCallback(async () => {
-    if (Platform.OS === 'web' || !InAppPurchases) {
+    console.log('[Subscription] initializeIAP called, Platform:', Platform.OS);
+    
+    if (Platform.OS === 'web') {
+      console.log('[Subscription] Web platform detected, skipping IAP initialization');
       setLoading(false);
       return;
     }
 
-    try {
-      console.log('[Subscription] Initializing IAP...');
-      
-      await InAppPurchases.connectAsync();
-      console.log('[Subscription] Connected to store');
+    if (!InAppPurchases) {
+      console.error('[Subscription] InAppPurchases module not available');
+      setLoading(false);
+      Alert.alert(
+        'In-App Purchases Not Available',
+        'The in-app purchases module could not be loaded. Please ensure you are running on a physical device.'
+      );
+      return;
+    }
 
+    try {
+      console.log('[Subscription] Starting IAP initialization...');
+      
+      // Step 1: Connect to store
+      console.log('[Subscription] Connecting to store...');
+      await InAppPurchases.connectAsync();
+      console.log('[Subscription] ✅ Connected to store successfully');
+
+      // Step 2: Fetch products
       const productIds = subscriptionPlans.map(plan => plan.productId);
-      console.log('[Subscription] Fetching products:', productIds);
+      console.log('[Subscription] Fetching products with IDs:', productIds);
 
       const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
+      console.log('[Subscription] getProductsAsync response:', { responseCode, resultsCount: results?.length });
       
       if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-        console.log('[Subscription] Products fetched:', results);
-        setProducts(results);
+        console.log('[Subscription] ✅ Products fetched successfully:', results);
+        setProducts(results || []);
+        
+        if (!results || results.length === 0) {
+          console.warn('[Subscription] ⚠️ No products returned from store');
+          Alert.alert(
+            'Products Not Available',
+            'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect with IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)\n\n4. Wait 24 hours after creating products for them to sync'
+          );
+        }
       } else {
-        console.error('[Subscription] Failed to fetch products. Response code:', responseCode);
+        console.error('[Subscription] ❌ Failed to fetch products. Response code:', responseCode);
         Alert.alert(
           'Products Not Available',
           'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)'
         );
       }
 
+      // Step 3: Set up purchase listener
+      console.log('[Subscription] Setting up purchase listener...');
       InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
-        console.log('[Subscription] Purchase listener triggered:', { responseCode, errorCode });
+        console.log('[Subscription] Purchase listener triggered:', { responseCode, errorCode, resultsCount: results?.length });
         
         if (responseCode === InAppPurchases.IAPResponseCode.OK) {
           results?.forEach((purchase: any) => {
-            console.log('[Subscription] Purchase successful:', purchase);
+            console.log('[Subscription] ✅ Purchase successful:', purchase);
             handlePurchaseSuccess(purchase);
           });
         } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
           console.log('[Subscription] User canceled purchase');
           setPurchasing(false);
         } else {
-          console.error('[Subscription] Purchase failed:', errorCode);
+          console.error('[Subscription] ❌ Purchase failed:', errorCode);
           Alert.alert('Purchase Failed', 'Unable to complete purchase. Please try again.');
           setPurchasing(false);
         }
       });
+      console.log('[Subscription] ✅ Purchase listener set up successfully');
 
     } catch (error: any) {
-      console.error('[Subscription] IAP initialization error:', error);
+      console.error('[Subscription] ❌ IAP initialization error:', error);
       Alert.alert('Error', 'Failed to initialize in-app purchases: ' + error.message);
     } finally {
+      // CRITICAL: Always set loading to false in finally block
+      console.log('[Subscription] ✅ Setting loading to false (finally block)');
       setLoading(false);
     }
   }, [handlePurchaseSuccess, subscriptionPlans]);
 
   useEffect(() => {
+    console.log('[Subscription] Component mounted, initializing...');
     initializeIAP();
     checkPremiumStatus();
   }, [initializeIAP]);
@@ -190,7 +222,9 @@ export default function SubscriptionScreen() {
   const checkPremiumStatus = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        return;
+      }
 
       const { data: userData } = await supabase
         .from('users')
@@ -227,10 +261,11 @@ export default function SubscriptionScreen() {
         return;
       }
 
-      console.log('[Subscription] Setting customer ID:', user.id);
+      console.log('[Subscription] User ID:', user.id);
+      console.log('[Subscription] Calling purchaseItemAsync...');
 
       await InAppPurchases.purchaseItemAsync(productId);
-      console.log('[Subscription] Purchase initiated');
+      console.log('[Subscription] Purchase initiated successfully');
 
     } catch (error: any) {
       console.error('[Subscription] Purchase error:', error);
@@ -361,6 +396,9 @@ export default function SubscriptionScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading subscription options...
+          </Text>
+          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            If this takes more than 10 seconds, please check your network connection
           </Text>
         </View>
       </SafeAreaView>
@@ -565,9 +603,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: spacing.md,
+    paddingHorizontal: spacing.xl,
   },
   loadingText: {
     ...typography.body,
+    textAlign: 'center',
+  },
+  loadingSubtext: {
+    ...typography.caption,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
   header: {
     flexDirection: 'row',
