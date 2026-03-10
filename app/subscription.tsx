@@ -93,19 +93,18 @@ export default function SubscriptionScreen() {
 
       console.log('[RevenueCat] User ID:', user.id);
 
-      // Configure RevenueCat SDK
-      // TODO: Replace with your actual RevenueCat API keys
+      // Configure RevenueCat SDK with your actual API keys
       const apiKey = Platform.select({
-        ios: 'YOUR_IOS_API_KEY_HERE', // Replace with your iOS API key from RevenueCat dashboard
-        android: 'YOUR_ANDROID_API_KEY_HERE', // Replace with your Android API key from RevenueCat dashboard
+        ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
+        android: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE', // Use the same SDK key for both platforms
       });
 
-      if (!apiKey || apiKey.includes('YOUR_')) {
+      if (!apiKey) {
         console.error('[RevenueCat] ❌ API key not configured');
         setLoading(false);
         Alert.alert(
           'Configuration Required',
-          'RevenueCat API keys need to be configured. Please check the subscription.tsx file and add your API keys from the RevenueCat dashboard.'
+          'RevenueCat API keys need to be configured.'
         );
         return;
       }
@@ -132,7 +131,7 @@ export default function SubscriptionScreen() {
         console.warn('[RevenueCat] ⚠️ No packages available');
         Alert.alert(
           'No Subscriptions Available',
-          'No subscription packages are currently available. Please ensure:\n\n1. You have created products in App Store Connect/Google Play Console\n2. You have configured offerings in RevenueCat dashboard\n3. Products are linked to RevenueCat offerings\n4. You are testing on a real device'
+          'No subscription packages are currently available. Please ensure:\n\n1. You have created products in App Store Connect/Google Play Console\n2. You have configured offerings in RevenueCat dashboard\n3. Products are linked to RevenueCat offerings\n4. You are testing on a real device (not simulator for production testing)'
         );
       }
 
