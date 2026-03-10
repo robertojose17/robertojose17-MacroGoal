@@ -84,6 +84,7 @@ serve(async (req) => {
     const payload: RevenueCatEvent = await req.json();
     console.log('[RevenueCat Webhook] Event type:', payload.event.type);
     console.log('[RevenueCat Webhook] App user ID:', payload.event.app_user_id);
+    console.log('[RevenueCat Webhook] Environment:', payload.event.environment);
     console.log('[RevenueCat Webhook] Full payload:', JSON.stringify(payload, null, 2));
 
     // Initialize Supabase client with service role key (bypasses RLS)
@@ -93,6 +94,7 @@ serve(async (req) => {
 
     const event = payload.event;
     const userId = event.app_user_id;
+    const isTestEnvironment = event.environment === 'SANDBOX' || event.environment === 'sandbox';
 
     // CRITICAL: Verify user exists in auth.users before proceeding
     console.log('[RevenueCat Webhook] 🔍 Verifying user exists:', userId);
@@ -117,14 +119,37 @@ serve(async (req) => {
 
       if (eventError) {
         console.error('[RevenueCat Webhook] ❌ Error storing orphaned event:', eventError);
+      } else {
+        console.log('[RevenueCat Webhook] ✅ Orphaned event logged for debugging');
       }
 
+      // For test/sandbox environments, return 200 to acknowledge receipt
+      // This prevents RevenueCat from marking the webhook as failing during testing
+      if (isTestEnvironment) {
+        console.log('[RevenueCat Webhook] ⚠️ Test environment - accepting event despite missing user');
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            warning: 'User not found in database (test event accepted)',
+            user_id: userId,
+            environment: event.environment,
+            message: 'Test event logged. For production, use a real user ID from your Supabase auth.users table. You can get your real user ID from the "Test RevenueCat" screen in the app Profile tab.',
+          }),
+          { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // For production, return 400 error
       return new Response(
         JSON.stringify({ 
           success: false, 
           error: 'User not found in database',
           user_id: userId,
-          message: 'The app_user_id from RevenueCat does not match any user in Supabase auth.users. Make sure you are setting the correct user ID when configuring RevenueCat in your app.'
+          environment: event.environment,
+          message: 'The app_user_id from RevenueCat does not match any user in Supabase auth.users. Make sure you are setting the correct user ID when configuring RevenueCat in your app. You can get your real user ID from the "Test RevenueCat" screen in the app Profile tab.',
         }),
         { 
           status: 400, 
@@ -282,6 +307,7 @@ serve(async (req) => {
         user_email: authUser.user.email,
         amount_usd: amountUSD.toFixed(2),
         subscription_status: subscriptionUpdate.status,
+        environment: event.environment,
       }),
       { 
         status: 200, 
