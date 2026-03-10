@@ -794,6 +794,29 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Developer Tools */}
+        {__DEV__ && (
+          <View style={[styles.goalsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Developer Tools
+            </Text>
+            <TouchableOpacity
+              style={[styles.devButton, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}
+              onPress={() => router.push('/test-revenuecat')}
+            >
+              <IconSymbol
+                ios_icon_name="wrench.and.screwdriver"
+                android_material_icon_name="build"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={[styles.devButtonText, { color: colors.primary }]}>
+                Test RevenueCat Webhook
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
@@ -1444,5 +1467,18 @@ const styles = StyleSheet.create({
   datePickerButton: {
     ...typography.bodyBold,
     fontSize: 16,
+  },
+  devButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+  },
+  devButtonText: {
+    ...typography.bodyBold,
+    fontSize: 14,
   },
 });
