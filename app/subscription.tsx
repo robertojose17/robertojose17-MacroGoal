@@ -22,8 +22,8 @@ import Purchases, {
   LOG_LEVEL 
 } from 'react-native-purchases';
 
-// RevenueCat Configuration
-const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro'; // Must match RevenueCat dashboard
+// RevenueCat Configuration - Must match app/_layout.tsx
+const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
 const PRODUCT_IDS = {
   MONTHLY: 'Monthly_MG',
   YEARLY: 'Yearly_MG',
@@ -49,6 +49,7 @@ export default function SubscriptionScreen() {
   const [isPremium, setIsPremium] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
@@ -78,136 +79,55 @@ export default function SubscriptionScreen() {
     },
   ], []);
 
-  const initializeRevenueCat = React.useCallback(async () => {
-    console.log('[RevenueCat] ========== SUBSCRIPTION SCREEN INITIALIZATION START ==========');
-    console.log('[RevenueCat] Platform:', Platform.OS);
-    console.log('[RevenueCat] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
-    console.log('[RevenueCat] Product IDs:', PRODUCT_IDS);
+  const fetchOfferings = React.useCallback(async () => {
+    console.log('[Subscription] ========== FETCHING OFFERINGS ==========');
     
     if (Platform.OS === 'web') {
-      console.log('[RevenueCat] Web platform detected, skipping initialization');
+      console.log('[Subscription] Web platform detected, skipping');
       setLoading(false);
       return;
     }
 
     try {
-      console.log('[RevenueCat] Step 1: Get current user from Supabase');
+      console.log('[Subscription] Step 1: Get current user');
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        console.error('[RevenueCat] ❌ No user found');
+        console.error('[Subscription] ❌ No user found');
         setErrorMessage('Please log in to access subscriptions');
         setLoading(false);
         return;
       }
 
-      console.log('[RevenueCat] ✅ User ID:', user.id);
+      console.log('[Subscription] ✅ User ID:', user.id);
 
-      // CRITICAL FIX: Always try to get customer info first
-      // If it fails, then configure/login
-      let isConfigured = false;
-      let needsUserSwitch = false;
+      // CRITICAL FIX: Don't re-initialize SDK here, just fetch offerings
+      // The SDK is already initialized in app/_layout.tsx
+      console.log('[Subscription] Step 2: Fetching offerings from already-configured SDK...');
       
-      try {
-        console.log('[RevenueCat] Step 2: Checking if SDK is configured and user is correct...');
-        const info = await Purchases.getCustomerInfo();
-        isConfigured = true;
-        
-        // Check if the current RevenueCat user matches our Supabase user
-        const rcUserId = info.originalAppUserId;
-        console.log('[RevenueCat] Current RC User ID:', rcUserId);
-        console.log('[RevenueCat] Expected User ID:', user.id);
-        
-        if (rcUserId !== user.id) {
-          console.log('[RevenueCat] ⚠️ User mismatch! Need to switch users.');
-          needsUserSwitch = true;
-        } else {
-          console.log('[RevenueCat] ✅ SDK configured with correct user');
-          console.log('[RevenueCat] Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
-        }
-      } catch (error: any) {
-        console.log('[RevenueCat] SDK not configured yet, will configure now');
-        console.log('[RevenueCat] Error:', error.message);
-        isConfigured = false;
-      }
-
-      // Configure SDK if not configured OR if user needs to be switched
-      if (!isConfigured || needsUserSwitch) {
-        const apiKey = Platform.select({
-          ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
-          android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
-        });
-
-        if (!apiKey) {
-          console.error('[RevenueCat] ❌ API key not configured for platform:', Platform.OS);
-          setErrorMessage(`RevenueCat API key not configured for ${Platform.OS}`);
-          setLoading(false);
-          return;
-        }
-
-        console.log('[RevenueCat] Step 3: Configure/Switch SDK');
-        console.log('[RevenueCat] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
-        console.log('[RevenueCat] App User ID:', user.id);
-
-        // Enable debug logs
-        Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-        console.log('[RevenueCat] ✅ Debug logging enabled');
-
-        if (needsUserSwitch) {
-          // Use logIn to switch users
-          console.log('[RevenueCat] Switching to user:', user.id);
-          try {
-            const { customerInfo } = await Purchases.logIn(user.id);
-            console.log('[RevenueCat] ✅ User switched successfully');
-            console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', ') || 'none');
-          } catch (loginError: any) {
-            console.error('[RevenueCat] ⚠️ logIn failed, trying configure:', loginError);
-            // Fallback to configure
-            await Purchases.configure({ 
-              apiKey, 
-              appUserID: user.id 
-            });
-            console.log('[RevenueCat] ✅ SDK configured via fallback');
-          }
-        } else {
-          // First time configuration
-          await Purchases.configure({ 
-            apiKey, 
-            appUserID: user.id 
-          });
-          console.log('[RevenueCat] ✅ SDK configured successfully');
-        }
-      }
-
-      // Fetch offerings
-      console.log('[RevenueCat] Step 4: Fetching offerings...');
       const offerings = await Purchases.getOfferings();
       
-      console.log('[RevenueCat] Offerings response:');
-      console.log('[RevenueCat] - All offerings:', Object.keys(offerings.all));
-      console.log('[RevenueCat] - Current offering ID:', offerings.current?.identifier || 'none');
+      console.log('[Subscription] Offerings response:');
+      console.log('[Subscription] - All offerings:', Object.keys(offerings.all));
+      console.log('[Subscription] - Current offering ID:', offerings.current?.identifier || 'none');
       
       if (offerings.current) {
-        console.log('[RevenueCat] - Available packages:', offerings.current.availablePackages.length);
+        console.log('[Subscription] - Available packages:', offerings.current.availablePackages.length);
         offerings.current.availablePackages.forEach((pkg, index) => {
-          console.log(`[RevenueCat]   Package ${index + 1}:`);
-          console.log(`[RevenueCat]     - Identifier: ${pkg.identifier}`);
-          console.log(`[RevenueCat]     - Product ID: ${pkg.product.identifier}`);
-          console.log(`[RevenueCat]     - Price: ${pkg.product.priceString}`);
-          console.log(`[RevenueCat]     - Title: ${pkg.product.title}`);
-          console.log(`[RevenueCat]     - Description: ${pkg.product.description}`);
+          console.log(`[Subscription]   Package ${index + 1}:`);
+          console.log(`[Subscription]     - Identifier: ${pkg.identifier}`);
+          console.log(`[Subscription]     - Product ID: ${pkg.product.identifier}`);
+          console.log(`[Subscription]     - Price: ${pkg.product.priceString}`);
         });
-      } else {
-        console.warn('[RevenueCat] ⚠️ No current offering found');
-        console.log('[RevenueCat] Available offerings:', Object.keys(offerings.all).join(', '));
       }
 
       if (offerings.current && offerings.current.availablePackages.length > 0) {
-        console.log('[RevenueCat] ✅ Packages loaded successfully');
+        console.log('[Subscription] ✅ Packages loaded successfully');
         setPackages(offerings.current.availablePackages);
         setErrorMessage(null);
+        setRetryCount(0); // Reset retry count on success
       } else {
-        console.warn('[RevenueCat] ⚠️ No packages available');
+        console.warn('[Subscription] ⚠️ No packages available');
         
         const errorMsg = `No subscription packages found.\n\nTroubleshooting:\n\n1. Products Setup:\n   - Create "${PRODUCT_IDS.MONTHLY}" and "${PRODUCT_IDS.YEARLY}" in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n   - Products must be in "Ready to Submit" or "Approved" status\n\n2. RevenueCat Dashboard:\n   - Add products to RevenueCat\n   - Create an offering (e.g., "default")\n   - Link products to the offering\n   - Set "${ENTITLEMENT_IDENTIFIER}" as the entitlement\n\n3. Testing:\n   - Use a real device (not simulator)\n   - Use a sandbox test account\n   - Wait 15-30 minutes after configuration\n\n4. Current Status:\n   - Platform: ${Platform.OS}\n   - User ID: ${user.id}\n   - Available offerings: ${Object.keys(offerings.all).join(', ') || 'none'}`;
         
@@ -215,21 +135,20 @@ export default function SubscriptionScreen() {
       }
 
       // Get customer info
-      console.log('[RevenueCat] Step 5: Fetching customer info...');
+      console.log('[Subscription] Step 3: Fetching customer info...');
       const info = await Purchases.getCustomerInfo();
-      console.log('[RevenueCat] Customer info received');
-      console.log('[RevenueCat] - Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
-      console.log('[RevenueCat] - All entitlements:', Object.keys(info.entitlements.all).join(', ') || 'none');
+      console.log('[Subscription] Customer info received');
+      console.log('[Subscription] - Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
       
       setCustomerInfo(info);
       
       const hasPremium = typeof info.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
-      console.log(`[RevenueCat] - Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
+      console.log(`[Subscription] - Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
       setIsPremium(hasPremium);
 
       // Sync to Supabase if premium
       if (hasPremium) {
-        console.log('[RevenueCat] Step 6: Syncing premium status to Supabase...');
+        console.log('[Subscription] Step 4: Syncing premium status to Supabase...');
         const { error: updateError } = await supabase
           .from('users')
           .update({ 
@@ -239,33 +158,54 @@ export default function SubscriptionScreen() {
           .eq('id', user.id);
 
         if (updateError) {
-          console.error('[RevenueCat] ❌ Error syncing to Supabase:', updateError);
+          console.error('[Subscription] ❌ Error syncing to Supabase:', updateError);
         } else {
-          console.log('[RevenueCat] ✅ Premium status synced to Supabase');
+          console.log('[Subscription] ✅ Premium status synced to Supabase');
         }
       }
 
-      console.log('[RevenueCat] ========== SUBSCRIPTION SCREEN INITIALIZATION COMPLETE ==========');
+      console.log('[Subscription] ========== FETCH COMPLETE ==========');
 
     } catch (error: any) {
-      console.error('[RevenueCat] ❌ INITIALIZATION ERROR:', error);
-      console.error('[RevenueCat] Error name:', error.name);
-      console.error('[RevenueCat] Error message:', error.message);
-      console.error('[RevenueCat] Error code:', error.code);
-      console.error('[RevenueCat] Full error:', JSON.stringify(error, null, 2));
+      console.error('[Subscription] ❌ FETCH ERROR:', error);
+      console.error('[Subscription] Error name:', error.name);
+      console.error('[Subscription] Error message:', error.message);
+      console.error('[Subscription] Error code:', error.code);
       
-      const errorMsg = `Failed to initialize subscriptions:\n\n${error.message}\n\nPlease check:\n1. RevenueCat API key is correct\n2. Products "${PRODUCT_IDS.MONTHLY}" and "${PRODUCT_IDS.YEARLY}" are configured in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n3. Products are linked in RevenueCat dashboard\n4. Entitlement "${ENTITLEMENT_IDENTIFIER}" is configured\n5. You're using a real device (not simulator)`;
-      
-      setErrorMessage(errorMsg);
+      // Check if this is a "SDK not configured" error
+      if (error.message && error.message.includes('not configured')) {
+        console.log('[Subscription] SDK not configured yet, will retry...');
+        setErrorMessage('Initializing subscription system... Please wait.');
+        
+        // Auto-retry after a delay (max 3 times)
+        if (retryCount < 3) {
+          setTimeout(() => {
+            console.log(`[Subscription] Auto-retry ${retryCount + 1}/3`);
+            setRetryCount(prev => prev + 1);
+            fetchOfferings();
+          }, 2000);
+        } else {
+          setErrorMessage('Failed to initialize subscriptions. Please restart the app and try again.');
+        }
+      } else {
+        const errorMsg = `Failed to load subscriptions:\n\n${error.message}\n\nPlease check:\n1. RevenueCat API key is correct\n2. Products "${PRODUCT_IDS.MONTHLY}" and "${PRODUCT_IDS.YEARLY}" are configured\n3. Products are linked in RevenueCat dashboard\n4. Entitlement "${ENTITLEMENT_IDENTIFIER}" is configured\n5. You're using a real device (not simulator)`;
+        
+        setErrorMessage(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [retryCount]);
 
   useEffect(() => {
-    console.log('[RevenueCat] Subscription screen mounted, initializing...');
-    initializeRevenueCat();
-  }, [initializeRevenueCat]);
+    console.log('[Subscription] Screen mounted, fetching offerings...');
+    // Small delay to ensure SDK is initialized in _layout.tsx
+    const timer = setTimeout(() => {
+      fetchOfferings();
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [fetchOfferings]);
 
   const handlePurchase = async (pkg: PurchasesPackage) => {
     if (Platform.OS === 'web') {
@@ -277,26 +217,25 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[RevenueCat] ========== PURCHASE START ==========');
-      console.log('[RevenueCat] Package:', pkg.identifier);
-      console.log('[RevenueCat] Product ID:', pkg.product.identifier);
-      console.log('[RevenueCat] Price:', pkg.product.priceString);
-      console.log('[RevenueCat] Checking for entitlement:', ENTITLEMENT_IDENTIFIER);
+      console.log('[Subscription] ========== PURCHASE START ==========');
+      console.log('[Subscription] Package:', pkg.identifier);
+      console.log('[Subscription] Product ID:', pkg.product.identifier);
+      console.log('[Subscription] Price:', pkg.product.priceString);
       
       setPurchasing(true);
       setSelectedPlan(pkg.product.identifier);
 
       const { customerInfo } = await Purchases.purchasePackage(pkg);
-      console.log('[RevenueCat] ✅ Purchase successful');
-      console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
+      console.log('[Subscription] ✅ Purchase successful');
+      console.log('[Subscription] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
 
       const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
-      console.log(`[RevenueCat] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
+      console.log(`[Subscription] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
 
       if (hasPremium) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          console.log('[RevenueCat] Updating Supabase...');
+          console.log('[Subscription] Updating Supabase...');
           const { error: updateError } = await supabase
             .from('users')
             .update({ 
@@ -306,9 +245,9 @@ export default function SubscriptionScreen() {
             .eq('id', user.id);
 
           if (updateError) {
-            console.error('[RevenueCat] ❌ Supabase update error:', updateError);
+            console.error('[Subscription] ❌ Supabase update error:', updateError);
           } else {
-            console.log('[RevenueCat] ✅ Supabase updated');
+            console.log('[Subscription] ✅ Supabase updated');
           }
         }
 
@@ -321,21 +260,20 @@ export default function SubscriptionScreen() {
           [{ text: 'Get Started', onPress: () => router.back() }]
         );
       } else {
-        console.warn(`[RevenueCat] ⚠️ Purchase completed but no "${ENTITLEMENT_IDENTIFIER}" entitlement`);
+        console.warn(`[Subscription] ⚠️ Purchase completed but no "${ENTITLEMENT_IDENTIFIER}" entitlement`);
         Alert.alert(
           'Purchase Completed',
-          `Your purchase was successful, but premium access is not yet active. This may take a few moments to sync. Please restart the app if you don't see premium features.\n\nNote: Make sure the entitlement "${ENTITLEMENT_IDENTIFIER}" is configured in RevenueCat dashboard.`
+          `Your purchase was successful, but premium access is not yet active. This may take a few moments to sync. Please restart the app if you don't see premium features.`
         );
       }
 
-      console.log('[RevenueCat] ========== PURCHASE COMPLETE ==========');
+      console.log('[Subscription] ========== PURCHASE COMPLETE ==========');
 
     } catch (error: any) {
-      console.error('[RevenueCat] ❌ PURCHASE ERROR:', error);
-      console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
+      console.error('[Subscription] ❌ PURCHASE ERROR:', error);
       
       if (error.userCancelled) {
-        console.log('[RevenueCat] User cancelled purchase');
+        console.log('[Subscription] User cancelled purchase');
       } else {
         Alert.alert('Purchase Error', error.message || 'Failed to complete purchase');
       }
@@ -355,21 +293,20 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[RevenueCat] ========== RESTORE START ==========');
-      console.log('[RevenueCat] Looking for entitlement:', ENTITLEMENT_IDENTIFIER);
+      console.log('[Subscription] ========== RESTORE START ==========');
       setLoading(true);
 
       const customerInfo = await Purchases.restorePurchases();
-      console.log('[RevenueCat] Restore completed');
-      console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
+      console.log('[Subscription] Restore completed');
+      console.log('[Subscription] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
 
       const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
-      console.log(`[RevenueCat] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
+      console.log(`[Subscription] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
 
       if (hasPremium) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          console.log('[RevenueCat] Updating Supabase...');
+          console.log('[Subscription] Updating Supabase...');
           const { error: updateError } = await supabase
             .from('users')
             .update({ 
@@ -379,7 +316,7 @@ export default function SubscriptionScreen() {
             .eq('id', user.id);
 
           if (updateError) {
-            console.error('[RevenueCat] ❌ Supabase update error:', updateError);
+            console.error('[Subscription] ❌ Supabase update error:', updateError);
           }
         }
 
@@ -387,15 +324,14 @@ export default function SubscriptionScreen() {
         setCustomerInfo(customerInfo);
         Alert.alert('Success', 'Your purchases have been restored!');
       } else {
-        console.log('[RevenueCat] No active subscriptions found');
+        console.log('[Subscription] No active subscriptions found');
         Alert.alert('No Purchases Found', 'You have no previous purchases to restore.');
       }
 
-      console.log('[RevenueCat] ========== RESTORE COMPLETE ==========');
+      console.log('[Subscription] ========== RESTORE COMPLETE ==========');
 
     } catch (error: any) {
-      console.error('[RevenueCat] ❌ RESTORE ERROR:', error);
-      console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
+      console.error('[Subscription] ❌ RESTORE ERROR:', error);
       Alert.alert('Restore Failed', error.message || 'Failed to restore purchases');
     } finally {
       setLoading(false);
@@ -484,9 +420,11 @@ export default function SubscriptionScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading subscription options...
           </Text>
-          <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Connecting to RevenueCat...
-          </Text>
+          {retryCount > 0 && (
+            <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Retry attempt {retryCount}/3...
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -506,7 +444,7 @@ export default function SubscriptionScreen() {
             />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Subscription Setup
+            Subscriptions
           </Text>
           <View style={{ width: 24 }} />
         </View>
@@ -528,7 +466,11 @@ export default function SubscriptionScreen() {
             
             <TouchableOpacity
               style={[styles.retryButton, { backgroundColor: colors.primary }]}
-              onPress={initializeRevenueCat}
+              onPress={() => {
+                setRetryCount(0);
+                setLoading(true);
+                fetchOfferings();
+              }}
             >
               <IconSymbol
                 ios_icon_name="arrow.clockwise"
