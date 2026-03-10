@@ -22,6 +22,13 @@ import Purchases, {
   LOG_LEVEL 
 } from 'react-native-purchases';
 
+// RevenueCat Configuration
+const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro'; // Must match RevenueCat dashboard
+const PRODUCT_IDS = {
+  MONTHLY: 'Monthly_MG',
+  YEARLY: 'Yearly_MG',
+};
+
 interface SubscriptionPlan {
   productIdentifier: string;
   title: string;
@@ -45,7 +52,7 @@ export default function SubscriptionScreen() {
 
   const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
-      productIdentifier: 'Monthly_MG',
+      productIdentifier: PRODUCT_IDS.MONTHLY,
       title: 'Monthly Premium',
       description: 'Full access to all premium features',
       features: [
@@ -58,7 +65,7 @@ export default function SubscriptionScreen() {
       ],
     },
     {
-      productIdentifier: 'Yearly_MG',
+      productIdentifier: PRODUCT_IDS.YEARLY,
       title: 'Yearly Premium',
       description: 'Save 33% with annual billing',
       features: [
@@ -74,6 +81,8 @@ export default function SubscriptionScreen() {
   const initializeRevenueCat = React.useCallback(async () => {
     console.log('[RevenueCat] ========== INITIALIZATION START ==========');
     console.log('[RevenueCat] Platform:', Platform.OS);
+    console.log('[RevenueCat] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
+    console.log('[RevenueCat] Product IDs:', PRODUCT_IDS);
     
     if (Platform.OS === 'web') {
       console.log('[RevenueCat] Web platform detected, skipping initialization');
@@ -152,7 +161,7 @@ export default function SubscriptionScreen() {
       } else {
         console.warn('[RevenueCat] ⚠️ No packages available');
         
-        const errorMsg = `No subscription packages found.\n\nTroubleshooting:\n\n1. Products Setup:\n   - Create "Monthly_MG" and "Yearly_MG" in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n   - Products must be in "Ready to Submit" or "Approved" status\n\n2. RevenueCat Dashboard:\n   - Add products to RevenueCat\n   - Create an offering (e.g., "default")\n   - Link products to the offering\n   - Set "premium" as the entitlement\n\n3. Testing:\n   - Use a real device (not simulator)\n   - Use a sandbox test account\n   - Wait 15-30 minutes after configuration\n\n4. Current Status:\n   - Platform: ${Platform.OS}\n   - User ID: ${user.id}\n   - Available offerings: ${Object.keys(offerings.all).join(', ') || 'none'}`;
+        const errorMsg = `No subscription packages found.\n\nTroubleshooting:\n\n1. Products Setup:\n   - Create "${PRODUCT_IDS.MONTHLY}" and "${PRODUCT_IDS.YEARLY}" in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n   - Products must be in "Ready to Submit" or "Approved" status\n\n2. RevenueCat Dashboard:\n   - Add products to RevenueCat\n   - Create an offering (e.g., "default")\n   - Link products to the offering\n   - Set "${ENTITLEMENT_IDENTIFIER}" as the entitlement\n\n3. Testing:\n   - Use a real device (not simulator)\n   - Use a sandbox test account\n   - Wait 15-30 minutes after configuration\n\n4. Current Status:\n   - Platform: ${Platform.OS}\n   - User ID: ${user.id}\n   - Available offerings: ${Object.keys(offerings.all).join(', ') || 'none'}`;
         
         setErrorMessage(errorMsg);
       }
@@ -166,8 +175,8 @@ export default function SubscriptionScreen() {
       
       setCustomerInfo(info);
       
-      const hasPremium = typeof info.entitlements.active['premium'] !== 'undefined';
-      console.log('[RevenueCat] - Has premium:', hasPremium);
+      const hasPremium = typeof info.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
+      console.log(`[RevenueCat] - Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
       setIsPremium(hasPremium);
 
       // Sync to Supabase if premium
@@ -197,7 +206,7 @@ export default function SubscriptionScreen() {
       console.error('[RevenueCat] Error code:', error.code);
       console.error('[RevenueCat] Full error:', JSON.stringify(error, null, 2));
       
-      const errorMsg = `Failed to initialize subscriptions:\n\n${error.message}\n\nPlease check:\n1. RevenueCat API key is correct\n2. Products are configured in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n3. Products are linked in RevenueCat dashboard\n4. You're using a real device (not simulator)`;
+      const errorMsg = `Failed to initialize subscriptions:\n\n${error.message}\n\nPlease check:\n1. RevenueCat API key is correct\n2. Products "${PRODUCT_IDS.MONTHLY}" and "${PRODUCT_IDS.YEARLY}" are configured in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n3. Products are linked in RevenueCat dashboard\n4. Entitlement "${ENTITLEMENT_IDENTIFIER}" is configured\n5. You're using a real device (not simulator)`;
       
       setErrorMessage(errorMsg);
     } finally {
@@ -224,6 +233,7 @@ export default function SubscriptionScreen() {
       console.log('[RevenueCat] Package:', pkg.identifier);
       console.log('[RevenueCat] Product ID:', pkg.product.identifier);
       console.log('[RevenueCat] Price:', pkg.product.priceString);
+      console.log('[RevenueCat] Checking for entitlement:', ENTITLEMENT_IDENTIFIER);
       
       setPurchasing(true);
       setSelectedPlan(pkg.product.identifier);
@@ -232,8 +242,8 @@ export default function SubscriptionScreen() {
       console.log('[RevenueCat] ✅ Purchase successful');
       console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
 
-      const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
-      console.log('[RevenueCat] Has premium:', hasPremium);
+      const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
+      console.log(`[RevenueCat] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
 
       if (hasPremium) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -263,10 +273,10 @@ export default function SubscriptionScreen() {
           [{ text: 'Get Started', onPress: () => router.back() }]
         );
       } else {
-        console.warn('[RevenueCat] ⚠️ Purchase completed but no premium entitlement');
+        console.warn(`[RevenueCat] ⚠️ Purchase completed but no "${ENTITLEMENT_IDENTIFIER}" entitlement`);
         Alert.alert(
           'Purchase Completed',
-          'Your purchase was successful, but premium access is not yet active. This may take a few moments to sync. Please restart the app if you don\'t see premium features.'
+          `Your purchase was successful, but premium access is not yet active. This may take a few moments to sync. Please restart the app if you don't see premium features.\n\nNote: Make sure the entitlement "${ENTITLEMENT_IDENTIFIER}" is configured in RevenueCat dashboard.`
         );
       }
 
@@ -298,14 +308,15 @@ export default function SubscriptionScreen() {
 
     try {
       console.log('[RevenueCat] ========== RESTORE START ==========');
+      console.log('[RevenueCat] Looking for entitlement:', ENTITLEMENT_IDENTIFIER);
       setLoading(true);
 
       const customerInfo = await Purchases.restorePurchases();
       console.log('[RevenueCat] Restore completed');
       console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
 
-      const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
-      console.log('[RevenueCat] Has premium:', hasPremium);
+      const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
+      console.log(`[RevenueCat] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
 
       if (hasPremium) {
         const { data: { user } } = await supabase.auth.getUser();

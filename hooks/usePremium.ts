@@ -4,6 +4,9 @@ import { supabase } from '@/lib/supabase/client';
 import { Platform } from 'react-native';
 import Purchases from 'react-native-purchases';
 
+// RevenueCat Configuration - Must match app/subscription.tsx
+const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro'; // Must match RevenueCat dashboard
+
 interface UsePremiumReturn {
   isPremium: boolean;
   loading: boolean;
@@ -17,6 +20,10 @@ interface UsePremiumReturn {
  * 
  * This hook checks both RevenueCat and Supabase to determine premium status.
  * RevenueCat is the source of truth for subscription status.
+ * 
+ * Configuration:
+ * - Entitlement Identifier: "Macrogoal Pro" (must match RevenueCat dashboard)
+ * - Product IDs: "Monthly_MG", "Yearly_MG"
  * 
  * @returns {UsePremiumReturn} Premium status, loading state, and refresh function
  * 
@@ -47,6 +54,7 @@ export function usePremium(): UsePremiumReturn {
   const checkPremiumStatus = useCallback(async () => {
     try {
       console.log('[usePremium] Checking premium status');
+      console.log('[usePremium] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
       setLoading(true);
       setError(null);
 
@@ -84,8 +92,10 @@ export function usePremium(): UsePremiumReturn {
       try {
         console.log('[usePremium] Native platform - checking RevenueCat');
         const customerInfo = await Purchases.getCustomerInfo();
-        const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
-        console.log('[usePremium] RevenueCat premium status:', hasPremium);
+        console.log('[usePremium] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', ') || 'none');
+        
+        const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
+        console.log(`[usePremium] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
         
         setIsPremium(hasPremium);
 
