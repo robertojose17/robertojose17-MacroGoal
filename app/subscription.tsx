@@ -103,21 +103,36 @@ export default function SubscriptionScreen() {
 
       console.log('[RevenueCat] ✅ User ID:', user.id);
 
-      // Check if RevenueCat is already configured (from global initialization)
+      // CRITICAL FIX: Always try to get customer info first
+      // If it fails, then configure/login
       let isConfigured = false;
+      let needsUserSwitch = false;
+      
       try {
-        console.log('[RevenueCat] Step 2: Checking if SDK is already configured...');
+        console.log('[RevenueCat] Step 2: Checking if SDK is configured and user is correct...');
         const info = await Purchases.getCustomerInfo();
         isConfigured = true;
-        console.log('[RevenueCat] ✅ SDK already configured globally');
-        console.log('[RevenueCat] Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
+        
+        // Check if the current RevenueCat user matches our Supabase user
+        const rcUserId = info.originalAppUserId;
+        console.log('[RevenueCat] Current RC User ID:', rcUserId);
+        console.log('[RevenueCat] Expected User ID:', user.id);
+        
+        if (rcUserId !== user.id) {
+          console.log('[RevenueCat] ⚠️ User mismatch! Need to switch users.');
+          needsUserSwitch = true;
+        } else {
+          console.log('[RevenueCat] ✅ SDK configured with correct user');
+          console.log('[RevenueCat] Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
+        }
       } catch (error: any) {
         console.log('[RevenueCat] SDK not configured yet, will configure now');
+        console.log('[RevenueCat] Error:', error.message);
         isConfigured = false;
       }
 
-      // Configure SDK if not already configured
-      if (!isConfigured) {
+      // Configure SDK if not configured OR if user needs to be switched
+      if (!isConfigured || needsUserSwitch) {
         const apiKey = Platform.select({
           ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
           android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
@@ -130,7 +145,7 @@ export default function SubscriptionScreen() {
           return;
         }
 
-        console.log('[RevenueCat] Step 3: Configure SDK');
+        console.log('[RevenueCat] Step 3: Configure/Switch SDK');
         console.log('[RevenueCat] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
         console.log('[RevenueCat] App User ID:', user.id);
 
@@ -138,12 +153,30 @@ export default function SubscriptionScreen() {
         Purchases.setLogLevel(LOG_LEVEL.DEBUG);
         console.log('[RevenueCat] ✅ Debug logging enabled');
 
-        // Configure SDK
-        await Purchases.configure({ 
-          apiKey, 
-          appUserID: user.id 
-        });
-        console.log('[RevenueCat] ✅ SDK configured successfully');
+        if (needsUserSwitch) {
+          // Use logIn to switch users
+          console.log('[RevenueCat] Switching to user:', user.id);
+          try {
+            const { customerInfo } = await Purchases.logIn(user.id);
+            console.log('[RevenueCat] ✅ User switched successfully');
+            console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', ') || 'none');
+          } catch (loginError: any) {
+            console.error('[RevenueCat] ⚠️ logIn failed, trying configure:', loginError);
+            // Fallback to configure
+            await Purchases.configure({ 
+              apiKey, 
+              appUserID: user.id 
+            });
+            console.log('[RevenueCat] ✅ SDK configured via fallback');
+          }
+        } else {
+          // First time configuration
+          await Purchases.configure({ 
+            apiKey, 
+            appUserID: user.id 
+          });
+          console.log('[RevenueCat] ✅ SDK configured successfully');
+        }
       }
 
       // Fetch offerings

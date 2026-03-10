@@ -48,14 +48,17 @@ export default function RootLayout() {
   const [currentRevenueCatUserId, setCurrentRevenueCatUserId] = useState<string | null>(null);
 
   // Initialize RevenueCat when user logs in
-  const initializeRevenueCat = React.useCallback(async (userId: string) => {
+  const initializeRevenueCat = React.useCallback(async (userId: string, forceReconfigure: boolean = false) => {
     if (Platform.OS === 'web') {
       console.log('[RevenueCat] Web platform - skipping initialization');
       return;
     }
 
-    // Check if already initialized for this specific user
-    if (currentRevenueCatUserId === userId) {
+    // CRITICAL FIX: Always re-configure for new users or when forced
+    // This ensures each user gets their own RevenueCat connection
+    const shouldReconfigure = forceReconfigure || currentRevenueCatUserId !== userId;
+    
+    if (!shouldReconfigure) {
       console.log('[RevenueCat] Already initialized for user:', userId);
       return;
     }
@@ -65,6 +68,7 @@ export default function RootLayout() {
       console.log('[RevenueCat] Platform:', Platform.OS);
       console.log('[RevenueCat] User ID:', userId);
       console.log('[RevenueCat] Previous User ID:', currentRevenueCatUserId || 'none');
+      console.log('[RevenueCat] Force Reconfigure:', forceReconfigure);
       console.log('[RevenueCat] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
 
       const apiKey = Platform.select({
@@ -83,15 +87,35 @@ export default function RootLayout() {
       // Enable debug logs
       Purchases.setLogLevel(LOG_LEVEL.DEBUG);
 
-      // CRITICAL FIX: Always configure with the new user ID
-      // This ensures new users get properly connected to RevenueCat
-      console.log('[RevenueCat] Configuring SDK (will override previous configuration if any)');
-      await Purchases.configure({ 
-        apiKey, 
-        appUserID: userId 
-      });
+      // CRITICAL FIX: Use logIn instead of configure for user switching
+      // This properly switches between users in RevenueCat
+      if (currentRevenueCatUserId && currentRevenueCatUserId !== userId) {
+        console.log('[RevenueCat] Switching from user', currentRevenueCatUserId, 'to', userId);
+        console.log('[RevenueCat] Using logIn to switch users...');
+        
+        try {
+          const { customerInfo } = await Purchases.logIn(userId);
+          console.log('[RevenueCat] ✅ User switched successfully via logIn');
+          console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', ') || 'none');
+        } catch (loginError: any) {
+          console.error('[RevenueCat] ⚠️ logIn failed, falling back to configure:', loginError);
+          // Fallback to configure if logIn fails
+          await Purchases.configure({ 
+            apiKey, 
+            appUserID: userId 
+          });
+          console.log('[RevenueCat] ✅ SDK configured via fallback');
+        }
+      } else {
+        // First time initialization
+        console.log('[RevenueCat] First time initialization with configure');
+        await Purchases.configure({ 
+          apiKey, 
+          appUserID: userId 
+        });
+        console.log('[RevenueCat] ✅ SDK configured successfully');
+      }
 
-      console.log('[RevenueCat] ✅ SDK configured successfully');
       setCurrentRevenueCatUserId(userId);
 
       // Fetch customer info to sync premium status
@@ -170,15 +194,27 @@ export default function RootLayout() {
         setSession(session);
 
         // Initialize RevenueCat when user signs in or signs up
+        // CRITICAL: Force reconfigure on SIGNED_IN to ensure new users get proper connection
         if ((_event === 'SIGNED_IN' || _event === 'USER_UPDATED') && session?.user?.id) {
           console.log('[App] User signed in/updated, initializing RevenueCat...');
-          await initializeRevenueCat(session.user.id);
+          const forceReconfigure = _event === 'SIGNED_IN'; // Force on new sign-in
+          await initializeRevenueCat(session.user.id, forceReconfigure);
         }
 
         // Reset RevenueCat tracking when user signs out
         if (_event === 'SIGNED_OUT') {
           console.log('[App] User signed out, resetting RevenueCat tracking');
           setCurrentRevenueCatUserId(null);
+          
+          // Log out from RevenueCat
+          if (Platform.OS !== 'web') {
+            try {
+              await Purchases.logOut();
+              console.log('[App] ✅ Logged out from RevenueCat');
+            } catch (error) {
+              console.error('[App] Error logging out from RevenueCat:', error);
+            }
+          }
         }
       });
 
