@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import { supabase } from '@/lib/supabase/client';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { colors, spacing, borderRadius } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import * as Clipboard from 'expo-clipboard';
@@ -46,16 +46,16 @@ export default function TestRevenueCatScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.backgroundLight }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
         <Stack.Screen
           options={{
             title: 'Test RevenueCat',
-            headerStyle: { backgroundColor: isDark ? colors.backgroundDark : colors.backgroundLight },
-            headerTintColor: isDark ? colors.textDark : colors.textLight,
+            headerStyle: { backgroundColor: isDark ? colors.backgroundDark : colors.background },
+            headerTintColor: isDark ? colors.textDark : colors.text,
           }}
         />
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.textLight }]}>
+          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading...
           </Text>
         </View>
@@ -64,17 +64,17 @@ export default function TestRevenueCatScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.backgroundLight }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
       <Stack.Screen
         options={{
           title: 'Test RevenueCat',
-          headerStyle: { backgroundColor: isDark ? colors.backgroundDark : colors.backgroundLight },
-          headerTintColor: isDark ? colors.textDark : colors.textLight,
+          headerStyle: { backgroundColor: isDark ? colors.backgroundDark : colors.background },
+          headerTintColor: isDark ? colors.textDark : colors.text,
         }}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.cardLight }]}>
+        <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <IconSymbol
             ios_icon_name="person.circle.fill"
             android_material_icon_name="account-circle"
@@ -83,18 +83,18 @@ export default function TestRevenueCatScreen() {
             style={styles.icon}
           />
           
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.textLight }]}>
+          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
             Your User ID
           </Text>
           
-          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondaryLight }]}>
+          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             Use this ID when testing RevenueCat webhooks
           </Text>
 
           {userId && (
             <>
               <View style={[styles.idContainer, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                <Text style={[styles.idText, { color: isDark ? colors.textDark : colors.textLight }]} selectable>
+                <Text style={[styles.idText, { color: isDark ? colors.textDark : colors.text }]} selectable>
                   {userId}
                 </Text>
               </View>
@@ -116,59 +116,59 @@ export default function TestRevenueCatScreen() {
 
           {userEmail && (
             <View style={styles.emailContainer}>
-              <Text style={[styles.emailLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondaryLight }]}>
+              <Text style={[styles.emailLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 Email:
               </Text>
-              <Text style={[styles.emailText, { color: isDark ? colors.textDark : colors.textLight }]}>
+              <Text style={[styles.emailText, { color: isDark ? colors.textDark : colors.text }]}>
                 {userEmail}
               </Text>
             </View>
           )}
         </View>
 
-        <View style={[styles.instructionsCard, { backgroundColor: isDark ? colors.cardDark : colors.cardLight }]}>
-          <Text style={[styles.instructionsTitle, { color: isDark ? colors.textDark : colors.textLight }]}>
+        <View style={[styles.instructionsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <Text style={[styles.instructionsTitle, { color: isDark ? colors.textDark : colors.text }]}>
             How to Test RevenueCat Webhook
           </Text>
           
           <View style={styles.step}>
             <Text style={[styles.stepNumber, { color: colors.primary }]}>1.</Text>
-            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.textLight }]}>
+            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.text }]}>
               Copy your User ID above
             </Text>
           </View>
 
           <View style={styles.step}>
             <Text style={[styles.stepNumber, { color: colors.primary }]}>2.</Text>
-            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.textLight }]}>
+            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.text }]}>
               Go to RevenueCat Dashboard → Integrations → Webhooks
             </Text>
           </View>
 
           <View style={styles.step}>
             <Text style={[styles.stepNumber, { color: colors.primary }]}>3.</Text>
-            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.textLight }]}>
+            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.text }]}>
               Click "Send Test Event"
             </Text>
           </View>
 
           <View style={styles.step}>
             <Text style={[styles.stepNumber, { color: colors.primary }]}>4.</Text>
-            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.textLight }]}>
+            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.text }]}>
               Replace the "app_user_id" in the test JSON with your User ID
             </Text>
           </View>
 
           <View style={styles.step}>
             <Text style={[styles.stepNumber, { color: colors.primary }]}>5.</Text>
-            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.textLight }]}>
+            <Text style={[styles.stepText, { color: isDark ? colors.textDark : colors.text }]}>
               Send the test event - it should now return 200 OK!
             </Text>
           </View>
         </View>
 
         <TouchableOpacity
-          style={[styles.backButton, { backgroundColor: isDark ? colors.cardDark : colors.cardLight }]}
+          style={[styles.backButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
           onPress={() => router.back()}
         >
           <Text style={[styles.backButtonText, { color: colors.primary }]}>
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: typography.sizes.md,
+    fontSize: 16,
   },
   card: {
     borderRadius: borderRadius.lg,
@@ -208,13 +208,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   title: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
+    fontSize: 24,
+    fontWeight: '700',
     marginBottom: spacing.xs,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: typography.sizes.sm,
+    fontSize: 14,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   idText: {
-    fontSize: typography.sizes.xs,
+    fontSize: 12,
     fontFamily: 'monospace',
     textAlign: 'center',
   },
@@ -239,20 +239,20 @@ const styles = StyleSheet.create({
   },
   copyButtonText: {
     color: '#FFFFFF',
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
+    fontSize: 16,
+    fontWeight: '600',
   },
   emailContainer: {
     marginTop: spacing.lg,
     alignItems: 'center',
   },
   emailLabel: {
-    fontSize: typography.sizes.xs,
+    fontSize: 12,
     marginBottom: spacing.xs,
   },
   emailText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
+    fontSize: 14,
+    fontWeight: '500',
   },
   instructionsCard: {
     borderRadius: borderRadius.lg,
@@ -260,8 +260,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   instructionsTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
+    fontSize: 20,
+    fontWeight: '700',
     marginBottom: spacing.md,
   },
   step: {
@@ -270,13 +270,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   stepNumber: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
+    fontSize: 16,
+    fontWeight: '700',
     marginRight: spacing.sm,
     width: 24,
   },
   stepText: {
-    fontSize: typography.sizes.sm,
+    fontSize: 14,
     flex: 1,
     lineHeight: 20,
   },
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backButtonText: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
