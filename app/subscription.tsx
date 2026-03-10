@@ -41,6 +41,7 @@ export default function SubscriptionScreen() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
@@ -71,7 +72,8 @@ export default function SubscriptionScreen() {
   ], []);
 
   const initializeRevenueCat = React.useCallback(async () => {
-    console.log('[RevenueCat] Initializing SDK, Platform:', Platform.OS);
+    console.log('[RevenueCat] ========== INITIALIZATION START ==========');
+    console.log('[RevenueCat] Platform:', Platform.OS);
     
     if (Platform.OS === 'web') {
       console.log('[RevenueCat] Web platform detected, skipping initialization');
@@ -80,83 +82,97 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[RevenueCat] Starting initialization...');
-      
-      // Get current user from Supabase
+      console.log('[RevenueCat] Step 1: Get current user from Supabase');
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (!user) {
-        console.error('[RevenueCat] No user found');
+        console.error('[RevenueCat] ❌ No user found');
+        setErrorMessage('Please log in to access subscriptions');
         setLoading(false);
-        Alert.alert('Error', 'Please log in to access subscriptions');
         return;
       }
 
-      console.log('[RevenueCat] User ID:', user.id);
+      console.log('[RevenueCat] ✅ User ID:', user.id);
 
-      // Configure RevenueCat SDK with your actual API keys
+      // Configure RevenueCat SDK
       const apiKey = Platform.select({
         ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
-        android: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE', // Use the same SDK key for both platforms
+        android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
       });
 
       if (!apiKey) {
-        console.error('[RevenueCat] ❌ API key not configured');
+        console.error('[RevenueCat] ❌ API key not configured for platform:', Platform.OS);
+        setErrorMessage(`RevenueCat API key not configured for ${Platform.OS}`);
         setLoading(false);
-        Alert.alert(
-          'Configuration Required',
-          'RevenueCat API keys need to be configured.'
-        );
         return;
       }
 
-      // Enable debug logs in development
-      if (__DEV__) {
-        Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-      }
+      console.log('[RevenueCat] Step 2: Configure SDK');
+      console.log('[RevenueCat] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
+      console.log('[RevenueCat] App User ID:', user.id);
 
-      // Configure SDK with user ID
-      console.log('[RevenueCat] Configuring SDK with user ID:', user.id);
-      await Purchases.configure({ apiKey, appUserID: user.id });
+      // Enable debug logs
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+      console.log('[RevenueCat] ✅ Debug logging enabled');
+
+      // Configure SDK
+      await Purchases.configure({ 
+        apiKey, 
+        appUserID: user.id 
+      });
       console.log('[RevenueCat] ✅ SDK configured successfully');
 
-      // Fetch available offerings
-      console.log('[RevenueCat] Fetching offerings...');
+      // Fetch offerings
+      console.log('[RevenueCat] Step 3: Fetching offerings...');
       const offerings = await Purchases.getOfferings();
-      console.log('[RevenueCat] Offerings received:', JSON.stringify(offerings, null, 2));
-
-      if (offerings.current && offerings.current.availablePackages.length > 0) {
-        console.log('[RevenueCat] ✅ Available packages:', offerings.current.availablePackages.length);
-        console.log('[RevenueCat] Package details:');
+      
+      console.log('[RevenueCat] Offerings response:');
+      console.log('[RevenueCat] - All offerings:', Object.keys(offerings.all));
+      console.log('[RevenueCat] - Current offering ID:', offerings.current?.identifier || 'none');
+      
+      if (offerings.current) {
+        console.log('[RevenueCat] - Available packages:', offerings.current.availablePackages.length);
         offerings.current.availablePackages.forEach((pkg, index) => {
-          console.log(`  [${index}] Package ID: ${pkg.identifier}`);
-          console.log(`      Product ID: ${pkg.product.identifier}`);
-          console.log(`      Price: ${pkg.product.priceString}`);
-          console.log(`      Title: ${pkg.product.title}`);
+          console.log(`[RevenueCat]   Package ${index + 1}:`);
+          console.log(`[RevenueCat]     - Identifier: ${pkg.identifier}`);
+          console.log(`[RevenueCat]     - Product ID: ${pkg.product.identifier}`);
+          console.log(`[RevenueCat]     - Price: ${pkg.product.priceString}`);
+          console.log(`[RevenueCat]     - Title: ${pkg.product.title}`);
+          console.log(`[RevenueCat]     - Description: ${pkg.product.description}`);
         });
-        setPackages(offerings.current.availablePackages);
       } else {
-        console.warn('[RevenueCat] ⚠️ No packages available');
-        Alert.alert(
-          'No Subscriptions Available',
-          'No subscription packages are currently available. Please ensure:\n\n1. Products "Monthly_MG" and "Yearly_MG" are created in App Store Connect/Google Play Console\n2. Products are configured in RevenueCat dashboard\n3. Products are linked to an offering (e.g., "default")\n4. You are testing on a real device (not simulator for production testing)'
-        );
+        console.warn('[RevenueCat] ⚠️ No current offering found');
+        console.log('[RevenueCat] Available offerings:', Object.keys(offerings.all).join(', '));
       }
 
-      // Get customer info to check premium status
-      console.log('[RevenueCat] Fetching customer info...');
+      if (offerings.current && offerings.current.availablePackages.length > 0) {
+        console.log('[RevenueCat] ✅ Packages loaded successfully');
+        setPackages(offerings.current.availablePackages);
+        setErrorMessage(null);
+      } else {
+        console.warn('[RevenueCat] ⚠️ No packages available');
+        
+        const errorMsg = `No subscription packages found.\n\nTroubleshooting:\n\n1. Products Setup:\n   - Create "Monthly_MG" and "Yearly_MG" in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n   - Products must be in "Ready to Submit" or "Approved" status\n\n2. RevenueCat Dashboard:\n   - Add products to RevenueCat\n   - Create an offering (e.g., "default")\n   - Link products to the offering\n   - Set "premium" as the entitlement\n\n3. Testing:\n   - Use a real device (not simulator)\n   - Use a sandbox test account\n   - Wait 15-30 minutes after configuration\n\n4. Current Status:\n   - Platform: ${Platform.OS}\n   - User ID: ${user.id}\n   - Available offerings: ${Object.keys(offerings.all).join(', ') || 'none'}`;
+        
+        setErrorMessage(errorMsg);
+      }
+
+      // Get customer info
+      console.log('[RevenueCat] Step 4: Fetching customer info...');
       const info = await Purchases.getCustomerInfo();
       console.log('[RevenueCat] Customer info received');
-      console.log('[RevenueCat] Active entitlements:', Object.keys(info.entitlements.active));
+      console.log('[RevenueCat] - Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
+      console.log('[RevenueCat] - All entitlements:', Object.keys(info.entitlements.all).join(', ') || 'none');
+      
       setCustomerInfo(info);
       
-      // Check if user has active premium entitlement
       const hasPremium = typeof info.entitlements.active['premium'] !== 'undefined';
-      console.log('[RevenueCat] Has premium entitlement:', hasPremium);
+      console.log('[RevenueCat] - Has premium:', hasPremium);
       setIsPremium(hasPremium);
 
-      // Sync premium status to Supabase
+      // Sync to Supabase if premium
       if (hasPremium) {
-        console.log('[RevenueCat] Syncing premium status to Supabase...');
+        console.log('[RevenueCat] Step 5: Syncing premium status to Supabase...');
         const { error: updateError } = await supabase
           .from('users')
           .update({ 
@@ -166,18 +182,25 @@ export default function SubscriptionScreen() {
           .eq('id', user.id);
 
         if (updateError) {
-          console.error('[RevenueCat] Error syncing to Supabase:', updateError);
+          console.error('[RevenueCat] ❌ Error syncing to Supabase:', updateError);
         } else {
           console.log('[RevenueCat] ✅ Premium status synced to Supabase');
         }
       }
 
+      console.log('[RevenueCat] ========== INITIALIZATION COMPLETE ==========');
+
     } catch (error: any) {
-      console.error('[RevenueCat] ❌ Initialization error:', error);
-      console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
-      Alert.alert('Error', 'Failed to initialize subscriptions: ' + error.message);
+      console.error('[RevenueCat] ❌ INITIALIZATION ERROR:', error);
+      console.error('[RevenueCat] Error name:', error.name);
+      console.error('[RevenueCat] Error message:', error.message);
+      console.error('[RevenueCat] Error code:', error.code);
+      console.error('[RevenueCat] Full error:', JSON.stringify(error, null, 2));
+      
+      const errorMsg = `Failed to initialize subscriptions:\n\n${error.message}\n\nPlease check:\n1. RevenueCat API key is correct\n2. Products are configured in ${Platform.OS === 'ios' ? 'App Store Connect' : 'Google Play Console'}\n3. Products are linked in RevenueCat dashboard\n4. You're using a real device (not simulator)`;
+      
+      setErrorMessage(errorMsg);
     } finally {
-      console.log('[RevenueCat] ✅ Setting loading to false');
       setLoading(false);
     }
   }, []);
@@ -197,27 +220,25 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[RevenueCat] Starting purchase for package:', pkg.identifier);
+      console.log('[RevenueCat] ========== PURCHASE START ==========');
+      console.log('[RevenueCat] Package:', pkg.identifier);
       console.log('[RevenueCat] Product ID:', pkg.product.identifier);
       console.log('[RevenueCat] Price:', pkg.product.priceString);
+      
       setPurchasing(true);
       setSelectedPlan(pkg.product.identifier);
 
-      // Make the purchase through RevenueCat
-      console.log('[RevenueCat] Calling purchasePackage...');
       const { customerInfo } = await Purchases.purchasePackage(pkg);
       console.log('[RevenueCat] ✅ Purchase successful');
-      console.log('[RevenueCat] Active entitlements after purchase:', Object.keys(customerInfo.entitlements.active));
+      console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
 
-      // Check if user now has premium entitlement
       const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
-      console.log('[RevenueCat] Has premium after purchase:', hasPremium);
+      console.log('[RevenueCat] Has premium:', hasPremium);
 
       if (hasPremium) {
-        // Update Supabase
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          console.log('[RevenueCat] Updating Supabase user to premium...');
+          console.log('[RevenueCat] Updating Supabase...');
           const { error: updateError } = await supabase
             .from('users')
             .update({ 
@@ -227,9 +248,9 @@ export default function SubscriptionScreen() {
             .eq('id', user.id);
 
           if (updateError) {
-            console.error('[RevenueCat] Error updating Supabase:', updateError);
+            console.error('[RevenueCat] ❌ Supabase update error:', updateError);
           } else {
-            console.log('[RevenueCat] ✅ Supabase updated successfully');
+            console.log('[RevenueCat] ✅ Supabase updated');
           }
         }
 
@@ -239,26 +260,22 @@ export default function SubscriptionScreen() {
         Alert.alert(
           'Welcome to Premium! 🎉',
           'You now have access to all premium features.',
-          [
-            {
-              text: 'Get Started',
-              onPress: () => router.back(),
-            },
-          ]
+          [{ text: 'Get Started', onPress: () => router.back() }]
         );
       } else {
-        console.warn('[RevenueCat] ⚠️ Purchase completed but no premium entitlement found');
+        console.warn('[RevenueCat] ⚠️ Purchase completed but no premium entitlement');
         Alert.alert(
           'Purchase Completed',
           'Your purchase was successful, but premium access is not yet active. This may take a few moments to sync. Please restart the app if you don\'t see premium features.'
         );
       }
 
+      console.log('[RevenueCat] ========== PURCHASE COMPLETE ==========');
+
     } catch (error: any) {
-      console.error('[RevenueCat] ❌ Purchase error:', error);
+      console.error('[RevenueCat] ❌ PURCHASE ERROR:', error);
       console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
       
-      // Handle user cancellation gracefully
       if (error.userCancelled) {
         console.log('[RevenueCat] User cancelled purchase');
       } else {
@@ -280,23 +297,20 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[RevenueCat] Restoring purchases...');
+      console.log('[RevenueCat] ========== RESTORE START ==========');
       setLoading(true);
 
-      // Restore purchases through RevenueCat
       const customerInfo = await Purchases.restorePurchases();
       console.log('[RevenueCat] Restore completed');
-      console.log('[RevenueCat] Active entitlements after restore:', Object.keys(customerInfo.entitlements.active));
+      console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', '));
 
-      // Check if user has premium entitlement
       const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
-      console.log('[RevenueCat] Has premium after restore:', hasPremium);
+      console.log('[RevenueCat] Has premium:', hasPremium);
 
       if (hasPremium) {
-        // Update Supabase
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          console.log('[RevenueCat] Updating Supabase user to premium...');
+          console.log('[RevenueCat] Updating Supabase...');
           const { error: updateError } = await supabase
             .from('users')
             .update({ 
@@ -306,7 +320,7 @@ export default function SubscriptionScreen() {
             .eq('id', user.id);
 
           if (updateError) {
-            console.error('[RevenueCat] Error updating Supabase:', updateError);
+            console.error('[RevenueCat] ❌ Supabase update error:', updateError);
           }
         }
 
@@ -318,8 +332,10 @@ export default function SubscriptionScreen() {
         Alert.alert('No Purchases Found', 'You have no previous purchases to restore.');
       }
 
+      console.log('[RevenueCat] ========== RESTORE COMPLETE ==========');
+
     } catch (error: any) {
-      console.error('[RevenueCat] ❌ Restore error:', error);
+      console.error('[RevenueCat] ❌ RESTORE ERROR:', error);
       console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
       Alert.alert('Restore Failed', error.message || 'Failed to restore purchases');
     } finally {
@@ -332,11 +348,10 @@ export default function SubscriptionScreen() {
   };
 
   const getPackageByProductId = (productId: string): PurchasesPackage | undefined => {
-    const foundPackage = packages.find(pkg => pkg.product.identifier === productId);
-    console.log(`[RevenueCat] Looking for product ID: ${productId}, found:`, foundPackage ? 'YES' : 'NO');
-    return foundPackage;
+    return packages.find(pkg => pkg.product.identifier === productId);
   };
 
+  // Web platform UI
   if (Platform.OS === 'web') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -401,6 +416,7 @@ export default function SubscriptionScreen() {
     );
   }
 
+  // Loading state
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -417,6 +433,68 @@ export default function SubscriptionScreen() {
     );
   }
 
+  // Error state
+  if (errorMessage && packages.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Subscription Setup
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.errorContainer}>
+          <View style={[styles.errorCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={64}
+              color="#F59E0B"
+            />
+            <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Configuration Required
+            </Text>
+            <Text style={[styles.errorMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {errorMessage}
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.retryButton, { backgroundColor: colors.primary }]}
+              onPress={initializeRevenueCat}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="refresh"
+                size={20}
+                color="#FFFFFF"
+              />
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.backButtonAlt, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+              onPress={() => router.back()}
+            >
+              <Text style={[styles.backButtonAltText, { color: isDark ? colors.textDark : colors.text }]}>
+                Go Back
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Premium status UI
   if (isPremium) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -483,6 +561,7 @@ export default function SubscriptionScreen() {
     );
   }
 
+  // Subscription plans UI
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -520,7 +599,7 @@ export default function SubscriptionScreen() {
 
         {subscriptionPlans.map((plan) => {
           const pkg = getPackageByProductId(plan.productIdentifier);
-          const displayPrice = pkg ? getPackagePrice(pkg) : 'Loading...';
+          const displayPrice = pkg ? getPackagePrice(pkg) : 'Not Available';
           const isSelected = selectedPlan === plan.productIdentifier;
           const isPurchasingThis = purchasing && isSelected;
 
@@ -812,5 +891,50 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
     marginBottom: spacing.xl,
+  },
+  errorContainer: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+  },
+  errorCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  errorTitle: {
+    ...typography.h2,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    ...typography.body,
+    textAlign: 'left',
+    lineHeight: 22,
+    marginBottom: spacing.xl,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  backButtonAlt: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.md,
+  },
+  backButtonAltText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
