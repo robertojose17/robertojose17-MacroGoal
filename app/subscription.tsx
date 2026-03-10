@@ -23,7 +23,7 @@ import Purchases, {
 } from 'react-native-purchases';
 
 interface SubscriptionPlan {
-  packageIdentifier: string;
+  productIdentifier: string;
   title: string;
   description: string;
   features: string[];
@@ -44,7 +44,7 @@ export default function SubscriptionScreen() {
 
   const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
-      packageIdentifier: '$rc_monthly',
+      productIdentifier: 'Monthly_MG',
       title: 'Monthly Premium',
       description: 'Full access to all premium features',
       features: [
@@ -57,7 +57,7 @@ export default function SubscriptionScreen() {
       ],
     },
     {
-      packageIdentifier: '$rc_annual',
+      productIdentifier: 'Yearly_MG',
       title: 'Yearly Premium',
       description: 'Save 33% with annual billing',
       features: [
@@ -122,16 +122,23 @@ export default function SubscriptionScreen() {
       // Fetch available offerings
       console.log('[RevenueCat] Fetching offerings...');
       const offerings = await Purchases.getOfferings();
-      console.log('[RevenueCat] Offerings received:', offerings);
+      console.log('[RevenueCat] Offerings received:', JSON.stringify(offerings, null, 2));
 
       if (offerings.current && offerings.current.availablePackages.length > 0) {
         console.log('[RevenueCat] ✅ Available packages:', offerings.current.availablePackages.length);
+        console.log('[RevenueCat] Package details:');
+        offerings.current.availablePackages.forEach((pkg, index) => {
+          console.log(`  [${index}] Package ID: ${pkg.identifier}`);
+          console.log(`      Product ID: ${pkg.product.identifier}`);
+          console.log(`      Price: ${pkg.product.priceString}`);
+          console.log(`      Title: ${pkg.product.title}`);
+        });
         setPackages(offerings.current.availablePackages);
       } else {
         console.warn('[RevenueCat] ⚠️ No packages available');
         Alert.alert(
           'No Subscriptions Available',
-          'No subscription packages are currently available. Please ensure:\n\n1. You have created products in App Store Connect/Google Play Console\n2. You have configured offerings in RevenueCat dashboard\n3. Products are linked to RevenueCat offerings\n4. You are testing on a real device (not simulator for production testing)'
+          'No subscription packages are currently available. Please ensure:\n\n1. Products "Monthly_MG" and "Yearly_MG" are created in App Store Connect/Google Play Console\n2. Products are configured in RevenueCat dashboard\n3. Products are linked to an offering (e.g., "default")\n4. You are testing on a real device (not simulator for production testing)'
         );
       }
 
@@ -139,6 +146,7 @@ export default function SubscriptionScreen() {
       console.log('[RevenueCat] Fetching customer info...');
       const info = await Purchases.getCustomerInfo();
       console.log('[RevenueCat] Customer info received');
+      console.log('[RevenueCat] Active entitlements:', Object.keys(info.entitlements.active));
       setCustomerInfo(info);
       
       // Check if user has active premium entitlement
@@ -166,6 +174,7 @@ export default function SubscriptionScreen() {
 
     } catch (error: any) {
       console.error('[RevenueCat] ❌ Initialization error:', error);
+      console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
       Alert.alert('Error', 'Failed to initialize subscriptions: ' + error.message);
     } finally {
       console.log('[RevenueCat] ✅ Setting loading to false');
@@ -189,13 +198,16 @@ export default function SubscriptionScreen() {
 
     try {
       console.log('[RevenueCat] Starting purchase for package:', pkg.identifier);
+      console.log('[RevenueCat] Product ID:', pkg.product.identifier);
+      console.log('[RevenueCat] Price:', pkg.product.priceString);
       setPurchasing(true);
-      setSelectedPlan(pkg.identifier);
+      setSelectedPlan(pkg.product.identifier);
 
       // Make the purchase through RevenueCat
       console.log('[RevenueCat] Calling purchasePackage...');
       const { customerInfo } = await Purchases.purchasePackage(pkg);
       console.log('[RevenueCat] ✅ Purchase successful');
+      console.log('[RevenueCat] Active entitlements after purchase:', Object.keys(customerInfo.entitlements.active));
 
       // Check if user now has premium entitlement
       const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
@@ -244,6 +256,7 @@ export default function SubscriptionScreen() {
 
     } catch (error: any) {
       console.error('[RevenueCat] ❌ Purchase error:', error);
+      console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
       
       // Handle user cancellation gracefully
       if (error.userCancelled) {
@@ -273,6 +286,7 @@ export default function SubscriptionScreen() {
       // Restore purchases through RevenueCat
       const customerInfo = await Purchases.restorePurchases();
       console.log('[RevenueCat] Restore completed');
+      console.log('[RevenueCat] Active entitlements after restore:', Object.keys(customerInfo.entitlements.active));
 
       // Check if user has premium entitlement
       const hasPremium = typeof customerInfo.entitlements.active['premium'] !== 'undefined';
@@ -306,6 +320,7 @@ export default function SubscriptionScreen() {
 
     } catch (error: any) {
       console.error('[RevenueCat] ❌ Restore error:', error);
+      console.error('[RevenueCat] Error details:', JSON.stringify(error, null, 2));
       Alert.alert('Restore Failed', error.message || 'Failed to restore purchases');
     } finally {
       setLoading(false);
@@ -316,8 +331,10 @@ export default function SubscriptionScreen() {
     return pkg.product.priceString;
   };
 
-  const getPackageByIdentifier = (identifier: string): PurchasesPackage | undefined => {
-    return packages.find(pkg => pkg.identifier === identifier);
+  const getPackageByProductId = (productId: string): PurchasesPackage | undefined => {
+    const foundPackage = packages.find(pkg => pkg.product.identifier === productId);
+    console.log(`[RevenueCat] Looking for product ID: ${productId}, found:`, foundPackage ? 'YES' : 'NO');
+    return foundPackage;
   };
 
   if (Platform.OS === 'web') {
@@ -502,14 +519,14 @@ export default function SubscriptionScreen() {
         </View>
 
         {subscriptionPlans.map((plan) => {
-          const pkg = getPackageByIdentifier(plan.packageIdentifier);
+          const pkg = getPackageByProductId(plan.productIdentifier);
           const displayPrice = pkg ? getPackagePrice(pkg) : 'Loading...';
-          const isSelected = selectedPlan === plan.packageIdentifier;
+          const isSelected = selectedPlan === plan.productIdentifier;
           const isPurchasingThis = purchasing && isSelected;
 
           return (
             <View
-              key={plan.packageIdentifier}
+              key={plan.productIdentifier}
               style={[
                 styles.planCard,
                 { backgroundColor: isDark ? colors.cardDark : colors.card },
