@@ -6,7 +6,7 @@
  * subscription status to the Supabase database.
  * 
  * Setup Instructions:
- * 1. Deploy this function: supabase functions deploy revenuecat-webhook
+ * 1. Deploy this function: supabase functions deploy revenuecat-webhook --no-verify-jwt
  * 2. Get the function URL from Supabase Dashboard
  * 3. Go to RevenueCat Dashboard > Integrations > Webhooks
  * 4. Add webhook URL: https://YOUR_PROJECT.supabase.co/functions/v1/revenuecat-webhook
@@ -84,6 +84,7 @@ serve(async (req) => {
     const payload: RevenueCatEvent = await req.json();
     console.log('[RevenueCat Webhook] Event type:', payload.event.type);
     console.log('[RevenueCat Webhook] App user ID:', payload.event.app_user_id);
+    console.log('[RevenueCat Webhook] Full payload:', JSON.stringify(payload, null, 2));
 
     // Initialize Supabase client with service role key (bypasses RLS)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -92,6 +93,47 @@ serve(async (req) => {
 
     const event = payload.event;
     const userId = event.app_user_id;
+
+    // CRITICAL: Verify user exists in auth.users before proceeding
+    console.log('[RevenueCat Webhook] 🔍 Verifying user exists:', userId);
+    const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
+    
+    if (authError || !authUser) {
+      console.error('[RevenueCat Webhook] ❌ User not found in auth.users:', userId);
+      console.error('[RevenueCat Webhook] Auth error:', authError);
+      
+      // Still log the event for debugging, but with null user_id
+      const { error: eventError } = await supabase
+        .from('revenuecat_events')
+        .insert({
+          user_id: null, // Don't violate foreign key constraint
+          event_type: event.type,
+          event_data: payload,
+          app_user_id: event.app_user_id,
+          product_id: event.product_id,
+          entitlement_ids: event.entitlement_ids,
+          revenue_usd: 0,
+        });
+
+      if (eventError) {
+        console.error('[RevenueCat Webhook] ❌ Error storing orphaned event:', eventError);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'User not found in database',
+          user_id: userId,
+          message: 'The app_user_id from RevenueCat does not match any user in Supabase auth.users. Make sure you are setting the correct user ID when configuring RevenueCat in your app.'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('[RevenueCat Webhook] ✅ User verified:', authUser.user.email);
 
     // Extract price information
     const priceInPurchasedCurrency = event.price_in_purchased_currency || 0;
@@ -116,6 +158,7 @@ serve(async (req) => {
 
     if (eventError) {
       console.error('[RevenueCat Webhook] ❌ Error storing event:', eventError);
+      // Don't fail the webhook if event logging fails
     } else {
       console.log('[RevenueCat Webhook] ✅ Event stored successfully');
     }
@@ -194,8 +237,10 @@ serve(async (req) => {
         console.log('[RevenueCat Webhook] ℹ️ Unhandled event type:', event.type);
     }
 
+    console.log('[RevenueCat Webhook] 📝 Upserting subscription with data:', subscriptionUpdate);
+
     // Upsert subscription record
-    const { error: upsertError } = await supabase
+    const { data: upsertData, error: upsertError } = await supabase
       .from('subscriptions')
       .upsert(
         {
@@ -205,12 +250,19 @@ serve(async (req) => {
         {
           onConflict: 'user_id',
         }
-      );
+      )
+      .select();
 
     if (upsertError) {
       console.error('[RevenueCat Webhook] ❌ Error updating subscription:', upsertError);
+      console.error('[RevenueCat Webhook] Error details:', JSON.stringify(upsertError, null, 2));
       return new Response(
-        JSON.stringify({ success: false, error: upsertError.message }),
+        JSON.stringify({ 
+          success: false, 
+          error: upsertError.message,
+          details: upsertError,
+          user_id: userId,
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -219,6 +271,7 @@ serve(async (req) => {
     }
 
     console.log('[RevenueCat Webhook] ✅ Subscription updated successfully');
+    console.log('[RevenueCat Webhook] Updated data:', upsertData);
 
     return new Response(
       JSON.stringify({ 
@@ -226,7 +279,9 @@ serve(async (req) => {
         message: 'Webhook processed successfully',
         event_type: event.type,
         user_id: userId,
+        user_email: authUser.user.email,
         amount_usd: amountUSD.toFixed(2),
+        subscription_status: subscriptionUpdate.status,
       }),
       { 
         status: 200, 
@@ -236,10 +291,12 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('[RevenueCat Webhook] ❌ Error processing webhook:', error);
+    console.error('[RevenueCat Webhook] Error stack:', error.stack);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message || 'Internal server error' 
+        error: error.message || 'Internal server error',
+        stack: error.stack,
       }),
       { 
         status: 500, 
