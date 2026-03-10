@@ -101,24 +101,17 @@ serve(async (req) => {
     console.log('[RevenueCat Webhook] Price:', priceInPurchasedCurrency, currency);
     console.log('[RevenueCat Webhook] Amount USD:', amountUSD.toFixed(2));
 
-    // Store raw event for audit trail
+    // Store raw event for audit trail (matching actual schema)
     const { error: eventError } = await supabase
       .from('revenuecat_events')
       .insert({
+        user_id: userId,
         event_type: event.type,
+        event_data: payload,
         app_user_id: event.app_user_id,
-        original_app_user_id: event.original_app_user_id,
         product_id: event.product_id,
         entitlement_ids: event.entitlement_ids,
-        period_type: event.period_type,
-        purchased_at: event.purchased_at_ms ? new Date(event.purchased_at_ms).toISOString() : null,
-        expiration_at: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null,
-        store: event.store,
-        environment: event.environment,
-        price_in_purchased_currency: priceInPurchasedCurrency,
-        currency: currency,
-        amount_usd: amountUSD,
-        raw_event: payload,
+        revenue_usd: amountUSD,
       });
 
     if (eventError) {
@@ -132,18 +125,26 @@ serve(async (req) => {
     const expirationDate = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
     const purchasedDate = event.purchased_at_ms ? new Date(event.purchased_at_ms).toISOString() : null;
 
+    // Determine plan_type from product_id
+    let planType: 'monthly' | 'yearly' | null = null;
+    if (event.product_id) {
+      const productLower = event.product_id.toLowerCase();
+      if (productLower.includes('month')) {
+        planType = 'monthly';
+      } else if (productLower.includes('year') || productLower.includes('annual')) {
+        planType = 'yearly';
+      }
+    }
+
     let subscriptionUpdate: any = {
-      revenuecat_app_user_id: event.app_user_id,
-      revenuecat_original_app_user_id: event.original_app_user_id,
       entitlement_ids: event.entitlement_ids,
-      store: event.store,
-      environment: event.environment,
-      product_id: event.product_id,
-      period_type: event.period_type,
-      purchased_at: purchasedDate,
-      expiration_at: expirationDate,
       updated_at: now,
     };
+
+    // Add plan_type if determined
+    if (planType) {
+      subscriptionUpdate.plan_type = planType;
+    }
 
     switch (event.type) {
       case 'INITIAL_PURCHASE':
@@ -151,18 +152,14 @@ serve(async (req) => {
       case 'UNCANCELLATION':
         console.log('[RevenueCat Webhook] 🎉 Activating subscription');
         subscriptionUpdate.status = 'active';
-        subscriptionUpdate.plan_name = event.product_id;
-        subscriptionUpdate.will_renew = true;
-        subscriptionUpdate.unsubscribe_detected_at = null;
-        subscriptionUpdate.billing_issues_detected_at = null;
         subscriptionUpdate.current_period_start = purchasedDate;
         subscriptionUpdate.current_period_end = expirationDate;
+        subscriptionUpdate.cancel_at_period_end = false;
         break;
 
       case 'CANCELLATION':
         console.log('[RevenueCat Webhook] ⚠️ Subscription cancelled (still active until expiration)');
-        subscriptionUpdate.will_renew = false;
-        subscriptionUpdate.unsubscribe_detected_at = now;
+        subscriptionUpdate.cancel_at_period_end = true;
         // Keep status as 'active' until expiration
         subscriptionUpdate.status = 'active';
         break;
@@ -170,19 +167,17 @@ serve(async (req) => {
       case 'EXPIRATION':
         console.log('[RevenueCat Webhook] ❌ Subscription expired');
         subscriptionUpdate.status = 'inactive';
-        subscriptionUpdate.will_renew = false;
+        subscriptionUpdate.current_period_end = expirationDate;
         break;
 
       case 'BILLING_ISSUE':
         console.log('[RevenueCat Webhook] ⚠️ Billing issue detected');
-        subscriptionUpdate.billing_issues_detected_at = now;
         subscriptionUpdate.status = 'past_due';
         break;
 
       case 'PRODUCT_CHANGE':
         console.log('[RevenueCat Webhook] 🔄 Product changed');
         subscriptionUpdate.status = 'active';
-        subscriptionUpdate.plan_name = event.product_id;
         subscriptionUpdate.current_period_start = purchasedDate;
         subscriptionUpdate.current_period_end = expirationDate;
         break;
@@ -190,10 +185,9 @@ serve(async (req) => {
       case 'NON_RENEWING_PURCHASE':
         console.log('[RevenueCat Webhook] 💰 One-time purchase');
         subscriptionUpdate.status = 'active';
-        subscriptionUpdate.plan_name = event.product_id;
-        subscriptionUpdate.will_renew = false;
         subscriptionUpdate.current_period_start = purchasedDate;
         subscriptionUpdate.current_period_end = expirationDate;
+        subscriptionUpdate.cancel_at_period_end = true;
         break;
 
       default:
