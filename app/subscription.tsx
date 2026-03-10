@@ -50,6 +50,7 @@ export default function SubscriptionScreen() {
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const subscriptionPlans: SubscriptionPlan[] = useMemo(() => [
     {
@@ -85,6 +86,7 @@ export default function SubscriptionScreen() {
     if (Platform.OS === 'web') {
       console.log('[Subscription] Web platform detected, skipping');
       setLoading(false);
+      setIsInitializing(false);
       return;
     }
 
@@ -96,14 +98,51 @@ export default function SubscriptionScreen() {
         console.error('[Subscription] ❌ No user found');
         setErrorMessage('Please log in to access subscriptions');
         setLoading(false);
+        setIsInitializing(false);
         return;
       }
 
       console.log('[Subscription] ✅ User ID:', user.id);
 
-      // CRITICAL FIX: Don't re-initialize SDK here, just fetch offerings
-      // The SDK is already initialized in app/_layout.tsx
-      console.log('[Subscription] Step 2: Fetching offerings from already-configured SDK...');
+      // CRITICAL FIX: Wait for SDK to be configured
+      // Check if SDK is configured before fetching
+      console.log('[Subscription] Step 2: Checking if SDK is configured...');
+      
+      let sdkConfigured = false;
+      try {
+        // Try to get customer info to verify SDK is configured
+        await Purchases.getCustomerInfo();
+        sdkConfigured = true;
+        console.log('[Subscription] ✅ SDK is configured');
+      } catch (checkError: any) {
+        console.log('[Subscription] ⚠️ SDK not configured yet:', checkError.message);
+        sdkConfigured = false;
+      }
+
+      // If SDK not configured and we haven't exceeded retries, wait and retry
+      if (!sdkConfigured && retryCount < 5) {
+        console.log(`[Subscription] SDK not ready, will retry (${retryCount + 1}/5)...`);
+        setErrorMessage('Initializing subscription system... Please wait.');
+        setIsInitializing(true);
+        
+        // Wait 1.5 seconds before retry
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+        }, 1500);
+        return;
+      }
+
+      // If SDK still not configured after retries, show error
+      if (!sdkConfigured) {
+        console.error('[Subscription] ❌ SDK not configured after all retries');
+        setErrorMessage('Failed to initialize subscriptions. Please restart the app and try again.');
+        setLoading(false);
+        setIsInitializing(false);
+        return;
+      }
+
+      console.log('[Subscription] Step 3: Fetching offerings from configured SDK...');
+      setIsInitializing(false);
       
       const offerings = await Purchases.getOfferings();
       
@@ -174,38 +213,52 @@ export default function SubscriptionScreen() {
       
       // Check if this is a "SDK not configured" error
       if (error.message && error.message.includes('not configured')) {
-        console.log('[Subscription] SDK not configured yet, will retry...');
+        console.log('[Subscription] SDK not configured error caught');
         setErrorMessage('Initializing subscription system... Please wait.');
+        setIsInitializing(true);
         
-        // Auto-retry after a delay (max 3 times)
-        if (retryCount < 3) {
+        // Auto-retry after a delay (max 5 times)
+        if (retryCount < 5) {
           setTimeout(() => {
-            console.log(`[Subscription] Auto-retry ${retryCount + 1}/3`);
+            console.log(`[Subscription] Auto-retry ${retryCount + 1}/5`);
             setRetryCount(prev => prev + 1);
-            fetchOfferings();
-          }, 2000);
+          }, 1500);
         } else {
           setErrorMessage('Failed to initialize subscriptions. Please restart the app and try again.');
+          setIsInitializing(false);
         }
       } else {
         const errorMsg = `Failed to load subscriptions:\n\n${error.message}\n\nPlease check:\n1. RevenueCat API key is correct\n2. Products "${PRODUCT_IDS.MONTHLY}" and "${PRODUCT_IDS.YEARLY}" are configured\n3. Products are linked in RevenueCat dashboard\n4. Entitlement "${ENTITLEMENT_IDENTIFIER}" is configured\n5. You're using a real device (not simulator)`;
         
         setErrorMessage(errorMsg);
+        setIsInitializing(false);
       }
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Effect to trigger retry when retryCount changes
+  useEffect(() => {
+    if (retryCount > 0 && retryCount <= 5) {
+      console.log('[Subscription] Retry count changed:', retryCount);
+      setLoading(true);
+      fetchOfferings();
+    }
   }, [retryCount]);
 
+  // Initial load with delay
   useEffect(() => {
-    console.log('[Subscription] Screen mounted, fetching offerings...');
-    // Small delay to ensure SDK is initialized in _layout.tsx
+    console.log('[Subscription] Screen mounted, waiting for SDK initialization...');
+    
+    // Wait 1 second to ensure SDK is initialized in _layout.tsx
     const timer = setTimeout(() => {
+      console.log('[Subscription] Starting initial fetch...');
       fetchOfferings();
-    }, 500);
+    }, 1000);
     
     return () => clearTimeout(timer);
-  }, [fetchOfferings]);
+  }, []);
 
   const handlePurchase = async (pkg: PurchasesPackage) => {
     if (Platform.OS === 'web') {
@@ -413,16 +466,25 @@ export default function SubscriptionScreen() {
 
   // Loading state
   if (loading) {
+    const loadingMessage = isInitializing 
+      ? 'Initializing subscription system...' 
+      : 'Loading subscription options...';
+    
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Loading subscription options...
+            {loadingMessage}
           </Text>
           {retryCount > 0 && (
             <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Retry attempt {retryCount}/3...
+              Retry attempt {retryCount}/5...
+            </Text>
+          )}
+          {isInitializing && (
+            <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.sm }]}>
+              This may take a few moments on first launch
             </Text>
           )}
         </View>

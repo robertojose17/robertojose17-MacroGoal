@@ -114,6 +114,11 @@ export default function RootLayout() {
           appUserID: userId 
         });
         console.log('[RevenueCat] ✅ SDK configured successfully');
+        
+        // CRITICAL: Wait a moment for SDK to fully initialize
+        // This prevents race conditions with subscription screen
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('[RevenueCat] ✅ SDK initialization complete (with delay)');
       }
 
       setCurrentRevenueCatUserId(userId);
