@@ -79,7 +79,7 @@ export default function SubscriptionScreen() {
   ], []);
 
   const initializeRevenueCat = React.useCallback(async () => {
-    console.log('[RevenueCat] ========== INITIALIZATION START ==========');
+    console.log('[RevenueCat] ========== SUBSCRIPTION SCREEN INITIALIZATION START ==========');
     console.log('[RevenueCat] Platform:', Platform.OS);
     console.log('[RevenueCat] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
     console.log('[RevenueCat] Product IDs:', PRODUCT_IDS);
@@ -103,36 +103,51 @@ export default function SubscriptionScreen() {
 
       console.log('[RevenueCat] ✅ User ID:', user.id);
 
-      // Configure RevenueCat SDK
-      const apiKey = Platform.select({
-        ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
-        android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
-      });
-
-      if (!apiKey) {
-        console.error('[RevenueCat] ❌ API key not configured for platform:', Platform.OS);
-        setErrorMessage(`RevenueCat API key not configured for ${Platform.OS}`);
-        setLoading(false);
-        return;
+      // Check if RevenueCat is already configured (from global initialization)
+      let isConfigured = false;
+      try {
+        console.log('[RevenueCat] Step 2: Checking if SDK is already configured...');
+        const info = await Purchases.getCustomerInfo();
+        isConfigured = true;
+        console.log('[RevenueCat] ✅ SDK already configured globally');
+        console.log('[RevenueCat] Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
+      } catch (error: any) {
+        console.log('[RevenueCat] SDK not configured yet, will configure now');
+        isConfigured = false;
       }
 
-      console.log('[RevenueCat] Step 2: Configure SDK');
-      console.log('[RevenueCat] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
-      console.log('[RevenueCat] App User ID:', user.id);
+      // Configure SDK if not already configured
+      if (!isConfigured) {
+        const apiKey = Platform.select({
+          ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
+          android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
+        });
 
-      // Enable debug logs
-      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-      console.log('[RevenueCat] ✅ Debug logging enabled');
+        if (!apiKey) {
+          console.error('[RevenueCat] ❌ API key not configured for platform:', Platform.OS);
+          setErrorMessage(`RevenueCat API key not configured for ${Platform.OS}`);
+          setLoading(false);
+          return;
+        }
 
-      // Configure SDK
-      await Purchases.configure({ 
-        apiKey, 
-        appUserID: user.id 
-      });
-      console.log('[RevenueCat] ✅ SDK configured successfully');
+        console.log('[RevenueCat] Step 3: Configure SDK');
+        console.log('[RevenueCat] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
+        console.log('[RevenueCat] App User ID:', user.id);
+
+        // Enable debug logs
+        Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+        console.log('[RevenueCat] ✅ Debug logging enabled');
+
+        // Configure SDK
+        await Purchases.configure({ 
+          apiKey, 
+          appUserID: user.id 
+        });
+        console.log('[RevenueCat] ✅ SDK configured successfully');
+      }
 
       // Fetch offerings
-      console.log('[RevenueCat] Step 3: Fetching offerings...');
+      console.log('[RevenueCat] Step 4: Fetching offerings...');
       const offerings = await Purchases.getOfferings();
       
       console.log('[RevenueCat] Offerings response:');
@@ -167,7 +182,7 @@ export default function SubscriptionScreen() {
       }
 
       // Get customer info
-      console.log('[RevenueCat] Step 4: Fetching customer info...');
+      console.log('[RevenueCat] Step 5: Fetching customer info...');
       const info = await Purchases.getCustomerInfo();
       console.log('[RevenueCat] Customer info received');
       console.log('[RevenueCat] - Active entitlements:', Object.keys(info.entitlements.active).join(', ') || 'none');
@@ -181,7 +196,7 @@ export default function SubscriptionScreen() {
 
       // Sync to Supabase if premium
       if (hasPremium) {
-        console.log('[RevenueCat] Step 5: Syncing premium status to Supabase...');
+        console.log('[RevenueCat] Step 6: Syncing premium status to Supabase...');
         const { error: updateError } = await supabase
           .from('users')
           .update({ 
@@ -197,7 +212,7 @@ export default function SubscriptionScreen() {
         }
       }
 
-      console.log('[RevenueCat] ========== INITIALIZATION COMPLETE ==========');
+      console.log('[RevenueCat] ========== SUBSCRIPTION SCREEN INITIALIZATION COMPLETE ==========');
 
     } catch (error: any) {
       console.error('[RevenueCat] ❌ INITIALIZATION ERROR:', error);
@@ -215,7 +230,7 @@ export default function SubscriptionScreen() {
   }, []);
 
   useEffect(() => {
-    console.log('[RevenueCat] Component mounted, initializing...');
+    console.log('[RevenueCat] Subscription screen mounted, initializing...');
     initializeRevenueCat();
   }, [initializeRevenueCat]);
 

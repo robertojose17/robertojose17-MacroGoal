@@ -6,7 +6,7 @@ import { Stack, router, useSegments, useRootNavigationState } from "expo-router"
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert, AppState, AppStateStatus } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus, Platform } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
 import {
@@ -21,12 +21,16 @@ import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
   initialRouteName: "index",
 };
+
+// RevenueCat Configuration - Must match app/subscription.tsx
+const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -41,6 +45,90 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [hasNavigated, setHasNavigated] = useState(false);
+  const [currentRevenueCatUserId, setCurrentRevenueCatUserId] = useState<string | null>(null);
+
+  // Initialize RevenueCat when user logs in
+  const initializeRevenueCat = React.useCallback(async (userId: string) => {
+    if (Platform.OS === 'web') {
+      console.log('[RevenueCat] Web platform - skipping initialization');
+      return;
+    }
+
+    // Check if already initialized for this specific user
+    if (currentRevenueCatUserId === userId) {
+      console.log('[RevenueCat] Already initialized for user:', userId);
+      return;
+    }
+
+    try {
+      console.log('[RevenueCat] ========== GLOBAL INITIALIZATION START ==========');
+      console.log('[RevenueCat] Platform:', Platform.OS);
+      console.log('[RevenueCat] User ID:', userId);
+      console.log('[RevenueCat] Previous User ID:', currentRevenueCatUserId || 'none');
+      console.log('[RevenueCat] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
+
+      const apiKey = Platform.select({
+        ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
+        android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
+      });
+
+      if (!apiKey) {
+        console.error('[RevenueCat] ❌ API key not configured for platform:', Platform.OS);
+        return;
+      }
+
+      console.log('[RevenueCat] Configuring SDK with user ID:', userId);
+      console.log('[RevenueCat] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
+
+      // Enable debug logs
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+
+      // CRITICAL FIX: Always configure with the new user ID
+      // This ensures new users get properly connected to RevenueCat
+      console.log('[RevenueCat] Configuring SDK (will override previous configuration if any)');
+      await Purchases.configure({ 
+        apiKey, 
+        appUserID: userId 
+      });
+
+      console.log('[RevenueCat] ✅ SDK configured successfully');
+      setCurrentRevenueCatUserId(userId);
+
+      // Fetch customer info to sync premium status
+      console.log('[RevenueCat] Fetching customer info...');
+      const customerInfo = await Purchases.getCustomerInfo();
+      console.log('[RevenueCat] Active entitlements:', Object.keys(customerInfo.entitlements.active).join(', ') || 'none');
+
+      const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== 'undefined';
+      console.log(`[RevenueCat] Has "${ENTITLEMENT_IDENTIFIER}":`, hasPremium);
+
+      // Sync to Supabase if premium
+      if (hasPremium) {
+        console.log('[RevenueCat] Syncing premium status to Supabase...');
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ 
+            user_type: 'premium',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', userId);
+
+        if (updateError) {
+          console.error('[RevenueCat] ❌ Error syncing to Supabase:', updateError);
+        } else {
+          console.log('[RevenueCat] ✅ Premium status synced to Supabase');
+        }
+      }
+
+      console.log('[RevenueCat] ========== GLOBAL INITIALIZATION COMPLETE ==========');
+    } catch (error: any) {
+      console.error('[RevenueCat] ❌ INITIALIZATION ERROR:', error);
+      console.error('[RevenueCat] Error name:', error.name);
+      console.error('[RevenueCat] Error message:', error.message);
+      console.error('[RevenueCat] Error code:', error.code);
+      // Don't throw - allow app to continue even if RevenueCat fails
+    }
+  }, [currentRevenueCatUserId]);
 
   // Initialize app and auth
   useEffect(() => {
@@ -68,12 +156,30 @@ export default function RootLayout() {
       
       setSession(currentSession);
 
-      console.log('[App] Step 3: Setup auth listener');
+      // Initialize RevenueCat if user is logged in
+      if (currentSession?.user?.id) {
+        console.log('[App] Step 3: Initialize RevenueCat for logged-in user');
+        await initializeRevenueCat(currentSession.user.id);
+      }
+
+      console.log('[App] Step 4: Setup auth listener');
       
       // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
         setSession(session);
+
+        // Initialize RevenueCat when user signs in or signs up
+        if ((_event === 'SIGNED_IN' || _event === 'USER_UPDATED') && session?.user?.id) {
+          console.log('[App] User signed in/updated, initializing RevenueCat...');
+          await initializeRevenueCat(session.user.id);
+        }
+
+        // Reset RevenueCat tracking when user signs out
+        if (_event === 'SIGNED_OUT') {
+          console.log('[App] User signed out, resetting RevenueCat tracking');
+          setCurrentRevenueCatUserId(null);
+        }
       });
 
       console.log('[App] ✅ Initialization complete');
