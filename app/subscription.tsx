@@ -338,7 +338,7 @@ export default function SubscriptionScreen() {
       } else {
         Alert.alert(
           'No Active Subscriptions',
-          'No active subscriptions were found. If you believe this is an error, please contact support.'
+          'No active subscriptions were found for this Apple/Google account. If you purchased a subscription with a different app account, you\'ll need to log in to that account to access premium features.'
         );
       }
 
@@ -681,6 +681,9 @@ export default function SubscriptionScreen() {
           <Text style={[styles.disclaimerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             Subscriptions automatically renew unless canceled at least 24 hours before the end of the current period.
             You can manage your subscription in your App Store account settings.
+          </Text>
+          <Text style={[styles.disclaimerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+            Note: Each app account requires its own subscription. If you have multiple accounts, you must purchase or restore the subscription for each account separately.
           </Text>
         </View>
       </ScrollView>
