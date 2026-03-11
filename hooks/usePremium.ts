@@ -41,7 +41,7 @@ export function usePremium(): UsePremiumReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const checkPremiumStatus = useCallback(async () => {
+  const checkPremiumStatus = async () => {
     try {
       console.log('[usePremium] Checking premium status');
       setLoading(true);
@@ -80,16 +80,16 @@ export function usePremium(): UsePremiumReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   const refreshPremiumStatus = useCallback(async () => {
     console.log('[usePremium] Refreshing premium status');
     await checkPremiumStatus();
-  }, [checkPremiumStatus]);
+  }, []);
 
   useEffect(() => {
     checkPremiumStatus();
-  }, [checkPremiumStatus]);
+  }, []);
 
   return {
     isPremium,
