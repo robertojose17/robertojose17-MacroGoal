@@ -43,48 +43,56 @@ export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const [hasNavigated, setHasNavigated] = useState(false);
 
-  // Initialize RevenueCat SDK
+  // Initialize RevenueCat SDK - CRITICAL: Must complete before app is ready
   useEffect(() => {
-    initializeRevenueCat();
-  }, []);
+    const initRevenueCat = async () => {
+      try {
+        console.log('[RevenueCat] Starting SDK initialization...');
+        
+        // Check if already configured
+        if (Purchases.isConfigured) {
+          console.log('[RevenueCat] SDK already configured');
+          return;
+        }
 
-  const initializeRevenueCat = async () => {
-    try {
-      console.log('[RevenueCat] Initializing SDK...');
-      
-      // Check if already configured
-      if (Purchases.isConfigured) {
-        console.log('[RevenueCat] SDK already configured');
-        return;
-      }
-
-      // Get API key based on platform
-      const apiKey = Platform.select({
-        ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE', // Your iOS Public SDK Key
-        android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with your Android key when ready
-      });
-
-      if (!apiKey) {
-        console.warn('[RevenueCat] No API key for this platform');
-        return;
-      }
-
-      // Configure SDK without user ID initially
-      await Purchases.configure({ apiKey });
-      console.log('[RevenueCat] ✅ SDK configured successfully');
-
-      // Set up customer info update listener
-      Purchases.addCustomerInfoUpdateListener((customerInfo) => {
-        console.log('[RevenueCat] Customer info updated:', {
-          activeEntitlements: Object.keys(customerInfo.entitlements.active),
-          activeSubscriptions: customerInfo.activeSubscriptions,
+        // Get API key based on platform
+        const apiKey = Platform.select({
+          ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE', // Your iOS Public SDK Key
+          android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with your Android key when ready
         });
-      });
 
-    } catch (error) {
-      console.error('[RevenueCat] ❌ Failed to initialize SDK:', error);
-    }
-  };
+        if (!apiKey) {
+          console.warn('[RevenueCat] No API key for this platform');
+          return;
+        }
+
+        // Configure SDK - AWAIT this to ensure it completes
+        console.log('[RevenueCat] Configuring SDK with API key...');
+        await Purchases.configure({ apiKey });
+        console.log('[RevenueCat] ✅ SDK configured successfully');
+
+        // Set up customer info update listener
+        Purchases.addCustomerInfoUpdateListener((customerInfo) => {
+          console.log('[RevenueCat] Customer info updated:', {
+            activeEntitlements: Object.keys(customerInfo.entitlements.active),
+            activeSubscriptions: customerInfo.activeSubscriptions,
+          });
+        });
+
+        // Verify SDK is working by getting customer info
+        const customerInfo = await Purchases.getCustomerInfo();
+        console.log('[RevenueCat] ✅ SDK verified - Customer info retrieved:', {
+          originalAppUserId: customerInfo.originalAppUserId,
+          activeEntitlements: Object.keys(customerInfo.entitlements.active),
+        });
+
+      } catch (error) {
+        console.error('[RevenueCat] ❌ Failed to initialize SDK:', error);
+      }
+    };
+
+    initRevenueCat();
+  }, []);
 
   // Handle RevenueCat user login/logout based on Supabase auth
   useEffect(() => {
@@ -92,6 +100,19 @@ export default function RootLayout() {
 
     const handleRevenueCatAuth = async () => {
       try {
+        // Wait for SDK to be configured
+        let attempts = 0;
+        while (!Purchases.isConfigured && attempts < 10) {
+          console.log('[RevenueCat] Waiting for SDK to be configured...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempts++;
+        }
+
+        if (!Purchases.isConfigured) {
+          console.error('[RevenueCat] SDK not configured after waiting');
+          return;
+        }
+
         const userId = session.user.id;
         console.log('[RevenueCat] Logging in user:', userId);
 

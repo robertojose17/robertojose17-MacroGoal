@@ -45,10 +45,51 @@ export default function SubscriptionScreen() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    fetchOfferings();
+    initializeAndFetch();
   }, []);
+
+  const initializeAndFetch = async () => {
+    console.log('[Subscription] Starting initialization...');
+    setIsInitializing(true);
+    setLoading(true);
+    setError(null);
+
+    try {
+      // CRITICAL: Wait for SDK to be configured
+      console.log('[Subscription] Checking if RevenueCat SDK is configured...');
+      let attempts = 0;
+      const maxAttempts = 20; // 10 seconds max wait
+      
+      while (!Purchases.isConfigured && attempts < maxAttempts) {
+        console.log(`[Subscription] SDK not ready, waiting... (attempt ${attempts + 1}/${maxAttempts})`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+
+      if (!Purchases.isConfigured) {
+        console.error('[Subscription] ❌ SDK not configured after waiting');
+        setError('RevenueCat SDK is not initialized. Please restart the app and try again.');
+        setIsInitializing(false);
+        setLoading(false);
+        return;
+      }
+
+      console.log('[Subscription] ✅ SDK is configured, proceeding to fetch offerings');
+      setIsInitializing(false);
+
+      // Now fetch offerings
+      await fetchOfferings();
+
+    } catch (error: any) {
+      console.error('[Subscription] ❌ Initialization error:', error);
+      setError('Failed to initialize subscription system. Please try again.');
+      setIsInitializing(false);
+      setLoading(false);
+    }
+  };
 
   const fetchOfferings = async (retryCount = 0) => {
     try {
@@ -56,73 +97,103 @@ export default function SubscriptionScreen() {
       setLoading(true);
       setError(null);
 
+      // Verify SDK is still configured
+      if (!Purchases.isConfigured) {
+        console.error('[Subscription] SDK not configured when fetching offerings');
+        throw new Error('SDK not configured');
+      }
+
       const offerings = await Purchases.getOfferings();
       console.log('[Subscription] Offerings received:', {
         current: offerings.current?.identifier,
         packagesCount: offerings.current?.availablePackages.length || 0,
+        allOfferings: Object.keys(offerings.all),
       });
 
       if (!offerings.current || offerings.current.availablePackages.length === 0) {
-        console.warn('[Subscription] No subscription packages available');
+        console.warn('[Subscription] No subscription packages available in current offering');
+        
+        // Check if there are any offerings at all
+        const allOfferingKeys = Object.keys(offerings.all);
+        if (allOfferingKeys.length > 0) {
+          console.log('[Subscription] Found offerings:', allOfferingKeys);
+          // Try to use the first available offering
+          const firstOffering = offerings.all[allOfferingKeys[0]];
+          if (firstOffering && firstOffering.availablePackages.length > 0) {
+            console.log('[Subscription] Using first available offering:', firstOffering.identifier);
+            const mappedPlans = mapPackagesToPlans(firstOffering.availablePackages);
+            setPlans(mappedPlans);
+            setLoading(false);
+            return;
+          }
+        }
         
         // Retry logic for SDK initialization race condition
-        if (retryCount < 3) {
-          console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/3)`);
+        if (retryCount < 5) {
+          console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/5)`);
           setTimeout(() => fetchOfferings(retryCount + 1), 2000);
           return;
         }
         
-        setError('No subscription packages are currently available. Please try again later.');
+        setError('No subscription packages are currently available. Please make sure you have configured offerings in RevenueCat dashboard with the identifier "Monthly_MG".');
         setLoading(false);
         return;
       }
 
       // Map RevenueCat packages to our UI format
-      const mappedPlans: SubscriptionPlan[] = offerings.current.availablePackages.map((pkg) => {
-        const isMonthly = pkg.product.identifier === PRODUCT_IDS.MONTHLY;
-        const isYearly = pkg.product.identifier === PRODUCT_IDS.YEARLY;
-
-        return {
-          id: pkg.product.identifier,
-          name: isMonthly ? 'Monthly Premium' : isYearly ? 'Yearly Premium' : pkg.product.title,
-          price: pkg.product.priceString,
-          period: isMonthly ? 'per month' : isYearly ? 'per year' : '',
-          features: isMonthly
-            ? [
-                'Advanced analytics & trends',
-                'Multiple goal phases',
-                'Custom recipes builder',
-                'Habit tracking & streaks',
-                'Data export (CSV)',
-                'Priority support',
-              ]
-            : [
-                'All Monthly Premium features',
-                'Save up to 33% per year',
-                'Best value for committed users',
-                'Cancel anytime',
-              ],
-          popular: isYearly,
-          rcPackage: pkg,
-        };
-      });
-
+      const mappedPlans = mapPackagesToPlans(offerings.current.availablePackages);
       console.log('[Subscription] Mapped plans:', mappedPlans.map(p => ({ id: p.id, price: p.price })));
       setPlans(mappedPlans);
       setLoading(false);
     } catch (error: any) {
       console.error('[Subscription] Error fetching offerings:', error);
+      console.error('[Subscription] Error details:', {
+        message: error.message,
+        code: error.code,
+        underlyingErrorMessage: error.underlyingErrorMessage,
+      });
       
       // Retry logic
-      if (retryCount < 3) {
-        console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/3)`);
+      if (retryCount < 5) {
+        console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/5)`);
         setTimeout(() => fetchOfferings(retryCount + 1), 2000);
         return;
       }
       
-      setError('Failed to load subscription options. Please check your internet connection and try again.');
+      setError(`Failed to load subscription options: ${error.message || 'Unknown error'}. Please check your internet connection and try again.`);
       setLoading(false);
     }
+  };
+
+  const mapPackagesToPlans = (packages: PurchasesPackage[]): SubscriptionPlan[] => {
+    return packages.map((pkg) => {
+      const isMonthly = pkg.product.identifier === PRODUCT_IDS.MONTHLY;
+      const isYearly = pkg.product.identifier === PRODUCT_IDS.YEARLY;
+
+      return {
+        id: pkg.product.identifier,
+        name: isMonthly ? 'Monthly Premium' : isYearly ? 'Yearly Premium' : pkg.product.title,
+        price: pkg.product.priceString,
+        period: isMonthly ? 'per month' : isYearly ? 'per year' : '',
+        features: isMonthly
+          ? [
+              'Advanced analytics & trends',
+              'Multiple goal phases',
+              'Custom recipes builder',
+              'Habit tracking & streaks',
+              'Data export (CSV)',
+              'Priority support',
+            ]
+          : [
+              'All Monthly Premium features',
+              'Save up to 33% per year',
+              'Best value for committed users',
+              'Cancel anytime',
+            ],
+        popular: isYearly,
+        rcPackage: pkg,
+      };
+    });
   };
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
@@ -216,14 +287,23 @@ export default function SubscriptionScreen() {
   };
 
   // Loading state
-  if (loading || premiumLoading) {
+  if (loading || premiumLoading || isInitializing) {
+    const loadingMessage = isInitializing 
+      ? 'Initializing RevenueCat SDK...' 
+      : 'Loading subscription options...';
+
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Loading subscription options...
+            {loadingMessage}
           </Text>
+          {isInitializing && (
+            <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              This may take a few seconds...
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -260,7 +340,7 @@ export default function SubscriptionScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.retryButton, { backgroundColor: colors.primary }]}
-            onPress={() => fetchOfferings()}
+            onPress={() => initializeAndFetch()}
           >
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
@@ -473,6 +553,11 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  loadingSubtext: {
+    ...typography.caption,
     textAlign: 'center',
   },
   errorContainer: {

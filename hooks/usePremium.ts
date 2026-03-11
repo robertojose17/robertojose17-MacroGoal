@@ -63,6 +63,21 @@ export function usePremium(): UsePremiumReturn {
     try {
       console.log('[usePremium] Manually refreshing premium status');
       setLoading(true);
+
+      // Wait for SDK to be configured if needed
+      let attempts = 0;
+      while (!Purchases.isConfigured && attempts < 10) {
+        console.log('[usePremium] Waiting for SDK to be configured...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+
+      if (!Purchases.isConfigured) {
+        console.error('[usePremium] SDK not configured after waiting');
+        setLoading(false);
+        return;
+      }
+
       const info = await Purchases.getCustomerInfo();
       await checkPremiumStatus(info);
     } catch (error) {
@@ -77,16 +92,32 @@ export function usePremium(): UsePremiumReturn {
     // Initial check
     const setupListener = async () => {
       try {
+        // Wait for SDK to be configured
+        console.log('[usePremium] Waiting for SDK to be configured...');
+        let attempts = 0;
+        while (!Purchases.isConfigured && attempts < 20) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempts++;
+        }
+
+        if (!Purchases.isConfigured) {
+          console.error('[usePremium] SDK not configured after waiting');
+          setLoading(false);
+          return;
+        }
+
+        console.log('[usePremium] SDK is configured, fetching customer info');
+
         // Get initial customer info
         const info = await Purchases.getCustomerInfo();
         await checkPremiumStatus(info);
+
+        // Listen for updates
+        Purchases.addCustomerInfoUpdateListener(checkPremiumStatus);
       } catch (error) {
         console.error('[usePremium] Error fetching initial customer info:', error);
         setLoading(false);
       }
-
-      // Listen for updates
-      Purchases.addCustomerInfoUpdateListener(checkPremiumStatus);
     };
 
     setupListener();
