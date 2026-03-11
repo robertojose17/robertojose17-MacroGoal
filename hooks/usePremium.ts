@@ -1,21 +1,24 @@
 
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase/client';
+import { useState, useEffect } from 'react';
+import Purchases, { CustomerInfo } from 'react-native-purchases';
+
+// CRITICAL: This must match your RevenueCat dashboard entitlement identifier
+const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
 
 interface UsePremiumReturn {
   isPremium: boolean;
   loading: boolean;
-  error: string | null;
-  checkPremiumStatus: () => Promise<void>;
+  customerInfo: CustomerInfo | null;
   refreshPremiumStatus: () => Promise<void>;
 }
 
 /**
- * Hook to check if the current user has an active premium subscription
+ * Hook to check if the current user has an active premium subscription via RevenueCat
  * 
- * This hook checks the Supabase database to determine premium status.
+ * This hook checks RevenueCat's CustomerInfo to determine premium status.
+ * RevenueCat is the source of truth for subscription status.
  * 
- * @returns {UsePremiumReturn} Premium status, loading state, and refresh function
+ * @returns {UsePremiumReturn} Premium status, loading state, customer info, and refresh function
  * 
  * @example
  * ```tsx
@@ -39,62 +42,65 @@ interface UsePremiumReturn {
 export function usePremium(): UsePremiumReturn {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
 
-  const checkPremiumStatus = useCallback(async () => {
+  const checkPremiumStatus = async (info: CustomerInfo) => {
+    console.log('[usePremium] Checking premium status from CustomerInfo');
+    console.log('[usePremium] Active entitlements:', Object.keys(info.entitlements.active));
+    console.log('[usePremium] Active subscriptions:', info.activeSubscriptions);
+    
+    // Check if user has the premium entitlement
+    const hasPremium = info.entitlements.active[ENTITLEMENT_IDENTIFIER] !== undefined;
+    
+    console.log(`[usePremium] Has "${ENTITLEMENT_IDENTIFIER}" entitlement:`, hasPremium);
+    
+    setIsPremium(hasPremium);
+    setCustomerInfo(info);
+    setLoading(false);
+  };
+
+  const refreshPremiumStatus = async () => {
     try {
-      console.log('[usePremium] Checking premium status');
+      console.log('[usePremium] Manually refreshing premium status');
       setLoading(true);
-      setError(null);
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('[usePremium] No user found');
-        setIsPremium(false);
-        setLoading(false);
-        return;
-      }
-
-      // Check user_type in database
-      const { data: userData, error: fetchError } = await supabase
-        .from('users')
-        .select('user_type')
-        .eq('id', user.id)
-        .single();
-
-      if (fetchError) {
-        console.error('[usePremium] Error fetching user data:', fetchError);
-        throw fetchError;
-      }
-
-      const userIsPremium = userData?.user_type === 'premium';
-      console.log('[usePremium] User premium status:', userIsPremium);
-      setIsPremium(userIsPremium);
-
-    } catch (err: any) {
-      console.error('[usePremium] Error checking premium status:', err);
-      setError(err.message || 'Failed to check premium status');
-      setIsPremium(false);
-    } finally {
+      const info = await Purchases.getCustomerInfo();
+      await checkPremiumStatus(info);
+    } catch (error) {
+      console.error('[usePremium] Error refreshing premium status:', error);
       setLoading(false);
     }
-  }, []);
-
-  const refreshPremiumStatus = useCallback(async () => {
-    console.log('[usePremium] Refreshing premium status');
-    await checkPremiumStatus();
-  }, [checkPremiumStatus]);
+  };
 
   useEffect(() => {
-    checkPremiumStatus();
-  }, [checkPremiumStatus]);
+    console.log('[usePremium] Setting up premium status monitoring');
+    
+    // Initial check
+    const setupListener = async () => {
+      try {
+        // Get initial customer info
+        const info = await Purchases.getCustomerInfo();
+        await checkPremiumStatus(info);
+      } catch (error) {
+        console.error('[usePremium] Error fetching initial customer info:', error);
+        setLoading(false);
+      }
+
+      // Listen for updates
+      Purchases.addCustomerInfoUpdateListener(checkPremiumStatus);
+    };
+
+    setupListener();
+
+    // Cleanup is handled by Purchases SDK
+    return () => {
+      console.log('[usePremium] Cleaning up');
+    };
+  }, []);
 
   return {
     isPremium,
     loading,
-    error,
-    checkPremiumStatus,
+    customerInfo,
     refreshPremiumStatus,
   };
 }

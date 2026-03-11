@@ -6,7 +6,7 @@ import { Stack, router, useSegments, useRootNavigationState } from "expo-router"
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert, AppState, AppStateStatus } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus, Platform } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
 import {
@@ -21,6 +21,7 @@ import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import Purchases from "react-native-purchases";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,6 +42,75 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [hasNavigated, setHasNavigated] = useState(false);
+
+  // Initialize RevenueCat SDK
+  useEffect(() => {
+    initializeRevenueCat();
+  }, []);
+
+  const initializeRevenueCat = async () => {
+    try {
+      console.log('[RevenueCat] Initializing SDK...');
+      
+      // Check if already configured
+      if (Purchases.isConfigured) {
+        console.log('[RevenueCat] SDK already configured');
+        return;
+      }
+
+      // Get API key based on platform
+      const apiKey = Platform.select({
+        ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE', // Your iOS Public SDK Key
+        android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with your Android key when ready
+      });
+
+      if (!apiKey) {
+        console.warn('[RevenueCat] No API key for this platform');
+        return;
+      }
+
+      // Configure SDK without user ID initially
+      await Purchases.configure({ apiKey });
+      console.log('[RevenueCat] ✅ SDK configured successfully');
+
+      // Set up customer info update listener
+      Purchases.addCustomerInfoUpdateListener((customerInfo) => {
+        console.log('[RevenueCat] Customer info updated:', {
+          activeEntitlements: Object.keys(customerInfo.entitlements.active),
+          activeSubscriptions: customerInfo.activeSubscriptions,
+        });
+      });
+
+    } catch (error) {
+      console.error('[RevenueCat] ❌ Failed to initialize SDK:', error);
+    }
+  };
+
+  // Handle RevenueCat user login/logout based on Supabase auth
+  useEffect(() => {
+    if (!session) return;
+
+    const handleRevenueCatAuth = async () => {
+      try {
+        const userId = session.user.id;
+        console.log('[RevenueCat] Logging in user:', userId);
+
+        // Log in to RevenueCat with Supabase user ID
+        const { customerInfo, created } = await Purchases.logIn(userId);
+        
+        console.log('[RevenueCat] ✅ User logged in:', {
+          userId,
+          isNewUser: created,
+          activeEntitlements: Object.keys(customerInfo.entitlements.active),
+        });
+
+      } catch (error) {
+        console.error('[RevenueCat] ❌ Failed to log in user:', error);
+      }
+    };
+
+    handleRevenueCatAuth();
+  }, [session]);
 
   // Initialize app and auth
   useEffect(() => {
@@ -71,9 +141,19 @@ export default function RootLayout() {
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('[App] Auth state changed:', event, session?.user?.id || 'none');
         setSession(session);
+
+        // Handle RevenueCat logout when user signs out
+        if (event === 'SIGNED_OUT') {
+          try {
+            await Purchases.logOut();
+            console.log('[RevenueCat] ✅ User logged out');
+          } catch (error) {
+            console.error('[RevenueCat] ❌ Failed to log out:', error);
+          }
+        }
       });
 
       console.log('[App] ✅ Initialization complete');

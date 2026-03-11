@@ -8,13 +8,22 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
+import { usePremium } from '@/hooks/usePremium';
+import Purchases, { PurchasesPackage } from 'react-native-purchases';
+
+// CRITICAL: These must match your RevenueCat dashboard configuration
+const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
+const PRODUCT_IDS = {
+  MONTHLY: 'Monthly_MG',
+  YEARLY: 'Yearly_MG',
+};
 
 interface SubscriptionPlan {
   id: string;
@@ -23,98 +32,191 @@ interface SubscriptionPlan {
   period: string;
   features: string[];
   popular?: boolean;
+  rcPackage?: PurchasesPackage;
 }
-
-const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'monthly',
-    name: 'Monthly Premium',
-    price: '$9.99',
-    period: 'per month',
-    features: [
-      'Advanced analytics & trends',
-      'Multiple goal phases',
-      'Custom recipes builder',
-      'Habit tracking & streaks',
-      'Data export (CSV)',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'yearly',
-    name: 'Yearly Premium',
-    price: '$79.99',
-    period: 'per year',
-    features: [
-      'All Monthly Premium features',
-      'Save $40 per year',
-      'Best value for committed users',
-      'Cancel anytime',
-    ],
-    popular: true,
-  },
-];
 
 export default function SubscriptionScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { isPremium, loading: premiumLoading, refreshPremiumStatus } = usePremium();
 
   const [loading, setLoading] = useState(true);
-  const [isPremium, setIsPremium] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    checkPremiumStatus();
+    fetchOfferings();
   }, []);
 
-  const checkPremiumStatus = async () => {
+  const fetchOfferings = async (retryCount = 0) => {
     try {
-      console.log('[Subscription] Checking premium status');
-      const { data: { user } } = await supabase.auth.getUser();
+      console.log('[Subscription] Fetching offerings from RevenueCat...');
+      setLoading(true);
+      setError(null);
+
+      const offerings = await Purchases.getOfferings();
+      console.log('[Subscription] Offerings received:', {
+        current: offerings.current?.identifier,
+        packagesCount: offerings.current?.availablePackages.length || 0,
+      });
+
+      if (!offerings.current || offerings.current.availablePackages.length === 0) {
+        console.warn('[Subscription] No subscription packages available');
+        
+        // Retry logic for SDK initialization race condition
+        if (retryCount < 3) {
+          console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/3)`);
+          setTimeout(() => fetchOfferings(retryCount + 1), 2000);
+          return;
+        }
+        
+        setError('No subscription packages are currently available. Please try again later.');
+        setLoading(false);
+        return;
+      }
+
+      // Map RevenueCat packages to our UI format
+      const mappedPlans: SubscriptionPlan[] = offerings.current.availablePackages.map((pkg) => {
+        const isMonthly = pkg.product.identifier === PRODUCT_IDS.MONTHLY;
+        const isYearly = pkg.product.identifier === PRODUCT_IDS.YEARLY;
+
+        return {
+          id: pkg.product.identifier,
+          name: isMonthly ? 'Monthly Premium' : isYearly ? 'Yearly Premium' : pkg.product.title,
+          price: pkg.product.priceString,
+          period: isMonthly ? 'per month' : isYearly ? 'per year' : '',
+          features: isMonthly
+            ? [
+                'Advanced analytics & trends',
+                'Multiple goal phases',
+                'Custom recipes builder',
+                'Habit tracking & streaks',
+                'Data export (CSV)',
+                'Priority support',
+              ]
+            : [
+                'All Monthly Premium features',
+                'Save up to 33% per year',
+                'Best value for committed users',
+                'Cancel anytime',
+              ],
+          popular: isYearly,
+          rcPackage: pkg,
+        };
+      });
+
+      console.log('[Subscription] Mapped plans:', mappedPlans.map(p => ({ id: p.id, price: p.price })));
+      setPlans(mappedPlans);
+      setLoading(false);
+    } catch (error: any) {
+      console.error('[Subscription] Error fetching offerings:', error);
       
-      if (!user) {
-        console.log('[Subscription] No user found');
-        setLoading(false);
+      // Retry logic
+      if (retryCount < 3) {
+        console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/3)`);
+        setTimeout(() => fetchOfferings(retryCount + 1), 2000);
         return;
       }
+      
+      setError('Failed to load subscription options. Please check your internet connection and try again.');
+      setLoading(false);
+    }
+  };
 
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('user_type')
-        .eq('id', user.id)
-        .single();
+  const handleSubscribe = async (plan: SubscriptionPlan) => {
+    if (!plan.rcPackage) {
+      console.error('[Subscription] No RevenueCat package for plan:', plan.id);
+      Alert.alert('Error', 'This subscription option is not available.');
+      return;
+    }
 
-      if (error) {
-        console.error('[Subscription] Error fetching user data:', error);
-        setLoading(false);
-        return;
+    console.log('[Subscription] Starting purchase for:', plan.id);
+    setSelectedPlan(plan.id);
+
+    try {
+      const { customerInfo, productIdentifier } = await Purchases.purchasePackage(plan.rcPackage);
+      
+      console.log('[Subscription] ✅ Purchase successful:', {
+        productIdentifier,
+        activeEntitlements: Object.keys(customerInfo.entitlements.active),
+      });
+
+      // Refresh premium status
+      await refreshPremiumStatus();
+
+      // Show success message
+      Alert.alert(
+        '🎉 Welcome to Premium!',
+        'Your subscription is now active. Enjoy all premium features!',
+        [
+          {
+            text: 'Continue',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('[Subscription] Purchase error:', error);
+      
+      // User cancelled
+      if (error.userCancelled) {
+        console.log('[Subscription] User cancelled purchase');
+      } else {
+        Alert.alert(
+          'Purchase Failed',
+          error.message || 'Unable to complete purchase. Please try again.',
+          [{ text: 'OK' }]
+        );
       }
+    } finally {
+      setSelectedPlan(null);
+    }
+  };
 
-      const userIsPremium = userData?.user_type === 'premium';
-      console.log('[Subscription] User is premium:', userIsPremium);
-      setIsPremium(userIsPremium);
-    } catch (error) {
-      console.error('[Subscription] Error checking premium status:', error);
+  const handleRestorePurchases = async () => {
+    try {
+      console.log('[Subscription] Restoring purchases...');
+      setLoading(true);
+
+      const customerInfo = await Purchases.restorePurchases();
+      
+      console.log('[Subscription] Restore complete:', {
+        activeEntitlements: Object.keys(customerInfo.entitlements.active),
+      });
+
+      await refreshPremiumStatus();
+
+      const hasPremium = customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== undefined;
+
+      if (hasPremium) {
+        Alert.alert(
+          '✅ Purchases Restored',
+          'Your premium subscription has been restored!',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'No Purchases Found',
+          'We could not find any active subscriptions to restore.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('[Subscription] Restore error:', error);
+      Alert.alert(
+        'Restore Failed',
+        error.message || 'Unable to restore purchases. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubscribe = async (planId: string) => {
-    console.log('[Subscription] Subscribe clicked:', planId);
-    setSelectedPlan(planId);
-
-    // TODO: Implement subscription purchase flow
-    // This will be integrated with your payment provider (Stripe, RevenueCat, etc.)
-    
-    // For now, show a placeholder message
-    alert('Subscription feature coming soon! This will integrate with your payment provider.');
-    setSelectedPlan(null);
-  };
-
   // Loading state
-  if (loading) {
+  if (loading || premiumLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
@@ -122,6 +224,46 @@ export default function SubscriptionScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading subscription options...
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Subscription
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={48}
+            color={colors.primary}
+          />
+          <Text style={[styles.errorText, { color: isDark ? colors.textDark : colors.text }]}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            onPress={() => fetchOfferings()}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -166,7 +308,14 @@ export default function SubscriptionScreen() {
             <Text style={[styles.featuresTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Your Premium Features
             </Text>
-            {SUBSCRIPTION_PLANS[0].features.map((feature, index) => (
+            {[
+              'Advanced analytics & trends',
+              'Multiple goal phases',
+              'Custom recipes builder',
+              'Habit tracking & streaks',
+              'Data export (CSV)',
+              'Priority support',
+            ].map((feature, index) => (
               <View key={index} style={styles.featureRow}>
                 <IconSymbol
                   ios_icon_name="checkmark.circle.fill"
@@ -209,7 +358,11 @@ export default function SubscriptionScreen() {
         <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
           Go Premium
         </Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={handleRestorePurchases} style={styles.restoreButton}>
+          <Text style={[styles.restoreText, { color: colors.primary }]}>
+            Restore
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -230,7 +383,7 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
 
-        {SUBSCRIPTION_PLANS.map((plan) => {
+        {plans.map((plan) => {
           const isSelected = selectedPlan === plan.id;
           const isPurchasing = isSelected;
 
@@ -283,7 +436,7 @@ export default function SubscriptionScreen() {
                   { backgroundColor: colors.primary },
                   isPurchasing && styles.subscribeButtonDisabled,
                 ]}
-                onPress={() => handleSubscribe(plan.id)}
+                onPress={() => handleSubscribe(plan)}
                 disabled={isPurchasing}
               >
                 {isPurchasing ? (
@@ -299,7 +452,7 @@ export default function SubscriptionScreen() {
         <View style={styles.disclaimerContainer}>
           <Text style={[styles.disclaimerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             Subscriptions automatically renew unless canceled at least 24 hours before the end of the current period.
-            You can manage your subscription in your account settings.
+            Manage your subscription in the App Store.
           </Text>
         </View>
       </ScrollView>
@@ -322,6 +475,28 @@ const styles = StyleSheet.create({
     ...typography.body,
     textAlign: 'center',
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  errorText: {
+    ...typography.body,
+    textAlign: 'center',
+  },
+  retryButton: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginTop: spacing.md,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -335,6 +510,13 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.h3,
+  },
+  restoreButton: {
+    padding: spacing.xs,
+  },
+  restoreText: {
+    ...typography.bodyBold,
+    fontSize: 16,
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
