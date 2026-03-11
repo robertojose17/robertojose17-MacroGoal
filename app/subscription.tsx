@@ -48,8 +48,9 @@ export default function SubscriptionScreen() {
   const [isPremium, setIsPremium] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Initialize RevenueCat
+  // Initialize RevenueCat and fetch offerings
   const initializeRevenueCat = async () => {
     if (Platform.OS === 'web') {
       console.log('[Subscription] Web platform - RevenueCat not available');
@@ -58,21 +59,40 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[Subscription] Initializing RevenueCat...');
+      console.log('[Subscription] ========== INITIALIZING REVENUECAT ==========');
 
-      // Get RevenueCat API keys from app.json
+      // Get RevenueCat configuration from app.json
       const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+      console.log('[Subscription] RevenueCat config:', {
+        hasConfig: !!revenueCatConfig,
+        iosApiKey: revenueCatConfig?.iosApiKey?.substring(0, 10) + '...',
+        androidApiKey: revenueCatConfig?.androidApiKey?.substring(0, 10) + '...',
+        offeringIdentifier: revenueCatConfig?.offeringIdentifier,
+        entitlementIdentifier: revenueCatConfig?.entitlementIdentifier,
+      });
+
       const apiKey = Platform.select({
         ios: revenueCatConfig?.iosApiKey,
         android: revenueCatConfig?.androidApiKey,
       });
 
-      if (!apiKey || apiKey.includes('YOUR')) {
-        console.error('[Subscription] RevenueCat API key not configured');
-        Alert.alert(
-          'Configuration Error',
-          'RevenueCat is not configured. Please add your API keys to the app configuration.'
-        );
+      console.log('[Subscription] Platform:', Platform.OS);
+      console.log('[Subscription] API Key exists:', !!apiKey);
+      console.log('[Subscription] API Key starts with:', apiKey?.substring(0, 10));
+
+      // Check if API key is configured
+      if (!apiKey) {
+        const errorMsg = 'RevenueCat API key not found in configuration';
+        console.error('[Subscription] ❌', errorMsg);
+        setErrorMessage(errorMsg);
+        setLoading(false);
+        return;
+      }
+
+      if (apiKey.includes('YOUR')) {
+        const errorMsg = `RevenueCat API key not configured for ${Platform.OS}. Please add your ${Platform.OS === 'ios' ? 'iOS' : 'Android'} API key to app.json`;
+        console.error('[Subscription] ❌', errorMsg);
+        setErrorMessage(errorMsg);
         setLoading(false);
         return;
       }
@@ -80,55 +100,115 @@ export default function SubscriptionScreen() {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.error('[Subscription] No user found');
+        console.error('[Subscription] ❌ No user found');
+        setErrorMessage('Please log in to view subscriptions');
         setLoading(false);
         return;
       }
 
-      // Configure RevenueCat with user ID
+      console.log('[Subscription] User ID:', user.id);
+
+      // Configure RevenueCat
+      console.log('[Subscription] Configuring RevenueCat SDK...');
       await Purchases.configure({
         apiKey,
-        appUserID: user.id, // Use Supabase user ID as RevenueCat app_user_id
+        appUserID: user.id,
       });
 
-      // Enable debug logs in development
-      if (__DEV__) {
-        await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-      }
-
-      console.log('[Subscription] RevenueCat configured with user ID:', user.id);
+      // Enable debug logs
+      await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+      console.log('[Subscription] ✅ RevenueCat configured successfully');
 
       // Fetch offerings
-      const offerings = await Purchases.getOfferings();
-      console.log('[Subscription] Offerings fetched:', offerings.current?.identifier);
+      console.log('[Subscription] Fetching offerings...');
+      const offeringsResponse = await Purchases.getOfferings();
+      
+      console.log('[Subscription] Offerings response:', {
+        hasCurrent: !!offeringsResponse.current,
+        currentIdentifier: offeringsResponse.current?.identifier,
+        allOfferingsCount: Object.keys(offeringsResponse.all).length,
+        allOfferingIds: Object.keys(offeringsResponse.all),
+      });
 
-      if (offerings.current && offerings.current.availablePackages.length > 0) {
-        setOfferings(offerings.current);
-        setPackages(offerings.current.availablePackages);
-        console.log('[Subscription] Available packages:', offerings.current.availablePackages.length);
+      // Try to get the specific offering by identifier first
+      const offeringIdentifier = revenueCatConfig?.offeringIdentifier;
+      let targetOffering = offeringsResponse.current;
+
+      if (offeringIdentifier && offeringsResponse.all[offeringIdentifier]) {
+        console.log('[Subscription] Using specific offering:', offeringIdentifier);
+        targetOffering = offeringsResponse.all[offeringIdentifier];
+      } else if (offeringsResponse.current) {
+        console.log('[Subscription] Using current offering:', offeringsResponse.current.identifier);
+      } else if (Object.keys(offeringsResponse.all).length > 0) {
+        // Use the first available offering
+        const firstOfferingKey = Object.keys(offeringsResponse.all)[0];
+        console.log('[Subscription] Using first available offering:', firstOfferingKey);
+        targetOffering = offeringsResponse.all[firstOfferingKey];
+      }
+
+      if (targetOffering && targetOffering.availablePackages.length > 0) {
+        console.log('[Subscription] ✅ Offering found:', {
+          identifier: targetOffering.identifier,
+          packagesCount: targetOffering.availablePackages.length,
+          packageIdentifiers: targetOffering.availablePackages.map(p => p.identifier),
+        });
+
+        setOfferings(targetOffering);
+        setPackages(targetOffering.availablePackages);
+
+        // Log package details
+        targetOffering.availablePackages.forEach((pkg, index) => {
+          console.log(`[Subscription] Package ${index + 1}:`, {
+            identifier: pkg.identifier,
+            packageType: pkg.packageType,
+            productId: pkg.product.identifier,
+            title: pkg.product.title,
+            price: pkg.product.priceString,
+          });
+        });
       } else {
-        console.warn('[Subscription] No offerings available');
-        Alert.alert(
-          'No Subscriptions Available',
-          'No subscription plans are currently available. Please ensure:\n\n1. Products are created in RevenueCat\n2. An offering is configured\n3. Products are linked to the offering'
-        );
+        console.warn('[Subscription] ⚠️ No offerings or packages available');
+        console.log('[Subscription] Debug info:', {
+          hasOfferings: Object.keys(offeringsResponse.all).length > 0,
+          offeringIds: Object.keys(offeringsResponse.all),
+          currentOffering: offeringsResponse.current?.identifier,
+          configuredOffering: offeringIdentifier,
+        });
+
+        const errorMsg = `No subscription plans currently available.\n\nPlease ensure:\n1. Products are created in RevenueCat\n2. Offering "${offeringIdentifier || 'default'}" is configured\n3. Products are linked to the offering\n\nCurrent offerings: ${Object.keys(offeringsResponse.all).join(', ') || 'none'}`;
+        setErrorMessage(errorMsg);
       }
 
       // Check current premium status
+      console.log('[Subscription] Checking customer info...');
       const info = await Purchases.getCustomerInfo();
       setCustomerInfo(info);
-      const hasActiveEntitlement = info.entitlements.active['Macrogoal Pro']?.isActive || false;
+
+      const entitlementIdentifier = revenueCatConfig?.entitlementIdentifier || 'Macrogoal Pro';
+      const hasActiveEntitlement = info.entitlements.active[entitlementIdentifier]?.isActive || false;
+      
+      console.log('[Subscription] Customer info:', {
+        hasActiveEntitlements: Object.keys(info.entitlements.active).length > 0,
+        activeEntitlements: Object.keys(info.entitlements.active),
+        targetEntitlement: entitlementIdentifier,
+        isPremium: hasActiveEntitlement,
+      });
+
       setIsPremium(hasActiveEntitlement);
-      console.log('[Subscription] Current premium status:', hasActiveEntitlement);
 
     } catch (error: any) {
-      console.error('[Subscription] RevenueCat initialization error:', error);
-      Alert.alert(
-        'Initialization Error',
-        'Failed to initialize subscriptions: ' + (error.message || 'Unknown error')
-      );
+      console.error('[Subscription] ❌ RevenueCat initialization error:', error);
+      console.error('[Subscription] Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      
+      const errorMsg = `Failed to initialize subscriptions:\n\n${error.message || 'Unknown error'}\n\nPlease check:\n1. RevenueCat API keys are correct\n2. Products are configured in RevenueCat dashboard\n3. Internet connection is active`;
+      setErrorMessage(errorMsg);
     } finally {
       setLoading(false);
+      console.log('[Subscription] ========== INITIALIZATION COMPLETE ==========');
     }
   };
 
@@ -152,26 +232,36 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[Subscription] Starting purchase for:', pkg.identifier);
+      console.log('[Subscription] ========== STARTING PURCHASE ==========');
+      console.log('[Subscription] Package:', {
+        identifier: pkg.identifier,
+        productId: pkg.product.identifier,
+        price: pkg.product.priceString,
+      });
+
       setPurchasing(true);
       setSelectedPackage(pkg.identifier);
 
       // Make purchase through RevenueCat
       const { customerInfo, productIdentifier } = await Purchases.purchasePackage(pkg);
       
-      console.log('[Subscription] Purchase successful:', productIdentifier);
-      console.log('[Subscription] Customer info updated');
+      console.log('[Subscription] ✅ Purchase successful');
+      console.log('[Subscription] Product:', productIdentifier);
+      console.log('[Subscription] Active entitlements:', Object.keys(customerInfo.entitlements.active));
 
       // Check if premium entitlement is now active
-      const hasActiveEntitlement = customerInfo.entitlements.active['Macrogoal Pro']?.isActive || false;
+      const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+      const entitlementIdentifier = revenueCatConfig?.entitlementIdentifier || 'Macrogoal Pro';
+      const hasActiveEntitlement = customerInfo.entitlements.active[entitlementIdentifier]?.isActive || false;
+
       setIsPremium(hasActiveEntitlement);
       setCustomerInfo(customerInfo);
 
       if (hasActiveEntitlement) {
-        console.log('[Subscription] Premium access granted');
+        console.log('[Subscription] ✅ Premium access granted');
         setShowSuccessModal(true);
       } else {
-        console.warn('[Subscription] Purchase completed but premium not active');
+        console.warn('[Subscription] ⚠️ Purchase completed but premium not active');
         Alert.alert(
           'Purchase Completed',
           'Your purchase was successful. Premium access will be activated shortly.'
@@ -179,10 +269,15 @@ export default function SubscriptionScreen() {
       }
 
     } catch (error: any) {
-      console.error('[Subscription] Purchase error:', error);
+      console.error('[Subscription] ❌ Purchase error:', error);
+      console.error('[Subscription] Error details:', {
+        message: error.message,
+        code: error.code,
+        userCancelled: error.userCancelled,
+      });
       
       // Handle specific error codes
-      if (error.code === 'PURCHASE_CANCELLED') {
+      if (error.userCancelled) {
         console.log('[Subscription] User cancelled purchase');
         // Don't show alert for user cancellation
       } else if (error.code === 'PRODUCT_ALREADY_PURCHASED') {
@@ -204,6 +299,7 @@ export default function SubscriptionScreen() {
     } finally {
       setPurchasing(false);
       setSelectedPackage(null);
+      console.log('[Subscription] ========== PURCHASE COMPLETE ==========');
     }
   };
 
@@ -218,15 +314,20 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[Subscription] Restoring purchases...');
+      console.log('[Subscription] ========== RESTORING PURCHASES ==========');
       setLoading(true);
 
       // Restore purchases through RevenueCat
       const info = await Purchases.restorePurchases();
-      console.log('[Subscription] Purchases restored');
+      console.log('[Subscription] ✅ Purchases restored');
+      console.log('[Subscription] Active entitlements:', Object.keys(info.entitlements.active));
 
       setCustomerInfo(info);
-      const hasActiveEntitlement = info.entitlements.active['Macrogoal Pro']?.isActive || false;
+      
+      const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+      const entitlementIdentifier = revenueCatConfig?.entitlementIdentifier || 'Macrogoal Pro';
+      const hasActiveEntitlement = info.entitlements.active[entitlementIdentifier]?.isActive || false;
+      
       setIsPremium(hasActiveEntitlement);
 
       if (hasActiveEntitlement) {
@@ -242,13 +343,14 @@ export default function SubscriptionScreen() {
       }
 
     } catch (error: any) {
-      console.error('[Subscription] Restore error:', error);
+      console.error('[Subscription] ❌ Restore error:', error);
       Alert.alert(
         'Restore Failed',
         error.message || 'Failed to restore purchases. Please try again.'
       );
     } finally {
       setLoading(false);
+      console.log('[Subscription] ========== RESTORE COMPLETE ==========');
     }
   };
 
@@ -324,6 +426,63 @@ export default function SubscriptionScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading subscription options...
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error state if there's an error
+  if (errorMessage) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={isDark ? colors.textDark : colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Go Premium
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.errorContainer}>
+          <View style={[styles.iconCircle, { backgroundColor: colors.error + '20' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={64}
+              color={colors.error}
+            />
+          </View>
+          <Text style={[styles.errorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Unable to Load Subscriptions
+          </Text>
+          <Text style={[styles.errorMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {errorMessage}
+          </Text>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              setErrorMessage(null);
+              setLoading(true);
+              initializeRevenueCat();
+            }}
+          >
+            <Text style={styles.buttonText}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: isDark ? colors.cardDark : colors.card, marginTop: spacing.md }]}
+            onPress={() => router.back()}
+          >
+            <Text style={[styles.buttonText, { color: isDark ? colors.textDark : colors.text }]}>
+              Go Back
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -770,6 +929,24 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: spacing.sm,
     marginTop: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorTitle: {
+    ...typography.h2,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  errorMessage: {
+    ...typography.body,
+    textAlign: 'center',
+    lineHeight: 22,
     marginBottom: spacing.xl,
   },
   modalOverlay: {
