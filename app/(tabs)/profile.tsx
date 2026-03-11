@@ -764,7 +764,7 @@ export default function ProfileScreen() {
                     </Text>
                     <IconSymbol
                       ios_icon_name="calendar"
-                      android_material_icon_name="calendar_today"
+                      android_material_icon_name="event"
                       size={16}
                       color={colors.primary}
                     />
