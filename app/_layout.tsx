@@ -513,9 +513,7 @@ export default function RootLayout() {
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <StatusBar style="dark" animated />
-        <ThemeProvider
-          value={CustomDefaultTheme}
-        >
+        <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -575,7 +573,7 @@ export default function RootLayout() {
                 }}
               />
             </Stack>
-            <SystemBars style={"dark"} />
+            <SystemBars style="dark" />
           </WidgetProvider>
         </ThemeProvider>
       </GestureHandlerRootView>
