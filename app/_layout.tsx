@@ -6,7 +6,7 @@ import { Stack, router, useSegments, useRootNavigationState } from "expo-router"
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert, AppState, AppStateStatus } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus, Platform } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
 import {
@@ -21,6 +21,8 @@ import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import Purchases, { LOG_LEVEL } from "react-native-purchases";
+import Constants from "expo-constants";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -68,12 +70,63 @@ export default function RootLayout() {
       
       setSession(currentSession);
 
-      console.log('[App] Step 3: Setup auth listener');
+      console.log('[App] Step 3: Initialize RevenueCat (native only)');
+      
+      // Initialize RevenueCat on native platforms
+      if (Platform.OS !== 'web') {
+        try {
+          const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+          const apiKey = Platform.select({
+            ios: revenueCatConfig?.iosApiKey,
+            android: revenueCatConfig?.androidApiKey,
+          });
+
+          if (apiKey && !apiKey.includes('YOUR')) {
+            // Configure RevenueCat with user ID if available
+            const appUserID = currentSession?.user?.id;
+            
+            await Purchases.configure({
+              apiKey,
+              appUserID: appUserID || undefined,
+            });
+
+            // Enable debug logs in development
+            if (__DEV__) {
+              await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+            }
+
+            console.log('[App] ✅ RevenueCat initialized with user ID:', appUserID || 'anonymous');
+          } else {
+            console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
+          }
+        } catch (revenueCatError) {
+          console.error('[App] ⚠️ RevenueCat initialization failed (non-blocking):', revenueCatError);
+        }
+      }
+
+      console.log('[App] Step 4: Setup auth listener');
       
       // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
         setSession(session);
+
+        // Update RevenueCat user ID when auth state changes (native only)
+        if (Platform.OS !== 'web' && session?.user?.id) {
+          try {
+            await Purchases.logIn(session.user.id);
+            console.log('[App] ✅ RevenueCat user ID updated:', session.user.id);
+          } catch (error) {
+            console.error('[App] ⚠️ Failed to update RevenueCat user ID:', error);
+          }
+        } else if (Platform.OS !== 'web' && !session) {
+          try {
+            await Purchases.logOut();
+            console.log('[App] ✅ RevenueCat user logged out');
+          } catch (error) {
+            console.error('[App] ⚠️ Failed to log out RevenueCat user:', error);
+          }
+        }
       });
 
       console.log('[App] ✅ Initialization complete');

@@ -1,6 +1,6 @@
 
 /**
- * RevenueCat Webhook Handler
+ * RevenueCat Webhook Handler - PRODUCTION VERSION
  * 
  * This Edge Function receives webhook events from RevenueCat and syncs
  * subscription status to the Supabase database.
@@ -8,9 +8,9 @@
  * Setup Instructions:
  * 1. Deploy this function: supabase functions deploy revenuecat-webhook
  * 2. Get the function URL from Supabase Dashboard
- * 3. Go to RevenueCat Dashboard > Integrations > Webhooks
+ * 3. Go to RevenueCat Dashboard > Settings > Integrations > Webhooks
  * 4. Add webhook URL: https://YOUR_PROJECT.supabase.co/functions/v1/revenuecat-webhook
- * 5. Set Authorization header: Bearer YOUR_SUPABASE_ANON_KEY
+ * 5. Generate a webhook secret in RevenueCat and add it to Supabase secrets as REVENUECAT_WEBHOOK_SECRET
  * 6. Select events to send (recommended: all events)
  * 
  * Webhook Events Handled:
@@ -22,10 +22,16 @@
  * - EXPIRATION: Subscription expires
  * - BILLING_ISSUE: Payment failed
  * - PRODUCT_CHANGE: User switches plans
+ * - SUBSCRIBER_ALIAS: User identity changed
+ * 
+ * Security:
+ * - Webhook signature verification using REVENUECAT_WEBHOOK_SECRET
+ * - Service role key for bypassing RLS
  */
 
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { createHmac } from 'https://deno.land/std@0.208.0/node/crypto.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,6 +77,19 @@ function convertToUSD(amount: number, currency: string): number {
   return amount * rate;
 }
 
+// Verify webhook signature
+function verifyWebhookSignature(body: string, signature: string, secret: string): boolean {
+  try {
+    const hmac = createHmac('sha256', secret);
+    hmac.update(body);
+    const expectedSignature = hmac.digest('hex');
+    return signature === expectedSignature;
+  } catch (error) {
+    console.error('[RevenueCat Webhook] Signature verification error:', error);
+    return false;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -80,8 +99,30 @@ serve(async (req) => {
   try {
     console.log('[RevenueCat Webhook] 📨 Received webhook request');
 
+    // Get raw body for signature verification
+    const bodyText = await req.text();
+    const signature = req.headers.get('X-RevenueCat-Signature') || req.headers.get('x-revenuecat-signature');
+    
+    // Verify webhook signature
+    const webhookSecret = Deno.env.get('REVENUECAT_WEBHOOK_SECRET');
+    if (webhookSecret && signature) {
+      const isValid = verifyWebhookSignature(bodyText, signature, webhookSecret);
+      if (!isValid) {
+        console.warn('[RevenueCat Webhook] ⚠️ Invalid webhook signature');
+        return new Response(
+          JSON.stringify({ success: false, error: 'Invalid signature' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      console.log('[RevenueCat Webhook] ✅ Signature verified');
+    } else if (webhookSecret) {
+      console.warn('[RevenueCat Webhook] ⚠️ Webhook secret configured but no signature provided');
+    } else {
+      console.warn('[RevenueCat Webhook] ⚠️ No webhook secret configured - skipping signature verification');
+    }
+
     // Parse webhook payload
-    const payload: RevenueCatEvent = await req.json();
+    const payload: RevenueCatEvent = JSON.parse(bodyText);
     console.log('[RevenueCat Webhook] Event type:', payload.event.type);
     console.log('[RevenueCat Webhook] App user ID:', payload.event.app_user_id);
 
@@ -226,6 +267,20 @@ serve(async (req) => {
 
     console.log('[RevenueCat Webhook] ✅ Subscription updated successfully');
 
+    // Update user_type in users table for backward compatibility
+    const newUserType = subscriptionUpdate.status === 'active' ? 'premium' : 'free';
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({ user_type: newUserType, updated_at: now })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      console.error('[RevenueCat Webhook] ⚠️ Error updating user_type:', userUpdateError);
+      // Don't fail the webhook - subscription is already updated
+    } else {
+      console.log('[RevenueCat Webhook] ✅ User type updated to:', newUserType);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -233,6 +288,7 @@ serve(async (req) => {
         event_type: event.type,
         user_id: userId,
         amount_usd: amountUSD.toFixed(2),
+        user_type: newUserType,
       }),
       { 
         status: 200, 

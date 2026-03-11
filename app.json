@@ -65,7 +65,11 @@
     },
     "extra": {
       "router": {},
-      "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW"
+      "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW",
+      "revenueCat": {
+        "iosApiKey": "appl_YOUR_IOS_KEY_HERE",
+        "androidApiKey": "goog_YOUR_ANDROID_KEY_HERE"
+      }
     }
   }
 }

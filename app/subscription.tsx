@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,52 +17,22 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import Purchases, { 
+  PurchasesPackage, 
+  PurchasesOffering,
+  CustomerInfo,
+  LOG_LEVEL 
+} from 'react-native-purchases';
+import Constants from 'expo-constants';
 
-// Conditional import for IAP - only available on native platforms
-let InAppPurchases: typeof import('expo-in-app-purchases') | null = null;
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  InAppPurchases = require('expo-in-app-purchases');
-}
-
-interface SubscriptionPlan {
-  productId: string;
-  title: string;
-  price: string;
-  description: string;
-  features: string[];
-  popular?: boolean;
-}
-
-// Define subscription plans outside component to prevent re-creation
-const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
-  {
-    productId: 'Monthly_MG',
-    title: 'Monthly Premium',
-    price: '$9.99/month',
-    description: 'Full access to all premium features',
-    features: [
-      'Advanced analytics & trends',
-      'Multiple goal phases',
-      'Custom recipes builder',
-      'Habit tracking & streaks',
-      'Data export (CSV)',
-      'Priority support',
-    ],
-  },
-  {
-    productId: 'Yearly_MG',
-    title: 'Yearly Premium',
-    price: '$79.99/year',
-    description: 'Save 33% with annual billing',
-    features: [
-      'All Monthly Premium features',
-      'Save $40 per year',
-      'Best value for committed users',
-      'Cancel anytime',
-    ],
-    popular: true,
-  },
+// Premium features list
+const PREMIUM_FEATURES = [
+  'Advanced analytics & trends',
+  'Multiple goal phases',
+  'Custom recipes builder',
+  'Habit tracking & streaks',
+  'Data export (CSV)',
+  'Priority support',
 ];
 
 export default function SubscriptionScreen() {
@@ -71,239 +42,103 @@ export default function SubscriptionScreen() {
 
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [products, setProducts] = useState<any[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
+  const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
-  const [iapInitialized, setIapInitialized] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const verifyPurchaseWithBackend = async (purchase: any, userId: string) => {
+  // Initialize RevenueCat
+  const initializeRevenueCat = async () => {
+    if (Platform.OS === 'web') {
+      console.log('[Subscription] Web platform - RevenueCat not available');
+      setLoading(false);
+      return;
+    }
+
     try {
-      console.log('[Subscription] Verifying purchase with backend:', {
-        productId: purchase.productId,
-        transactionId: purchase.transactionId,
+      console.log('[Subscription] Initializing RevenueCat...');
+
+      // Get RevenueCat API keys from app.json
+      const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+      const apiKey = Platform.select({
+        ios: revenueCatConfig?.iosApiKey,
+        android: revenueCatConfig?.androidApiKey,
       });
 
-      const { data, error } = await supabase.functions.invoke('verify-apple-receipt', {
-        body: {
-          receipt: purchase.transactionReceipt,
-          productId: purchase.productId,
-          transactionId: purchase.transactionId,
-          userId: userId,
-        },
-      });
-
-      if (error) {
-        console.error('[Subscription] Backend verification error:', error);
-        throw new Error(error.message || 'Failed to verify purchase with server');
+      if (!apiKey || apiKey.includes('YOUR')) {
+        console.error('[Subscription] RevenueCat API key not configured');
+        Alert.alert(
+          'Configuration Error',
+          'RevenueCat is not configured. Please add your API keys to the app configuration.'
+        );
+        setLoading(false);
+        return;
       }
 
-      console.log('[Subscription] Backend verification successful:', data);
-      return data;
-    } catch (error: any) {
-      console.error('[Subscription] Error verifying with backend:', error);
-      throw error;
-    }
-  };
-
-  const handlePurchaseSuccess = async (purchase: any) => {
-    try {
-      console.log('[Subscription] Processing purchase:', {
-        productId: purchase.productId,
-        transactionId: purchase.transactionId,
-        acknowledged: purchase.acknowledged,
-      });
-
+      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('[Subscription] No user found');
-        Alert.alert('Error', 'User not found. Please log in again.');
-        setPurchasing(false);
+        setLoading(false);
         return;
       }
 
-      console.log('[Subscription] Verifying purchase with Apple...');
-      
-      const verificationResult = await verifyPurchaseWithBackend(purchase, user.id);
+      // Configure RevenueCat with user ID
+      await Purchases.configure({
+        apiKey,
+        appUserID: user.id, // Use Supabase user ID as RevenueCat app_user_id
+      });
 
-      if (!verificationResult?.success) {
-        console.error('[Subscription] Verification failed:', verificationResult);
+      // Enable debug logs in development
+      if (__DEV__) {
+        await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+      }
+
+      console.log('[Subscription] RevenueCat configured with user ID:', user.id);
+
+      // Fetch offerings
+      const offerings = await Purchases.getOfferings();
+      console.log('[Subscription] Offerings fetched:', offerings.current?.identifier);
+
+      if (offerings.current && offerings.current.availablePackages.length > 0) {
+        setOfferings(offerings.current);
+        setPackages(offerings.current.availablePackages);
+        console.log('[Subscription] Available packages:', offerings.current.availablePackages.length);
+      } else {
+        console.warn('[Subscription] No offerings available');
         Alert.alert(
-          'Verification Failed',
-          'Unable to verify your purchase with Apple. Please contact support if you were charged.'
+          'No Subscriptions Available',
+          'No subscription plans are currently available. Please ensure:\n\n1. Products are created in RevenueCat\n2. An offering is configured\n3. Products are linked to the offering'
         );
-        setPurchasing(false);
-        return;
       }
 
-      console.log('[Subscription] Purchase verified successfully');
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ 
-          user_type: 'premium',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-
-      if (updateError) {
-        console.error('[Subscription] Error updating user:', updateError);
-        throw updateError;
-      }
-
-      console.log('[Subscription] User upgraded to premium');
-
-      if (Platform.OS !== 'web' && InAppPurchases) {
-        await InAppPurchases.finishTransactionAsync(purchase, true);
-        console.log('[Subscription] Transaction finished');
-      }
-
-      setPurchasing(false);
-      setSelectedPlan(null);
-      setIsPremium(true);
-
-      Alert.alert(
-        'Welcome to Premium! 🎉',
-        'You now have access to all premium features.',
-        [
-          {
-            text: 'Get Started',
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      // Check current premium status
+      const info = await Purchases.getCustomerInfo();
+      setCustomerInfo(info);
+      const hasActiveEntitlement = info.entitlements.active['premium_access']?.isActive || false;
+      setIsPremium(hasActiveEntitlement);
+      console.log('[Subscription] Current premium status:', hasActiveEntitlement);
 
     } catch (error: any) {
-      console.error('[Subscription] Error processing purchase:', error);
+      console.error('[Subscription] RevenueCat initialization error:', error);
       Alert.alert(
-        'Error',
-        'Failed to activate premium: ' + (error.message || 'Unknown error') + '\n\nIf you were charged, your purchase will be restored automatically.'
+        'Initialization Error',
+        'Failed to initialize subscriptions: ' + (error.message || 'Unknown error')
       );
-      setPurchasing(false);
-      setSelectedPlan(null);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Only initialize once
-    if (iapInitialized) {
-      console.log('[Subscription] IAP already initialized, skipping');
-      return;
-    }
-
-    const initializeIAP = async () => {
-      if (Platform.OS === 'web' || !InAppPurchases) {
-        console.log('[Subscription] Web platform or IAP not available');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        console.log('[Subscription] Initializing IAP...');
-        
-        await InAppPurchases.connectAsync();
-        console.log('[Subscription] Connected to store');
-
-        const productIds = SUBSCRIPTION_PLANS.map(plan => plan.productId);
-        console.log('[Subscription] Fetching products:', productIds);
-
-        const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
-        
-        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          console.log('[Subscription] Products fetched:', results?.length || 0);
-          setProducts(results || []);
-        } else {
-          console.error('[Subscription] Failed to fetch products. Response code:', responseCode);
-          Alert.alert(
-            'Products Not Available',
-            'Unable to load subscription products. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device (not simulator)'
-          );
-        }
-
-        // Set up purchase listener ONCE
-        InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
-          console.log('[Subscription] Purchase listener triggered:', { 
-            responseCode, 
-            errorCode,
-            resultsCount: results?.length || 0 
-          });
-          
-          if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-            if (results && results.length > 0) {
-              results.forEach((purchase: any) => {
-                console.log('[Subscription] Processing purchase from listener:', purchase.productId);
-                if (!purchase.acknowledged) {
-                  handlePurchaseSuccess(purchase);
-                } else {
-                  console.log('[Subscription] Purchase already acknowledged');
-                  setPurchasing(false);
-                  setSelectedPlan(null);
-                }
-              });
-            } else {
-              console.log('[Subscription] No results in OK response');
-              setPurchasing(false);
-              setSelectedPlan(null);
-            }
-          } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
-            console.log('[Subscription] User canceled purchase');
-            Alert.alert('Cancelled', 'Purchase was cancelled.');
-            setPurchasing(false);
-            setSelectedPlan(null);
-          } else if (responseCode === InAppPurchases.IAPResponseCode.DEFERRED) {
-            console.log('[Subscription] Purchase deferred (awaiting approval)');
-            Alert.alert(
-              'Purchase Pending',
-              'Your purchase is awaiting approval. You will receive access once approved.'
-            );
-            setPurchasing(false);
-            setSelectedPlan(null);
-          } else {
-            console.error('[Subscription] Purchase failed with code:', responseCode, 'error:', errorCode);
-            Alert.alert(
-              'Purchase Failed',
-              `Unable to complete purchase (Error: ${errorCode || responseCode}). Please try again.`
-            );
-            setPurchasing(false);
-            setSelectedPlan(null);
-          }
-        });
-
-        setIapInitialized(true);
-        console.log('[Subscription] IAP initialization complete');
-
-      } catch (error: any) {
-        console.error('[Subscription] IAP initialization error:', error);
-        Alert.alert('Error', 'Failed to initialize in-app purchases: ' + error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeIAP();
-    checkPremiumStatus();
+    initializeRevenueCat();
   }, []);
 
-  const checkPremiumStatus = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('user_type')
-        .eq('id', user.id)
-        .single();
-
-      if (userData?.user_type === 'premium') {
-        setIsPremium(true);
-      }
-    } catch (error) {
-      console.error('[Subscription] Error checking premium status:', error);
-    }
-  };
-
-  const handlePurchase = async (productId: string) => {
-    if (Platform.OS === 'web' || !InAppPurchases) {
+  // Handle purchase
+  const handlePurchase = async (pkg: PurchasesPackage) => {
+    if (Platform.OS === 'web') {
       Alert.alert(
         'Not Available on Web',
         'In-app purchases are only available on iOS and Android. Please use the mobile app to subscribe.'
@@ -317,45 +152,64 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[Subscription] Starting purchase for:', productId);
+      console.log('[Subscription] Starting purchase for:', pkg.identifier);
       setPurchasing(true);
-      setSelectedPlan(productId);
+      setSelectedPackage(pkg.identifier);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Error', 'Please log in to purchase a subscription');
-        setPurchasing(false);
-        setSelectedPlan(null);
-        return;
+      // Make purchase through RevenueCat
+      const { customerInfo, productIdentifier } = await Purchases.purchasePackage(pkg);
+      
+      console.log('[Subscription] Purchase successful:', productIdentifier);
+      console.log('[Subscription] Customer info updated');
+
+      // Check if premium entitlement is now active
+      const hasActiveEntitlement = customerInfo.entitlements.active['premium_access']?.isActive || false;
+      setIsPremium(hasActiveEntitlement);
+      setCustomerInfo(customerInfo);
+
+      if (hasActiveEntitlement) {
+        console.log('[Subscription] Premium access granted');
+        setShowSuccessModal(true);
+      } else {
+        console.warn('[Subscription] Purchase completed but premium not active');
+        Alert.alert(
+          'Purchase Completed',
+          'Your purchase was successful. Premium access will be activated shortly.'
+        );
       }
-
-      console.log('[Subscription] User ID:', user.id);
-      console.log('[Subscription] Calling purchaseItemAsync...');
-
-      await InAppPurchases.purchaseItemAsync(productId);
-      console.log('[Subscription] purchaseItemAsync called - waiting for listener callback');
 
     } catch (error: any) {
       console.error('[Subscription] Purchase error:', error);
       
-      if (error.code === 'E_IAP_PRODUCT_NOT_FOUND') {
+      // Handle specific error codes
+      if (error.code === 'PURCHASE_CANCELLED') {
+        console.log('[Subscription] User cancelled purchase');
+        // Don't show alert for user cancellation
+      } else if (error.code === 'PRODUCT_ALREADY_PURCHASED') {
         Alert.alert(
-          'Product Not Found',
-          'The subscription product was not found. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with exact IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device'
+          'Already Subscribed',
+          'You already have an active subscription. Use "Restore Purchases" if you don\'t see your premium features.'
         );
-      } else if (error.code === 'E_USER_CANCELLED') {
-        console.log('[Subscription] User cancelled in catch block');
+      } else if (error.code === 'NETWORK_ERROR') {
+        Alert.alert(
+          'Network Error',
+          'Unable to connect to the store. Please check your internet connection and try again.'
+        );
       } else {
-        Alert.alert('Purchase Error', error.message || 'Failed to start purchase');
+        Alert.alert(
+          'Purchase Failed',
+          error.message || 'Unable to complete purchase. Please try again.'
+        );
       }
-      
+    } finally {
       setPurchasing(false);
-      setSelectedPlan(null);
+      setSelectedPackage(null);
     }
   };
 
+  // Restore purchases
   const handleRestore = async () => {
-    if (Platform.OS === 'web' || !InAppPurchases) {
+    if (Platform.OS === 'web') {
       Alert.alert(
         'Not Available on Web',
         'Purchase restoration is only available on iOS and Android. Please use the mobile app.'
@@ -367,32 +221,35 @@ export default function SubscriptionScreen() {
       console.log('[Subscription] Restoring purchases...');
       setLoading(true);
 
-      const { results, responseCode } = await InAppPurchases.getPurchaseHistoryAsync();
+      // Restore purchases through RevenueCat
+      const info = await Purchases.restorePurchases();
+      console.log('[Subscription] Purchases restored');
 
-      if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
-        console.log('[Subscription] Found purchases to restore:', results.length);
-        
-        const latestPurchase = results[0];
-        await handlePurchaseSuccess(latestPurchase);
-        
-        Alert.alert('Success', 'Your purchases have been restored!');
+      setCustomerInfo(info);
+      const hasActiveEntitlement = info.entitlements.active['premium_access']?.isActive || false;
+      setIsPremium(hasActiveEntitlement);
+
+      if (hasActiveEntitlement) {
+        Alert.alert(
+          'Success',
+          'Your purchases have been restored! You now have access to all premium features.'
+        );
       } else {
-        console.log('[Subscription] No purchases to restore');
-        Alert.alert('No Purchases Found', 'You have no previous purchases to restore.');
+        Alert.alert(
+          'No Active Subscriptions',
+          'No active subscriptions were found. If you believe this is an error, please contact support.'
+        );
       }
 
     } catch (error: any) {
       console.error('[Subscription] Restore error:', error);
-      Alert.alert('Restore Failed', error.message || 'Failed to restore purchases');
+      Alert.alert(
+        'Restore Failed',
+        error.message || 'Failed to restore purchases. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
-  };
-
-  const getProductPrice = (productId: string): string => {
-    const product = products.find((p: any) => p.productId === productId);
-    const priceText = product?.price || '';
-    return priceText;
   };
 
   if (Platform.OS === 'web') {
@@ -433,7 +290,7 @@ export default function SubscriptionScreen() {
           </Text>
           
           <View style={styles.featuresList}>
-            {SUBSCRIPTION_PLANS[0].features.map((feature, index) => (
+            {PREMIUM_FEATURES.map((feature, index) => (
               <View key={index} style={styles.featureRow}>
                 <IconSymbol
                   ios_icon_name="checkmark.circle.fill"
@@ -510,7 +367,7 @@ export default function SubscriptionScreen() {
             <Text style={[styles.featuresTitle, { color: isDark ? colors.textDark : colors.text }]}>
               Your Premium Features
             </Text>
-            {SUBSCRIPTION_PLANS[0].features.map((feature, index) => (
+            {PREMIUM_FEATURES.map((feature, index) => (
               <View key={index} style={styles.featureRow}>
                 <IconSymbol
                   ios_icon_name="checkmark.circle.fill"
@@ -573,38 +430,46 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
 
-        {SUBSCRIPTION_PLANS.map((plan) => {
-          const displayPrice = getProductPrice(plan.productId) || plan.price;
-          const isSelected = selectedPlan === plan.productId;
+        {packages.map((pkg, index) => {
+          const isSelected = selectedPackage === pkg.identifier;
           const isPurchasingThis = purchasing && isSelected;
+          const isPopular = pkg.packageType === 'ANNUAL' || pkg.identifier.toLowerCase().includes('annual') || pkg.identifier.toLowerCase().includes('yearly');
+
+          // Get package details
+          const product = pkg.product;
+          const title = product.title || pkg.identifier;
+          const price = product.priceString;
+          const description = product.description || '';
 
           return (
             <View
-              key={plan.productId}
+              key={pkg.identifier}
               style={[
                 styles.planCard,
                 { backgroundColor: isDark ? colors.cardDark : colors.card },
-                plan.popular && styles.popularPlan,
+                isPopular && styles.popularPlan,
               ]}
             >
-              {plan.popular && (
+              {isPopular && (
                 <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
                   <Text style={styles.popularText}>MOST POPULAR</Text>
                 </View>
               )}
 
               <Text style={[styles.planTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                {plan.title}
+                {title}
               </Text>
               <Text style={[styles.planPrice, { color: colors.primary }]}>
-                {displayPrice}
+                {price}
               </Text>
-              <Text style={[styles.planDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {plan.description}
-              </Text>
+              {description && (
+                <Text style={[styles.planDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  {description}
+                </Text>
+              )}
 
               <View style={styles.featuresContainer}>
-                {plan.features.map((feature, idx) => (
+                {PREMIUM_FEATURES.map((feature, idx) => (
                   <View key={idx} style={styles.featureRow}>
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
@@ -625,7 +490,7 @@ export default function SubscriptionScreen() {
                   { backgroundColor: colors.primary },
                   isPurchasingThis && styles.subscribeButtonDisabled,
                 ]}
-                onPress={() => handlePurchase(plan.productId)}
+                onPress={() => handlePurchase(pkg)}
                 disabled={purchasing}
               >
                 {isPurchasingThis ? (
@@ -660,6 +525,45 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowSuccessModal(false);
+          router.back();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <View style={[styles.successIconCircle, { backgroundColor: colors.primary + '20' }]}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
+                size={64}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Welcome to Premium! 🎉
+            </Text>
+            <Text style={[styles.modalMessage, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              You now have access to all premium features. Enjoy your enhanced experience!
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                setShowSuccessModal(false);
+                router.back();
+              }}
+            >
+              <Text style={styles.modalButtonText}>Get Started</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -867,5 +771,48 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
     marginBottom: spacing.xl,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  modalContent: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 400,
+  },
+  successIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  modalTitle: {
+    ...typography.h2,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  modalMessage: {
+    ...typography.body,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  modalButton: {
+    width: '100%',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
