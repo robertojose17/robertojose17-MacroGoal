@@ -60,7 +60,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol
               ios_icon_name={focused ? 'checkmark.circle.fill' : 'checkmark.circle'}
-              android_material_icon_name="check-circle"
+              android_material_icon_name="check_circle"
               size={28}
               color={color}
             />

@@ -6,7 +6,7 @@ import { Stack, router, useSegments, useRootNavigationState } from "expo-router"
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert, AppState, AppStateStatus, Platform } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
 import {
@@ -21,7 +21,6 @@ import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import Purchases from "react-native-purchases";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,103 +41,13 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [hasNavigated, setHasNavigated] = useState(false);
-  const [revenueCatReady, setRevenueCatReady] = useState(false);
 
-  // CRITICAL: Initialize RevenueCat SDK FIRST and WAIT for it to complete
+  // Initialize app and auth
   useEffect(() => {
-    const initRevenueCat = async () => {
-      try {
-        console.log('[RevenueCat] ========== STARTING SDK INITIALIZATION ==========');
-        
-        // Check if already configured
-        if (Purchases.isConfigured) {
-          console.log('[RevenueCat] ✅ SDK already configured');
-          setRevenueCatReady(true);
-          return;
-        }
-
-        // Get API key based on platform
-        const apiKey = Platform.select({
-          ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE', // Your iOS Public SDK Key
-          android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with your Android key when ready
-        });
-
-        if (!apiKey) {
-          console.warn('[RevenueCat] ⚠️ No API key for this platform');
-          setRevenueCatReady(true); // Still mark as ready to not block app
-          return;
-        }
-
-        // Configure SDK - CRITICAL: AWAIT this to ensure it completes
-        console.log('[RevenueCat] Configuring SDK with API key...');
-        await Purchases.configure({ apiKey });
-        console.log('[RevenueCat] ✅ SDK configured successfully');
-
-        // Verify SDK is working by getting customer info
-        const customerInfo = await Purchases.getCustomerInfo();
-        console.log('[RevenueCat] ✅ SDK verified - Customer info retrieved:', {
-          originalAppUserId: customerInfo.originalAppUserId,
-          activeEntitlements: Object.keys(customerInfo.entitlements.active),
-        });
-
-        // Set up customer info update listener
-        Purchases.addCustomerInfoUpdateListener((customerInfo) => {
-          console.log('[RevenueCat] Customer info updated:', {
-            activeEntitlements: Object.keys(customerInfo.entitlements.active),
-            activeSubscriptions: customerInfo.activeSubscriptions,
-          });
-        });
-
-        console.log('[RevenueCat] ========== SDK INITIALIZATION COMPLETE ==========');
-        setRevenueCatReady(true);
-
-      } catch (error) {
-        console.error('[RevenueCat] ❌ Failed to initialize SDK:', error);
-        // Still mark as ready to not block app, but log the error
-        setRevenueCatReady(true);
-      }
-    };
-
-    initRevenueCat();
-  }, []);
-
-  // Handle RevenueCat user login/logout based on Supabase auth
-  useEffect(() => {
-    if (!session || !revenueCatReady) return;
-
-    const handleRevenueCatAuth = async () => {
-      try {
-        if (!Purchases.isConfigured) {
-          console.error('[RevenueCat] SDK not configured when trying to log in user');
-          return;
-        }
-
-        const userId = session.user.id;
-        console.log('[RevenueCat] Logging in user:', userId);
-
-        // Log in to RevenueCat with Supabase user ID
-        const { customerInfo, created } = await Purchases.logIn(userId);
-        
-        console.log('[RevenueCat] ✅ User logged in:', {
-          userId,
-          isNewUser: created,
-          activeEntitlements: Object.keys(customerInfo.entitlements.active),
-        });
-
-      } catch (error) {
-        console.error('[RevenueCat] ❌ Failed to log in user:', error);
-      }
-    };
-
-    handleRevenueCatAuth();
-  }, [session, revenueCatReady]);
-
-  // Initialize app and auth - WAIT for RevenueCat to be ready
-  useEffect(() => {
-    if (loaded && revenueCatReady) {
+    if (loaded) {
       initializeApp();
     }
-  }, [loaded, revenueCatReady]);
+  }, [loaded]);
 
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
@@ -162,21 +71,9 @@ export default function RootLayout() {
       console.log('[App] Step 3: Setup auth listener');
       
       // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('[App] Auth state changed:', event, session?.user?.id || 'none');
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        console.log('[App] Auth state changed:', _event, session?.user?.id || 'none');
         setSession(session);
-
-        // Handle RevenueCat logout when user signs out
-        if (event === 'SIGNED_OUT') {
-          try {
-            if (Purchases.isConfigured) {
-              await Purchases.logOut();
-              console.log('[RevenueCat] ✅ User logged out');
-            }
-          } catch (error) {
-            console.error('[RevenueCat] ❌ Failed to log out:', error);
-          }
-        }
       });
 
       console.log('[App] ✅ Initialization complete');
@@ -286,6 +183,193 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, [isReady, session, segments, navigationState, hasNavigated]);
 
+  // Handle deep links for Stripe checkout success/cancel
+  useEffect(() => {
+    console.log('[DeepLink] Setting up deep link listener');
+
+    // Handle initial URL (app opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('[DeepLink] Initial URL:', url);
+        handleDeepLink(url);
+      }
+    });
+
+    // Handle deep links while app is running
+    const subscription = Linking.addEventListener('url', (event) => {
+      console.log('[DeepLink] Received URL:', event.url);
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleDeepLink = async (url: string) => {
+    try {
+      console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[DeepLink] Processing URL:', url);
+      
+      const { hostname, path, queryParams } = Linking.parse(url);
+      console.log('[DeepLink] Parsed:', { hostname, path, queryParams });
+
+      // Handle checkout success
+      if (queryParams?.subscription_success === 'true') {
+        console.log('[DeepLink] ✅ Checkout success detected!');
+        console.log('[DeepLink] Session ID:', queryParams.session_id);
+        
+        // Show immediate feedback
+        Alert.alert(
+          '✅ Payment Successful!',
+          'Processing your subscription... This will take just a moment.',
+          [{ text: 'OK' }]
+        );
+        
+        // Navigate to profile with proper delay
+        setTimeout(() => {
+          router.replace('/(tabs)/profile');
+        }, 300);
+        
+        // Sync subscription in background with retries
+        console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
+        
+        const syncWithRetries = async (maxRetries = 10, delayMs = 2000) => {
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              console.log(`[DeepLink] 🔄 Sync attempt ${attempt}/${maxRetries}`);
+              
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) {
+                console.error('[DeepLink] ❌ No session found');
+                break;
+              }
+
+              // Call sync-subscription Edge Function
+              const { data, error } = await supabase.functions.invoke('sync-subscription', {
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                },
+              });
+
+              if (error) {
+                console.error(`[DeepLink] ⚠️ Sync attempt ${attempt} failed:`, error);
+              } else {
+                console.log(`[DeepLink] ✅ Sync attempt ${attempt} succeeded:`, data);
+              }
+
+              // Check if user is now premium
+              const { data: userData } = await supabase
+                .from('users')
+                .select('user_type')
+                .eq('id', session.user.id)
+                .maybeSingle();
+
+              if (userData?.user_type === 'premium') {
+                console.log('[DeepLink] 🎉 Premium status confirmed!');
+                
+                // Show success message
+                Alert.alert(
+                  '🎉 Welcome to Premium!',
+                  'Your subscription is now active. Enjoy unlimited AI-powered meal estimates and all premium features!',
+                  [{ text: 'Awesome!' }]
+                );
+                
+                return; // Success, stop retrying
+              }
+
+              // Wait before next retry
+              if (attempt < maxRetries) {
+                console.log(`[DeepLink] ⏳ Waiting ${delayMs}ms before next attempt...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+              }
+            } catch (error) {
+              console.error(`[DeepLink] ❌ Error in sync attempt ${attempt}:`, error);
+            }
+          }
+
+          // If we get here, all retries failed
+          console.log('[DeepLink] ⚠️ Premium status not confirmed after all retries');
+          Alert.alert(
+            'Processing...',
+            'Your payment is being processed. Premium features will be unlocked shortly. If this takes more than a few minutes, please contact support.',
+            [{ text: 'OK' }]
+          );
+        };
+
+        // Run sync in background
+        syncWithRetries().catch(error => {
+          console.error('[DeepLink] ❌ Error in syncWithRetries:', error);
+        });
+      }
+
+      // Handle checkout cancel
+      else if (queryParams?.subscription_cancelled === 'true') {
+        console.log('[DeepLink] ❌ Checkout cancelled');
+        setTimeout(() => {
+          router.replace('/subscription');
+        }, 300);
+        Alert.alert(
+          'Checkout Cancelled',
+          'You can subscribe anytime to unlock premium features.',
+          [{ text: 'OK' }]
+        );
+      }
+
+      // Handle subscription error
+      else if (queryParams?.subscription_error === 'true') {
+        console.log('[DeepLink] ⚠️ Subscription error detected');
+        setTimeout(() => {
+          router.replace('/(tabs)/profile');
+        }, 300);
+        Alert.alert(
+          'Processing Issue',
+          'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
+          [{ text: 'OK' }]
+        );
+      }
+
+      console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    } catch (error) {
+      console.error('[DeepLink] ❌ Error handling deep link:', error);
+    }
+  };
+
+  // Listen for app state changes to sync subscription when returning from background
+  useEffect(() => {
+    console.log('[AppState] Setting up app state listener');
+    
+    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('[AppState] App became active, checking for subscription updates...');
+        
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            // Sync subscription when app comes to foreground
+            const { data, error } = await supabase.functions.invoke('sync-subscription', {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (error) {
+              console.error('[AppState] Error syncing subscription:', error);
+            } else {
+              console.log('[AppState] ✅ Subscription synced:', data);
+            }
+          }
+        } catch (error) {
+          console.error('[AppState] Error in sync:', error);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   React.useEffect(() => {
     if (
       !networkState.isConnected &&
@@ -298,7 +382,7 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded || !isReady || !revenueCatReady) {
+  if (!loaded || !isReady) {
     return null;
   }
 

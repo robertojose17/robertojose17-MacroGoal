@@ -1,24 +1,23 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/supabase/client';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
-
-// CRITICAL: This must match your RevenueCat dashboard entitlement identifier
-const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
 
 interface UsePremiumReturn {
   isPremium: boolean;
   loading: boolean;
-  customerInfo: CustomerInfo | null;
+  error: string | null;
+  checkPremiumStatus: () => Promise<void>;
   refreshPremiumStatus: () => Promise<void>;
 }
 
 /**
- * Hook to check if the current user has an active premium subscription via RevenueCat
+ * Hook to check if the current user has an active premium subscription
  * 
- * This hook checks RevenueCat's CustomerInfo to determine premium status.
- * RevenueCat is the source of truth for subscription status.
+ * This hook checks both RevenueCat and Supabase to determine premium status.
+ * It automatically syncs the status between both systems.
  * 
- * @returns {UsePremiumReturn} Premium status, loading state, customer info, and refresh function
+ * @returns {UsePremiumReturn} Premium status, loading state, and refresh function
  * 
  * @example
  * ```tsx
@@ -42,82 +41,86 @@ interface UsePremiumReturn {
 export function usePremium(): UsePremiumReturn {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const checkPremiumStatus = async (info: CustomerInfo) => {
-    console.log('[usePremium] Checking premium status from CustomerInfo');
-    console.log('[usePremium] Active entitlements:', Object.keys(info.entitlements.active));
-    console.log('[usePremium] Active subscriptions:', info.activeSubscriptions);
-    
-    // Check if user has the premium entitlement
-    const hasPremium = info.entitlements.active[ENTITLEMENT_IDENTIFIER] !== undefined;
-    
-    console.log(`[usePremium] Has "${ENTITLEMENT_IDENTIFIER}" entitlement:`, hasPremium);
-    
-    setIsPremium(hasPremium);
-    setCustomerInfo(info);
-    setLoading(false);
-  };
-
-  const refreshPremiumStatus = async () => {
+  const checkPremiumStatus = useCallback(async () => {
     try {
-      console.log('[usePremium] Manually refreshing premium status');
+      console.log('[usePremium] Checking premium status');
       setLoading(true);
+      setError(null);
 
-      // Verify SDK is configured
-      if (!Purchases.isConfigured) {
-        console.error('[usePremium] SDK not configured');
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('[usePremium] No user found');
+        setIsPremium(false);
         setLoading(false);
         return;
       }
 
-      const info = await Purchases.getCustomerInfo();
-      await checkPremiumStatus(info);
-    } catch (error) {
-      console.error('[usePremium] Error refreshing premium status:', error);
+      // First check RevenueCat (source of truth for subscriptions)
+      try {
+        const customerInfo: CustomerInfo = await Purchases.getCustomerInfo();
+        const hasActiveEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
+        
+        console.log('[usePremium] RevenueCat status:', {
+          hasActiveEntitlement,
+          activeEntitlements: Object.keys(customerInfo.entitlements.active),
+        });
+
+        setIsPremium(hasActiveEntitlement);
+
+        // Sync to Supabase if status differs
+        const { data: userData } = await supabase
+          .from('users')
+          .select('user_type')
+          .eq('id', user.id)
+          .single();
+
+        const supabaseIsPremium = userData?.user_type === 'premium';
+        
+        if (supabaseIsPremium !== hasActiveEntitlement) {
+          console.log('[usePremium] Syncing status to Supabase');
+          await supabase
+            .from('users')
+            .update({ user_type: hasActiveEntitlement ? 'premium' : 'free' })
+            .eq('id', user.id);
+        }
+      } catch (rcError: any) {
+        console.error('[usePremium] RevenueCat error, falling back to Supabase:', rcError);
+        
+        // Fallback to Supabase if RevenueCat fails
+        const { data: userData } = await supabase
+          .from('users')
+          .select('user_type')
+          .eq('id', user.id)
+          .single();
+
+        setIsPremium(userData?.user_type === 'premium');
+      }
+    } catch (err: any) {
+      console.error('[usePremium] Error checking premium status:', err);
+      setError(err.message || 'Failed to check premium status');
+      setIsPremium(false);
+    } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const refreshPremiumStatus = useCallback(async () => {
+    console.log('[usePremium] Refreshing premium status');
+    await checkPremiumStatus();
+  }, [checkPremiumStatus]);
 
   useEffect(() => {
-    console.log('[usePremium] Setting up premium status monitoring');
-    
-    // Initial check
-    const setupListener = async () => {
-      try {
-        // Verify SDK is configured
-        if (!Purchases.isConfigured) {
-          console.error('[usePremium] SDK not configured');
-          setLoading(false);
-          return;
-        }
-
-        console.log('[usePremium] SDK is configured, fetching customer info');
-
-        // Get initial customer info
-        const info = await Purchases.getCustomerInfo();
-        await checkPremiumStatus(info);
-
-        // Listen for updates
-        Purchases.addCustomerInfoUpdateListener(checkPremiumStatus);
-      } catch (error) {
-        console.error('[usePremium] Error fetching initial customer info:', error);
-        setLoading(false);
-      }
-    };
-
-    setupListener();
-
-    // Cleanup is handled by Purchases SDK
-    return () => {
-      console.log('[usePremium] Cleaning up');
-    };
-  }, []);
+    checkPremiumStatus();
+  }, [checkPremiumStatus]);
 
   return {
     isPremium,
     loading,
-    customerInfo,
+    error,
+    checkPremiumStatus,
     refreshPremiumStatus,
   };
 }

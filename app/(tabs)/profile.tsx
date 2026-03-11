@@ -794,8 +794,6 @@ export default function ProfileScreen() {
           </View>
         )}
 
-
-
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}

@@ -16,7 +16,7 @@
  * ```
  */
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
@@ -36,7 +36,11 @@ export function ProtectedRoute({
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const checkUser = useCallback(async () => {
+  useEffect(() => {
+    checkUser();
+  }, []);
+
+  const checkUser = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user || null);
@@ -49,11 +53,7 @@ export function ProtectedRoute({
     } finally {
       setLoading(false);
     }
-  }, [redirectTo, router]);
-
-  useEffect(() => {
-    checkUser();
-  }, [checkUser]);
+  };
 
   if (loading) {
     return loadingComponent || (
