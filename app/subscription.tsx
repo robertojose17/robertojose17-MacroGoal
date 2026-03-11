@@ -22,7 +22,7 @@ import Purchases, {
   LOG_LEVEL 
 } from 'react-native-purchases';
 
-// RevenueCat Configuration - Must match app/_layout.tsx
+// RevenueCat Configuration - Updated with new API keys and product IDs
 const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
 const PRODUCT_IDS = {
   MONTHLY: 'Monthly_MG',

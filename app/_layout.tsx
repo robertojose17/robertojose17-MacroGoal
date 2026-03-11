@@ -29,8 +29,10 @@ export const unstable_settings = {
   initialRouteName: "index",
 };
 
-// RevenueCat Configuration - Must match app/subscription.tsx
+// RevenueCat Configuration - Updated with new API key
 const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
+const REVENUECAT_API_KEY_IOS = 'sk_INEvrnxfxYJYlZwDPaxSqeeGsYbhE';
+const REVENUECAT_API_KEY_ANDROID = 'goog_YOUR_ANDROID_KEY_HERE'; // Replace with actual Android key when available
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -72,8 +74,8 @@ export default function RootLayout() {
       console.log('[RevenueCat] Entitlement Identifier:', ENTITLEMENT_IDENTIFIER);
 
       const apiKey = Platform.select({
-        ios: 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE',
-        android: 'goog_YOUR_ANDROID_KEY_HERE', // Replace with actual Android key
+        ios: REVENUECAT_API_KEY_IOS,
+        android: REVENUECAT_API_KEY_ANDROID,
       });
 
       if (!apiKey) {
