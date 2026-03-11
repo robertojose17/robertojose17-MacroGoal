@@ -515,6 +515,7 @@ export default function ProfileScreen() {
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
   const isPremium = user.user_type === 'premium';
+  const subscriptionStatusText = isPremium ? 'Premium' : 'Free';
 
   // Format the journey start date for display
   const formatJourneyStartDate = (dateStr: string | null) => {
@@ -554,21 +555,13 @@ export default function ProfileScreen() {
             {user.name || 'User'}
           </Text>
           
+          <Text style={[styles.subscriptionStatus, { color: isPremium ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary) }]}>
+            {subscriptionStatusText}
+          </Text>
+          
           <Text style={[styles.email, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
             {user.email || 'Guest User'}
           </Text>
-
-          {isPremium && (
-            <View style={[styles.premiumBadgeSmall, { backgroundColor: colors.primary }]}>
-              <IconSymbol
-                ios_icon_name="star.fill"
-                android_material_icon_name="star"
-                size={14}
-                color="#FFFFFF"
-              />
-              <Text style={styles.premiumBadgeText}>Premium</Text>
-            </View>
-          )}
         </View>
 
         {/* Subscription Card */}
@@ -1158,23 +1151,13 @@ const styles = StyleSheet.create({
     ...typography.h2,
     marginBottom: spacing.xs,
   },
-  email: {
-    ...typography.body,
+  subscriptionStatus: {
+    fontSize: 14,
+    fontWeight: '600',
     marginBottom: spacing.xs,
   },
-  premiumBadgeSmall: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.sm,
-    marginTop: spacing.xs,
-  },
-  premiumBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+  email: {
+    ...typography.body,
   },
   subscriptionCard: {
     borderRadius: borderRadius.lg,
