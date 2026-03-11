@@ -117,7 +117,7 @@ export default function SubscriptionScreen() {
       // Check current premium status
       const info = await Purchases.getCustomerInfo();
       setCustomerInfo(info);
-      const hasActiveEntitlement = info.entitlements.active['premium_access']?.isActive || false;
+      const hasActiveEntitlement = info.entitlements.active['Macrogoal Pro']?.isActive || false;
       setIsPremium(hasActiveEntitlement);
       console.log('[Subscription] Current premium status:', hasActiveEntitlement);
 
@@ -163,7 +163,7 @@ export default function SubscriptionScreen() {
       console.log('[Subscription] Customer info updated');
 
       // Check if premium entitlement is now active
-      const hasActiveEntitlement = customerInfo.entitlements.active['premium_access']?.isActive || false;
+      const hasActiveEntitlement = customerInfo.entitlements.active['Macrogoal Pro']?.isActive || false;
       setIsPremium(hasActiveEntitlement);
       setCustomerInfo(customerInfo);
 
@@ -226,7 +226,7 @@ export default function SubscriptionScreen() {
       console.log('[Subscription] Purchases restored');
 
       setCustomerInfo(info);
-      const hasActiveEntitlement = info.entitlements.active['premium_access']?.isActive || false;
+      const hasActiveEntitlement = info.entitlements.active['Macrogoal Pro']?.isActive || false;
       setIsPremium(hasActiveEntitlement);
 
       if (hasActiveEntitlement) {

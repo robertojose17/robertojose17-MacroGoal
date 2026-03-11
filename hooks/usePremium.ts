@@ -77,8 +77,8 @@ export function usePremium(): UsePremiumReturn {
           const info = await Purchases.getCustomerInfo();
           setCustomerInfo(info);
 
-          // Check for premium_access entitlement (configure this in RevenueCat dashboard)
-          const premiumEntitlement = info.entitlements.active['premium_access'];
+          // Check for Macrogoal Pro entitlement (configured in RevenueCat dashboard)
+          const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
           const hasActiveEntitlement = premiumEntitlement?.isActive || false;
 
           console.log('[usePremium] RevenueCat premium status:', hasActiveEntitlement);
@@ -138,7 +138,7 @@ export function usePremium(): UsePremiumReturn {
       Purchases.addCustomerInfoUpdateListener((info) => {
         console.log('[usePremium] RevenueCat customer info updated');
         setCustomerInfo(info);
-        const premiumEntitlement = info.entitlements.active['premium_access'];
+        const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
         const hasActiveEntitlement = premiumEntitlement?.isActive || false;
         setIsPremium(hasActiveEntitlement);
         

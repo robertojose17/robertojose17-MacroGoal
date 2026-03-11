@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Macro Goal",
@@ -67,8 +68,10 @@
       "router": {},
       "fooddataCentralApiKey": "2cILVFzO3AdhZSQjt8teTzmF0DMIdDTt0nHgGmCW",
       "revenueCat": {
-        "iosApiKey": "appl_YOUR_IOS_KEY_HERE",
-        "androidApiKey": "goog_YOUR_ANDROID_KEY_HERE"
+        "iosApiKey": "appl_TZdEZxwrVNJdRUPcoavoXaVUCSE",
+        "androidApiKey": "goog_YOUR_ANDROID_KEY_HERE",
+        "offeringIdentifier": "Monthly_MG",
+        "entitlementIdentifier": "Macrogoal Pro"
       }
     }
   }
