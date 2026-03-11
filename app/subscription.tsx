@@ -45,65 +45,29 @@ export default function SubscriptionScreen() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    initializeAndFetch();
+    fetchOfferings();
   }, []);
 
-  const initializeAndFetch = async () => {
-    console.log('[Subscription] Starting initialization...');
-    setIsInitializing(true);
-    setLoading(true);
-    setError(null);
-
+  const fetchOfferings = async () => {
     try {
-      // CRITICAL: Wait for SDK to be configured
-      console.log('[Subscription] Checking if RevenueCat SDK is configured...');
-      let attempts = 0;
-      const maxAttempts = 20; // 10 seconds max wait
-      
-      while (!Purchases.isConfigured && attempts < maxAttempts) {
-        console.log(`[Subscription] SDK not ready, waiting... (attempt ${attempts + 1}/${maxAttempts})`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
+      console.log('[Subscription] ========== FETCHING OFFERINGS ==========');
+      setLoading(true);
+      setError(null);
 
+      // CRITICAL: Verify SDK is configured before making any calls
       if (!Purchases.isConfigured) {
-        console.error('[Subscription] ❌ SDK not configured after waiting');
+        console.error('[Subscription] ❌ SDK not configured');
         setError('RevenueCat SDK is not initialized. Please restart the app and try again.');
-        setIsInitializing(false);
         setLoading(false);
         return;
       }
 
-      console.log('[Subscription] ✅ SDK is configured, proceeding to fetch offerings');
-      setIsInitializing(false);
-
-      // Now fetch offerings
-      await fetchOfferings();
-
-    } catch (error: any) {
-      console.error('[Subscription] ❌ Initialization error:', error);
-      setError('Failed to initialize subscription system. Please try again.');
-      setIsInitializing(false);
-      setLoading(false);
-    }
-  };
-
-  const fetchOfferings = async (retryCount = 0) => {
-    try {
-      console.log('[Subscription] Fetching offerings from RevenueCat...');
-      setLoading(true);
-      setError(null);
-
-      // Verify SDK is still configured
-      if (!Purchases.isConfigured) {
-        console.error('[Subscription] SDK not configured when fetching offerings');
-        throw new Error('SDK not configured');
-      }
+      console.log('[Subscription] ✅ SDK is configured, fetching offerings...');
 
       const offerings = await Purchases.getOfferings();
+      
       console.log('[Subscription] Offerings received:', {
         current: offerings.current?.identifier,
         packagesCount: offerings.current?.availablePackages.length || 0,
@@ -111,7 +75,7 @@ export default function SubscriptionScreen() {
       });
 
       if (!offerings.current || offerings.current.availablePackages.length === 0) {
-        console.warn('[Subscription] No subscription packages available in current offering');
+        console.warn('[Subscription] ⚠️ No subscription packages available in current offering');
         
         // Check if there are any offerings at all
         const allOfferingKeys = Object.keys(offerings.all);
@@ -128,37 +92,23 @@ export default function SubscriptionScreen() {
           }
         }
         
-        // Retry logic for SDK initialization race condition
-        if (retryCount < 5) {
-          console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/5)`);
-          setTimeout(() => fetchOfferings(retryCount + 1), 2000);
-          return;
-        }
-        
-        setError('No subscription packages are currently available. Please make sure you have configured offerings in RevenueCat dashboard with the identifier "Monthly_MG".');
+        setError('No subscription packages are currently available. Please make sure you have configured offerings in RevenueCat dashboard.');
         setLoading(false);
         return;
       }
 
       // Map RevenueCat packages to our UI format
       const mappedPlans = mapPackagesToPlans(offerings.current.availablePackages);
-      console.log('[Subscription] Mapped plans:', mappedPlans.map(p => ({ id: p.id, price: p.price })));
+      console.log('[Subscription] ✅ Mapped plans:', mappedPlans.map(p => ({ id: p.id, price: p.price })));
       setPlans(mappedPlans);
       setLoading(false);
     } catch (error: any) {
-      console.error('[Subscription] Error fetching offerings:', error);
+      console.error('[Subscription] ❌ Error fetching offerings:', error);
       console.error('[Subscription] Error details:', {
         message: error.message,
         code: error.code,
         underlyingErrorMessage: error.underlyingErrorMessage,
       });
-      
-      // Retry logic
-      if (retryCount < 5) {
-        console.log(`[Subscription] Retrying in 2 seconds... (attempt ${retryCount + 1}/5)`);
-        setTimeout(() => fetchOfferings(retryCount + 1), 2000);
-        return;
-      }
       
       setError(`Failed to load subscription options: ${error.message || 'Unknown error'}. Please check your internet connection and try again.`);
       setLoading(false);
@@ -287,10 +237,8 @@ export default function SubscriptionScreen() {
   };
 
   // Loading state
-  if (loading || premiumLoading || isInitializing) {
-    const loadingMessage = isInitializing 
-      ? 'Initializing RevenueCat SDK...' 
-      : 'Loading subscription options...';
+  if (loading || premiumLoading) {
+    const loadingMessage = 'Loading subscription options...';
 
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -299,11 +247,6 @@ export default function SubscriptionScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             {loadingMessage}
           </Text>
-          {isInitializing && (
-            <Text style={[styles.loadingSubtext, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              This may take a few seconds...
-            </Text>
-          )}
         </View>
       </SafeAreaView>
     );
@@ -340,7 +283,7 @@ export default function SubscriptionScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.retryButton, { backgroundColor: colors.primary }]}
-            onPress={() => initializeAndFetch()}
+            onPress={() => fetchOfferings()}
           >
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
@@ -555,10 +498,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     textAlign: 'center',
     fontWeight: '600',
-  },
-  loadingSubtext: {
-    ...typography.caption,
-    textAlign: 'center',
   },
   errorContainer: {
     flex: 1,

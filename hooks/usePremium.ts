@@ -64,16 +64,9 @@ export function usePremium(): UsePremiumReturn {
       console.log('[usePremium] Manually refreshing premium status');
       setLoading(true);
 
-      // Wait for SDK to be configured if needed
-      let attempts = 0;
-      while (!Purchases.isConfigured && attempts < 10) {
-        console.log('[usePremium] Waiting for SDK to be configured...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
-
+      // Verify SDK is configured
       if (!Purchases.isConfigured) {
-        console.error('[usePremium] SDK not configured after waiting');
+        console.error('[usePremium] SDK not configured');
         setLoading(false);
         return;
       }
@@ -92,16 +85,9 @@ export function usePremium(): UsePremiumReturn {
     // Initial check
     const setupListener = async () => {
       try {
-        // Wait for SDK to be configured
-        console.log('[usePremium] Waiting for SDK to be configured...');
-        let attempts = 0;
-        while (!Purchases.isConfigured && attempts < 20) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          attempts++;
-        }
-
+        // Verify SDK is configured
         if (!Purchases.isConfigured) {
-          console.error('[usePremium] SDK not configured after waiting');
+          console.error('[usePremium] SDK not configured');
           setLoading(false);
           return;
         }

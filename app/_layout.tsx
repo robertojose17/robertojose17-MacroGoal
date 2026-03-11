@@ -42,16 +42,18 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [hasNavigated, setHasNavigated] = useState(false);
+  const [revenueCatReady, setRevenueCatReady] = useState(false);
 
-  // Initialize RevenueCat SDK - CRITICAL: Must complete before app is ready
+  // CRITICAL: Initialize RevenueCat SDK FIRST and WAIT for it to complete
   useEffect(() => {
     const initRevenueCat = async () => {
       try {
-        console.log('[RevenueCat] Starting SDK initialization...');
+        console.log('[RevenueCat] ========== STARTING SDK INITIALIZATION ==========');
         
         // Check if already configured
         if (Purchases.isConfigured) {
-          console.log('[RevenueCat] SDK already configured');
+          console.log('[RevenueCat] ✅ SDK already configured');
+          setRevenueCatReady(true);
           return;
         }
 
@@ -62,14 +64,22 @@ export default function RootLayout() {
         });
 
         if (!apiKey) {
-          console.warn('[RevenueCat] No API key for this platform');
+          console.warn('[RevenueCat] ⚠️ No API key for this platform');
+          setRevenueCatReady(true); // Still mark as ready to not block app
           return;
         }
 
-        // Configure SDK - AWAIT this to ensure it completes
+        // Configure SDK - CRITICAL: AWAIT this to ensure it completes
         console.log('[RevenueCat] Configuring SDK with API key...');
         await Purchases.configure({ apiKey });
         console.log('[RevenueCat] ✅ SDK configured successfully');
+
+        // Verify SDK is working by getting customer info
+        const customerInfo = await Purchases.getCustomerInfo();
+        console.log('[RevenueCat] ✅ SDK verified - Customer info retrieved:', {
+          originalAppUserId: customerInfo.originalAppUserId,
+          activeEntitlements: Object.keys(customerInfo.entitlements.active),
+        });
 
         // Set up customer info update listener
         Purchases.addCustomerInfoUpdateListener((customerInfo) => {
@@ -79,15 +89,13 @@ export default function RootLayout() {
           });
         });
 
-        // Verify SDK is working by getting customer info
-        const customerInfo = await Purchases.getCustomerInfo();
-        console.log('[RevenueCat] ✅ SDK verified - Customer info retrieved:', {
-          originalAppUserId: customerInfo.originalAppUserId,
-          activeEntitlements: Object.keys(customerInfo.entitlements.active),
-        });
+        console.log('[RevenueCat] ========== SDK INITIALIZATION COMPLETE ==========');
+        setRevenueCatReady(true);
 
       } catch (error) {
         console.error('[RevenueCat] ❌ Failed to initialize SDK:', error);
+        // Still mark as ready to not block app, but log the error
+        setRevenueCatReady(true);
       }
     };
 
@@ -96,20 +104,12 @@ export default function RootLayout() {
 
   // Handle RevenueCat user login/logout based on Supabase auth
   useEffect(() => {
-    if (!session) return;
+    if (!session || !revenueCatReady) return;
 
     const handleRevenueCatAuth = async () => {
       try {
-        // Wait for SDK to be configured
-        let attempts = 0;
-        while (!Purchases.isConfigured && attempts < 10) {
-          console.log('[RevenueCat] Waiting for SDK to be configured...');
-          await new Promise(resolve => setTimeout(resolve, 500));
-          attempts++;
-        }
-
         if (!Purchases.isConfigured) {
-          console.error('[RevenueCat] SDK not configured after waiting');
+          console.error('[RevenueCat] SDK not configured when trying to log in user');
           return;
         }
 
@@ -131,14 +131,14 @@ export default function RootLayout() {
     };
 
     handleRevenueCatAuth();
-  }, [session]);
+  }, [session, revenueCatReady]);
 
-  // Initialize app and auth
+  // Initialize app and auth - WAIT for RevenueCat to be ready
   useEffect(() => {
-    if (loaded) {
+    if (loaded && revenueCatReady) {
       initializeApp();
     }
-  }, [loaded]);
+  }, [loaded, revenueCatReady]);
 
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
@@ -169,8 +169,10 @@ export default function RootLayout() {
         // Handle RevenueCat logout when user signs out
         if (event === 'SIGNED_OUT') {
           try {
-            await Purchases.logOut();
-            console.log('[RevenueCat] ✅ User logged out');
+            if (Purchases.isConfigured) {
+              await Purchases.logOut();
+              console.log('[RevenueCat] ✅ User logged out');
+            }
           } catch (error) {
             console.error('[RevenueCat] ❌ Failed to log out:', error);
           }
@@ -296,7 +298,7 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded || !isReady) {
+  if (!loaded || !isReady || !revenueCatReady) {
     return null;
   }
 
