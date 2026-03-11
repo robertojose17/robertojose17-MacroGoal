@@ -29,9 +29,9 @@ export const unstable_settings = {
   initialRouteName: "index",
 };
 
-// RevenueCat Configuration - Updated with new API key
+// RevenueCat Configuration - Updated with correct SDK API key
 const ENTITLEMENT_IDENTIFIER = 'Macrogoal Pro';
-const REVENUECAT_API_KEY_IOS = 'sk_INEvrnxfxYJYlZwDPaxSqeeGsYbhE';
+const REVENUECAT_API_KEY_IOS = 'appl_TZdEZxwrVNJdRUPcoavoXaVUCSE'; // Public SDK key (not secret key)
 const REVENUECAT_API_KEY_ANDROID = 'goog_YOUR_ANDROID_KEY_HERE'; // Replace with actual Android key when available
 
 export default function RootLayout() {
