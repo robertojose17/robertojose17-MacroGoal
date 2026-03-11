@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import { usePremium } from '@/hooks/usePremium';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -17,6 +18,9 @@ export default function ProfileScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  
+  // Use the usePremium hook for real-time premium status from RevenueCat
+  const { isPremium, loading: premiumLoading, refreshPremiumStatus } = usePremium();
 
   const [user, setUser] = useState<any>(null);
   const [goal, setGoal] = useState<any>(null);
@@ -40,7 +44,8 @@ export default function ProfileScreen() {
     useCallback(() => {
       console.log('[Profile] Screen focused, loading data');
       loadUserData();
-    }, [])
+      refreshPremiumStatus(); // Refresh premium status when screen is focused
+    }, [refreshPremiumStatus])
   );
 
   const loadUserData = async () => {
@@ -108,7 +113,7 @@ export default function ProfileScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadUserData();
+    await Promise.all([loadUserData(), refreshPremiumStatus()]);
   };
 
   const handleLogout = async () => {
@@ -482,10 +487,11 @@ export default function ProfileScreen() {
     closeEditModal();
   };
 
-  if (loading) {
+  if (loading || premiumLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading profile...
           </Text>
@@ -514,8 +520,10 @@ export default function ProfileScreen() {
 
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
-  const isPremium = user.user_type === 'premium';
+  
+  // Use isPremium from usePremium hook (RevenueCat source of truth)
   const subscriptionStatusText = isPremium ? 'Premium' : 'Free';
+  console.log('[Profile] Displaying subscription status:', subscriptionStatusText, '(isPremium:', isPremium, ')');
 
   // Format the journey start date for display
   const formatJourneyStartDate = (dateStr: string | null) => {
