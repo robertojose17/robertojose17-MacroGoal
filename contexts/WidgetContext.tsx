@@ -1,17 +1,10 @@
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
 import { Platform } from "react-native";
+import * as AppleTargets from "@bacons/apple-targets";
 
-// Conditionally import ExtensionStorage only on iOS
-let ExtensionStorage: any = null;
-if (Platform.OS === 'ios') {
-  try {
-    const appleTargets = require("@bacons/apple-targets");
-    ExtensionStorage = appleTargets.ExtensionStorage;
-  } catch (error) {
-    console.log('[WidgetContext] @bacons/apple-targets not available, widget features disabled');
-  }
-}
+// Conditionally use ExtensionStorage only on iOS
+const ExtensionStorage = Platform.OS === 'ios' ? AppleTargets.ExtensionStorage : null;
 
 type WidgetContextType = {
   refreshWidget: () => void;

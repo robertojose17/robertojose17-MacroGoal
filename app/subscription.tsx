@@ -17,14 +17,11 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 
-// Dynamic import for IAP - only load on native platforms
-let InAppPurchases: any = null;
+// Conditional import for IAP - only available on native platforms
+let InAppPurchases: typeof import('expo-in-app-purchases') | null = null;
 if (Platform.OS !== 'web') {
-  try {
-    InAppPurchases = require('expo-in-app-purchases');
-  } catch (error) {
-    console.warn('[Subscription] expo-in-app-purchases not available:', error);
-  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  InAppPurchases = require('expo-in-app-purchases');
 }
 
 interface SubscriptionPlan {
@@ -77,15 +74,66 @@ export default function SubscriptionScreen() {
     },
   ], []);
 
+  const verifyPurchaseWithBackend = async (purchase: any, userId: string) => {
+    try {
+      console.log('[Subscription] Verifying purchase with backend:', {
+        productId: purchase.productId,
+        transactionId: purchase.transactionId,
+      });
+
+      const { data, error } = await supabase.functions.invoke('verify-apple-receipt', {
+        body: {
+          receipt: purchase.transactionReceipt,
+          productId: purchase.productId,
+          transactionId: purchase.transactionId,
+          userId: userId,
+        },
+      });
+
+      if (error) {
+        console.error('[Subscription] Backend verification error:', error);
+        throw new Error(error.message || 'Failed to verify purchase with server');
+      }
+
+      console.log('[Subscription] Backend verification successful:', data);
+      return data;
+    } catch (error: any) {
+      console.error('[Subscription] Error verifying with backend:', error);
+      throw error;
+    }
+  };
+
   const handlePurchaseSuccess = React.useCallback(async (purchase: any) => {
     try {
-      console.log('[Subscription] Processing purchase:', purchase);
+      console.log('[Subscription] Processing purchase:', {
+        productId: purchase.productId,
+        transactionId: purchase.transactionId,
+        acknowledged: purchase.acknowledged,
+      });
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('[Subscription] No user found');
+        Alert.alert('Error', 'User not found. Please log in again.');
+        setPurchasing(false);
         return;
       }
+
+      console.log('[Subscription] Verifying purchase with Apple...');
+      
+      const verificationResult = await verifyPurchaseWithBackend(purchase, user.id);
+
+      if (!verificationResult?.success) {
+        console.error('[Subscription] Verification failed:', verificationResult);
+        Alert.alert(
+          'Verification Failed',
+          'Unable to verify your purchase with Apple. Please contact support if you were charged.'
+        );
+        setPurchasing(false);
+        return;
+      }
+
+      console.log('[Subscription] Purchase verified successfully');
 
       const { error: updateError } = await supabase
         .from('users')
@@ -108,6 +156,7 @@ export default function SubscriptionScreen() {
       }
 
       setPurchasing(false);
+      setSelectedPlan(null);
       setIsPremium(true);
 
       Alert.alert(
@@ -123,8 +172,12 @@ export default function SubscriptionScreen() {
 
     } catch (error: any) {
       console.error('[Subscription] Error processing purchase:', error);
-      Alert.alert('Error', 'Failed to activate premium: ' + error.message);
+      Alert.alert(
+        'Error',
+        'Failed to activate premium: ' + (error.message || 'Unknown error') + '\n\nIf you were charged, your purchase will be restored automatically.'
+      );
       setPurchasing(false);
+      setSelectedPlan(null);
     }
   }, [router]);
 
@@ -146,8 +199,8 @@ export default function SubscriptionScreen() {
       const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
       
       if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-        console.log('[Subscription] Products fetched:', results);
-        setProducts(results);
+        console.log('[Subscription] Products fetched:', results?.length || 0);
+        setProducts(results || []);
       } else {
         console.error('[Subscription] Failed to fetch products. Response code:', responseCode);
         Alert.alert(
@@ -157,20 +210,50 @@ export default function SubscriptionScreen() {
       }
 
       InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }: any) => {
-        console.log('[Subscription] Purchase listener triggered:', { responseCode, errorCode });
+        console.log('[Subscription] Purchase listener triggered:', { 
+          responseCode, 
+          errorCode,
+          resultsCount: results?.length || 0 
+        });
         
         if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          results?.forEach((purchase: any) => {
-            console.log('[Subscription] Purchase successful:', purchase);
-            handlePurchaseSuccess(purchase);
-          });
+          if (results && results.length > 0) {
+            results.forEach((purchase: any) => {
+              console.log('[Subscription] Processing purchase from listener:', purchase.productId);
+              if (!purchase.acknowledged) {
+                handlePurchaseSuccess(purchase);
+              } else {
+                console.log('[Subscription] Purchase already acknowledged');
+                setPurchasing(false);
+                setSelectedPlan(null);
+              }
+            });
+          } else {
+            console.log('[Subscription] No results in OK response');
+            setPurchasing(false);
+            setSelectedPlan(null);
+          }
         } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
           console.log('[Subscription] User canceled purchase');
+          Alert.alert('Cancelled', 'Purchase was cancelled.');
           setPurchasing(false);
+          setSelectedPlan(null);
+        } else if (responseCode === InAppPurchases.IAPResponseCode.DEFERRED) {
+          console.log('[Subscription] Purchase deferred (awaiting approval)');
+          Alert.alert(
+            'Purchase Pending',
+            'Your purchase is awaiting approval. You will receive access once approved.'
+          );
+          setPurchasing(false);
+          setSelectedPlan(null);
         } else {
-          console.error('[Subscription] Purchase failed:', errorCode);
-          Alert.alert('Purchase Failed', 'Unable to complete purchase. Please try again.');
+          console.error('[Subscription] Purchase failed with code:', responseCode, 'error:', errorCode);
+          Alert.alert(
+            'Purchase Failed',
+            `Unable to complete purchase (Error: ${errorCode || responseCode}). Please try again.`
+          );
           setPurchasing(false);
+          setSelectedPlan(null);
         }
       });
 
@@ -215,6 +298,11 @@ export default function SubscriptionScreen() {
       return;
     }
 
+    if (purchasing) {
+      console.log('[Subscription] Purchase already in progress');
+      return;
+    }
+
     try {
       console.log('[Subscription] Starting purchase for:', productId);
       setPurchasing(true);
@@ -224,13 +312,15 @@ export default function SubscriptionScreen() {
       if (!user) {
         Alert.alert('Error', 'Please log in to purchase a subscription');
         setPurchasing(false);
+        setSelectedPlan(null);
         return;
       }
 
-      console.log('[Subscription] Setting customer ID:', user.id);
+      console.log('[Subscription] User ID:', user.id);
+      console.log('[Subscription] Calling purchaseItemAsync...');
 
       await InAppPurchases.purchaseItemAsync(productId);
-      console.log('[Subscription] Purchase initiated');
+      console.log('[Subscription] purchaseItemAsync called - waiting for listener callback');
 
     } catch (error: any) {
       console.error('[Subscription] Purchase error:', error);
@@ -240,6 +330,8 @@ export default function SubscriptionScreen() {
           'Product Not Found',
           'The subscription product was not found. Please ensure:\n\n1. Products are created in App Store Connect/Google Play Console with exact IDs:\n   • Monthly_MG\n   • Yearly_MG\n\n2. Products are approved and available\n\n3. You are testing on a real device'
         );
+      } else if (error.code === 'E_USER_CANCELLED') {
+        console.log('[Subscription] User cancelled in catch block');
       } else {
         Alert.alert('Purchase Error', error.message || 'Failed to start purchase');
       }
@@ -265,7 +357,7 @@ export default function SubscriptionScreen() {
       const { results, responseCode } = await InAppPurchases.getPurchaseHistoryAsync();
 
       if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
-        console.log('[Subscription] Found purchases to restore:', results);
+        console.log('[Subscription] Found purchases to restore:', results.length);
         
         const latestPurchase = results[0];
         await handlePurchaseSuccess(latestPurchase);
@@ -524,7 +616,10 @@ export default function SubscriptionScreen() {
                 disabled={purchasing}
               >
                 {isPurchasingThis ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={styles.subscribeButtonText}>Processing...</Text>
+                  </View>
                 ) : (
                   <Text style={styles.subscribeButtonText}>
                     Subscribe Now
@@ -568,6 +663,11 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   header: {
     flexDirection: 'row',
