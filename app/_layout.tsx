@@ -107,6 +107,27 @@ export default function RootLayout() {
                 console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
                 console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
                 
+                // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
+                console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
+                const userEmail = currentSession.user.email;
+                
+                // Get user's name from the users table
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('email')
+                  .eq('id', currentSession.user.id)
+                  .maybeSingle();
+
+                if (userEmail) {
+                  await Purchases.setEmail(userEmail);
+                  console.log('[App] ✅ Email set in RevenueCat:', userEmail);
+                }
+
+                // Set display name (use email username as display name if no name available)
+                const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                await Purchases.setDisplayName(displayName);
+                console.log('[App] ✅ Display name set in RevenueCat:', displayName);
+                
                 // CRITICAL: Force a customer info refresh to ensure we have the latest data
                 console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
                 const refreshedInfo = await Purchases.getCustomerInfo();
@@ -146,6 +167,27 @@ export default function RootLayout() {
               console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
               console.log('[App] Original App User ID:', customerInfo.originalAppUserId);
               
+              // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
+              console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
+              const userEmail = session.user.email;
+              
+              // Get user's name from the users table
+              const { data: userData } = await supabase
+                .from('users')
+                .select('email')
+                .eq('id', session.user.id)
+                .maybeSingle();
+
+              if (userEmail) {
+                await Purchases.setEmail(userEmail);
+                console.log('[App] ✅ Email set in RevenueCat:', userEmail);
+              }
+
+              // Set display name (use email username as display name if no name available)
+              const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+              await Purchases.setDisplayName(displayName);
+              console.log('[App] ✅ Display name set in RevenueCat:', displayName);
+              
               // CRITICAL: Force a customer info refresh to ensure we have the latest data
               console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
               const refreshedInfo = await Purchases.getCustomerInfo();
@@ -179,6 +221,21 @@ export default function RootLayout() {
                 const { customerInfo } = await Purchases.logIn(session.user.id);
                 console.log('[App] ✅ RevenueCat user re-identified:', session.user.id);
                 console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                
+                // Re-set user attributes
+                const userEmail = session.user.email;
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('email')
+                  .eq('id', session.user.id)
+                  .maybeSingle();
+
+                if (userEmail) {
+                  await Purchases.setEmail(userEmail);
+                }
+                const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                await Purchases.setDisplayName(displayName);
+                console.log('[App] ✅ User attributes re-set');
               } else {
                 console.log('[App] ✅ RevenueCat user ID matches session');
               }

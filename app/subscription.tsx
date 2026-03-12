@@ -107,6 +107,7 @@ export default function SubscriptionScreen() {
       }
 
       console.log('[Subscription] User ID:', user.id);
+      console.log('[Subscription] User Email:', user.email);
 
       // Configure RevenueCat
       console.log('[Subscription] Configuring RevenueCat SDK...');
@@ -118,6 +119,29 @@ export default function SubscriptionScreen() {
       // Enable debug logs
       await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
       console.log('[Subscription] ✅ RevenueCat configured successfully');
+
+      // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
+      // This ensures the user's email and name appear in the RevenueCat dashboard instead of random numbers
+      console.log('[Subscription] 📝 Setting user attributes for RevenueCat dashboard...');
+      
+      const userEmail = user.email;
+      
+      // Get user's name from the users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('email')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (userEmail) {
+        await Purchases.setEmail(userEmail);
+        console.log('[Subscription] ✅ Email set in RevenueCat:', userEmail);
+      }
+
+      // Set display name (use email username as display name if no name available)
+      const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+      await Purchases.setDisplayName(displayName);
+      console.log('[Subscription] ✅ Display name set in RevenueCat:', displayName);
 
       // Fetch offerings
       console.log('[Subscription] Fetching offerings...');
