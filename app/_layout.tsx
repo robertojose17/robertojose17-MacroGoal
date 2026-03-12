@@ -82,7 +82,7 @@ export default function RootLayout() {
           });
 
           if (apiKey && !apiKey.includes('YOUR')) {
-            // CRITICAL FIX: Configure RevenueCat WITHOUT an initial appUserID
+            // CRITICAL: Configure RevenueCat WITHOUT an initial appUserID
             // This allows each user to be identified separately when they log in
             console.log('[App] Configuring RevenueCat with anonymous user (will identify on login)');
             
@@ -106,6 +106,12 @@ export default function RootLayout() {
                 const { customerInfo } = await Purchases.logIn(currentSession.user.id);
                 console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
                 console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                
+                // CRITICAL: Force a customer info refresh to ensure we have the latest data
+                console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
+                const refreshedInfo = await Purchases.getCustomerInfo();
+                console.log('[App] ✅ Customer info refreshed');
+                console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
               } catch (loginError) {
                 console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
               }
@@ -139,6 +145,12 @@ export default function RootLayout() {
               console.log('[App] ✅ RevenueCat user identified:', session.user.id);
               console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
               console.log('[App] Original App User ID:', customerInfo.originalAppUserId);
+              
+              // CRITICAL: Force a customer info refresh to ensure we have the latest data
+              console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
+              const refreshedInfo = await Purchases.getCustomerInfo();
+              console.log('[App] ✅ Customer info refreshed');
+              console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
             } catch (error) {
               console.error('[App] ❌ Failed to identify user with RevenueCat:', error);
             }

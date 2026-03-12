@@ -57,7 +57,7 @@ export function usePremium(): UsePremiumReturn {
 
   const checkPremiumStatus = async () => {
     try {
-      console.log('[usePremium] Checking premium status');
+      console.log('[usePremium] ========== CHECKING PREMIUM STATUS ==========');
       setLoading(true);
       setError(null);
 
@@ -70,35 +70,53 @@ export function usePremium(): UsePremiumReturn {
         return;
       }
 
+      console.log('[usePremium] User ID:', user.id);
+
       // On native platforms, check RevenueCat first (primary source of truth)
       if (Platform.OS !== 'web') {
         try {
-          console.log('[usePremium] Checking RevenueCat entitlements');
+          console.log('[usePremium] 🔍 Checking RevenueCat entitlements...');
+          
+          // CRITICAL: Add a small delay to allow RevenueCat to sync after login
+          // This ensures we get the latest subscription status
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Force a fresh fetch from RevenueCat servers
           const info = await Purchases.getCustomerInfo();
           setCustomerInfo(info);
+
+          console.log('[usePremium] RevenueCat Customer Info:');
+          console.log('[usePremium] - Original App User ID:', info.originalAppUserId);
+          console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
+          console.log('[usePremium] - All Entitlements:', Object.keys(info.entitlements.all));
 
           // Check for Macrogoal Pro entitlement (configured in RevenueCat dashboard)
           const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
           const hasActiveEntitlement = premiumEntitlement?.isActive || false;
 
-          console.log('[usePremium] RevenueCat premium status:', hasActiveEntitlement);
+          console.log('[usePremium] Premium Entitlement Details:');
+          console.log('[usePremium] - Is Active:', hasActiveEntitlement);
+          console.log('[usePremium] - Product Identifier:', premiumEntitlement?.productIdentifier);
+          console.log('[usePremium] - Will Renew:', premiumEntitlement?.willRenew);
+          console.log('[usePremium] - Period Type:', premiumEntitlement?.periodType);
           
           if (premiumEntitlement?.expirationDate) {
             setExpirationDate(premiumEntitlement.expirationDate);
-            console.log('[usePremium] Expiration date:', premiumEntitlement.expirationDate);
+            console.log('[usePremium] - Expiration Date:', premiumEntitlement.expirationDate);
           }
 
+          console.log('[usePremium] ✅ RevenueCat premium status:', hasActiveEntitlement);
           setIsPremium(hasActiveEntitlement);
           setLoading(false);
           return;
         } catch (revenueCatError) {
-          console.warn('[usePremium] RevenueCat check failed, falling back to Supabase:', revenueCatError);
+          console.warn('[usePremium] ⚠️ RevenueCat check failed, falling back to Supabase:', revenueCatError);
           // Fall through to Supabase check
         }
       }
 
       // Fallback: Check Supabase for premium status (derived state)
-      console.log('[usePremium] Checking Supabase for premium status');
+      console.log('[usePremium] 🔍 Checking Supabase for premium status...');
       const { data: userData, error: fetchError } = await supabase
         .from('users')
         .select('user_type')
@@ -106,40 +124,47 @@ export function usePremium(): UsePremiumReturn {
         .single();
 
       if (fetchError) {
-        console.error('[usePremium] Error fetching user data:', fetchError);
+        console.error('[usePremium] ❌ Error fetching user data:', fetchError);
         throw fetchError;
       }
 
       const userIsPremium = userData?.user_type === 'premium';
-      console.log('[usePremium] Supabase premium status:', userIsPremium);
+      console.log('[usePremium] ✅ Supabase premium status:', userIsPremium);
       setIsPremium(userIsPremium);
 
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to check premium status';
-      console.error('[usePremium] Error checking premium status:', err);
+      console.error('[usePremium] ❌ Error checking premium status:', err);
       setError(errorMessage);
       setIsPremium(false);
     } finally {
       setLoading(false);
+      console.log('[usePremium] ========== PREMIUM STATUS CHECK COMPLETE ==========');
     }
   };
 
   const refreshPremiumStatus = useCallback(async () => {
-    console.log('[usePremium] Refreshing premium status');
+    console.log('[usePremium] 🔄 Manually refreshing premium status');
     await checkPremiumStatus();
   }, []);
 
   useEffect(() => {
+    console.log('[usePremium] Hook mounted, starting initial check');
     checkPremiumStatus();
 
     // Set up RevenueCat listener for real-time updates (native only)
     if (Platform.OS !== 'web') {
       console.log('[usePremium] Setting up RevenueCat customer info listener');
       Purchases.addCustomerInfoUpdateListener((info) => {
-        console.log('[usePremium] RevenueCat customer info updated');
+        console.log('[usePremium] 🔔 RevenueCat customer info updated via listener');
+        console.log('[usePremium] - Original App User ID:', info.originalAppUserId);
+        console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
+        
         setCustomerInfo(info);
         const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
         const hasActiveEntitlement = premiumEntitlement?.isActive || false;
+        
+        console.log('[usePremium] - Premium Status:', hasActiveEntitlement);
         setIsPremium(hasActiveEntitlement);
         
         if (premiumEntitlement?.expirationDate) {
