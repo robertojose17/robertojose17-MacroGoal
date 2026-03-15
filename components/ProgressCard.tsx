@@ -51,10 +51,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [showCalorieProjectionLine, setShowCalorieProjectionLine] = useState(true);
   const [showActualWeightDots, setShowActualWeightDots] = useState(true);
 
-  useEffect(() => {
-    loadProfileData();
-  }, [userId, loadProfileData]);
-
   const loadProfileData = useCallback(async () => {
     try {
       setLoading(true);
@@ -319,6 +315,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setLoading(false);
     }
   }, [userId]);
+
+  useEffect(() => {
+    loadProfileData();
+  }, [userId, loadProfileData]);
 
   const loadCalorieLogs = async (userId: string, startDate: Date) => {
     try {
