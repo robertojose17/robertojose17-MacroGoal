@@ -47,7 +47,7 @@ export const AD_BANNER_HEIGHT = 60;
 
 // Replace with your production Ad Unit ID:
 // iOS: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX'
-const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-3940256099942544/2435281174';
 
 // react-native-google-mobile-ads requires a native build.
 // We use a try/catch require so the app works gracefully without it installed.
