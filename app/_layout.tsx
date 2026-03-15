@@ -17,6 +17,9 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
+import { AdBannerProvider } from "@/components/AdBannerContext";
+import { AdBannerFooter } from "@/components/AdBannerFooter";
+import { usePremium } from "@/hooks/usePremium";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
@@ -32,6 +35,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const { isPremium } = usePremium();
   const networkState = useNetworkState();
   const segments = useSegments();
   const navigationState = useRootNavigationState();
@@ -584,65 +588,68 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              
-              <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
-              <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
-              <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-              <Stack.Screen name="auth/verify" options={{ headerShown: false }} />
-              
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              
-              <Stack.Screen
-                name="onboarding/complete"
-                options={{
-                  headerShown: false,
-                  presentation: "card",
-                }}
-              />
-              
-              <Stack.Screen
-                name="add-food-simple"
-                options={{
-                  headerShown: false,
-                  presentation: "modal",
-                }}
-              />
-              
-              <Stack.Screen
-                name="add-food"
-                options={{
-                  headerShown: false,
-                  presentation: "modal",
-                }}
-              />
-              
-              <Stack.Screen
-                name="food-details"
-                options={{
-                  headerShown: false,
-                  presentation: "card",
-                }}
-              />
-              
-              <Stack.Screen
-                name="barcode-scanner"
-                options={{
-                  headerShown: false,
-                  presentation: "fullScreenModal",
-                }}
-              />
-              
-              <Stack.Screen
-                name="subscription"
-                options={{
-                  headerShown: false,
-                  presentation: "modal",
-                }}
-              />
-            </Stack>
-            <SystemBars style="dark" />
+            <AdBannerProvider isPremium={isPremium}>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                
+                <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/verify" options={{ headerShown: false }} />
+                
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                
+                <Stack.Screen
+                  name="onboarding/complete"
+                  options={{
+                    headerShown: false,
+                    presentation: "card",
+                  }}
+                />
+                
+                <Stack.Screen
+                  name="add-food-simple"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
+                  }}
+                />
+                
+                <Stack.Screen
+                  name="add-food"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
+                  }}
+                />
+                
+                <Stack.Screen
+                  name="food-details"
+                  options={{
+                    headerShown: false,
+                    presentation: "card",
+                  }}
+                />
+                
+                <Stack.Screen
+                  name="barcode-scanner"
+                  options={{
+                    headerShown: false,
+                    presentation: "fullScreenModal",
+                  }}
+                />
+                
+                <Stack.Screen
+                  name="subscription"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
+                  }}
+                />
+              </Stack>
+              <AdBannerFooter isPremium={isPremium} />
+              <SystemBars style="dark" />
+            </AdBannerProvider>
           </WidgetProvider>
         </ThemeProvider>
       </GestureHandlerRootView>
