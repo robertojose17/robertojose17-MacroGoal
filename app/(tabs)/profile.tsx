@@ -40,14 +40,6 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[Profile] Screen focused, loading data');
-      loadUserData();
-      refreshPremiumStatus(); // Refresh premium status when screen is focused
-    }, [refreshPremiumStatus])
-  );
-
   const loadUserData = async () => {
     try {
       setLoading(true);
@@ -110,6 +102,14 @@ export default function ProfileScreen() {
       setRefreshing(false);
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[Profile] Screen focused, loading data');
+      loadUserData();
+      refreshPremiumStatus();
+    }, [refreshPremiumStatus])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
