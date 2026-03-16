@@ -27,6 +27,14 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Purchases, { LOG_LEVEL } from "react-native-purchases";
 import Constants from "expo-constants";
 
+// Initialize AdMob — must be called once before any BannerAd renders
+let mobileAds: any = null;
+try {
+  mobileAds = require('react-native-google-mobile-ads').default;
+} catch {
+  // Package not available in this environment (e.g. Expo Go / web)
+}
+
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
@@ -59,7 +67,14 @@ export default function RootLayout() {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
     
     try {
-      console.log('[App] Step 1: Initialize food database (non-blocking)');
+      console.log('[App] Step 1: Initialize AdMob (non-blocking)');
+      if (mobileAds && Platform.OS !== 'web') {
+        mobileAds.initialize()
+          .then(() => console.log('[App] ✅ AdMob initialized'))
+          .catch((err: unknown) => console.warn('[App] ⚠️ AdMob init failed (non-blocking):', err));
+      }
+
+      console.log('[App] Step 2: Initialize food database (non-blocking)');
       
       // Let food database init run in background
       initializeFoodDatabase()
