@@ -43,7 +43,12 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { isPremium } = usePremium();
+  const { isPremium, loading: premiumLoading } = usePremium();
+  // While premium status is still loading, treat the user as premium (safe default).
+  // This prevents the ad banner from mounting for a premium user during the
+  // brief window before RevenueCat confirms their entitlement — which was the
+  // source of the crash. Once loading is false, the real value is used.
+  const resolvedIsPremium = premiumLoading ? true : isPremium;
   const networkState = useNetworkState();
   const segments = useSegments();
   const navigationState = useRootNavigationState();
@@ -596,7 +601,7 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <AdBannerProvider isPremium={isPremium}>
+            <AdBannerProvider isPremium={resolvedIsPremium}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 
@@ -655,7 +660,7 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <AdBannerFooter isPremium={isPremium} />
+              <AdBannerFooter isPremium={resolvedIsPremium} />
               <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>
