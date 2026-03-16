@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '@react-navigation/native';
@@ -22,6 +22,7 @@ import Animated, {
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
+import { useAdBanner } from '@/components/AdBannerContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -49,6 +50,9 @@ export default function FloatingTabBar({
   const pathname = usePathname();
   const theme = useTheme();
   const animatedValue = useSharedValue(0);
+  const insets = useSafeAreaInsets();
+  const { adBannerHeight } = useAdBanner();
+  const hasAd = adBannerHeight > 0;
 
   // Improved active tab detection with better path matching
   const activeTabIndex = React.useMemo(() => {
@@ -142,13 +146,19 @@ export default function FloatingTabBar({
     },
   };
 
+  // When ad is showing: sit above the banner (no safe area — banner handles it).
+  // When no ad: use safe area bottom inset + default margin.
+  const resolvedBottomMargin = bottomMargin ?? 20;
+  const containerBottom = hasAd
+    ? adBannerHeight + resolvedBottomMargin
+    : insets.bottom + resolvedBottomMargin;
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <View style={[styles.safeArea, { bottom: containerBottom }]}>
       <View style={[
         styles.container,
         {
           width: containerWidth,
-          marginBottom: bottomMargin ?? 20
         }
       ]}>
         <BlurView
@@ -191,7 +201,7 @@ export default function FloatingTabBar({
           </View>
         </BlurView>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

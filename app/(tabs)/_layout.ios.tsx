@@ -4,12 +4,21 @@ import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useAdBanner } from '@/components/AdBannerContext';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { adBannerHeight } = useAdBanner();
+  const hasAd = adBannerHeight > 0;
 
-  console.log('[iOS Tab Layout] Rendering iOS-specific tab layout with Profile tab');
+  console.log('[iOS Tab Layout] Rendering iOS-specific tab layout with Profile tab, hasAd:', hasAd);
+
+  // When ad is showing, shift the tab bar up by the banner height so it sits above the banner.
+  // The banner itself handles the safe area inset at the very bottom.
+  const tabBarHeight = hasAd ? 60 : 85;
+  const tabBarPaddingBottom = hasAd ? 8 : 20;
+  const tabBarMarginBottom = hasAd ? adBannerHeight : 0;
 
   return (
     <Tabs
@@ -20,8 +29,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: isDark ? colors.cardDark : colors.card,
           borderTopColor: isDark ? colors.borderDark : colors.border,
-          paddingBottom: 20,
-          height: 85,
+          paddingBottom: tabBarPaddingBottom,
+          height: tabBarHeight,
+          marginBottom: tabBarMarginBottom,
         },
       }}
     >
