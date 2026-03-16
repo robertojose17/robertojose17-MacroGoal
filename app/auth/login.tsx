@@ -62,11 +62,28 @@ export default function LoginScreen() {
       }
 
       console.log('[Login] ✅ User logged in:', data.user.id);
-      console.log('[Login] Auth state change will trigger navigation via _layout.tsx');
-      // Navigation is handled entirely by the auth state listener in _layout.tsx.
-      // Do NOT call router.replace here — doing so races with the layout guard
-      // and causes the double-press bug (first press navigates then gets bounced
-      // back to login before the layout's hasNavigated flag is set).
+
+      // Check onboarding status and navigate directly.
+      // _layout.tsx only handles initial-load navigation (hasInitialNavigated ref),
+      // so login.tsx must own post-login navigation to avoid any race condition.
+      try {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('onboarding_completed')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        if (userData?.onboarding_completed) {
+          console.log('[Login] Onboarding complete, navigating to home');
+          router.replace('/(tabs)/(home)/');
+        } else {
+          console.log('[Login] Onboarding incomplete, navigating to onboarding');
+          router.replace('/onboarding/complete');
+        }
+      } catch (navError) {
+        console.error('[Login] Error checking onboarding, falling back to home:', navError);
+        router.replace('/(tabs)/(home)/');
+      }
     } catch (error: any) {
       console.error('[Login] Unexpected error:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred during login');

@@ -1,8 +1,8 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, router, useSegments, useRootNavigationState } from "expo-router";
+import { Stack, router, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -50,7 +50,6 @@ export default function RootLayout() {
   // source of the crash. Once loading is false, the real value is used.
   const resolvedIsPremium = premiumLoading ? true : isPremium;
   const networkState = useNetworkState();
-  const segments = useSegments();
   const navigationState = useRootNavigationState();
   
   const [loaded] = useFonts({
@@ -59,8 +58,9 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [hasNavigated, setHasNavigated] = useState(false);
+  // Ref-based flag: fires ONCE on initial app load to route the user based on
+  // their existing session. After that, individual screens own their navigation.
+  const hasInitialNavigated = useRef(false);
 
   // Initialize app and auth
   useEffect(() => {
@@ -94,9 +94,6 @@ export default function RootLayout() {
       console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
       setSession(currentSession);
-      // Mark initialization complete so the navigation guard knows the
-      // session value is authoritative (not just the default null).
-      setIsInitializing(false);
 
       console.log('[App] Step 3: Initialize RevenueCat (native only)');
       
@@ -296,60 +293,29 @@ export default function RootLayout() {
     }
   };
 
-  // Reset hasNavigated whenever the session identity changes so the guard
-  // re-evaluates after login/logout instead of staying stuck.
-  const prevSessionId = React.useRef<string | undefined>(undefined);
+  // Initial-load navigation: runs ONCE after the app is ready and the
+  // navigation stack is mounted. Determines where to send the user based on
+  // their existing session. After this fires, individual screens (login,
+  // signup, onboarding) own their own navigation — no further interference.
   useEffect(() => {
-    const newId = session?.user?.id;
-    if (newId !== prevSessionId.current) {
-      console.log('[Navigation] Session identity changed, resetting hasNavigated');
-      prevSessionId.current = newId;
-      setHasNavigated(false);
-    }
-  }, [session]);
-
-  // Handle navigation based on auth state
-  useEffect(() => {
-    if (!isReady || !navigationState?.key) {
-      console.log('[Navigation] Not ready yet, waiting...');
+    if (!isReady || !navigationState?.key || hasInitialNavigated.current) {
       return;
     }
 
-    // Don't redirect while the initial session is still being loaded from
-    // storage — session is null by default and would incorrectly send an
-    // authenticated user to the login screen.
-    if (isInitializing) {
-      console.log('[Navigation] Still initializing, waiting for session...');
-      return;
-    }
-
-    if (hasNavigated) {
-      console.log('[Navigation] Already navigated, skipping');
-      return;
-    }
-
-    const handleNavigation = async () => {
-      console.log('[Navigation] ========== CHECKING AUTH STATE ==========');
-      console.log('[Navigation] Current segments:', segments);
+    const handleInitialNavigation = async () => {
+      console.log('[Navigation] ========== INITIAL LOAD NAVIGATION ==========');
       console.log('[Navigation] Session:', session?.user?.id || 'none');
 
-      const inAuthGroup = segments[0] === 'auth';
-      const inTabsGroup = segments[0] === '(tabs)';
-      const inOnboarding = segments[0] === 'onboarding';
+      // Mark as done immediately (ref is synchronous) so this never fires twice.
+      hasInitialNavigated.current = true;
 
-      // If no session, ensure we're in auth flow
       if (!session) {
-        if (!inAuthGroup) {
-          console.log('[Navigation] No session, redirecting to welcome');
-          setHasNavigated(true);
-          router.replace('/auth/welcome');
-        }
+        console.log('[Navigation] No session on load, navigating to welcome');
+        router.replace('/auth/welcome');
         return;
       }
 
-      // If we have a session, check onboarding status
-      console.log('[Navigation] Session found, checking onboarding...');
-      
+      // Session exists — check onboarding status
       try {
         const { data: userData, error } = await supabase
           .from('users')
@@ -357,39 +323,25 @@ export default function RootLayout() {
           .eq('id', session.user.id)
           .maybeSingle();
 
-        if (error || !userData) {
-          console.log('[Navigation] User data not found, redirecting to onboarding');
-          if (!inOnboarding) {
-            setHasNavigated(true);
-            router.replace('/onboarding/complete');
-          }
-          return;
-        }
-
-        if (userData.onboarding_completed) {
-          console.log('[Navigation] Onboarding complete, redirecting to home');
-          if (!inTabsGroup) {
-            setHasNavigated(true);
-            router.replace('/(tabs)/(home)/');
-          }
+        if (error || !userData || !userData.onboarding_completed) {
+          console.log('[Navigation] Onboarding incomplete, navigating to onboarding');
+          router.replace('/onboarding/complete');
         } else {
-          console.log('[Navigation] Onboarding incomplete, redirecting to onboarding');
-          if (!inOnboarding) {
-            setHasNavigated(true);
-            router.replace('/onboarding/complete');
-          }
+          console.log('[Navigation] Onboarding complete, navigating to home');
+          router.replace('/(tabs)/(home)/');
         }
-      } catch (error) {
-        console.error('[Navigation] Error checking onboarding:', error);
+      } catch (err) {
+        console.error('[Navigation] Error checking onboarding:', err);
+        // Fallback: send to tabs and let ProtectedRoute handle it
+        router.replace('/(tabs)/(home)/');
       }
 
-      console.log('[Navigation] ========== NAVIGATION CHECK COMPLETE ==========');
+      console.log('[Navigation] ========== INITIAL NAVIGATION COMPLETE ==========');
     };
 
-    // Small delay to ensure navigation is ready
-    const timer = setTimeout(handleNavigation, 100);
+    const timer = setTimeout(handleInitialNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, isInitializing, session, segments, navigationState, hasNavigated]);
+  }, [isReady, navigationState?.key, session]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
