@@ -1,8 +1,8 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, router, useRootNavigationState } from "expo-router";
+import { Stack, router, useSegments, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,7 +18,6 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AdBannerProvider } from "@/components/AdBannerContext";
-import { AdBannerFooter } from "@/components/AdBannerFooter";
 import { usePremium } from "@/hooks/usePremium";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
@@ -43,13 +42,9 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { isPremium, loading: premiumLoading } = usePremium();
-  // While premium status is still loading, treat the user as premium (safe default).
-  // This prevents the ad banner from mounting for a premium user during the
-  // brief window before RevenueCat confirms their entitlement — which was the
-  // source of the crash. Once loading is false, the real value is used.
-  const resolvedIsPremium = premiumLoading ? true : isPremium;
+  const { isPremium } = usePremium();
   const networkState = useNetworkState();
+  const segments = useSegments();
   const navigationState = useRootNavigationState();
   
   const [loaded] = useFonts({
@@ -58,16 +53,7 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  // `authInitialized` becomes true only after onAuthStateChange fires its first
-  // event (INITIAL_SESSION). This is the authoritative signal that Supabase has
-  // finished restoring the session from AsyncStorage on native builds.
-  // Navigation must NOT run until this is true — otherwise a cold-start in
-  // TestFlight sees session=null (AsyncStorage not yet read) and bounces the
-  // user back to the login screen even though they are authenticated.
-  const [authInitialized, setAuthInitialized] = useState(false);
-  // Ref-based flag: fires ONCE on initial app load to route the user based on
-  // their existing session. After that, individual screens own their navigation.
-  const hasInitialNavigated = useRef(false);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   // Initialize app and auth
   useEffect(() => {
@@ -93,6 +79,14 @@ export default function RootLayout() {
       initializeFoodDatabase()
         .then(() => console.log('[App] ✅ Food database initialized'))
         .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
+
+      console.log('[App] Step 2: Get current session');
+      
+      const { data } = await supabase.auth.getSession();
+      const currentSession = data?.session || null;
+      console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
+      
+      setSession(currentSession);
 
       console.log('[App] Step 3: Initialize RevenueCat (native only)');
       
@@ -122,6 +116,45 @@ export default function RootLayout() {
             }
 
             console.log('[App] ✅ RevenueCat initialized (anonymous)');
+
+            // If we already have a session, identify the user immediately
+            if (currentSession?.user?.id) {
+              console.log('[App] Current session found, identifying user with RevenueCat');
+              try {
+                const { customerInfo } = await Purchases.logIn(currentSession.user.id);
+                console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
+                console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                
+                // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
+                console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
+                const userEmail = currentSession.user.email;
+                
+                // Get user's name from the users table
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('email')
+                  .eq('id', currentSession.user.id)
+                  .maybeSingle();
+
+                if (userEmail) {
+                  await Purchases.setEmail(userEmail);
+                  console.log('[App] ✅ Email set in RevenueCat:', userEmail);
+                }
+
+                // Set display name (use email username as display name if no name available)
+                const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                await Purchases.setDisplayName(displayName);
+                console.log('[App] ✅ Display name set in RevenueCat:', displayName);
+                
+                // CRITICAL: Force a customer info refresh to ensure we have the latest data
+                console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
+                const refreshedInfo = await Purchases.getCustomerInfo();
+                console.log('[App] ✅ Customer info refreshed');
+                console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
+              } catch (loginError) {
+                console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
+              }
+            }
           } else {
             console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
           }
@@ -132,12 +165,7 @@ export default function RootLayout() {
 
       console.log('[App] Step 4: Setup auth listener');
       
-      // CRITICAL FIX: Register onAuthStateChange BEFORE calling getSession().
-      // On native (TestFlight) builds, Supabase restores the persisted session
-      // from AsyncStorage asynchronously. The INITIAL_SESSION event fired by
-      // onAuthStateChange is the only reliable signal that this restore is
-      // complete. We set authInitialized=true here so the navigation guard
-      // waits for the real session value instead of acting on the null default.
+      // Listen for auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('[App] Auth state changed:', event);
@@ -145,34 +173,6 @@ export default function RootLayout() {
         console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         setSession(session);
-
-        // Mark auth as initialized on the first event (INITIAL_SESSION).
-        // This unblocks the navigation guard with the correct session value.
-        if (event === 'INITIAL_SESSION') {
-          console.log('[App] ✅ Auth initialized (INITIAL_SESSION received)');
-          setAuthInitialized(true);
-
-          // If a persisted session was restored, identify the user with RevenueCat
-          // now that we know who they are. This replaces the old getSession() +
-          // identify block that ran before the listener was registered.
-          if (session?.user?.id && Platform.OS !== 'web') {
-            try {
-              console.log('[App] Restored session found, identifying user with RevenueCat:', session.user.id);
-              const { customerInfo } = await Purchases.logIn(session.user.id);
-              console.log('[App] ✅ User identified with RevenueCat on restore:', session.user.id);
-              console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-              const userEmail = session.user.email;
-              if (userEmail) {
-                await Purchases.setEmail(userEmail);
-              }
-              const displayName = userEmail?.split('@')[0] || 'User';
-              await Purchases.setDisplayName(displayName);
-              console.log('[App] ✅ RevenueCat user attributes set on restore');
-            } catch (rcError) {
-              console.error('[App] ⚠️ Failed to identify user with RevenueCat on restore:', rcError);
-            }
-          }
-        }
 
         // Update RevenueCat user ID when auth state changes (native only)
         if (Platform.OS !== 'web') {
@@ -264,7 +264,7 @@ export default function RootLayout() {
         }
       });
 
-      console.log('[App] ✅ Initialization complete (waiting for INITIAL_SESSION to unblock navigation)');
+      console.log('[App] ✅ Initialization complete');
       setIsReady(true);
       
       // Hide splash screen
@@ -280,10 +280,8 @@ export default function RootLayout() {
     } catch (error) {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
-      // Even on error, app must load. Also unblock navigation so the user
-      // isn't stuck on a blank screen if the auth listener never fires.
+      // Even on error, app must load
       setIsReady(true);
-      setAuthInitialized(true);
       
       setTimeout(async () => {
         try {
@@ -295,31 +293,40 @@ export default function RootLayout() {
     }
   };
 
-  // Initial-load navigation: runs ONCE after the app is ready, auth is
-  // initialized (INITIAL_SESSION received), and the navigation stack is
-  // mounted. The authInitialized guard is the critical fix for TestFlight:
-  // without it, the navigation fires while session is still null (AsyncStorage
-  // not yet read) and incorrectly redirects the logged-in user to /auth/welcome.
+  // Handle navigation based on auth state
   useEffect(() => {
-    if (!isReady || !authInitialized || !navigationState?.key || hasInitialNavigated.current) {
+    if (!isReady || !navigationState?.key) {
+      console.log('[Navigation] Not ready yet, waiting...');
       return;
     }
 
-    const handleInitialNavigation = async () => {
-      console.log('[Navigation] ========== INITIAL LOAD NAVIGATION ==========');
+    if (hasNavigated) {
+      console.log('[Navigation] Already navigated, skipping');
+      return;
+    }
+
+    const handleNavigation = async () => {
+      console.log('[Navigation] ========== CHECKING AUTH STATE ==========');
+      console.log('[Navigation] Current segments:', segments);
       console.log('[Navigation] Session:', session?.user?.id || 'none');
-      console.log('[Navigation] Auth initialized:', authInitialized);
 
-      // Mark as done immediately (ref is synchronous) so this never fires twice.
-      hasInitialNavigated.current = true;
+      const inAuthGroup = segments[0] === 'auth';
+      const inTabsGroup = segments[0] === '(tabs)';
+      const inOnboarding = segments[0] === 'onboarding';
 
+      // If no session, ensure we're in auth flow
       if (!session) {
-        console.log('[Navigation] No session on load, navigating to welcome');
-        router.replace('/auth/welcome');
+        if (!inAuthGroup) {
+          console.log('[Navigation] No session, redirecting to welcome');
+          setHasNavigated(true);
+          router.replace('/auth/welcome');
+        }
         return;
       }
 
-      // Session exists — check onboarding status
+      // If we have a session, check onboarding status
+      console.log('[Navigation] Session found, checking onboarding...');
+      
       try {
         const { data: userData, error } = await supabase
           .from('users')
@@ -327,25 +334,39 @@ export default function RootLayout() {
           .eq('id', session.user.id)
           .maybeSingle();
 
-        if (error || !userData || !userData.onboarding_completed) {
-          console.log('[Navigation] Onboarding incomplete, navigating to onboarding');
-          router.replace('/onboarding/complete');
-        } else {
-          console.log('[Navigation] Onboarding complete, navigating to home');
-          router.replace('/(tabs)/(home)/');
+        if (error || !userData) {
+          console.log('[Navigation] User data not found, redirecting to onboarding');
+          if (!inOnboarding) {
+            setHasNavigated(true);
+            router.replace('/onboarding/complete');
+          }
+          return;
         }
-      } catch (err) {
-        console.error('[Navigation] Error checking onboarding:', err);
-        // Fallback: send to tabs and let ProtectedRoute handle it
-        router.replace('/(tabs)/(home)/');
+
+        if (userData.onboarding_completed) {
+          console.log('[Navigation] Onboarding complete, redirecting to home');
+          if (!inTabsGroup) {
+            setHasNavigated(true);
+            router.replace('/(tabs)/(home)/');
+          }
+        } else {
+          console.log('[Navigation] Onboarding incomplete, redirecting to onboarding');
+          if (!inOnboarding) {
+            setHasNavigated(true);
+            router.replace('/onboarding/complete');
+          }
+        }
+      } catch (error) {
+        console.error('[Navigation] Error checking onboarding:', error);
       }
 
-      console.log('[Navigation] ========== INITIAL NAVIGATION COMPLETE ==========');
+      console.log('[Navigation] ========== NAVIGATION CHECK COMPLETE ==========');
     };
 
-    const timer = setTimeout(handleInitialNavigation, 100);
+    // Small delay to ensure navigation is ready
+    const timer = setTimeout(handleNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, authInitialized, navigationState?.key, session]);
+  }, [isReady, session, segments, navigationState, hasNavigated]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
@@ -581,7 +602,7 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <AdBannerProvider isPremium={resolvedIsPremium}>
+            <AdBannerProvider isPremium={isPremium}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 
@@ -640,7 +661,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <AdBannerFooter isPremium={resolvedIsPremium} />
               <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>

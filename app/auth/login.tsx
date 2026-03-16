@@ -62,27 +62,77 @@ export default function LoginScreen() {
       }
 
       console.log('[Login] ✅ User logged in:', data.user.id);
+      
+      // Step 2: Check if user has completed onboarding
+      console.log('[Login] Step 2: Checking onboarding status...');
+      
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('onboarding_completed')
+        .eq('id', data.user.id)
+        .maybeSingle();
 
-      // Check onboarding status and navigate directly.
-      // _layout.tsx only handles initial-load navigation (hasInitialNavigated ref),
-      // so login.tsx must own post-login navigation to avoid any race condition.
-      try {
-        const { data: userData } = await supabase
+      if (userError) {
+        console.error('[Login] User fetch error:', userError);
+        
+        // Try to create user record if it doesn't exist
+        console.log('[Login] Attempting to create user record...');
+        const { error: insertError } = await supabase
           .from('users')
-          .select('onboarding_completed')
-          .eq('id', data.user.id)
-          .maybeSingle();
-
-        if (userData?.onboarding_completed) {
-          console.log('[Login] Onboarding complete, navigating to home');
-          router.replace('/(tabs)/(home)/');
+          .insert({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            user_type: 'free',
+            onboarding_completed: false,
+          });
+        
+        if (insertError && insertError.code !== '23505') {
+          console.error('[Login] ❌ Failed to create user record:', insertError);
         } else {
-          console.log('[Login] Onboarding incomplete, navigating to onboarding');
-          router.replace('/onboarding/complete');
+          console.log('[Login] ✅ User record created or already exists');
         }
-      } catch (navError) {
-        console.error('[Login] Error checking onboarding, falling back to home:', navError);
+        
+        // Go to onboarding
+        console.log('[Login] Redirecting to onboarding');
+        router.replace('/onboarding/complete');
+        return;
+      }
+
+      // Handle missing user data
+      if (!userData) {
+        console.log('[Login] ⚠️ User not in database, creating record...');
+        
+        // Try to create user record
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            user_type: 'free',
+            onboarding_completed: false,
+          });
+        
+        if (insertError && insertError.code !== '23505') {
+          console.error('[Login] ❌ Failed to create user record:', insertError);
+        } else {
+          console.log('[Login] ✅ User record created');
+        }
+        
+        // Go to onboarding
+        console.log('[Login] Redirecting to onboarding');
+        router.replace('/onboarding/complete');
+        return;
+      }
+
+      // Navigate based on onboarding status
+      if (userData.onboarding_completed) {
+        console.log('[Login] ✅ Onboarding complete, going to home');
         router.replace('/(tabs)/(home)/');
+      } else {
+        console.log('[Login] ⚠️ Onboarding not complete, going to onboarding');
+        router.replace('/onboarding/complete');
       }
     } catch (error: any) {
       console.error('[Login] Unexpected error:', error);
