@@ -142,8 +142,11 @@ export default function LoginScreen() {
     }
   };
 
+  const bgColor = isDark ? colors.backgroundDark : colors.background;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+    <View style={[styles.fullScreen, { backgroundColor: bgColor }]}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <TouchableOpacity
           style={styles.backButton}
@@ -224,10 +227,14 @@ export default function LoginScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fullScreen: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },

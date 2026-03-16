@@ -30,7 +30,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true, // Enable deep link detection
+    detectSessionInUrl: false, // Must be false on React Native — URL-based session detection is web-only and breaks native auth
   },
 })
 
