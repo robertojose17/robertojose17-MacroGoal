@@ -118,7 +118,10 @@ export default function RootLayout() {
 
             console.log('[App] ✅ RevenueCat initialized (anonymous)');
 
-            // If we already have a session, identify the user immediately
+            // If we already have a session, identify the user immediately.
+            // CRITICAL: This must complete BEFORE setIsReady(true) so that
+            // usePremium's initial getCustomerInfo() call sees the correct
+            // identified user — not the anonymous RevenueCat user.
             if (currentSession?.user?.id) {
               console.log('[App] Current session found, identifying user with RevenueCat');
               try {
@@ -126,32 +129,22 @@ export default function RootLayout() {
                 console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
                 console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
                 
-                // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
+                // Set user attributes for RevenueCat dashboard
                 console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
                 const userEmail = currentSession.user.email;
                 
-                // Get user's name from the users table
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('email')
-                  .eq('id', currentSession.user.id)
-                  .maybeSingle();
-
                 if (userEmail) {
                   await Purchases.setEmail(userEmail);
                   console.log('[App] ✅ Email set in RevenueCat:', userEmail);
                 }
 
-                // Set display name (use email username as display name if no name available)
-                const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                const displayName = userEmail?.split('@')[0] || 'User';
                 await Purchases.setDisplayName(displayName);
                 console.log('[App] ✅ Display name set in RevenueCat:', displayName);
                 
-                // CRITICAL: Force a customer info refresh to ensure we have the latest data
-                console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
-                const refreshedInfo = await Purchases.getCustomerInfo();
-                console.log('[App] ✅ Customer info refreshed');
-                console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
+                // No need to call getCustomerInfo() again here — logIn() already
+                // returns the latest customerInfo and the listener in usePremium
+                // will fire automatically with the updated entitlements.
               } catch (loginError) {
                 console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
               }
