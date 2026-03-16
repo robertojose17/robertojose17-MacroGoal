@@ -52,6 +52,7 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [initialNavDone, setInitialNavDone] = useState(false);
+  const [didSignOut, setDidSignOut] = useState(false);
 
   // Initialize app and auth
   useEffect(() => {
@@ -171,6 +172,14 @@ export default function RootLayout() {
         console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         setSession(session);
+
+        // Track explicit sign-out so the navigation guard can distinguish
+        // a real sign-out from a transient null session during navigation.
+        if (event === 'SIGNED_OUT') {
+          setDidSignOut(true);
+        } else if (event === 'SIGNED_IN') {
+          setDidSignOut(false);
+        }
 
         // Update RevenueCat user ID when auth state changes (native only)
         if (Platform.OS !== 'web') {
@@ -306,9 +315,14 @@ export default function RootLayout() {
     // Only run the initial redirect once (from the index/splash screen).
     // After that, let the login/signup screens navigate themselves.
     if (initialNavDone) {
-      // If the user just signed out and is no longer in auth, redirect to welcome.
-      if (!session && !inAuthGroup) {
-        console.log('[Navigation] Session lost, redirecting to welcome');
+      // CRITICAL: Only redirect to welcome on an explicit SIGNED_OUT event.
+      // Do NOT use `!session` here — after login, login.tsx calls router.replace
+      // which changes `segments` and re-triggers this effect BEFORE onAuthStateChange
+      // fires and updates `session` state. Using `!session` would bounce the user
+      // back to welcome during that brief window. `didSignOut` is only set to true
+      // by the SIGNED_OUT auth event, so it is never stale.
+      if (didSignOut && !inAuthGroup) {
+        console.log('[Navigation] User signed out, redirecting to welcome');
         router.replace('/auth/welcome');
       }
       return;
@@ -374,7 +388,7 @@ export default function RootLayout() {
     // Small delay to ensure navigation is ready
     const timer = setTimeout(handleNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, session, segments, navigationState, initialNavDone]);
+  }, [isReady, session, segments, navigationState, initialNavDone, didSignOut]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
