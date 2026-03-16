@@ -1,8 +1,9 @@
 
-import { Redirect } from 'expo-router';
+import { View } from 'react-native';
 
-// This is just a redirect - all auth logic is in _layout.tsx
+// Intentionally blank — _layout.tsx handles all navigation redirects
+// based on auth/session state. Rendering a <Redirect> here races with
+// the layout's own navigation logic and can cause a blank screen loop.
 export default function Index() {
-  // Expo Router will handle this redirect properly without state update errors
-  return <Redirect href="/auth/welcome" />;
+  return <View style={{ flex: 1 }} />;
 }

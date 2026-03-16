@@ -76,6 +76,13 @@ export function usePremium(): UsePremiumReturn {
       if (Platform.OS !== 'web') {
         try {
           console.log('[usePremium] 🔍 Checking RevenueCat entitlements...');
+
+          // Guard: ensure RevenueCat is configured before calling any SDK methods
+          const isConfigured = await Purchases.isConfigured();
+          if (!isConfigured) {
+            console.log('[usePremium] RevenueCat not yet configured, falling back to Supabase');
+            throw new Error('RevenueCat not configured');
+          }
           
           // CRITICAL: Add a small delay to allow RevenueCat to sync after login
           // This ensures we get the latest subscription status
@@ -152,24 +159,34 @@ export function usePremium(): UsePremiumReturn {
     console.log('[usePremium] Hook mounted, starting initial check');
     checkPremiumStatus();
 
-    // Set up RevenueCat listener for real-time updates (native only)
+    // Set up RevenueCat listener for real-time updates (native only).
+    // Guard with isConfigured() so we never call SDK methods before
+    // Purchases.configure() has run in _layout.tsx initializeApp().
     if (Platform.OS !== 'web') {
       console.log('[usePremium] Setting up RevenueCat customer info listener');
-      Purchases.addCustomerInfoUpdateListener((info) => {
-        console.log('[usePremium] 🔔 RevenueCat customer info updated via listener');
-        console.log('[usePremium] - Original App User ID:', info.originalAppUserId);
-        console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
-        
-        setCustomerInfo(info);
-        const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
-        const hasActiveEntitlement = premiumEntitlement?.isActive || false;
-        
-        console.log('[usePremium] - Premium Status:', hasActiveEntitlement);
-        setIsPremium(hasActiveEntitlement);
-        
-        if (premiumEntitlement?.expirationDate) {
-          setExpirationDate(premiumEntitlement.expirationDate);
+      Purchases.isConfigured().then((configured) => {
+        if (!configured) {
+          console.log('[usePremium] RevenueCat not configured yet, skipping listener setup');
+          return;
         }
+        Purchases.addCustomerInfoUpdateListener((info) => {
+          console.log('[usePremium] RevenueCat customer info updated via listener');
+          console.log('[usePremium] - Original App User ID:', info.originalAppUserId);
+          console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
+
+          setCustomerInfo(info);
+          const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
+          const hasActiveEntitlement = premiumEntitlement?.isActive || false;
+
+          console.log('[usePremium] - Premium Status:', hasActiveEntitlement);
+          setIsPremium(hasActiveEntitlement);
+
+          if (premiumEntitlement?.expirationDate) {
+            setExpirationDate(premiumEntitlement.expirationDate);
+          }
+        });
+      }).catch((err) => {
+        console.warn('[usePremium] isConfigured() check failed:', err);
       });
     }
   }, []);

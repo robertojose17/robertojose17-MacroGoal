@@ -18,7 +18,6 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AdBannerProvider } from "@/components/AdBannerContext";
-import { usePremium } from "@/hooks/usePremium";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
@@ -42,7 +41,6 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { isPremium } = usePremium();
   const networkState = useNetworkState();
   const segments = useSegments();
   const navigationState = useRootNavigationState();
@@ -612,7 +610,7 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <AdBannerProvider isPremium={isPremium}>
+            <AdBannerProvider isPremium={false}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 
