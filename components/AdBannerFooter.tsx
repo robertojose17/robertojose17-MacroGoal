@@ -120,20 +120,25 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
 
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
 
+  const tabBarHeight = Platform.OS === 'ios' ? 85 : 60;
+  const bannerBottom = tabBarHeight;
+
   // If the native ads package is not installed (e.g. Expo Go), show a placeholder
   if (!BannerAd) {
     return (
       <View
         style={{
+          position: 'absolute',
+          bottom: bannerBottom,
           left: 0,
           right: 0,
           backgroundColor: bgColor,
           alignItems: 'center',
           justifyContent: 'center',
-          height: AD_BANNER_HEIGHT + insets.bottom,
-          paddingBottom: insets.bottom,
+          height: AD_BANNER_HEIGHT,
           borderTopWidth: 1,
           borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb',
+          zIndex: 100,
         }}
       >
         <Text style={{ color: colorScheme === 'dark' ? '#888' : '#aaa', fontSize: 11 }}>
@@ -144,7 +149,6 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
   }
 
   const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
-  const containerMinHeight = adLoaded ? AD_BANNER_HEIGHT + insets.bottom : 0;
 
   const handleAdLoaded = () => {
     console.log('[AdBannerFooter] Ad loaded successfully');
@@ -159,12 +163,16 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
   return (
     <View
       style={{
+        position: 'absolute',
+        bottom: bannerBottom,
         left: 0,
         right: 0,
         backgroundColor: bgColor,
         alignItems: 'center',
-        // Only take up space once ad is loaded to avoid flash
-        minHeight: containerMinHeight,
+        zIndex: 100,
+        // Hide container until ad is loaded to avoid flash
+        opacity: adLoaded ? 1 : 0,
+        height: adLoaded ? AD_BANNER_HEIGHT : 0,
       }}
     >
       {adUnitId && (

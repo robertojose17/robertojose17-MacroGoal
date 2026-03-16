@@ -1,17 +1,22 @@
 
 import React from 'react';
+import { View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { AdBannerFooter } from '@/components/AdBannerFooter';
+import { useAdBanner } from '@/components/AdBannerContext';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { isPremium, isAuthenticated } = useAdBanner();
 
   console.log('[iOS Tab Layout] Rendering iOS-specific tab layout with Profile tab');
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -85,5 +90,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <AdBannerFooter isPremium={isPremium} isAuthenticated={isAuthenticated} />
+    </View>
   );
 }
