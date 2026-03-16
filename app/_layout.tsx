@@ -53,7 +53,7 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [hasNavigated, setHasNavigated] = useState(false);
+  const [initialNavDone, setInitialNavDone] = useState(false);
 
   // Initialize app and auth
   useEffect(() => {
@@ -300,8 +300,19 @@ export default function RootLayout() {
       return;
     }
 
-    if (hasNavigated) {
-      console.log('[Navigation] Already navigated, skipping');
+    const inAuthGroup = segments[0] === 'auth';
+    const inTabsGroup = segments[0] === '(tabs)';
+    const inOnboarding = segments[0] === 'onboarding';
+    const inIndex = segments[0] === 'index' || segments.length === 0;
+
+    // Only run the initial redirect once (from the index/splash screen).
+    // After that, let the login/signup screens navigate themselves.
+    if (initialNavDone) {
+      // If the user just signed out and is no longer in auth, redirect to welcome.
+      if (!session && !inAuthGroup) {
+        console.log('[Navigation] Session lost, redirecting to welcome');
+        router.replace('/auth/welcome');
+      }
       return;
     }
 
@@ -310,16 +321,14 @@ export default function RootLayout() {
       console.log('[Navigation] Current segments:', segments);
       console.log('[Navigation] Session:', session?.user?.id || 'none');
 
-      const inAuthGroup = segments[0] === 'auth';
-      const inTabsGroup = segments[0] === '(tabs)';
-      const inOnboarding = segments[0] === 'onboarding';
-
       // If no session, ensure we're in auth flow
       if (!session) {
         if (!inAuthGroup) {
           console.log('[Navigation] No session, redirecting to welcome');
-          setHasNavigated(true);
+          setInitialNavDone(true);
           router.replace('/auth/welcome');
+        } else {
+          setInitialNavDone(true);
         }
         return;
       }
@@ -336,8 +345,8 @@ export default function RootLayout() {
 
         if (error || !userData) {
           console.log('[Navigation] User data not found, redirecting to onboarding');
+          setInitialNavDone(true);
           if (!inOnboarding) {
-            setHasNavigated(true);
             router.replace('/onboarding/complete');
           }
           return;
@@ -345,19 +354,20 @@ export default function RootLayout() {
 
         if (userData.onboarding_completed) {
           console.log('[Navigation] Onboarding complete, redirecting to home');
+          setInitialNavDone(true);
           if (!inTabsGroup) {
-            setHasNavigated(true);
             router.replace('/(tabs)/(home)/');
           }
         } else {
           console.log('[Navigation] Onboarding incomplete, redirecting to onboarding');
+          setInitialNavDone(true);
           if (!inOnboarding) {
-            setHasNavigated(true);
             router.replace('/onboarding/complete');
           }
         }
       } catch (error) {
         console.error('[Navigation] Error checking onboarding:', error);
+        setInitialNavDone(true);
       }
 
       console.log('[Navigation] ========== NAVIGATION CHECK COMPLETE ==========');
@@ -366,7 +376,7 @@ export default function RootLayout() {
     // Small delay to ensure navigation is ready
     const timer = setTimeout(handleNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, session, segments, navigationState, hasNavigated]);
+  }, [isReady, session, segments, navigationState, initialNavDone]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
