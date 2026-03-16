@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
 import { AD_BANNER_HEIGHT } from './AdBannerFooter';
 
@@ -13,19 +14,12 @@ try {
 
 interface AdBannerContextValue {
   isPremium: boolean;
-  /** Total bottom offset screens should use for paddingBottom */
-  adBannerHeight: number;
-  /** Called by AdBannerFooter once it knows its real rendered height */
-  setAdBannerHeight: (height: number) => void;
-  /** Whether the ad should be shown at all */
-  shouldShowAd: boolean;
+  adBannerHeight: number; // total bottom offset screens should use
 }
 
 const AdBannerContext = React.createContext<AdBannerContextValue>({
   isPremium: false,
-  adBannerHeight: 0,
-  setAdBannerHeight: () => {},
-  shouldShowAd: false,
+  adBannerHeight: AD_BANNER_HEIGHT,
 });
 
 export function AdBannerProvider({
@@ -35,21 +29,12 @@ export function AdBannerProvider({
   isPremium: boolean;
   children: React.ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
   const shouldShowAd = !isPremium && Platform.OS === 'ios' && adsAvailable;
-
-  // Start at 0 — AdBannerFooter will report its real height once rendered
-  const [adBannerHeight, setAdBannerHeightState] = useState(
-    shouldShowAd ? AD_BANNER_HEIGHT : 0
-  );
-
-  const setAdBannerHeight = useCallback((height: number) => {
-    setAdBannerHeightState(height);
-  }, []);
+  const adBannerHeight = shouldShowAd ? AD_BANNER_HEIGHT + insets.bottom : 0;
 
   return (
-    <AdBannerContext.Provider
-      value={{ isPremium, adBannerHeight, setAdBannerHeight, shouldShowAd }}
-    >
+    <AdBannerContext.Provider value={{ isPremium, adBannerHeight }}>
       {children}
     </AdBannerContext.Provider>
   );

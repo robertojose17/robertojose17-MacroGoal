@@ -18,6 +18,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AdBannerProvider } from "@/components/AdBannerContext";
+import { AdBannerFooter } from "@/components/AdBannerFooter";
 import { usePremium } from "@/hooks/usePremium";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
@@ -661,6 +662,7 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
+              <AdBannerFooter isPremium={isPremium} />
               <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>
