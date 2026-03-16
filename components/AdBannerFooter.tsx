@@ -118,7 +118,6 @@ interface AdBannerFooterProps {
 }
 
 export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterProps) {
-  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const [adLoaded, setAdLoaded] = useState(false);
 
@@ -128,36 +127,25 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
   if (!isAuthenticated || isPremium || Platform.OS !== 'ios') return null;
 
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
+  const borderColor = colorScheme === 'dark' ? '#333' : '#e5e7eb';
+  const placeholderTextColor = colorScheme === 'dark' ? '#888' : '#aaa';
 
-  // The ad banner floats just above the visible tab icons, not above the full reserved area
-  const bannerBottom = Platform.OS === 'ios' ? TAB_ICON_AREA_IOS : TAB_BAR_HEIGHT_ANDROID;
+  // The ad banner floats just above the visible tab icons
+  const bannerBottom = TAB_ICON_AREA_IOS;
 
-  // If the native ads package is not installed (e.g. Expo Go), show a placeholder
-  if (!BannerAd) {
-    return (
-      <View
-        style={{
-          position: 'absolute',
-          bottom: bannerBottom,
-          left: 0,
-          right: 0,
-          backgroundColor: bgColor,
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: AD_BANNER_HEIGHT,
-          borderTopWidth: 1,
-          borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb',
-          zIndex: 100,
-        }}
-      >
-        <Text style={{ color: colorScheme === 'dark' ? '#888' : '#aaa', fontSize: 11 }}>
-          Advertisement
-        </Text>
-      </View>
-    );
-  }
-
-  const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
+  const containerStyle = {
+    position: 'absolute' as const,
+    bottom: bannerBottom,
+    left: 0,
+    right: 0,
+    backgroundColor: bgColor,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    height: AD_BANNER_HEIGHT,
+    borderTopWidth: 1,
+    borderTopColor: borderColor,
+    zIndex: 100,
+  };
 
   const handleAdLoaded = () => {
     console.log('[AdBannerFooter] Ad loaded successfully');
@@ -166,24 +154,31 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
 
   const handleAdFailedToLoad = (error: unknown) => {
     console.log('[AdBannerFooter] Ad failed to load:', error);
+    // Keep container visible with placeholder text on failure
     setAdLoaded(false);
   };
 
+  // If the native ads package is not installed (e.g. Expo Go), show a visible placeholder
+  if (!BannerAd) {
+    return (
+      <View style={containerStyle}>
+        <Text style={{ color: placeholderTextColor, fontSize: 11 }}>
+          Advertisement
+        </Text>
+      </View>
+    );
+  }
+
+  const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
+
   return (
-    <View
-      style={{
-        position: 'absolute',
-        bottom: bannerBottom,
-        left: 0,
-        right: 0,
-        backgroundColor: bgColor,
-        alignItems: 'center',
-        zIndex: 100,
-        // Hide container until ad is loaded to avoid flash
-        opacity: adLoaded ? 1 : 0,
-        height: adLoaded ? AD_BANNER_HEIGHT : 0,
-      }}
-    >
+    // Container is always visible at full height — shows placeholder text until ad loads
+    <View style={containerStyle}>
+      {!adLoaded && (
+        <Text style={{ color: placeholderTextColor, fontSize: 11, position: 'absolute' }}>
+          Advertisement
+        </Text>
+      )}
       {adUnitId && (
         <BannerAd
           unitId={adUnitId}
