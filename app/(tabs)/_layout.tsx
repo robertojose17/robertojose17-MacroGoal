@@ -1,18 +1,22 @@
 
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { AdBannerFooter } from '@/components/AdBannerFooter';
+import { useAdBanner } from '@/components/AdBannerContext';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { isPremium } = useAdBanner();
 
   console.log('[Tab Layout] Rendering tab layout for platform:', Platform.OS);
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -86,5 +90,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <AdBannerFooter isPremium={isPremium} />
+    </View>
   );
 }

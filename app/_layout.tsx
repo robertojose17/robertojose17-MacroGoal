@@ -662,7 +662,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <AdBannerFooter isPremium={isPremium} />
               <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>

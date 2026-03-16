@@ -94,12 +94,9 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
   return (
     <View
       style={{
-        position: 'absolute',
-        bottom: 0,
         left: 0,
         right: 0,
         backgroundColor: bgColor,
-        paddingBottom: insets.bottom,
         alignItems: 'center',
         // Only take up space once ad is loaded to avoid flash
         minHeight: containerMinHeight,
