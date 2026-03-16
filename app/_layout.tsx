@@ -58,6 +58,13 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
+  // `authInitialized` becomes true only after onAuthStateChange fires its first
+  // event (INITIAL_SESSION). This is the authoritative signal that Supabase has
+  // finished restoring the session from AsyncStorage on native builds.
+  // Navigation must NOT run until this is true — otherwise a cold-start in
+  // TestFlight sees session=null (AsyncStorage not yet read) and bounces the
+  // user back to the login screen even though they are authenticated.
+  const [authInitialized, setAuthInitialized] = useState(false);
   // Ref-based flag: fires ONCE on initial app load to route the user based on
   // their existing session. After that, individual screens own their navigation.
   const hasInitialNavigated = useRef(false);
@@ -87,14 +94,6 @@ export default function RootLayout() {
         .then(() => console.log('[App] ✅ Food database initialized'))
         .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
 
-      console.log('[App] Step 2: Get current session');
-      
-      const { data } = await supabase.auth.getSession();
-      const currentSession = data?.session || null;
-      console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
-      
-      setSession(currentSession);
-
       console.log('[App] Step 3: Initialize RevenueCat (native only)');
       
       // Initialize RevenueCat on native platforms
@@ -123,38 +122,6 @@ export default function RootLayout() {
             }
 
             console.log('[App] ✅ RevenueCat initialized (anonymous)');
-
-            // If we already have a session, identify the user immediately.
-            // CRITICAL: This must complete BEFORE setIsReady(true) so that
-            // usePremium's initial getCustomerInfo() call sees the correct
-            // identified user — not the anonymous RevenueCat user.
-            if (currentSession?.user?.id) {
-              console.log('[App] Current session found, identifying user with RevenueCat');
-              try {
-                const { customerInfo } = await Purchases.logIn(currentSession.user.id);
-                console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
-                console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-                
-                // Set user attributes for RevenueCat dashboard
-                console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
-                const userEmail = currentSession.user.email;
-                
-                if (userEmail) {
-                  await Purchases.setEmail(userEmail);
-                  console.log('[App] ✅ Email set in RevenueCat:', userEmail);
-                }
-
-                const displayName = userEmail?.split('@')[0] || 'User';
-                await Purchases.setDisplayName(displayName);
-                console.log('[App] ✅ Display name set in RevenueCat:', displayName);
-                
-                // No need to call getCustomerInfo() again here — logIn() already
-                // returns the latest customerInfo and the listener in usePremium
-                // will fire automatically with the updated entitlements.
-              } catch (loginError) {
-                console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
-              }
-            }
           } else {
             console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
           }
@@ -165,7 +132,12 @@ export default function RootLayout() {
 
       console.log('[App] Step 4: Setup auth listener');
       
-      // Listen for auth changes
+      // CRITICAL FIX: Register onAuthStateChange BEFORE calling getSession().
+      // On native (TestFlight) builds, Supabase restores the persisted session
+      // from AsyncStorage asynchronously. The INITIAL_SESSION event fired by
+      // onAuthStateChange is the only reliable signal that this restore is
+      // complete. We set authInitialized=true here so the navigation guard
+      // waits for the real session value instead of acting on the null default.
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('[App] Auth state changed:', event);
@@ -173,6 +145,34 @@ export default function RootLayout() {
         console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         setSession(session);
+
+        // Mark auth as initialized on the first event (INITIAL_SESSION).
+        // This unblocks the navigation guard with the correct session value.
+        if (event === 'INITIAL_SESSION') {
+          console.log('[App] ✅ Auth initialized (INITIAL_SESSION received)');
+          setAuthInitialized(true);
+
+          // If a persisted session was restored, identify the user with RevenueCat
+          // now that we know who they are. This replaces the old getSession() +
+          // identify block that ran before the listener was registered.
+          if (session?.user?.id && Platform.OS !== 'web') {
+            try {
+              console.log('[App] Restored session found, identifying user with RevenueCat:', session.user.id);
+              const { customerInfo } = await Purchases.logIn(session.user.id);
+              console.log('[App] ✅ User identified with RevenueCat on restore:', session.user.id);
+              console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+              const userEmail = session.user.email;
+              if (userEmail) {
+                await Purchases.setEmail(userEmail);
+              }
+              const displayName = userEmail?.split('@')[0] || 'User';
+              await Purchases.setDisplayName(displayName);
+              console.log('[App] ✅ RevenueCat user attributes set on restore');
+            } catch (rcError) {
+              console.error('[App] ⚠️ Failed to identify user with RevenueCat on restore:', rcError);
+            }
+          }
+        }
 
         // Update RevenueCat user ID when auth state changes (native only)
         if (Platform.OS !== 'web') {
@@ -264,7 +264,7 @@ export default function RootLayout() {
         }
       });
 
-      console.log('[App] ✅ Initialization complete');
+      console.log('[App] ✅ Initialization complete (waiting for INITIAL_SESSION to unblock navigation)');
       setIsReady(true);
       
       // Hide splash screen
@@ -280,8 +280,10 @@ export default function RootLayout() {
     } catch (error) {
       console.error('[App] ❌ CRITICAL: Initialization failed:', error);
       
-      // Even on error, app must load
+      // Even on error, app must load. Also unblock navigation so the user
+      // isn't stuck on a blank screen if the auth listener never fires.
       setIsReady(true);
+      setAuthInitialized(true);
       
       setTimeout(async () => {
         try {
@@ -293,18 +295,20 @@ export default function RootLayout() {
     }
   };
 
-  // Initial-load navigation: runs ONCE after the app is ready and the
-  // navigation stack is mounted. Determines where to send the user based on
-  // their existing session. After this fires, individual screens (login,
-  // signup, onboarding) own their own navigation — no further interference.
+  // Initial-load navigation: runs ONCE after the app is ready, auth is
+  // initialized (INITIAL_SESSION received), and the navigation stack is
+  // mounted. The authInitialized guard is the critical fix for TestFlight:
+  // without it, the navigation fires while session is still null (AsyncStorage
+  // not yet read) and incorrectly redirects the logged-in user to /auth/welcome.
   useEffect(() => {
-    if (!isReady || !navigationState?.key || hasInitialNavigated.current) {
+    if (!isReady || !authInitialized || !navigationState?.key || hasInitialNavigated.current) {
       return;
     }
 
     const handleInitialNavigation = async () => {
       console.log('[Navigation] ========== INITIAL LOAD NAVIGATION ==========');
       console.log('[Navigation] Session:', session?.user?.id || 'none');
+      console.log('[Navigation] Auth initialized:', authInitialized);
 
       // Mark as done immediately (ref is synchronous) so this never fires twice.
       hasInitialNavigated.current = true;
@@ -341,7 +345,7 @@ export default function RootLayout() {
 
     const timer = setTimeout(handleInitialNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, navigationState?.key, session]);
+  }, [isReady, authInitialized, navigationState?.key, session]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
