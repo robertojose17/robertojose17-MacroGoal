@@ -11,7 +11,7 @@ import { useAdBanner } from '@/components/AdBannerContext';
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { isPremium } = useAdBanner();
+  const { isPremium, isAuthenticated } = useAdBanner();
 
   console.log('[Tab Layout] Rendering tab layout for platform:', Platform.OS);
 
@@ -90,7 +90,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-    <AdBannerFooter isPremium={isPremium} />
+    <AdBannerFooter isPremium={isPremium} isAuthenticated={isAuthenticated} />
     </View>
   );
 }
