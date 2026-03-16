@@ -232,11 +232,8 @@ export default function SignUpScreen() {
     }
   };
 
-  const bgColor = isDark ? colors.backgroundDark : colors.background;
-
   return (
-    <View style={[styles.fullScreen, { backgroundColor: bgColor }]}>
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <TouchableOpacity
           style={styles.backButton}
@@ -348,14 +345,10 @@ export default function SignUpScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fullScreen: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },

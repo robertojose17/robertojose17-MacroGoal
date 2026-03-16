@@ -18,6 +18,8 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AdBannerProvider } from "@/components/AdBannerContext";
+import { AdBannerFooter } from "@/components/AdBannerFooter";
+import { usePremium } from "@/hooks/usePremium";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
@@ -41,6 +43,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const { isPremium } = usePremium();
   const networkState = useNetworkState();
   const segments = useSegments();
   const navigationState = useRootNavigationState();
@@ -51,8 +54,7 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [initialNavDone, setInitialNavDone] = useState(false);
-  const [didSignOut, setDidSignOut] = useState(false);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   // Initialize app and auth
   useEffect(() => {
@@ -172,14 +174,6 @@ export default function RootLayout() {
         console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         setSession(session);
-
-        // Track explicit sign-out so the navigation guard can distinguish
-        // a real sign-out from a transient null session during navigation.
-        if (event === 'SIGNED_OUT') {
-          setDidSignOut(true);
-        } else if (event === 'SIGNED_IN') {
-          setDidSignOut(false);
-        }
 
         // Update RevenueCat user ID when auth state changes (native only)
         if (Platform.OS !== 'web') {
@@ -307,24 +301,8 @@ export default function RootLayout() {
       return;
     }
 
-    const inAuthGroup = segments[0] === 'auth';
-    const inTabsGroup = segments[0] === '(tabs)';
-    const inOnboarding = segments[0] === 'onboarding';
-    const inIndex = segments[0] === 'index' || segments.length === 0;
-
-    // Only run the initial redirect once (from the index/splash screen).
-    // After that, let the login/signup screens navigate themselves.
-    if (initialNavDone) {
-      // CRITICAL: Only redirect to welcome on an explicit SIGNED_OUT event.
-      // Do NOT use `!session` here — after login, login.tsx calls router.replace
-      // which changes `segments` and re-triggers this effect BEFORE onAuthStateChange
-      // fires and updates `session` state. Using `!session` would bounce the user
-      // back to welcome during that brief window. `didSignOut` is only set to true
-      // by the SIGNED_OUT auth event, so it is never stale.
-      if (didSignOut && !inAuthGroup) {
-        console.log('[Navigation] User signed out, redirecting to welcome');
-        router.replace('/auth/welcome');
-      }
+    if (hasNavigated) {
+      console.log('[Navigation] Already navigated, skipping');
       return;
     }
 
@@ -333,14 +311,16 @@ export default function RootLayout() {
       console.log('[Navigation] Current segments:', segments);
       console.log('[Navigation] Session:', session?.user?.id || 'none');
 
+      const inAuthGroup = segments[0] === 'auth';
+      const inTabsGroup = segments[0] === '(tabs)';
+      const inOnboarding = segments[0] === 'onboarding';
+
       // If no session, ensure we're in auth flow
       if (!session) {
         if (!inAuthGroup) {
           console.log('[Navigation] No session, redirecting to welcome');
-          setInitialNavDone(true);
+          setHasNavigated(true);
           router.replace('/auth/welcome');
-        } else {
-          setInitialNavDone(true);
         }
         return;
       }
@@ -357,8 +337,8 @@ export default function RootLayout() {
 
         if (error || !userData) {
           console.log('[Navigation] User data not found, redirecting to onboarding');
-          setInitialNavDone(true);
           if (!inOnboarding) {
+            setHasNavigated(true);
             router.replace('/onboarding/complete');
           }
           return;
@@ -366,20 +346,19 @@ export default function RootLayout() {
 
         if (userData.onboarding_completed) {
           console.log('[Navigation] Onboarding complete, redirecting to home');
-          setInitialNavDone(true);
           if (!inTabsGroup) {
+            setHasNavigated(true);
             router.replace('/(tabs)/(home)/');
           }
         } else {
           console.log('[Navigation] Onboarding incomplete, redirecting to onboarding');
-          setInitialNavDone(true);
           if (!inOnboarding) {
+            setHasNavigated(true);
             router.replace('/onboarding/complete');
           }
         }
       } catch (error) {
         console.error('[Navigation] Error checking onboarding:', error);
-        setInitialNavDone(true);
       }
 
       console.log('[Navigation] ========== NAVIGATION CHECK COMPLETE ==========');
@@ -388,7 +367,7 @@ export default function RootLayout() {
     // Small delay to ensure navigation is ready
     const timer = setTimeout(handleNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, session, segments, navigationState, initialNavDone, didSignOut]);
+  }, [isReady, session, segments, navigationState, hasNavigated]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
@@ -624,7 +603,7 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <AdBannerProvider isPremium={false}>
+            <AdBannerProvider isPremium={isPremium}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 
@@ -683,6 +662,7 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
+              <AdBannerFooter isPremium={isPremium} />
               <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>
