@@ -1,5 +1,4 @@
-import React from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { AD_BANNER_HEIGHT } from './AdBannerFooter';
 
@@ -14,34 +13,43 @@ try {
 
 interface AdBannerContextValue {
   isPremium: boolean;
-  isAuthenticated: boolean;
-  adBannerHeight: number; // total bottom offset screens should use
+  /** Total bottom offset screens should use for paddingBottom */
+  adBannerHeight: number;
+  /** Called by AdBannerFooter once it knows its real rendered height */
+  setAdBannerHeight: (height: number) => void;
+  /** Whether the ad should be shown at all */
+  shouldShowAd: boolean;
 }
 
 const AdBannerContext = React.createContext<AdBannerContextValue>({
   isPremium: false,
-  isAuthenticated: false,
   adBannerHeight: 0,
+  setAdBannerHeight: () => {},
+  shouldShowAd: false,
 });
 
 export function AdBannerProvider({
   isPremium,
-  isAuthenticated,
   children,
 }: {
   isPremium: boolean;
-  isAuthenticated: boolean;
   children: React.ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
-  // Show ad only for authenticated, non-premium iOS users when package is available
-  const shouldShowAd = isAuthenticated && !isPremium && Platform.OS === 'ios' && adsAvailable;
-  const adBannerHeight = shouldShowAd ? AD_BANNER_HEIGHT + insets.bottom : 0;
+  const shouldShowAd = !isPremium && Platform.OS === 'ios' && adsAvailable;
 
-  console.log('[AdBannerContext] shouldShowAd:', shouldShowAd, '| isPremium:', isPremium, '| isAuthenticated:', isAuthenticated, '| adsAvailable:', adsAvailable);
+  // Start at 0 — AdBannerFooter will report its real height once rendered
+  const [adBannerHeight, setAdBannerHeightState] = useState(
+    shouldShowAd ? AD_BANNER_HEIGHT : 0
+  );
+
+  const setAdBannerHeight = useCallback((height: number) => {
+    setAdBannerHeightState(height);
+  }, []);
 
   return (
-    <AdBannerContext.Provider value={{ isPremium, isAuthenticated, adBannerHeight }}>
+    <AdBannerContext.Provider
+      value={{ isPremium, adBannerHeight, setAdBannerHeight, shouldShowAd }}
+    >
       {children}
     </AdBannerContext.Provider>
   );

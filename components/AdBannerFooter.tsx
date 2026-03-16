@@ -1,98 +1,22 @@
 /**
  * AdBannerFooter — Production-ready AdMob banner for iOS free users.
  *
- * SETUP:
- * 1. Install: npx expo install react-native-google-mobile-ads
- * 2. Add to app.json plugins: ["react-native-google-mobile-ads", { "androidAppId": "...", "iosAppId": "ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX" }]
- * 3. Replace PRODUCTION_AD_UNIT_ID below with your real iOS banner unit ID.
- * 4. Run a new native build (EAS or npx expo run:ios) — this package requires native code.
+ * Positioned ABOVE the tab bar. Must be rendered inside a tab navigator
+ * so that useBottomTabBarHeight() works correctly.
+ * Reports its real rendered height back to AdBannerContext so screens
+ * can add the correct paddingBottom via useAdBanner().adBannerHeight.
  *
- * USAGE IN SCREENS:
- *
- * Option A — Context (recommended, no prop drilling):
- *   The AdBannerProvider in app/_layout.tsx handles isPremium globally.
- *   In any screen, call `const { adBannerHeight } = useAdBanner()` and apply
- *   it as contentContainerStyle paddingBottom on ScrollView/FlatList.
- *   Place <AdBannerFooter isPremium={isPremium} /> at the root layout level (already done in _layout.tsx).
- *
- * Option B — Direct prop:
- *   <AdBannerFooter isPremium={false} />
- *   Use `useAdBannerHeight(isPremium)` to get the offset for contentContainerStyle.
- *
- * SCROLLVIEW EXAMPLE:
- *   const { adBannerHeight } = useAdBanner();
- *   <ScrollView contentContainerStyle={{ paddingBottom: adBannerHeight }}>
- *     ...content...
- *   </ScrollView>
- *
- * FLATLIST EXAMPLE:
- *   const { adBannerHeight } = useAdBanner();
- *   <FlatList contentContainerStyle={{ paddingBottom: adBannerHeight }} ... />
- *
- * SCREEN WITH FIXED BOTTOM BUTTON:
- *   const { adBannerHeight } = useAdBanner();
- *   <View style={{ position: 'absolute', bottom: adBannerHeight, left: 0, right: 0 }}>
- *     <Button title="Save" />
- *   </View>
- *
- * The banner is absolutely positioned and never participates in the layout flow,
- * so screens MUST add paddingBottom equal to adBannerHeight to avoid content being hidden.
+ * Only renders when the user is authenticated (isAuthenticated prop).
  */
 
-/**
- * AdBannerFooter — Production-ready AdMob banner for iOS free users.
- *
- * SETUP:
- * 1. Install: npx expo install react-native-google-mobile-ads
- * 2. Add to app.json plugins: ["react-native-google-mobile-ads", { "androidAppId": "...", "iosAppId": "ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX" }]
- * 3. Replace PRODUCTION_AD_UNIT_ID below with your real iOS banner unit ID.
- * 4. Run a new native build (EAS or npx expo run:ios) — this package requires native code.
- *
- * USAGE IN SCREENS:
- *
- * Option A — Context (recommended, no prop drilling):
- *   The AdBannerProvider in app/_layout.tsx handles isPremium globally.
- *   In any screen, call `const { adBannerHeight } = useAdBanner()` and apply
- *   it as contentContainerStyle paddingBottom on ScrollView/FlatList.
- *   Place <AdBannerFooter /> at the tab layout level (already done in (tabs)/_layout.tsx).
- *
- * Option B — Direct prop:
- *   <AdBannerFooter isPremium={false} isAuthenticated={true} />
- *   Use `useAdBannerHeight(isPremium)` to get the offset for contentContainerStyle.
- *
- * SCROLLVIEW EXAMPLE:
- *   const { adBannerHeight } = useAdBanner();
- *   <ScrollView contentContainerStyle={{ paddingBottom: adBannerHeight }}>
- *     ...content...
- *   </ScrollView>
- *
- * FLATLIST EXAMPLE:
- *   const { adBannerHeight } = useAdBanner();
- *   <FlatList contentContainerStyle={{ paddingBottom: adBannerHeight }} ... />
- *
- * SCREEN WITH FIXED BOTTOM BUTTON:
- *   const { adBannerHeight } = useAdBanner();
- *   <View style={{ position: 'absolute', bottom: adBannerHeight, left: 0, right: 0 }}>
- *     <Button title="Save" />
- *   </View>
- */
-
-import React, { useState } from 'react';
-import { View, Text, useColorScheme, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect } from 'react';
+import { View, useColorScheme, Platform } from 'react-native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useAdBanner } from './AdBannerContext';
 
 export const AD_BANNER_HEIGHT = 60;
 
-// Height of the native tab bar.
-// On iOS this is tall enough to contain both the tab icons AND the ad banner
-// that floats above it (tab icons ~85 + ad banner 60 = 145).
-export const TAB_BAR_HEIGHT_IOS = 145;
-export const TAB_BAR_HEIGHT_ANDROID = 70;
-
-// The visual tab-icon area within the iOS tab bar (ad banner sits above this)
-export const TAB_ICON_AREA_IOS = 85;
-
-// Production Ad Unit ID (also used as test ID per user config):
+// Production Ad Unit ID:
 const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-3940256099942544/2435281174';
 
 // react-native-google-mobile-ads requires a native build.
@@ -108,8 +32,6 @@ try {
   TestIds = ads.TestIds;
 } catch {
   // react-native-google-mobile-ads not installed — ads will not render.
-  // Run: npx expo install react-native-google-mobile-ads
-  // Then rebuild the native app.
 }
 
 interface AdBannerFooterProps {
@@ -117,35 +39,32 @@ interface AdBannerFooterProps {
   isAuthenticated: boolean;
 }
 
-export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterProps) {
+/**
+ * Inner component — only mounted when we actually want to show an ad.
+ * Calling useBottomTabBarHeight() unconditionally here is safe because
+ * this component is always rendered inside the tab navigator.
+ */
+function AdBannerInner() {
   const colorScheme = useColorScheme();
   const [adLoaded, setAdLoaded] = useState(false);
+  const { setAdBannerHeight } = useAdBanner();
+  const tabBarHeight = useBottomTabBarHeight();
 
-  console.log('[AdBannerFooter] render | isPremium:', isPremium, '| isAuthenticated:', isAuthenticated, '| platform:', Platform.OS, '| BannerAd available:', !!BannerAd);
+  useEffect(() => {
+    if (adLoaded) {
+      const totalHeight = AD_BANNER_HEIGHT + tabBarHeight;
+      console.log('[AdBannerFooter] Reporting ad banner height to context:', totalHeight);
+      setAdBannerHeight(totalHeight);
+    } else {
+      setAdBannerHeight(0);
+    }
+    return () => {
+      setAdBannerHeight(0);
+    };
+  }, [adLoaded, tabBarHeight, setAdBannerHeight]);
 
-  // Only render for authenticated, non-premium iOS users
-  if (!isAuthenticated || isPremium || Platform.OS !== 'ios') return null;
-
+  const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
-  const borderColor = colorScheme === 'dark' ? '#333' : '#e5e7eb';
-  const placeholderTextColor = colorScheme === 'dark' ? '#888' : '#aaa';
-
-  // The ad banner floats just above the visible tab icons
-  const bannerBottom = TAB_ICON_AREA_IOS;
-
-  const containerStyle = {
-    position: 'absolute' as const,
-    bottom: bannerBottom,
-    left: 0,
-    right: 0,
-    backgroundColor: bgColor,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    height: AD_BANNER_HEIGHT,
-    borderTopWidth: 1,
-    borderTopColor: borderColor,
-    zIndex: 100,
-  };
 
   const handleAdLoaded = () => {
     console.log('[AdBannerFooter] Ad loaded successfully');
@@ -154,31 +73,23 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
 
   const handleAdFailedToLoad = (error: unknown) => {
     console.log('[AdBannerFooter] Ad failed to load:', error);
-    // Keep container visible with placeholder text on failure
     setAdLoaded(false);
   };
 
-  // If the native ads package is not installed (e.g. Expo Go), show a visible placeholder
-  if (!BannerAd) {
-    return (
-      <View style={containerStyle}>
-        <Text style={{ color: placeholderTextColor, fontSize: 11 }}>
-          Advertisement
-        </Text>
-      </View>
-    );
-  }
-
-  const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
-
   return (
-    // Container is always visible at full height — shows placeholder text until ad loads
-    <View style={containerStyle}>
-      {!adLoaded && (
-        <Text style={{ color: placeholderTextColor, fontSize: 11, position: 'absolute' }}>
-          Advertisement
-        </Text>
-      )}
+    <View
+      style={{
+        position: 'absolute',
+        bottom: tabBarHeight,
+        left: 0,
+        right: 0,
+        backgroundColor: bgColor,
+        alignItems: 'center',
+        // Collapse to zero height until ad loads to avoid a blank bar flash
+        minHeight: adLoaded ? AD_BANNER_HEIGHT : 0,
+        overflow: 'hidden',
+      }}
+    >
       {adUnitId && (
         <BannerAd
           unitId={adUnitId}
@@ -192,8 +103,20 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
   );
 }
 
-export function useAdBannerHeight(isPremium: boolean, isAuthenticated: boolean): number {
-  const insets = useSafeAreaInsets();
-  if (!isAuthenticated || isPremium || Platform.OS !== 'ios') return 0;
-  return AD_BANNER_HEIGHT + insets.bottom;
+export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterProps) {
+  const shouldRender =
+    isAuthenticated &&
+    !isPremium &&
+    Platform.OS === 'ios' &&
+    BannerAd !== null;
+
+  if (!shouldRender) return null;
+
+  return <AdBannerInner />;
+}
+
+/** @deprecated Use useAdBanner() from AdBannerContext instead */
+export function useAdBannerHeight(isPremium: boolean): number {
+  if (isPremium || Platform.OS !== 'ios' || !BannerAd) return 0;
+  return AD_BANNER_HEIGHT;
 }
