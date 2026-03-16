@@ -59,6 +59,7 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [hasNavigated, setHasNavigated] = useState(false);
 
   // Initialize app and auth
@@ -93,6 +94,9 @@ export default function RootLayout() {
       console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
       
       setSession(currentSession);
+      // Mark initialization complete so the navigation guard knows the
+      // session value is authoritative (not just the default null).
+      setIsInitializing(false);
 
       console.log('[App] Step 3: Initialize RevenueCat (native only)');
       
@@ -292,10 +296,30 @@ export default function RootLayout() {
     }
   };
 
+  // Reset hasNavigated whenever the session identity changes so the guard
+  // re-evaluates after login/logout instead of staying stuck.
+  const prevSessionId = React.useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const newId = session?.user?.id;
+    if (newId !== prevSessionId.current) {
+      console.log('[Navigation] Session identity changed, resetting hasNavigated');
+      prevSessionId.current = newId;
+      setHasNavigated(false);
+    }
+  }, [session]);
+
   // Handle navigation based on auth state
   useEffect(() => {
     if (!isReady || !navigationState?.key) {
       console.log('[Navigation] Not ready yet, waiting...');
+      return;
+    }
+
+    // Don't redirect while the initial session is still being loaded from
+    // storage — session is null by default and would incorrectly send an
+    // authenticated user to the login screen.
+    if (isInitializing) {
+      console.log('[Navigation] Still initializing, waiting for session...');
       return;
     }
 
@@ -365,7 +389,7 @@ export default function RootLayout() {
     // Small delay to ensure navigation is ready
     const timer = setTimeout(handleNavigation, 100);
     return () => clearTimeout(timer);
-  }, [isReady, session, segments, navigationState, hasNavigated]);
+  }, [isReady, isInitializing, session, segments, navigationState, hasNavigated]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {

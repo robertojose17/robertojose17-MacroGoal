@@ -62,78 +62,11 @@ export default function LoginScreen() {
       }
 
       console.log('[Login] ✅ User logged in:', data.user.id);
-      
-      // Step 2: Check if user has completed onboarding
-      console.log('[Login] Step 2: Checking onboarding status...');
-      
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('onboarding_completed')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      if (userError) {
-        console.error('[Login] User fetch error:', userError);
-        
-        // Try to create user record if it doesn't exist
-        console.log('[Login] Attempting to create user record...');
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-            user_type: 'free',
-            onboarding_completed: false,
-          });
-        
-        if (insertError && insertError.code !== '23505') {
-          console.error('[Login] ❌ Failed to create user record:', insertError);
-        } else {
-          console.log('[Login] ✅ User record created or already exists');
-        }
-        
-        // Go to onboarding
-        console.log('[Login] Redirecting to onboarding');
-        router.replace('/onboarding/complete');
-        return;
-      }
-
-      // Handle missing user data
-      if (!userData) {
-        console.log('[Login] ⚠️ User not in database, creating record...');
-        
-        // Try to create user record
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-            user_type: 'free',
-            onboarding_completed: false,
-          });
-        
-        if (insertError && insertError.code !== '23505') {
-          console.error('[Login] ❌ Failed to create user record:', insertError);
-        } else {
-          console.log('[Login] ✅ User record created');
-        }
-        
-        // Go to onboarding
-        console.log('[Login] Redirecting to onboarding');
-        router.replace('/onboarding/complete');
-        return;
-      }
-
-      // Navigate based on onboarding status
-      if (userData.onboarding_completed) {
-        console.log('[Login] ✅ Onboarding complete, going to home');
-        router.replace('/(tabs)/(home)/');
-      } else {
-        console.log('[Login] ⚠️ Onboarding not complete, going to onboarding');
-        router.replace('/onboarding/complete');
-      }
+      console.log('[Login] Auth state change will trigger navigation via _layout.tsx');
+      // Navigation is handled entirely by the auth state listener in _layout.tsx.
+      // Do NOT call router.replace here — doing so races with the layout guard
+      // and causes the double-press bug (first press navigates then gets bounced
+      // back to login before the layout's hasNavigated flag is set).
     } catch (error: any) {
       console.error('[Login] Unexpected error:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred during login');
