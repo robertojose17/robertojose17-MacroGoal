@@ -83,6 +83,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const AD_BANNER_HEIGHT = 60;
 
+// Height of the native tab bar.
+// On iOS this is tall enough to contain both the tab icons AND the ad banner
+// that floats above it (tab icons ~85 + ad banner 60 = 145).
+export const TAB_BAR_HEIGHT_IOS = 145;
+export const TAB_BAR_HEIGHT_ANDROID = 70;
+
+// The visual tab-icon area within the iOS tab bar (ad banner sits above this)
+export const TAB_ICON_AREA_IOS = 85;
+
 // Production Ad Unit ID (also used as test ID per user config):
 const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-3940256099942544/2435281174';
 
@@ -120,8 +129,8 @@ export function AdBannerFooter({ isPremium, isAuthenticated }: AdBannerFooterPro
 
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
 
-  const tabBarHeight = Platform.OS === 'ios' ? 85 : 60;
-  const bannerBottom = tabBarHeight;
+  // The ad banner floats just above the visible tab icons, not above the full reserved area
+  const bannerBottom = Platform.OS === 'ios' ? TAB_ICON_AREA_IOS : TAB_BAR_HEIGHT_ANDROID;
 
   // If the native ads package is not installed (e.g. Expo Go), show a placeholder
   if (!BannerAd) {

@@ -5,7 +5,7 @@ import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AdBannerFooter } from '@/components/AdBannerFooter';
+import { AdBannerFooter, TAB_BAR_HEIGHT_IOS } from '@/components/AdBannerFooter';
 import { useAdBanner } from '@/components/AdBannerContext';
 
 export default function TabLayout() {
@@ -26,7 +26,7 @@ export default function TabLayout() {
           backgroundColor: isDark ? colors.cardDark : colors.card,
           borderTopColor: isDark ? colors.borderDark : colors.border,
           paddingBottom: 20,
-          height: 85,
+          height: TAB_BAR_HEIGHT_IOS,
         },
       }}
     >
