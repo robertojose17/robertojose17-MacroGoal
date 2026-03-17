@@ -1,13 +1,15 @@
 
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { useAdBanner } from '@/components/AdBannerContext';
+import { AdBannerProvider, useAdBanner } from '@/components/AdBannerContext';
+import { AdBannerFooter } from '@/components/AdBannerFooter';
+import { usePremium } from '@/hooks/usePremium';
 
-export default function TabLayout() {
+function TabLayoutInner() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { adBannerHeight } = useAdBanner();
@@ -95,5 +97,18 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+  );
+}
+
+export default function TabLayout() {
+  const { isPremium } = usePremium();
+  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium:', isPremium);
+  return (
+    <AdBannerProvider isPremium={isPremium}>
+      <View style={{ flex: 1 }}>
+        <TabLayoutInner />
+        <AdBannerFooter isPremium={isPremium} />
+      </View>
+    </AdBannerProvider>
   );
 }

@@ -18,8 +18,6 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AdBannerProvider } from "@/components/AdBannerContext";
-import { AdBannerFooter } from "@/components/AdBannerFooter";
-import { usePremium } from "@/hooks/usePremium";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
@@ -43,7 +41,6 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { isPremium } = usePremium();
   const networkState = useNetworkState();
   const segments = useSegments();
   const navigationState = useRootNavigationState();
@@ -618,7 +615,11 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <AdBannerProvider isPremium={isPremium}>
+            {/* AdBannerProvider at root is a no-op (isPremium=true) so that any
+                useAdBanner() call outside the authenticated (tabs) zone returns
+                zero height and never renders an ad. The real provider with the
+                correct isPremium value lives inside app/(tabs)/_layout.tsx. */}
+            <AdBannerProvider isPremium={true}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 
@@ -677,7 +678,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <AdBannerFooter isPremium={isPremium} />
               <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>
