@@ -24,7 +24,7 @@ import Animated, {
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import * as SpeechRecognition from 'expo-speech-recognition';
+import * as SpeechRecognition from '../modules/expo-speech-recognition';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
