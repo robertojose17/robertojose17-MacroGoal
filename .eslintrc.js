@@ -47,7 +47,8 @@ module.exports = {
       ignore: [
         'better-auth/react',
         '@better-auth/expo/client',
-        'expo-secure-store'
+        'expo-secure-store',
+        'expo-speech-recognition'
       ]
     }],
     "prefer-const": "off",
