@@ -28,7 +28,32 @@ import * as SpeechRecognition from '../modules/expo-speech-recognition';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
+const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
+
 type MicState = 'idle' | 'listening' | 'processing';
+
+type MealEstimateResult = {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber: number;
+  meal_name: string;
+  confidence: 'high' | 'medium' | 'low';
+  notes: string;
+};
+
+const CONFIDENCE_COLORS: Record<string, string> = {
+  high: '#34C759',
+  medium: '#FF9500',
+  low: '#FF3B30',
+};
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: 'High confidence',
+  medium: 'Medium confidence',
+  low: 'Low confidence',
+};
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
@@ -37,7 +62,7 @@ export default function AIMealEstimatorScreen() {
 
   const [mealDescription, setMealDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<MealEstimateResult | null>(null);
 
   const [micState, setMicState] = useState<MicState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
@@ -100,21 +125,28 @@ export default function AIMealEstimatorScreen() {
 
     console.log('[AIMealEstimator] Analyze button pressed, description:', description);
     setIsAnalyzing(true);
+    setResult(null);
     try {
-      // TODO: Backend Integration - Call the AI meal estimation API endpoint here
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/meal-estimator-analyze`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: description.trim() }),
+        }
+      );
 
-      setResult({
-        calories: 450,
-        protein: 25,
-        carbs: 45,
-        fats: 15,
-        fiber: 5,
-      });
-      console.log('[AIMealEstimator] Analysis complete');
-    } catch (error) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? 'Failed to analyze meal');
+      }
+
+      setResult(data as MealEstimateResult);
+      console.log('[AIMealEstimator] Analysis complete:', data);
+    } catch (error: any) {
       console.error('[AIMealEstimator] Error analyzing meal:', error);
-      Alert.alert('Error', 'Failed to analyze meal');
+      Alert.alert('Error', error?.message ?? 'Failed to analyze meal. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -386,29 +418,60 @@ export default function AIMealEstimatorScreen() {
 
         {result && (
           <View style={[styles.resultCard, { backgroundColor: colors.backgroundAlt ?? '#F0F2F7' }]}>
-            <Text style={[styles.resultTitle, { color: colors.text }]}>
-              Estimated Nutrition
-            </Text>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.textSecondary }]}>Calories</Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>{result.calories} kcal</Text>
+            {/* Meal name + confidence badge */}
+            <View style={styles.resultHeader}>
+              <Text style={[styles.resultTitle, { color: colors.text }]} numberOfLines={2}>
+                {result.meal_name}
+              </Text>
+              <View style={[styles.confidenceBadge, { backgroundColor: CONFIDENCE_COLORS[result.confidence] + '22' }]}>
+                <View style={[styles.confidenceDot, { backgroundColor: CONFIDENCE_COLORS[result.confidence] }]} />
+                <Text style={[styles.confidenceText, { color: CONFIDENCE_COLORS[result.confidence] }]}>
+                  {CONFIDENCE_LABELS[result.confidence]}
+                </Text>
+              </View>
             </View>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.textSecondary }]}>Protein</Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>{result.protein}g</Text>
+
+            {/* Calories highlight */}
+            <View style={[styles.caloriesBox, { backgroundColor: colors.primary + '15' }]}>
+              <Text style={[styles.caloriesNumber, { color: colors.primary }]}>{result.calories}</Text>
+              <Text style={[styles.caloriesUnit, { color: colors.primary }]}>kcal</Text>
             </View>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.textSecondary }]}>Carbs</Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>{result.carbs}g</Text>
+
+            {/* Macros grid */}
+            <View style={styles.macrosGrid}>
+              <MacroCell label="Protein" value={result.protein} unit="g" color="#FF6B6B" />
+              <MacroCell label="Carbs" value={result.carbs} unit="g" color="#4ECDC4" />
+              <MacroCell label="Fats" value={result.fats} unit="g" color="#FFE66D" />
+              <MacroCell label="Fiber" value={result.fiber} unit="g" color="#A8E6CF" />
             </View>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.textSecondary }]}>Fats</Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>{result.fats}g</Text>
-            </View>
+
+            {/* Notes */}
+            {result.notes ? (
+              <View style={[styles.notesBox, { borderColor: colors.border }]}>
+                <IconSymbol
+                  ios_icon_name="lightbulb.fill"
+                  android_material_icon_name="lightbulb-outline"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.notesText, { color: colors.textSecondary }]}>{result.notes}</Text>
+              </View>
+            ) : null}
           </View>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function MacroCell({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  return (
+    <View style={[styles.macroCell, { backgroundColor: color + (isDark ? '30' : '20') }]}>
+      <Text style={[styles.macroCellValue, { color }]}>{value}{unit}</Text>
+      <Text style={[styles.macroCellLabel, { color: isDark ? '#aaa' : '#555' }]}>{label}</Text>
+    </View>
   );
 }
 
@@ -562,25 +625,84 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Result card
   resultCard: {
     borderRadius: borderRadius.md,
     padding: spacing.lg,
+    gap: spacing.md,
+  },
+  resultHeader: {
+    gap: spacing.xs,
   },
   resultTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    marginBottom: spacing.md,
+    fontWeight: '700',
+    lineHeight: 24,
   },
-  macroRow: {
+  confidenceBadge: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    gap: 5,
   },
-  macroLabel: {
-    fontSize: 16,
+  confidenceDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
-  macroValue: {
-    fontSize: 16,
+  confidenceText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  caloriesBox: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.sm,
+    gap: 4,
+  },
+  caloriesNumber: {
+    fontSize: 48,
+    fontWeight: '800',
+    lineHeight: 52,
+  },
+  caloriesUnit: {
+    fontSize: 18,
     fontWeight: '500',
+  },
+  macrosGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  macroCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.sm,
+    gap: 2,
+  },
+  macroCellValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  macroCellLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  notesBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    borderTopWidth: 1,
+    paddingTop: spacing.sm,
+  },
+  notesText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
   },
 });
