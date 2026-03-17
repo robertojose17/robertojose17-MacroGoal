@@ -10,17 +10,12 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Linking,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  Easing,
-  cancelAnimation,
-} from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -66,47 +61,55 @@ export default function AIMealEstimatorScreen() {
 
   const [micState, setMicState] = useState<MicState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
-  const [speechAvailable, setSpeechAvailable] = useState<boolean | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(true);
   const [permissionError, setPermissionError] = useState('');
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const autoStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Pulse animation values
-  const pulseScale = useSharedValue(1);
-  const pulseOpacity = useSharedValue(0.8);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-    opacity: pulseOpacity.value,
-  }));
+  // Pulse animation using RN Animated (no Reanimated dependency needed)
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseOpacityAnim = useRef(new Animated.Value(0)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const startPulse = useCallback(() => {
-    pulseScale.value = withRepeat(
-      withTiming(1.3, { duration: 700, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
+    pulseLoopRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(pulseAnim, { toValue: 1.5, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseOpacityAnim, { toValue: 0.5, duration: 700, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseOpacityAnim, { toValue: 0, duration: 700, useNativeDriver: true }),
+        ]),
+      ])
     );
-    pulseOpacity.value = withRepeat(
-      withTiming(0.4, { duration: 700, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
-    );
-  }, [pulseScale, pulseOpacity]);
+    pulseLoopRef.current.start();
+  }, [pulseAnim, pulseOpacityAnim]);
 
   const stopPulse = useCallback(() => {
-    cancelAnimation(pulseScale);
-    cancelAnimation(pulseOpacity);
-    pulseScale.value = withTiming(1, { duration: 200 });
-    pulseOpacity.value = withTiming(0.8, { duration: 200 });
-  }, [pulseScale, pulseOpacity]);
+    if (pulseLoopRef.current) {
+      pulseLoopRef.current.stop();
+      pulseLoopRef.current = null;
+    }
+    Animated.parallel([
+      Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(pulseOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [pulseAnim, pulseOpacityAnim]);
 
-  // Check speech recognition availability on mount
+  // Check speech recognition availability on mount — but always show the button
   useEffect(() => {
-    SpeechRecognition.isAvailableAsync().then((available) => {
-      console.log('[AIMealEstimator] Speech recognition available:', available);
-      setSpeechAvailable(available);
-    });
+    SpeechRecognition.isAvailableAsync()
+      .then((available) => {
+        console.log('[AIMealEstimator] Speech recognition available:', available);
+        setSpeechSupported(available);
+      })
+      .catch(() => {
+        console.warn('[AIMealEstimator] Could not check speech recognition availability');
+        setSpeechSupported(false);
+      });
   }, []);
 
   // Cleanup on unmount
@@ -158,14 +161,28 @@ export default function AIMealEstimatorScreen() {
       const audioStatus = await AudioModule.requestRecordingPermissionsAsync();
       console.log('[AIMealEstimator] Audio permission status:', audioStatus.status);
       if (!audioStatus.granted) {
-        setPermissionError('Microphone access is needed for voice input. Please enable it in Settings.');
+        Alert.alert(
+          'Microphone Permission Required',
+          'Microphone access is needed for voice input. Please enable it in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
         return false;
       }
 
       const speechStatus = await SpeechRecognition.requestPermissionsAsync();
       console.log('[AIMealEstimator] Speech recognition permission granted:', speechStatus.granted);
       if (!speechStatus.granted) {
-        setPermissionError('Microphone access is needed for voice input. Please enable it in Settings.');
+        Alert.alert(
+          'Speech Recognition Permission Required',
+          'Speech recognition access is needed for voice input. Please enable it in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
         return false;
       }
 
@@ -262,6 +279,14 @@ export default function AIMealEstimatorScreen() {
   };
 
   const handleMicPress = () => {
+    console.log('[AIMealEstimator] Mic button pressed, current state:', micState, 'speechSupported:', speechSupported);
+    if (!speechSupported) {
+      Alert.alert(
+        'Voice Input Unavailable',
+        'Speech recognition is not supported on this device. Please type your meal description instead.'
+      );
+      return;
+    }
     if (micState === 'idle') {
       startListening();
     } else if (micState === 'listening') {
@@ -272,14 +297,11 @@ export default function AIMealEstimatorScreen() {
 
   const micButtonDisabled = micState === 'processing' || isAnalyzing;
 
-  const listeningLabel = micState === 'listening' ? 'Tap to stop' : micState === 'processing' ? 'Processing...' : '';
+  const listeningLabel = micState === 'listening' ? 'Tap to stop' : micState === 'processing' ? 'Processing...' : 'Voice input';
 
-  const micIconName = micState === 'listening' ? 'mic.slash.fill' : 'mic.fill';
-  const micAndroidIcon = micState === 'listening' ? 'mic-off' : 'mic';
+  const micIoniconName: 'mic' | 'mic-off' = micState === 'listening' ? 'mic-off' : 'mic';
 
-  const micBgColor = micState === 'listening' ? '#FF3B30' : micState === 'processing' ? colors.primary : colors.primary;
-
-  const showMic = speechAvailable === true;
+  const micBgColor = micState === 'listening' ? '#FF3B30' : colors.primary;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -338,53 +360,51 @@ export default function AIMealEstimatorScreen() {
             editable={micState === 'idle'}
           />
 
-          {showMic && (
-            <View style={styles.micContainer}>
-              <TouchableOpacity
-                onPress={handleMicPress}
-                disabled={micButtonDisabled}
-                style={styles.micButtonWrapper}
-                activeOpacity={0.8}
+          <View style={styles.micContainer}>
+            <TouchableOpacity
+              onPress={handleMicPress}
+              disabled={micButtonDisabled}
+              style={styles.micButtonWrapper}
+              activeOpacity={0.8}
+              accessibilityLabel={micState === 'listening' ? 'Stop recording' : 'Start voice input'}
+              accessibilityRole="button"
+            >
+              {/* Pulsing ring behind the button when listening */}
+              <Animated.View
+                style={[
+                  styles.micPulseRing,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: pulseOpacityAnim,
+                    backgroundColor: '#FF3B30',
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.micButton,
+                  { backgroundColor: micBgColor },
+                  micButtonDisabled && styles.micButtonDisabled,
+                ]}
               >
-                {micState === 'listening' && (
-                  <Animated.View
-                    style={[
-                      styles.micPulseRing,
-                      { backgroundColor: '#FF3B30' },
-                      pulseStyle,
-                    ]}
-                  />
+                {micState === 'processing' ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name={micIoniconName} size={24} color="#fff" />
                 )}
-                <View
-                  style={[
-                    styles.micButton,
-                    { backgroundColor: micBgColor },
-                    micButtonDisabled && styles.micButtonDisabled,
-                  ]}
-                >
-                  {micState === 'processing' ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <IconSymbol
-                      ios_icon_name={micIconName}
-                      android_material_icon_name={micAndroidIcon}
-                      size={22}
-                      color="#fff"
-                    />
-                  )}
-                </View>
-              </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
 
-              {listeningLabel !== '' && (
-                <Text style={styles.micLabel}>{listeningLabel}</Text>
-              )}
-            </View>
-          )}
+            <Text style={[styles.micLabel, micState === 'listening' && styles.micLabelActive]}>
+              {listeningLabel}
+            </Text>
+          </View>
         </View>
 
-        {/* Live transcript preview */}
+        {/* Live transcript / listening feedback */}
         {(liveTranscript !== '' || micState === 'listening') && (
           <View style={[styles.transcriptBox, { backgroundColor: colors.backgroundAlt ?? '#F0F2F7' }]}>
+            <Ionicons name="mic" size={14} color="#6B7280" style={{ marginTop: 2 }} />
             <Text style={styles.transcriptText}>
               {micState === 'listening' ? 'Listening...' : liveTranscript}
             </Text>
@@ -582,17 +602,24 @@ const styles = StyleSheet.create({
   },
   micLabel: {
     fontSize: 10,
-    color: '#FF3B30',
+    color: colors.textSecondary,
     fontWeight: '500',
     textAlign: 'center',
   },
+  micLabelActive: {
+    color: '#FF3B30',
+  },
   transcriptBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     marginBottom: spacing.sm,
   },
   transcriptText: {
+    flex: 1,
     fontSize: 13,
     fontStyle: 'italic',
     color: '#6B7280',
