@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,12 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { useAppleSpeech } from '@/hooks/useAppleSpeech';
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
@@ -27,42 +25,6 @@ export default function AIMealEstimatorScreen() {
   const [mealDescription, setMealDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
-
-  // Pulse animation for listening state
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
-
-  const handleTranscript = useCallback((text: string) => {
-    setMealDescription(text);
-  }, []);
-
-  const { status: speechStatus, error: speechError, startListening, stopListening } = useAppleSpeech(handleTranscript);
-
-  // Start/stop pulse animation based on listening state
-  useEffect(() => {
-    if (speechStatus === 'listening') {
-      pulseLoop.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 0.4, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, useNativeDriver: true }),
-        ]),
-      );
-      pulseLoop.current.start();
-    } else {
-      pulseLoop.current?.stop();
-      pulseAnim.setValue(1);
-    }
-  }, [speechStatus, pulseAnim]);
-
-  const handleMicPress = async () => {
-    if (speechStatus === 'listening') {
-      console.log('[AIMealEstimator] Mic button pressed — stopping listening');
-      await stopListening();
-    } else {
-      console.log('[AIMealEstimator] Mic button pressed — starting listening');
-      await startListening();
-    }
-  };
 
   const handleAnalyze = async () => {
     console.log('[AIMealEstimator] Analyze button pressed, description:', mealDescription.trim());
@@ -93,13 +55,6 @@ export default function AIMealEstimatorScreen() {
       setIsAnalyzing(false);
     }
   };
-
-  const isListening = speechStatus === 'listening';
-  const isProcessing = speechStatus === 'processing';
-  const isError = speechStatus === 'error';
-
-  const micIconColor = isListening ? '#FF3B30' : isError ? '#FF3B30' : colors.primary;
-  const micIconName = isError ? 'mic.slash.fill' : isListening ? 'mic.fill' : 'mic.fill';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -142,7 +97,7 @@ export default function AIMealEstimatorScreen() {
           styles.inputContainer,
           {
             backgroundColor: colors.backgroundAlt,
-            borderColor: isListening ? '#FF3B30' : isError ? '#FF3B30' : colors.grey,
+            borderColor: colors.grey,
           },
         ]}>
           <TextInput
@@ -157,62 +112,7 @@ export default function AIMealEstimatorScreen() {
             numberOfLines={4}
             textAlignVertical="top"
           />
-
-          {Platform.OS === 'ios' && (
-            <View style={styles.micContainer}>
-              {isProcessing ? (
-                <ActivityIndicator size="small" color={colors.primary} style={styles.micButton} />
-              ) : (
-                <TouchableOpacity
-                  onPress={handleMicPress}
-                  style={[
-                    styles.micButton,
-                    isListening && styles.micButtonListening,
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  <Animated.View style={{ opacity: isListening ? pulseAnim : 1 }}>
-                    <IconSymbol
-                      ios_icon_name={micIconName}
-                      android_material_icon_name="mic"
-                      size={22}
-                      color={micIconColor}
-                    />
-                  </Animated.View>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
         </View>
-
-        {isListening && (
-          <View style={styles.listeningBadge}>
-            <View style={styles.listeningDot} />
-            <Text style={styles.listeningText}>
-              Listening... tap mic to stop
-            </Text>
-          </View>
-        )}
-
-        {isError && speechError && (
-          <View style={styles.errorRow}>
-            <IconSymbol
-              ios_icon_name="exclamationmark.circle.fill"
-              android_material_icon_name="error"
-              size={14}
-              color="#FF3B30"
-            />
-            <Text style={styles.errorText}>
-              {speechError}
-            </Text>
-          </View>
-        )}
-
-        {isError && (
-          <Text style={styles.retryHint}>
-            Tap mic to retry
-          </Text>
-        )}
 
         <TouchableOpacity
           style={[styles.analyzeButton, isAnalyzing && styles.analyzeButtonDisabled]}
@@ -345,56 +245,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     fontSize: typography.md,
     minHeight: 100,
-    paddingRight: 52,
-  },
-  micContainer: {
-    position: 'absolute',
-    right: spacing.sm,
-    bottom: spacing.sm,
-  },
-  micButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micButtonListening: {
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-  },
-  listeningBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: spacing.sm,
-  },
-  listeningDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF3B30',
-  },
-  listeningText: {
-    fontSize: typography.sm,
-    color: '#FF3B30',
-    fontWeight: '500',
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 2,
-  },
-  errorText: {
-    fontSize: typography.xs ?? 12,
-    color: '#FF3B30',
-    flex: 1,
-  },
-  retryHint: {
-    fontSize: typography.xs ?? 12,
-    color: '#FF3B30',
-    opacity: 0.7,
-    marginBottom: spacing.sm,
   },
   analyzeButton: {
     backgroundColor: colors.primary,
