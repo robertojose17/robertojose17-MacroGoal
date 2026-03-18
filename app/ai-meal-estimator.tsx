@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,17 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import Voice, {
+  SpeechResultsEvent,
+  SpeechErrorEvent,
+} from '@react-native-voice/voice';
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
@@ -25,6 +30,116 @@ export default function AIMealEstimatorScreen() {
   const [mealDescription, setMealDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [isListening, setIsListening] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const mealDescriptionRef = useRef(mealDescription);
+
+  useEffect(() => {
+    mealDescriptionRef.current = mealDescription;
+  }, [mealDescription]);
+
+  useEffect(() => {
+    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+      const recognized = e.value?.[0] ?? '';
+      console.log('[AIMealEstimator] Speech recognized:', recognized);
+      if (recognized) {
+        const current = mealDescriptionRef.current;
+        const separator = current.trim().length > 0 ? ' ' : '';
+        setMealDescription(current + separator + recognized);
+      }
+    };
+
+    Voice.onSpeechError = (e: SpeechErrorEvent) => {
+      console.error('[AIMealEstimator] Speech error:', e.error);
+      stopListening();
+      const code = e.error?.code;
+      if (code === '5' || String(code) === '5') {
+        // Android: client-side error often means no speech detected — ignore
+        return;
+      }
+      if (
+        String(e.error?.message ?? '').toLowerCase().includes('permission') ||
+        code === '9' ||
+        String(code) === '9'
+      ) {
+        Alert.alert(
+          'Permission Denied',
+          'Microphone or speech recognition permission is required. Please enable it in Settings.',
+        );
+      } else {
+        Alert.alert('Speech Error', 'Could not recognize speech. Please try again.');
+      }
+    };
+
+    Voice.onSpeechEnd = () => {
+      console.log('[AIMealEstimator] Speech ended');
+      stopListening();
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, []);
+
+  const startPulse = () => {
+    pulseLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.3,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    pulseLoop.current.start();
+  };
+
+  const stopPulse = () => {
+    pulseLoop.current?.stop();
+    pulseAnim.setValue(1);
+  };
+
+  const stopListening = async () => {
+    try {
+      await Voice.stop();
+    } catch (_) {
+      // ignore
+    }
+    setIsListening(false);
+    stopPulse();
+  };
+
+  const handleMicPress = async () => {
+    if (isListening) {
+      console.log('[AIMealEstimator] Mic button pressed — stopping listening');
+      await stopListening();
+      return;
+    }
+
+    console.log('[AIMealEstimator] Mic button pressed — starting listening');
+    try {
+      await Voice.start('en-US');
+      setIsListening(true);
+      startPulse();
+    } catch (e: any) {
+      console.error('[AIMealEstimator] Failed to start voice recognition:', e);
+      const msg = String(e?.message ?? '').toLowerCase();
+      if (msg.includes('permission')) {
+        Alert.alert(
+          'Permission Denied',
+          'Microphone or speech recognition permission is required. Please enable it in Settings.',
+        );
+      } else {
+        Alert.alert('Error', 'Could not start voice recognition. Please try again.');
+      }
+    }
+  };
 
   const handleAnalyze = async () => {
     console.log('[AIMealEstimator] Analyze button pressed, description:', mealDescription.trim());
@@ -97,7 +212,7 @@ export default function AIMealEstimatorScreen() {
           styles.inputContainer,
           {
             backgroundColor: colors.backgroundAlt,
-            borderColor: colors.grey,
+            borderColor: isListening ? '#ef4444' : colors.grey,
           },
         ]}>
           <TextInput
@@ -112,6 +227,28 @@ export default function AIMealEstimatorScreen() {
             numberOfLines={4}
             textAlignVertical="top"
           />
+          <View style={styles.micRow}>
+            {isListening && (
+              <Text style={styles.listeningLabel}>Listening...</Text>
+            )}
+            <TouchableOpacity
+              onPress={handleMicPress}
+              style={[
+                styles.micButton,
+                isListening && styles.micButtonActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <IconSymbol
+                  ios_icon_name={isListening ? 'mic.fill' : 'mic'}
+                  android_material_icon_name={isListening ? 'mic' : 'mic-none'}
+                  size={22}
+                  color={isListening ? '#fff' : colors.primary}
+                />
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -288,5 +425,32 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     marginLeft: 2,
     width: 28,
+  },
+  micRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  listeningLabel: {
+    fontSize: typography.sm,
+    color: '#ef4444',
+    fontWeight: '500',
+  },
+  micButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  micButtonActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
   },
 });

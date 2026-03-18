@@ -18,7 +18,9 @@
       "bundleIdentifier": "com.robertojose17.macrogoal",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
+        "NSPhotoLibraryUsageDescription": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements.",
+        "NSMicrophoneUsageDescription": "Macro Goal uses your microphone to let you describe meals by voice for the AI Meal Estimator.",
+        "NSSpeechRecognitionUsageDescription": "Macro Goal uses speech recognition to convert your spoken meal descriptions into text for the AI Meal Estimator."
       }
     },
     "android": {
@@ -28,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.robertojose17.macrogoal",
-      "permissions": []
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
@@ -56,7 +58,8 @@
           "androidAppId": "ca-app-pub-5592015069000241~5529470607",
           "iosAppId": "ca-app-pub-5592015069000241~5529470607"
         }
-      ]
+      ],
+      "@react-native-voice/voice"
     ],
     "scheme": "macrogoal",
     "experiments": {
