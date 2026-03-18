@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Platform, KeyboardAvoidingView, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { searchOpenFoodFacts, OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
+import { useAppleSpeech } from '@/hooks/useAppleSpeech';
 
 interface SearchResultItem {
   product: OpenFoodFactsProduct;
@@ -158,6 +159,46 @@ export default function FoodSearchScreen() {
   const requestIdRef = useRef<number>(0);
   const searchInputRef = useRef<TextInput>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Voice recognition (iOS only)
+  const { speechState, isListening, transcript, startListening, stopListening, cancelListening } = useAppleSpeech();
+  const micPulseAnim = useRef(new Animated.Value(1)).current;
+  const micPulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Start/stop pulse animation when recording state changes
+  useEffect(() => {
+    if (isListening) {
+      micPulseLoopRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(micPulseAnim, { toValue: 1.3, duration: 500, useNativeDriver: true }),
+          Animated.timing(micPulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        ])
+      );
+      micPulseLoopRef.current.start();
+    } else {
+      micPulseLoopRef.current?.stop();
+      micPulseLoopRef.current = null;
+      Animated.timing(micPulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    }
+  }, [isListening, micPulseAnim]);
+
+  // When speech recognition returns a transcript, populate the search field
+  useEffect(() => {
+    if (transcript && transcript.trim().length > 0) {
+      console.log('[FoodSearch] Voice transcript received:', transcript);
+      setSearchQuery(transcript);
+    }
+  }, [transcript]);
+
+  const handleMicPress = useCallback(async () => {
+    if (isListening || speechState === 'processing') {
+      console.log('[FoodSearch] Mic button pressed — stopping recording');
+      await stopListening();
+    } else {
+      console.log('[FoodSearch] Mic button pressed — starting voice recognition');
+      await startListening();
+    }
+  }, [isListening, speechState, startListening, stopListening]);
 
   // OPTIMIZATION: Performance timing logs
   const timingRef = useRef<{ [key: string]: number }>({});
@@ -561,6 +602,18 @@ export default function FoodSearchScreen() {
                 />
               </TouchableOpacity>
             )}
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity onPress={handleMicPress} style={styles.micButton} activeOpacity={0.7}>
+                <Animated.View style={{ transform: [{ scale: micPulseAnim }] }}>
+                  <IconSymbol
+                    ios_icon_name={isListening ? 'stop.circle.fill' : speechState === 'processing' ? 'waveform' : 'mic.fill'}
+                    android_material_icon_name="mic"
+                    size={22}
+                    color={isListening ? '#FF3B30' : speechState === 'processing' ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary)}
+                  />
+                </Animated.View>
+              </TouchableOpacity>
+            )}
           </View>
 
           {loading && (
@@ -640,6 +693,10 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: spacing.xs,
+  },
+  micButton: {
+    padding: spacing.xs,
+    marginLeft: 2,
   },
   loadingContainer: {
     flexDirection: 'row',
