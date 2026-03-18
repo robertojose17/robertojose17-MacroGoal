@@ -17,10 +17,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { colors, spacing, borderRadius } from '@/styles/commonStyles';
 import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync } from 'expo-audio';
-import { readAsStringAsync, EncodingType } from 'expo-file-system';
-import { supabase } from '@/lib/supabase/client';
+import {
+  requestPermissionsAsync as requestSpeechPermissionsAsync,
+  isAvailableAsync as isSpeechAvailableAsync,
+  transcribeAsync,
+} from '@/modules/expo-speech-recognition/src';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,8 +38,6 @@ interface NutritionResult {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
 
 const VOICE_LABELS: Record<VoiceState, string> = {
   idle: 'Tap to speak',
@@ -127,11 +128,12 @@ export default function AIMealEstimatorScreen() {
   // ── Voice: request permissions ───────────────────────────────────────────
 
   const requestPermissions = async (): Promise<boolean> => {
-    console.log('[AIMealEstimator] Requesting microphone permission...');
+    console.log('[AIMealEstimator] Requesting microphone + speech recognition permissions...');
     try {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      console.log('[AIMealEstimator] Microphone permission status:', status.granted);
-      if (!status.granted) {
+      // Request microphone permission via expo-audio
+      const micStatus = await AudioModule.requestRecordingPermissionsAsync();
+      console.log('[AIMealEstimator] Microphone permission status:', micStatus.granted);
+      if (!micStatus.granted) {
         Alert.alert(
           'Microphone Permission Required',
           'Please enable microphone access in Settings to use voice input.',
@@ -139,6 +141,19 @@ export default function AIMealEstimatorScreen() {
         );
         return false;
       }
+
+      // Request speech recognition permission via native module
+      const speechStatus = await requestSpeechPermissionsAsync();
+      console.log('[AIMealEstimator] Speech recognition permission status:', speechStatus.granted);
+      if (!speechStatus.granted) {
+        Alert.alert(
+          'Speech Recognition Permission Required',
+          'Please enable speech recognition access in Settings to use voice input.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+
       return true;
     } catch (err) {
       console.error('[AIMealEstimator] Permission request error:', err);
@@ -150,6 +165,19 @@ export default function AIMealEstimatorScreen() {
 
   const startListening = async () => {
     console.log('[AIMealEstimator] Mic button pressed — starting voice input');
+
+    // Check if Apple speech recognition is available on this device
+    const available = await isSpeechAvailableAsync();
+    console.log('[AIMealEstimator] Speech recognition available:', available);
+    if (!available) {
+      Alert.alert(
+        'Not Available',
+        'Speech recognition is not available on this device.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     const granted = await requestPermissions();
     if (!granted) return;
 
@@ -166,7 +194,7 @@ export default function AIMealEstimatorScreen() {
     }
   };
 
-  // ── Voice: stop recording & transcribe ──────────────────────────────────
+  // ── Voice: stop recording & transcribe via Apple SFSpeechRecognizer ──────
 
   const stopListeningAndTranscribe = async () => {
     console.log('[AIMealEstimator] Stopping recording...');
@@ -181,75 +209,21 @@ export default function AIMealEstimatorScreen() {
         throw new Error('No recording URI available');
       }
 
-      // Read file as base64
-      console.log('[AIMealEstimator] Reading audio file as base64...');
-      const base64Audio = await readAsStringAsync(uri, {
-        encoding: EncodingType.Base64,
-      });
+      // Transcribe using Apple's native SFSpeechRecognizer (on-device, no API key needed)
+      console.log('[AIMealEstimator] Transcribing with Apple SFSpeechRecognizer...');
+      const result = await transcribeAsync(uri, 'en-US');
+      console.log('[AIMealEstimator] Transcription result:', result.text, '(confidence:', result.confidence, ')');
 
-      if (!base64Audio || base64Audio.length < 100) {
-        throw new Error('Audio recording is empty or too short');
-      }
-
-      console.log('[AIMealEstimator] Audio base64 length:', base64Audio.length);
-
-      // Get auth token
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) {
-        console.warn('[AIMealEstimator] No auth token — transcription requires login');
-        Alert.alert(
-          'Sign In Required',
-          'Please sign in to use voice input.',
-          [{ text: 'OK' }]
-        );
-        setVoiceState('idle');
-        return;
-      }
-
-      // Call transcribe-audio edge function
-      console.log('[AIMealEstimator] Calling transcribe-audio edge function...');
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ audioBase64: base64Audio, mimeType: 'audio/m4a' }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[AIMealEstimator] Transcription API error:', response.status, errorText);
-
-        // Handle subscription-required gracefully
-        if (response.status === 403) {
-          Alert.alert(
-            'Premium Feature',
-            'Voice input requires an active subscription. You can still type your meal description.',
-            [{ text: 'OK' }]
-          );
-          setVoiceState('idle');
-          return;
-        }
-
-        throw new Error(`Transcription failed (${response.status}): ${errorText.slice(0, 120)}`);
-      }
-
-      const data = await response.json();
-      const transcribedText: string = String(data.text ?? '').trim();
-      console.log('[AIMealEstimator] Transcription result:', transcribedText);
+      const transcribedText = String(result.text ?? '').trim();
 
       if (!transcribedText) {
-        throw new Error('No speech detected. Please try again.');
+        throw new Error('No speech detected. Please speak clearly and try again.');
       }
 
-      // Fill input and auto-trigger estimation
+      // Fill the input field — do NOT auto-submit, user taps Analyze manually
       setMealDescription(transcribedText);
       setVoiceState('idle');
-      console.log('[AIMealEstimator] Auto-triggering estimation with transcribed text');
-      await handleAnalyze(transcribedText);
+      console.log('[AIMealEstimator] Text field filled with transcription — awaiting user submit');
     } catch (err: any) {
       console.error('[AIMealEstimator] Voice transcription error:', err);
       setVoiceState('error');
