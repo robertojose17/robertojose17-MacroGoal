@@ -622,6 +622,39 @@ export default function HomeScreen() {
               </View>
             ))}
 
+            {/* AI Meal Estimator shortcut */}
+            <TouchableOpacity
+              style={[styles.aiEstimatorCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+              onPress={() => {
+                console.log('[Home Android] AI Meal Estimator button pressed');
+                router.push('/ai-meal-estimator');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.aiEstimatorIcon}>
+                <IconSymbol
+                  ios_icon_name="sparkles"
+                  android_material_icon_name="auto-awesome"
+                  size={22}
+                  color="#fff"
+                />
+              </View>
+              <View style={styles.aiEstimatorText}>
+                <Text style={[styles.aiEstimatorTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                  AI Meal Estimator
+                </Text>
+                <Text style={[styles.aiEstimatorSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Describe or speak your meal for instant nutrition
+                </Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={18}
+                color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              />
+            </TouchableOpacity>
+
             <View style={styles.bottomSpacer} />
           </View>
         )}
@@ -815,5 +848,35 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  aiEstimatorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  aiEstimatorIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiEstimatorText: {
+    flex: 1,
+    gap: 2,
+  },
+  aiEstimatorTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  aiEstimatorSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

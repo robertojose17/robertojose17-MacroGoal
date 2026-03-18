@@ -19,7 +19,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import * as SpeechRecognition from '../modules/expo-speech-recognition';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
@@ -61,13 +60,13 @@ export default function AIMealEstimatorScreen() {
 
   const [micState, setMicState] = useState<MicState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
-  const [speechSupported, setSpeechSupported] = useState(true);
   const [permissionError, setPermissionError] = useState('');
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const autoStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRecordingRef = useRef(false);
 
-  // Pulse animation using RN Animated (no Reanimated dependency needed)
+  // Pulse animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseOpacityAnim = useRef(new Animated.Value(0)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -76,7 +75,7 @@ export default function AIMealEstimatorScreen() {
     pulseLoopRef.current = Animated.loop(
       Animated.sequence([
         Animated.parallel([
-          Animated.timing(pulseAnim, { toValue: 1.5, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.6, duration: 700, useNativeDriver: true }),
           Animated.timing(pulseOpacityAnim, { toValue: 0.5, duration: 700, useNativeDriver: true }),
         ]),
         Animated.parallel([
@@ -99,19 +98,6 @@ export default function AIMealEstimatorScreen() {
     ]).start();
   }, [pulseAnim, pulseOpacityAnim]);
 
-  // Check speech recognition availability on mount — but always show the button
-  useEffect(() => {
-    SpeechRecognition.isAvailableAsync()
-      .then((available) => {
-        console.log('[AIMealEstimator] Speech recognition available:', available);
-        setSpeechSupported(available);
-      })
-      .catch(() => {
-        console.warn('[AIMealEstimator] Could not check speech recognition availability');
-        setSpeechSupported(false);
-      });
-  }, []);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -119,7 +105,7 @@ export default function AIMealEstimatorScreen() {
     };
   }, []);
 
-  const handleAnalyze = async (descriptionOverride?: string) => {
+  const handleAnalyze = useCallback(async (descriptionOverride?: string) => {
     const description = descriptionOverride ?? mealDescription;
     if (!description.trim()) {
       Alert.alert('Error', 'Please describe your meal');
@@ -130,6 +116,7 @@ export default function AIMealEstimatorScreen() {
     setIsAnalyzing(true);
     setResult(null);
     try {
+      console.log('[AIMealEstimator] Sending request to meal-estimator-analyze');
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/meal-estimator-analyze`,
         {
@@ -139,12 +126,13 @@ export default function AIMealEstimatorScreen() {
         }
       );
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data?.error ?? 'Failed to analyze meal');
+        const errorText = await response.text();
+        console.error('[AIMealEstimator] API error response:', response.status, errorText);
+        throw new Error(`Server error ${response.status}: ${errorText}`);
       }
 
+      const data = await response.json();
       setResult(data as MealEstimateResult);
       console.log('[AIMealEstimator] Analysis complete:', data);
     } catch (error: any) {
@@ -153,74 +141,62 @@ export default function AIMealEstimatorScreen() {
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [mealDescription]);
 
-  const requestPermissions = async (): Promise<boolean> => {
-    console.log('[AIMealEstimator] Requesting microphone permissions');
+  const requestMicPermission = async (): Promise<boolean> => {
+    console.log('[AIMealEstimator] Requesting microphone permission');
     try {
       const audioStatus = await AudioModule.requestRecordingPermissionsAsync();
-      console.log('[AIMealEstimator] Audio permission status:', audioStatus.status);
+      console.log('[AIMealEstimator] Microphone permission status:', audioStatus.status, 'granted:', audioStatus.granted);
       if (!audioStatus.granted) {
         Alert.alert(
           'Microphone Permission Required',
-          'Microphone access is needed for voice input. Please enable it in Settings.',
+          'Microphone access is required for voice input. Please enable it in Settings.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            { text: 'Open Settings', onPress: () => { console.log('[AIMealEstimator] Opening Settings'); Linking.openSettings(); } },
           ]
         );
         return false;
       }
-
-      const speechStatus = await SpeechRecognition.requestPermissionsAsync();
-      console.log('[AIMealEstimator] Speech recognition permission granted:', speechStatus.granted);
-      if (!speechStatus.granted) {
-        Alert.alert(
-          'Speech Recognition Permission Required',
-          'Speech recognition access is needed for voice input. Please enable it in Settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]
-        );
-        return false;
-      }
-
-      setPermissionError('');
       return true;
     } catch (err) {
       console.error('[AIMealEstimator] Permission request error:', err);
-      setPermissionError('Could not request microphone permissions.');
       return false;
     }
   };
 
   const startListening = async () => {
-    console.log('[AIMealEstimator] Mic button pressed — starting voice input');
+    console.log('[AIMealEstimator] Mic button pressed — starting voice recording');
 
     if (Platform.OS === 'ios') {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    const granted = await requestPermissions();
+    const granted = await requestMicPermission();
     if (!granted) return;
 
     try {
       setLiveTranscript('');
+      setPermissionError('');
       setMicState('listening');
       startPulse();
+      isRecordingRef.current = true;
 
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
-      console.log('[AIMealEstimator] Recording started');
+      console.log('[AIMealEstimator] Recording started successfully');
 
       // Auto-stop after 10 seconds
       autoStopTimer.current = setTimeout(() => {
-        console.log('[AIMealEstimator] Auto-stopping recording after timeout');
-        stopListening();
+        console.log('[AIMealEstimator] Auto-stopping recording after 10s timeout');
+        if (isRecordingRef.current) {
+          stopListening();
+        }
       }, 10000);
     } catch (err) {
       console.error('[AIMealEstimator] Failed to start recording:', err);
+      isRecordingRef.current = false;
       setMicState('idle');
       stopPulse();
       setPermissionError('Could not start recording. Please try again.');
@@ -229,6 +205,7 @@ export default function AIMealEstimatorScreen() {
 
   const stopListening = async () => {
     console.log('[AIMealEstimator] Stopping voice recording');
+    isRecordingRef.current = false;
 
     if (Platform.OS === 'ios') {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -252,41 +229,80 @@ export default function AIMealEstimatorScreen() {
       }
 
       setLiveTranscript('Transcribing...');
-      console.log('[AIMealEstimator] Sending audio to speech recognition, URI:', uri);
+      console.log('[AIMealEstimator] Sending audio to Supabase for transcription, URI:', uri);
 
-      const transcription = await SpeechRecognition.transcribeAsync(uri, 'en-US');
-      console.log('[AIMealEstimator] Transcription result:', transcription.text, 'confidence:', transcription.confidence);
+      // Send audio file to Supabase transcription endpoint
+      const formData = new FormData();
+      formData.append('audio', {
+        uri,
+        type: 'audio/m4a',
+        name: 'recording.m4a',
+      } as any);
+      formData.append('language', 'en-US');
 
-      const transcribedText = transcription.text.trim();
+      console.log('[AIMealEstimator] POST to meal-estimator-transcribe');
+      const transcribeResponse = await fetch(
+        `${SUPABASE_URL}/functions/v1/meal-estimator-transcribe`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      let transcribedText = '';
+
+      if (transcribeResponse.ok) {
+        const transcribeData = await transcribeResponse.json();
+        transcribedText = (transcribeData?.text ?? '').trim();
+        console.log('[AIMealEstimator] Transcription result:', transcribedText);
+      } else {
+        const errText = await transcribeResponse.text();
+        console.warn('[AIMealEstimator] Transcription endpoint error:', transcribeResponse.status, errText);
+        // Transcription service unavailable — prompt user to type instead
+        setLiveTranscript('');
+        setMicState('idle');
+        Alert.alert(
+          'Voice Input',
+          'Voice transcription is not available right now. Please type your meal description.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       if (transcribedText) {
         setMealDescription(transcribedText);
         setLiveTranscript('');
         setMicState('idle');
-        // Auto-trigger analysis
         console.log('[AIMealEstimator] Auto-triggering analysis with transcribed text:', transcribedText);
         handleAnalyze(transcribedText);
       } else {
         setLiveTranscript('');
         setMicState('idle');
-        setPermissionError('No speech detected. Please try again.');
+        setPermissionError('No speech detected. Please try again or type your meal.');
       }
     } catch (err: any) {
-      console.error('[AIMealEstimator] Transcription error:', err);
+      console.error('[AIMealEstimator] Recording/transcription error:', err);
       setLiveTranscript('');
       setMicState('idle');
-      setPermissionError('Could not transcribe speech. Please try again or type your meal.');
+
+      if (err?.message === 'NATIVE_MODULE_UNAVAILABLE') {
+        Alert.alert(
+          'Voice Input',
+          'Voice transcription requires a native build. Please type your meal description instead.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Voice Input Error',
+          'Could not process voice input. Please type your meal description.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
   const handleMicPress = () => {
-    console.log('[AIMealEstimator] Mic button pressed, current state:', micState, 'speechSupported:', speechSupported);
-    if (!speechSupported) {
-      Alert.alert(
-        'Voice Input Unavailable',
-        'Speech recognition is not supported on this device. Please type your meal description instead.'
-      );
-      return;
-    }
+    console.log('[AIMealEstimator] Mic button tapped, current micState:', micState);
     if (micState === 'idle') {
       startListening();
     } else if (micState === 'listening') {
@@ -297,16 +313,28 @@ export default function AIMealEstimatorScreen() {
 
   const micButtonDisabled = micState === 'processing' || isAnalyzing;
 
-  const listeningLabel = micState === 'listening' ? 'Tap to stop' : micState === 'processing' ? 'Processing...' : 'Voice input';
+  const listeningLabelText = micState === 'listening'
+    ? 'Tap to stop'
+    : micState === 'processing'
+    ? 'Processing...'
+    : 'Voice input';
 
-  const micIoniconName: 'mic' | 'mic-off' = micState === 'listening' ? 'mic-off' : 'mic';
-
+  const micIconName: 'mic' | 'mic-off' = micState === 'listening' ? 'mic-off' : 'mic';
   const micBgColor = micState === 'listening' ? '#FF3B30' : colors.primary;
+
+  const showListeningFeedback = liveTranscript !== '' || micState === 'listening';
+  const listeningFeedbackText = micState === 'listening' ? 'Listening...' : liveTranscript;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.card }]}>
-        <TouchableOpacity onPress={() => { console.log('[AIMealEstimator] Back button pressed'); router.back(); }} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => {
+            console.log('[AIMealEstimator] Back button pressed');
+            router.back();
+          }}
+          style={styles.backButton}
+        >
           <IconSymbol
             ios_icon_name="chevron.left"
             android_material_icon_name="arrow-back"
@@ -320,8 +348,12 @@ export default function AIMealEstimatorScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        <View style={[styles.infoCard, { backgroundColor: colors.backgroundAlt ?? '#F0F2F7' }]}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[styles.infoCard, { backgroundColor: isDark ? '#1C1C1E' : '#F0F2F7' }]}>
           <IconSymbol
             ios_icon_name="info.circle.fill"
             android_material_icon_name="info"
@@ -337,12 +369,13 @@ export default function AIMealEstimatorScreen() {
           Describe your meal
         </Text>
 
+        {/* Input row: text field + mic button side by side */}
         <View style={styles.inputRow}>
           <TextInput
             style={[
               styles.input,
               {
-                backgroundColor: colors.backgroundAlt ?? '#F0F2F7',
+                backgroundColor: isDark ? '#1C1C1E' : '#F0F2F7',
                 color: colors.text,
                 borderColor: colors.border,
               },
@@ -360,12 +393,13 @@ export default function AIMealEstimatorScreen() {
             editable={micState === 'idle'}
           />
 
+          {/* Mic button — always visible */}
           <View style={styles.micContainer}>
             <TouchableOpacity
               onPress={handleMicPress}
               disabled={micButtonDisabled}
               style={styles.micButtonWrapper}
-              activeOpacity={0.8}
+              activeOpacity={0.75}
               accessibilityLabel={micState === 'listening' ? 'Stop recording' : 'Start voice input'}
               accessibilityRole="button"
             >
@@ -390,23 +424,23 @@ export default function AIMealEstimatorScreen() {
                 {micState === 'processing' ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Ionicons name={micIoniconName} size={24} color="#fff" />
+                  <Ionicons name={micIconName} size={24} color="#fff" />
                 )}
               </View>
             </TouchableOpacity>
 
             <Text style={[styles.micLabel, micState === 'listening' && styles.micLabelActive]}>
-              {listeningLabel}
+              {listeningLabelText}
             </Text>
           </View>
         </View>
 
-        {/* Live transcript / listening feedback */}
-        {(liveTranscript !== '' || micState === 'listening') && (
-          <View style={[styles.transcriptBox, { backgroundColor: colors.backgroundAlt ?? '#F0F2F7' }]}>
+        {/* Listening feedback */}
+        {showListeningFeedback && (
+          <View style={[styles.transcriptBox, { backgroundColor: isDark ? '#1C1C1E' : '#F0F2F7' }]}>
             <Ionicons name="mic" size={14} color="#6B7280" style={{ marginTop: 2 }} />
             <Text style={styles.transcriptText}>
-              {micState === 'listening' ? 'Listening...' : liveTranscript}
+              {listeningFeedbackText}
             </Text>
           </View>
         )}
@@ -420,13 +454,22 @@ export default function AIMealEstimatorScreen() {
               size={16}
               color={colors.error}
             />
-            <Text style={[styles.errorText, { color: colors.error }]}>{permissionError}</Text>
+            <Text style={[styles.errorText, { color: colors.error }]}>
+              {permissionError}
+            </Text>
           </View>
         )}
 
         <TouchableOpacity
-          style={[styles.analyzeButton, (isAnalyzing || micState !== 'idle') && styles.analyzeButtonDisabled]}
-          onPress={() => handleAnalyze()}
+          style={[
+            styles.analyzeButton,
+            { backgroundColor: colors.primary },
+            (isAnalyzing || micState !== 'idle') && styles.analyzeButtonDisabled,
+          ]}
+          onPress={() => {
+            console.log('[AIMealEstimator] Analyze Meal button pressed');
+            handleAnalyze();
+          }}
           disabled={isAnalyzing || micState !== 'idle'}
         >
           {isAnalyzing ? (
@@ -437,15 +480,30 @@ export default function AIMealEstimatorScreen() {
         </TouchableOpacity>
 
         {result && (
-          <View style={[styles.resultCard, { backgroundColor: colors.backgroundAlt ?? '#F0F2F7' }]}>
+          <View style={[styles.resultCard, { backgroundColor: isDark ? '#1C1C1E' : '#F0F2F7' }]}>
             {/* Meal name + confidence badge */}
             <View style={styles.resultHeader}>
               <Text style={[styles.resultTitle, { color: colors.text }]} numberOfLines={2}>
                 {result.meal_name}
               </Text>
-              <View style={[styles.confidenceBadge, { backgroundColor: CONFIDENCE_COLORS[result.confidence] + '22' }]}>
-                <View style={[styles.confidenceDot, { backgroundColor: CONFIDENCE_COLORS[result.confidence] }]} />
-                <Text style={[styles.confidenceText, { color: CONFIDENCE_COLORS[result.confidence] }]}>
+              <View
+                style={[
+                  styles.confidenceBadge,
+                  { backgroundColor: CONFIDENCE_COLORS[result.confidence] + '22' },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.confidenceDot,
+                    { backgroundColor: CONFIDENCE_COLORS[result.confidence] },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.confidenceText,
+                    { color: CONFIDENCE_COLORS[result.confidence] },
+                  ]}
+                >
                   {CONFIDENCE_LABELS[result.confidence]}
                 </Text>
               </View>
@@ -453,7 +511,9 @@ export default function AIMealEstimatorScreen() {
 
             {/* Calories highlight */}
             <View style={[styles.caloriesBox, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={[styles.caloriesNumber, { color: colors.primary }]}>{result.calories}</Text>
+              <Text style={[styles.caloriesNumber, { color: colors.primary }]}>
+                {result.calories}
+              </Text>
               <Text style={[styles.caloriesUnit, { color: colors.primary }]}>kcal</Text>
             </View>
 
@@ -474,7 +534,9 @@ export default function AIMealEstimatorScreen() {
                   size={14}
                   color={colors.textSecondary}
                 />
-                <Text style={[styles.notesText, { color: colors.textSecondary }]}>{result.notes}</Text>
+                <Text style={[styles.notesText, { color: colors.textSecondary }]}>
+                  {result.notes}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -484,13 +546,26 @@ export default function AIMealEstimatorScreen() {
   );
 }
 
-function MacroCell({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
+function MacroCell({
+  label,
+  value,
+  unit,
+  color,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  color: string;
+}) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const bgColor = color + (isDark ? '30' : '20');
+  const labelColor = isDark ? '#aaa' : '#555';
+  const displayValue = value + unit;
   return (
-    <View style={[styles.macroCell, { backgroundColor: color + (isDark ? '30' : '20') }]}>
-      <Text style={[styles.macroCellValue, { color }]}>{value}{unit}</Text>
-      <Text style={[styles.macroCellLabel, { color: isDark ? '#aaa' : '#555' }]}>{label}</Text>
+    <View style={[styles.macroCell, { backgroundColor: bgColor }]}>
+      <Text style={[styles.macroCellValue, { color }]}>{displayValue}</Text>
+      <Text style={[styles.macroCellLabel, { color: labelColor }]}>{label}</Text>
     </View>
   );
 }
@@ -519,6 +594,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: spacing.xs,
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 18,
@@ -566,34 +645,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.xs,
     gap: spacing.xs,
+    width: 60,
   },
   micButtonWrapper: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
   micPulseRing: {
     position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   micButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
+        shadowOpacity: 0.25,
         shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        elevation: 5,
       },
     }),
   },
@@ -608,6 +688,7 @@ const styles = StyleSheet.create({
   },
   micLabelActive: {
     color: '#FF3B30',
+    fontWeight: '600',
   },
   transcriptBox: {
     flexDirection: 'row',
@@ -637,7 +718,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   analyzeButton: {
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     alignItems: 'center',
@@ -652,7 +732,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  // Result card
   resultCard: {
     borderRadius: borderRadius.md,
     padding: spacing.lg,
