@@ -1,9 +1,7 @@
 
 import { NativeModulesProxy, EventEmitter } from 'expo-modules-core';
-import { Platform } from 'react-native';
 
-// Try to get the native module — may be null in Expo Go / managed workflow
-const ExpoSpeechRecognition = NativeModulesProxy.ExpoSpeechRecognition ?? null;
+const ExpoSpeechRecognition = NativeModulesProxy.ExpoSpeechRecognition;
 
 export type TranscriptionResult = {
   text: string;
@@ -17,16 +15,14 @@ export type TranscriptionError = {
 };
 
 /**
- * Request speech recognition permissions.
- * iOS: Requests SFSpeechRecognizer permission via native module if available.
- * Android: RECORD_AUDIO is handled by expo-audio.
- * Falls back gracefully when native module is unavailable.
+ * Request speech recognition permissions
+ * iOS: Requests SFSpeechRecognizer permission
+ * Android: Uses RECORD_AUDIO permission (already handled by expo-audio)
  */
 export async function requestPermissionsAsync(): Promise<{ granted: boolean }> {
   if (!ExpoSpeechRecognition) {
-    // Native module not available — permissions are handled by expo-audio
-    console.log('[ExpoSpeechRecognition] Native module not available, skipping speech permission request');
-    return { granted: true };
+    console.warn('[ExpoSpeechRecognition] Native module not available');
+    return { granted: false };
   }
 
   try {
@@ -34,24 +30,29 @@ export async function requestPermissionsAsync(): Promise<{ granted: boolean }> {
     return result;
   } catch (error) {
     console.error('[ExpoSpeechRecognition] Error requesting permissions:', error);
-    // Return granted:true so the audio recording flow can still proceed
-    return { granted: true };
+    return { granted: false };
   }
 }
 
 /**
- * Check if speech recognition is available on this device.
- * Returns true by default so the mic button is always shown and usable.
+ * Check if speech recognition is available on this device
  */
 export async function isAvailableAsync(): Promise<boolean> {
-  // Always return true — the mic button should always be visible.
-  // If the native module is unavailable, we fall back to audio recording + server transcription.
-  return true;
+  if (!ExpoSpeechRecognition) {
+    return false;
+  }
+
+  try {
+    const result = await ExpoSpeechRecognition.isAvailableAsync();
+    return result;
+  } catch (error) {
+    console.error('[ExpoSpeechRecognition] Error checking availability:', error);
+    return false;
+  }
 }
 
 /**
- * Transcribe audio from a file URI.
- * Uses native module if available, otherwise throws a descriptive error.
+ * Transcribe audio from a file URI
  * @param audioUri - Local file URI of the audio file
  * @param language - Language code (e.g., "en-US")
  * @returns Transcription result with text and confidence
@@ -61,8 +62,7 @@ export async function transcribeAsync(
   language: string = 'en-US'
 ): Promise<TranscriptionResult> {
   if (!ExpoSpeechRecognition) {
-    console.warn('[ExpoSpeechRecognition] Native transcription module not available');
-    throw new Error('NATIVE_MODULE_UNAVAILABLE');
+    throw new Error('Speech recognition is not available on this platform');
   }
 
   try {
@@ -84,11 +84,11 @@ export async function transcribeAsync(
 }
 
 /**
- * Get supported languages for speech recognition.
+ * Get supported languages for speech recognition
  */
 export async function getSupportedLanguagesAsync(): Promise<string[]> {
   if (!ExpoSpeechRecognition) {
-    return ['en-US'];
+    return [];
   }
 
   try {
@@ -96,6 +96,6 @@ export async function getSupportedLanguagesAsync(): Promise<string[]> {
     return languages;
   } catch (error) {
     console.error('[ExpoSpeechRecognition] Error getting supported languages:', error);
-    return ['en-US'];
+    return [];
   }
 }
