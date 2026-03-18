@@ -30,7 +30,9 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.robertojose17.macrogoal",
-      "permissions": ["android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
