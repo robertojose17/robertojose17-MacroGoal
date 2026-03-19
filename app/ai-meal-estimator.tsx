@@ -184,29 +184,27 @@ export default function AIMealEstimatorScreen() {
             }}
             editable={!speech.isListening && !speech.isProcessing}
           />
-          {speech.isAvailable && (
-            <TouchableOpacity
-              onPress={handleMicPress}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 24,
-                backgroundColor: micBgColor,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 2,
-              }}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                  <Ionicons name={micIconName} size={22} color="#fff" />
-                </Animated.View>
-              )}
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={handleMicPress}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: micBgColor,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 2,
+            }}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <Ionicons name={micIconName} size={24} color="#fff" />
+              </Animated.View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {(speech.isListening || isProcessing) && (

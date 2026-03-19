@@ -12,7 +12,10 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Animated,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -100,6 +103,51 @@ export default function ChatbotScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
   const { sendMessage, loading } = useChatbot();
+
+  const speech = useSpeechInput();
+  const confirmedTextRef = useRef('');
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const handleTranscript = useCallback((text: string, isFinal: boolean) => {
+    if (isFinal) {
+      console.log('[Chatbot] Final transcript received:', text);
+      const separator = confirmedTextRef.current ? ' ' : '';
+      const next = confirmedTextRef.current + separator + text;
+      confirmedTextRef.current = next;
+      setInputText(next);
+    } else {
+      console.log('[Chatbot] Interim transcript:', text);
+      const separator = confirmedTextRef.current ? ' ' : '';
+      setInputText(confirmedTextRef.current + separator + text);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (speech.isListening) {
+      pulseLoopRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulseLoopRef.current.start();
+    } else {
+      pulseLoopRef.current?.stop();
+      pulseAnim.setValue(1);
+    }
+  }, [speech.isListening, pulseAnim]);
+
+  const handleMicPress = useCallback(async () => {
+    if (speech.isListening) {
+      console.log('[Chatbot] Mic button pressed — stopping recording');
+      await speech.stopListening();
+    } else {
+      console.log('[Chatbot] Mic button pressed — starting recording');
+      confirmedTextRef.current = inputText;
+      await speech.startListening(handleTranscript);
+    }
+  }, [speech, inputText, handleTranscript]);
 
   // Setup and cleanup
   useEffect(() => {
@@ -1333,6 +1381,27 @@ If the user provides both text and photo, use both sources to make the most accu
 
             <TouchableOpacity
               style={[
+                styles.micButton,
+                { backgroundColor: speech.isListening ? '#FF3B30' : isDark ? colors.backgroundDark : colors.background },
+              ]}
+              onPress={handleMicPress}
+              disabled={speech.state === 'processing'}
+            >
+              {speech.state === 'processing' ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                  <Ionicons
+                    name={speech.isListening ? 'stop' : 'mic'}
+                    size={24}
+                    color={speech.isListening ? '#FFFFFF' : colors.primary}
+                  />
+                </Animated.View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
                 styles.sendButton,
                 {
                   backgroundColor:
@@ -1569,6 +1638,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
+  },
+  micButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   photoButton: {
     width: 40,
