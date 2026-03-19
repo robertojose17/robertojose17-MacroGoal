@@ -29,31 +29,17 @@ export default function AIMealEstimatorScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
 
-  // Accumulates confirmed (final) speech text so partial updates don't erase it
-  const confirmedTextRef = useRef('');
-
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const speech = useSpeechInput();
-
-  const handleTranscript = useCallback((text: string, isFinal: boolean) => {
-    if (isFinal) {
-      console.log('[AIMealEstimator] Final transcript received:', text);
-      const separator = confirmedTextRef.current ? ' ' : '';
-      const next = confirmedTextRef.current + separator + text;
-      confirmedTextRef.current = next;
-      setMealDescription(next);
-    } else {
-      console.log('[AIMealEstimator] Interim transcript:', text);
-      const separator = confirmedTextRef.current ? ' ' : '';
-      setMealDescription(confirmedTextRef.current + separator + text);
-    }
-  }, []);
+  const { isListening, toggleListening } = useSpeechInput((text) => {
+    console.log('[AIMealEstimator] Transcript received:', text);
+    setMealDescription((prev) => (prev ? prev + ' ' + text : text));
+  });
 
   // Pulse animation while recording
   useEffect(() => {
-    if (speech.isListening) {
+    if (isListening) {
       pulseLoopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -73,19 +59,12 @@ export default function AIMealEstimatorScreen() {
       pulseLoopRef.current?.stop();
       pulseAnim.setValue(1);
     }
-  }, [speech.isListening, pulseAnim]);
+  }, [isListening, pulseAnim]);
 
-  const handleMicPress = useCallback(async () => {
-    if (speech.isListening) {
-      console.log('[AIMealEstimator] Mic button pressed — stopping recording');
-      await speech.stopListening();
-    } else {
-      console.log('[AIMealEstimator] Mic button pressed — starting recording');
-      // Reset confirmed text accumulator so new recording appends cleanly
-      confirmedTextRef.current = mealDescription;
-      await speech.startListening(handleTranscript);
-    }
-  }, [speech, mealDescription, handleTranscript]);
+  const handleMicPress = useCallback(() => {
+    console.log('[AIMealEstimator] Mic button pressed, isListening:', isListening);
+    toggleListening();
+  }, [isListening, toggleListening]);
 
   const handleAnalyze = async () => {
     if (!mealDescription.trim()) {
@@ -113,11 +92,10 @@ export default function AIMealEstimatorScreen() {
     }
   };
 
-  const isProcessing = speech.state === 'processing';
-  const micIconName = speech.isListening ? 'stop' : 'mic';
-  const micBgColor = speech.isListening ? '#FF3B30' : '#007AFF';
-  const listeningStatusText = speech.isListening ? '🎙 Listening...' : '⏳ Processing...';
-  const listeningStatusColor = speech.isListening ? '#FF3B30' : '#888';
+  const micIconName = isListening ? 'stop' : 'mic';
+  const micBgColor = isListening ? '#FF3B30' : '#007AFF';
+  const listeningStatusText = '🎙 Listening...';
+  const listeningStatusColor = '#FF3B30';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -166,7 +144,7 @@ export default function AIMealEstimatorScreen() {
               flex: 1,
               minHeight: 100,
               borderWidth: 1,
-              borderColor: speech.isListening ? '#FF3B30' : '#E0E0E0',
+              borderColor: isListening ? '#FF3B30' : '#E0E0E0',
               borderRadius: 12,
               padding: 12,
               fontSize: 16,
@@ -178,11 +156,8 @@ export default function AIMealEstimatorScreen() {
             placeholder="Describe your meal... e.g. 'grilled chicken breast with rice and salad'"
             placeholderTextColor={colors.grey ?? colors.textSecondary}
             value={mealDescription}
-            onChangeText={(text) => {
-              confirmedTextRef.current = text;
-              setMealDescription(text);
-            }}
-            editable={!speech.isListening && !speech.isProcessing}
+            onChangeText={setMealDescription}
+            editable={!isListening}
           />
           <TouchableOpacity
             onPress={handleMicPress}
@@ -195,19 +170,14 @@ export default function AIMealEstimatorScreen() {
               justifyContent: 'center',
               marginBottom: 2,
             }}
-            disabled={isProcessing}
           >
-            {isProcessing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <Ionicons name={micIconName} size={24} color="#fff" />
-              </Animated.View>
-            )}
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <Ionicons name={micIconName} size={24} color="#fff" />
+            </Animated.View>
           </TouchableOpacity>
         </View>
 
-        {(speech.isListening || isProcessing) && (
+        {isListening && (
           <Text style={{ color: listeningStatusColor, fontSize: 13, marginBottom: 8, marginTop: -8 }}>
             {listeningStatusText}
           </Text>
