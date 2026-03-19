@@ -8,9 +8,10 @@ export function useSpeechInput(onResult: (text: string) => void) {
   const [isListening, setIsListening] = useState(false);
 
   useSpeechRecognitionEvent('result', (event) => {
-    if (event.results?.[0]?.transcript) {
-      console.log('[useSpeechInput] Transcript received:', event.results[0].transcript);
-      onResult(event.results[0].transcript);
+    const transcript = event?.results?.[0]?.transcript;
+    if (transcript) {
+      console.log('[useSpeechInput] Transcript received:', transcript);
+      onResult(transcript);
     }
   });
 
@@ -20,33 +21,43 @@ export function useSpeechInput(onResult: (text: string) => void) {
   });
 
   useSpeechRecognitionEvent('error', (event) => {
-    console.log('[useSpeechInput] Speech error:', event.error, event.message);
+    console.log('[useSpeechInput] Speech error:', event?.error, event?.message);
     setIsListening(false);
   });
 
   const startListening = useCallback(async () => {
     console.log('[useSpeechInput] Requesting speech permission...');
-    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-    if (!granted) {
-      console.log('[useSpeechInput] Speech permission denied');
-      return;
+    try {
+      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!granted) {
+        console.log('[useSpeechInput] Speech permission denied');
+        return;
+      }
+      console.log('[useSpeechInput] Starting speech recognition');
+      setIsListening(true);
+      ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (e) {
+      console.warn('[useSpeechInput] Failed to start speech recognition:', e);
+      setIsListening(false);
     }
-    console.log('[useSpeechInput] Starting speech recognition');
-    setIsListening(true);
-    ExpoSpeechRecognitionModule.start({
-      lang: 'es-ES',
-      interimResults: true,
-      continuous: false,
-    });
   }, []);
 
   const stopListening = useCallback(() => {
     console.log('[useSpeechInput] Stopping speech recognition');
-    ExpoSpeechRecognitionModule.stop();
+    try {
+      ExpoSpeechRecognitionModule.stop();
+    } catch (e) {
+      console.warn('[useSpeechInput] Failed to stop speech recognition:', e);
+    }
     setIsListening(false);
   }, []);
 
   const toggleListening = useCallback(() => {
+    console.log('[useSpeechInput] toggleListening called, isListening:', isListening);
     if (isListening) {
       stopListening();
     } else {
