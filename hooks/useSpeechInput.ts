@@ -1,249 +1,156 @@
-
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 
 export type SpeechInputState = 'idle' | 'recording' | 'processing' | 'error';
 
 export interface UseSpeechInputResult {
-  state: SpeechInputState;
   isListening: boolean;
+  isProcessing: boolean;
   isAvailable: boolean;
-  interimText: string;
-  startListening: () => Promise<void>;
+  state: SpeechInputState;
+  startListening: (onTranscript: (text: string, isFinal: boolean) => void) => Promise<void>;
   stopListening: () => Promise<void>;
+  errorMessage: string | null;
 }
 
 // ─── Web implementation ───────────────────────────────────────────────────────
-
-function useWebSpeechInput(
-  onTranscript: (text: string, isFinal: boolean) => void
-): UseSpeechInputResult {
+function useWebSpeechInput(): UseSpeechInputResult {
   const [state, setState] = useState<SpeechInputState>('idle');
-  const [interimText, setInterimText] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const onTranscriptRef = useRef<((text: string, isFinal: boolean) => void) | null>(null);
 
-  const SpeechRecognitionCtor =
-    typeof window !== 'undefined'
-      ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
-      : null;
+  const isAvailable =
+    typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
-  const isAvailable = !!SpeechRecognitionCtor;
-
-  const startListening = useCallback(async () => {
-    if (!SpeechRecognitionCtor) return;
-    console.log('[useSpeechInput] Web: startListening');
-
-    const recognition = new SpeechRecognitionCtor();
+  const startListening = useCallback(async (onTranscript: (text: string, isFinal: boolean) => void) => {
+    if (!isAvailable) return;
+    onTranscriptRef.current = onTranscript;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      console.log('[useSpeechInput] Web: recognition started');
-      setState('recording');
-      setInterimText('');
-    };
-
     recognition.onresult = (event: any) => {
       let interim = '';
-      let finalText = '';
+      let final = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalText += result[0].transcript;
-        } else {
-          interim += result[0].transcript;
-        }
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) final += t;
+        else interim += t;
       }
-      if (interim) {
-        console.log('[useSpeechInput] Web: interim result:', interim);
-        setInterimText(interim);
-        onTranscript(interim, false);
-      }
-      if (finalText) {
-        console.log('[useSpeechInput] Web: final result:', finalText);
-        setInterimText('');
-        onTranscript(finalText, true);
-      }
+      if (final) onTranscriptRef.current?.(final, true);
+      else if (interim) onTranscriptRef.current?.(interim, false);
     };
-
-    recognition.onerror = (event: any) => {
-      console.error('[useSpeechInput] Web: recognition error:', event.error);
-      if (event.error === 'not-allowed') {
-        Alert.alert(
-          'Microphone Permission Denied',
-          'Please allow microphone access in your browser settings to use voice input.'
-        );
-      }
+    recognition.onerror = (e: any) => {
+      setErrorMessage(e.error);
       setState('error');
-      setInterimText('');
     };
-
-    recognition.onend = () => {
-      console.log('[useSpeechInput] Web: recognition ended');
-      setState('idle');
-      setInterimText('');
-    };
-
+    recognition.onend = () => setState('idle');
     recognitionRef.current = recognition;
     recognition.start();
-  }, [SpeechRecognitionCtor, onTranscript]);
+    setState('recording');
+  }, [isAvailable]);
 
   const stopListening = useCallback(async () => {
-    console.log('[useSpeechInput] Web: stopListening');
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
     setState('idle');
-    setInterimText('');
   }, []);
 
   return {
-    state,
     isListening: state === 'recording',
+    isProcessing: state === 'processing',
     isAvailable,
-    interimText,
+    state,
     startListening,
     stopListening,
+    errorMessage,
   };
 }
 
 // ─── Native implementation (iOS / Android) ───────────────────────────────────
-
-function useNativeSpeechInput(
-  onTranscript: (text: string, isFinal: boolean) => void
-): UseSpeechInputResult {
+function useNativeSpeechInput(): UseSpeechInputResult {
   const [state, setState] = useState<SpeechInputState>('idle');
-  const [interimText, setInterimText] = useState('');
   const [isAvailable, setIsAvailable] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const recordingRef = useRef<any>(null);
-
-  // Lazy-load expo-av and expo-speech-recognition to avoid web crashes
+  const onTranscriptRef = useRef<((text: string, isFinal: boolean) => void) | null>(null);
   const AudioModule = useRef<any>(null);
   const SpeechModule = useRef<any>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        AudioModule.current = require('expo-av');
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        SpeechModule.current = require('../modules/expo-speech-recognition/src/index');
-        const available = await SpeechModule.current.isAvailableAsync();
-        if (!cancelled) {
-          setIsAvailable(available);
-          console.log('[useSpeechInput] Native: speech recognition available:', available);
-        }
-      } catch (e) {
-        console.warn('[useSpeechInput] Native: failed to load modules:', e);
-      }
-    })();
-    return () => { cancelled = true; };
+    if (Platform.OS === 'web') return;
+    try {
+      // expo-audio replaces expo-av in SDK 54
+      AudioModule.current = require('expo-audio');
+      SpeechModule.current = require('../modules/expo-speech-recognition/src/index');
+      SpeechModule.current.isAvailableAsync?.().then((available: boolean) => {
+        setIsAvailable(available);
+      }).catch(() => setIsAvailable(false));
+    } catch {
+      setIsAvailable(false);
+    }
   }, []);
 
-  const startListening = useCallback(async () => {
-    console.log('[useSpeechInput] Native: startListening');
-    if (!AudioModule.current || !SpeechModule.current) {
-      Alert.alert('Not Available', 'Speech recognition is not available on this device.');
-      return;
-    }
-
-    // Request permissions
-    const { Audio } = AudioModule.current;
-    const permResult = await Audio.requestPermissionsAsync();
-    console.log('[useSpeechInput] Native: mic permission:', permResult.status);
-    if (permResult.status !== 'granted') {
-      Alert.alert(
-        'Microphone Permission Required',
-        'Please allow microphone access to use voice input.'
-      );
-      return;
-    }
-
+  const startListening = useCallback(async (onTranscript: (text: string, isFinal: boolean) => void) => {
+    if (!AudioModule.current) return;
+    onTranscriptRef.current = onTranscript;
     try {
-      setState('recording');
-      setInterimText('');
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      const { requestRecordingPermissionsAsync, RecordingPresets, Recording } = AudioModule.current;
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        setErrorMessage('Microphone permission denied');
+        setState('error');
+        return;
+      }
+      const recording = new Recording();
+      await recording.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+      await recording.startAsync();
       recordingRef.current = recording;
-      console.log('[useSpeechInput] Native: recording started');
+      setState('recording');
     } catch (e: any) {
-      console.error('[useSpeechInput] Native: error starting recording:', e);
+      setErrorMessage(e.message);
       setState('error');
-      Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   }, []);
 
   const stopListening = useCallback(async () => {
-    console.log('[useSpeechInput] Native: stopListening');
-    if (!recordingRef.current || !SpeechModule.current) {
-      setState('idle');
-      return;
-    }
-
+    if (!recordingRef.current) return;
     setState('processing');
     try {
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
-      console.log('[useSpeechInput] Native: recording stopped, URI:', uri);
-
-      if (!uri) {
-        setState('idle');
-        return;
+      if (uri && SpeechModule.current) {
+        const result = await SpeechModule.current.transcribeAsync(uri, 'en-US');
+        if (result?.text) {
+          onTranscriptRef.current?.(result.text, true);
+        }
       }
-
-      const result = await SpeechModule.current.transcribeAsync(uri, 'en-US');
-      console.log('[useSpeechInput] Native: transcription result:', result.text);
-
-      if (result.text) {
-        onTranscript(result.text, true);
-      }
-
-      // Reset audio mode
-      const { Audio } = AudioModule.current;
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
     } catch (e: any) {
-      console.error('[useSpeechInput] Native: error stopping/transcribing:', e);
-      Alert.alert('Error', 'Failed to transcribe audio. Please try again.');
+      setErrorMessage(e.message);
+      setState('error');
     } finally {
       setState('idle');
-      setInterimText('');
     }
-  }, [onTranscript]);
+  }, []);
 
   return {
-    state,
     isListening: state === 'recording',
+    isProcessing: state === 'processing',
     isAvailable,
-    interimText,
+    state,
     startListening,
     stopListening,
+    errorMessage,
   };
 }
 
-// ─── Public hook — picks the right implementation ────────────────────────────
-
-export function useSpeechInput(
-  onTranscript: (text: string, isFinal: boolean) => void
-): UseSpeechInputResult {
-  // Rules of hooks: always call both, but only use the relevant one.
-  // We work around this by calling the correct one based on Platform.OS at module
-  // evaluation time (constant), which is safe.
-  const webResult = useWebSpeechInput(onTranscript);
-  const nativeResult = useNativeSpeechInput(onTranscript);
-
-  if (Platform.OS === 'web') {
-    return webResult;
-  }
-  return nativeResult;
+// ─── Public hook ─────────────────────────────────────────────────────────────
+export function useSpeechInput(): UseSpeechInputResult {
+  const web = useWebSpeechInput();
+  const native = useNativeSpeechInput();
+  return Platform.OS === 'web' ? web : native;
 }

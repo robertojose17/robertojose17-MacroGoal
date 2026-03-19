@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius } from '@/styles/commonStyles';
@@ -35,6 +35,8 @@ export default function AIMealEstimatorScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
+  const speech = useSpeechInput();
+
   const handleTranscript = useCallback((text: string, isFinal: boolean) => {
     if (isFinal) {
       console.log('[AIMealEstimator] Final transcript received:', text);
@@ -48,8 +50,6 @@ export default function AIMealEstimatorScreen() {
       setMealDescription(confirmedTextRef.current + separator + text);
     }
   }, []);
-
-  const speech = useSpeechInput(handleTranscript);
 
   // Pulse animation while recording
   useEffect(() => {
@@ -83,9 +83,9 @@ export default function AIMealEstimatorScreen() {
       console.log('[AIMealEstimator] Mic button pressed — starting recording');
       // Reset confirmed text accumulator so new recording appends cleanly
       confirmedTextRef.current = mealDescription;
-      await speech.startListening();
+      await speech.startListening(handleTranscript);
     }
-  }, [speech, mealDescription]);
+  }, [speech, mealDescription, handleTranscript]);
 
   const handleAnalyze = async () => {
     if (!mealDescription.trim()) {
@@ -114,14 +114,21 @@ export default function AIMealEstimatorScreen() {
   };
 
   const isProcessing = speech.state === 'processing';
-  const micIconName = speech.isListening ? 'mic-off' : 'mic';
-  const micColor = speech.isListening ? '#EF4444' : colors.primary;
-  const listeningLabel = speech.isListening ? 'Listening…' : isProcessing ? 'Processing…' : null;
+  const micIconName = speech.isListening ? 'stop' : 'mic';
+  const micBgColor = speech.isListening ? '#FF3B30' : '#007AFF';
+  const listeningStatusText = speech.isListening ? '🎙 Listening...' : '⏳ Processing...';
+  const listeningStatusColor = speech.isListening ? '#FF3B30' : '#888';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.card }]}>
-        <TouchableOpacity onPress={() => { console.log('[AIMealEstimator] Back button pressed'); router.back(); }} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => {
+            console.log('[AIMealEstimator] Back button pressed');
+            router.back();
+          }}
+          style={styles.backButton}
+        >
           <IconSymbol
             ios_icon_name="chevron.left"
             android_material_icon_name="arrow-back"
@@ -153,45 +160,60 @@ export default function AIMealEstimatorScreen() {
         </Text>
 
         {/* Input + mic button row */}
-        <View style={[styles.inputWrapper, { backgroundColor: colors.backgroundAlt ?? colors.card, borderColor: speech.isListening ? '#EF4444' : colors.border ?? '#E5E7EB' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 16 }}>
           <TextInput
-            style={[styles.input, { color: colors.text }]}
-            placeholder="e.g., Grilled chicken breast with rice and broccoli"
+            style={{
+              flex: 1,
+              minHeight: 100,
+              borderWidth: 1,
+              borderColor: speech.isListening ? '#FF3B30' : '#E0E0E0',
+              borderRadius: 12,
+              padding: 12,
+              fontSize: 16,
+              textAlignVertical: 'top',
+              backgroundColor: '#F9F9F9',
+              color: colors.text,
+            }}
+            multiline
+            placeholder="Describe your meal... e.g. 'grilled chicken breast with rice and salad'"
             placeholderTextColor={colors.grey ?? colors.textSecondary}
             value={mealDescription}
             onChangeText={(text) => {
               confirmedTextRef.current = text;
               setMealDescription(text);
             }}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
+            editable={!speech.isListening && !speech.isProcessing}
           />
-
           {speech.isAvailable && (
-            <View style={styles.micContainer}>
-              {(speech.isListening || isProcessing) && (
-                <Text style={styles.listeningLabel}>
-                  {listeningLabel}
-                </Text>
+            <TouchableOpacity
+              onPress={handleMicPress}
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                backgroundColor: micBgColor,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 2,
+              }}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                  <Ionicons name={micIconName} size={22} color="#fff" />
+                </Animated.View>
               )}
-              <TouchableOpacity
-                onPress={handleMicPress}
-                disabled={isProcessing}
-                style={[styles.micButton, speech.isListening && styles.micButtonActive]}
-                activeOpacity={0.7}
-              >
-                {isProcessing ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                    <MaterialIcons name={micIconName} size={22} color={micColor} />
-                  </Animated.View>
-                )}
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
+
+        {(speech.isListening || isProcessing) && (
+          <Text style={{ color: listeningStatusColor, fontSize: 13, marginBottom: 8, marginTop: -8 }}>
+            {listeningStatusText}
+          </Text>
+        )}
 
         <TouchableOpacity
           style={[styles.analyzeButton, isAnalyzing && styles.analyzeButtonDisabled]}
@@ -214,37 +236,37 @@ export default function AIMealEstimatorScreen() {
               <Text style={[styles.macroLabel, { color: colors.grey ?? colors.textSecondary }]}>
                 Calories
               </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.calories}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                <Text style={[styles.macroValue, { color: colors.text }]}>{result.calories}</Text>
                 <Text style={[styles.macroUnit, { color: colors.grey ?? colors.textSecondary }]}> kcal</Text>
-              </Text>
+              </View>
             </View>
             <View style={styles.macroRow}>
               <Text style={[styles.macroLabel, { color: colors.grey ?? colors.textSecondary }]}>
                 Protein
               </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.protein}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                <Text style={[styles.macroValue, { color: colors.text }]}>{result.protein}</Text>
                 <Text style={[styles.macroUnit, { color: colors.grey ?? colors.textSecondary }]}>g</Text>
-              </Text>
+              </View>
             </View>
             <View style={styles.macroRow}>
               <Text style={[styles.macroLabel, { color: colors.grey ?? colors.textSecondary }]}>
                 Carbs
               </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.carbs}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                <Text style={[styles.macroValue, { color: colors.text }]}>{result.carbs}</Text>
                 <Text style={[styles.macroUnit, { color: colors.grey ?? colors.textSecondary }]}>g</Text>
-              </Text>
+              </View>
             </View>
             <View style={styles.macroRow}>
               <Text style={[styles.macroLabel, { color: colors.grey ?? colors.textSecondary }]}>
                 Fats
               </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.fats}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                <Text style={[styles.macroValue, { color: colors.text }]}>{result.fats}</Text>
                 <Text style={[styles.macroUnit, { color: colors.grey ?? colors.textSecondary }]}>g</Text>
-              </Text>
+              </View>
             </View>
           </View>
         )}
@@ -306,44 +328,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: spacing.sm,
   },
-  // Wrapper replaces the old bare TextInput — adds mic button in bottom-right
-  inputWrapper: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.lg,
-    overflow: 'hidden',
-  },
-  input: {
-    padding: spacing.md,
-    paddingBottom: spacing.sm,
-    fontSize: 16,
-    minHeight: 120,
-    textAlignVertical: 'top',
-  },
-  micContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  listeningLabel: {
-    fontSize: 12,
-    color: '#EF4444',
-    fontWeight: '500',
-  },
-  micButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  micButtonActive: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-  },
   analyzeButton: {
     backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
@@ -371,6 +355,7 @@ const styles = StyleSheet.create({
   macroRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: spacing.sm,
   },
   macroLabel: {
