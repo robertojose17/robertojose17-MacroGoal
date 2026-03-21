@@ -231,10 +231,10 @@ export default function FoodDetailsLayout({
   const [bannerQueue, setBannerQueue] = useState<{ id: number; message: string; timestamp: number }[]>([]);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
 
-  const backgroundColor = isDark ? colors.dark.background : colors.light.background;
-  const textColor = isDark ? colors.dark.text : colors.light.text;
-  const borderColor = isDark ? colors.dark.border : colors.light.border;
-  const cardBackground = isDark ? colors.dark.card : colors.light.card;
+  const backgroundColor = isDark ? colors.backgroundDark : colors.background;
+  const textColor = isDark ? colors.textDark : colors.text;
+  const borderColor = isDark ? colors.borderDark : colors.border;
+  const cardBackground = isDark ? colors.cardDark : colors.card;
 
   const loadViewData = useCallback(async () => {
     if (!offData) {
@@ -374,7 +374,7 @@ export default function FoodDetailsLayout({
       calories: nutrition.calories,
       protein: nutrition.protein,
       carbs: nutrition.carbs,
-      fats: nutrition.fats,
+      fats: nutrition.fat,
       fiber: nutrition.fiber,
       serving_amount: servingInfo.grams,
       serving_unit: 'g',
