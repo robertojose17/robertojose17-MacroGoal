@@ -12,10 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Animated,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -103,34 +100,6 @@ export default function ChatbotScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
   const { sendMessage, loading } = useChatbot();
-
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
-
-  const { isListening, toggleListening } = useSpeechInput((text) => {
-    console.log('[Chatbot] Transcript received:', text);
-    setInputText((prev) => (prev ? prev + ' ' + text : text));
-  });
-
-  useEffect(() => {
-    if (isListening) {
-      pulseLoopRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ])
-      );
-      pulseLoopRef.current.start();
-    } else {
-      pulseLoopRef.current?.stop();
-      pulseAnim.setValue(1);
-    }
-  }, [isListening, pulseAnim]);
-
-  const handleMicPress = useCallback(() => {
-    console.log('[Chatbot] Mic button pressed, isListening:', isListening);
-    toggleListening();
-  }, [isListening, toggleListening]);
 
   // Setup and cleanup
   useEffect(() => {
@@ -1364,22 +1333,6 @@ If the user provides both text and photo, use both sources to make the most accu
 
             <TouchableOpacity
               style={[
-                styles.micButton,
-                { backgroundColor: isListening ? '#FF3B30' : isDark ? colors.backgroundDark : colors.background },
-              ]}
-              onPress={handleMicPress}
-            >
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <Ionicons
-                  name={isListening ? 'stop' : 'mic'}
-                  size={24}
-                  color={isListening ? '#FFFFFF' : colors.primary}
-                />
-              </Animated.View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
                 styles.sendButton,
                 {
                   backgroundColor:
@@ -1616,13 +1569,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
-  },
-  micButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   photoButton: {
     width: 40,
