@@ -430,12 +430,13 @@ export default function FoodDetailsLayout({
 
     const multiplier = totalGrams / 100;
 
+    // extractNutrition returns `fat` (not `fats`); coerce all values to numbers
     return {
-      calories: Math.round(nutrition.calories * multiplier),
-      protein: Math.round(nutrition.protein * multiplier * 10) / 10,
-      carbs: Math.round(nutrition.carbs * multiplier * 10) / 10,
-      fats: Math.round(nutrition.fats * multiplier * 10) / 10,
-      fiber: Math.round(nutrition.fiber * multiplier * 10) / 10,
+      calories: Math.round((Number(nutrition.calories) || 0) * multiplier),
+      protein: Math.round((Number(nutrition.protein) || 0) * multiplier * 10) / 10,
+      carbs: Math.round((Number(nutrition.carbs) || 0) * multiplier * 10) / 10,
+      fats: Math.round((Number(nutrition.fat) || 0) * multiplier * 10) / 10,
+      fiber: Math.round((Number(nutrition.fiber) || 0) * multiplier * 10) / 10,
     };
   };
 

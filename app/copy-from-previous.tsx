@@ -362,12 +362,12 @@ export default function CopyFromPreviousScreen() {
         const itemsToInsert = entries.map(entry => ({
           meal_id: mealId,
           food_id: entry.food_id,
-          quantity: entry.quantity,
-          calories: entry.calories,
-          protein: entry.protein,
-          carbs: entry.carbs,
-          fats: entry.fats,
-          fiber: entry.fiber,
+          quantity: Number(entry.quantity) || 1,
+          calories: Number(entry.calories) || 0,
+          protein: Number(entry.protein) || 0,
+          carbs: Number(entry.carbs) || 0,
+          fats: Number(entry.fats) || 0,
+          fiber: Number(entry.fiber) || 0,
           serving_description: entry.serving_description,
           grams: entry.grams,
         }));
