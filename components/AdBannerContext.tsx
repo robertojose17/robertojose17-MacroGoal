@@ -6,6 +6,7 @@ import { AD_BANNER_HEIGHT } from './AdBannerFooter';
 // Detect if the ads package is available (mirrors the check in AdBannerFooter)
 let adsAvailable = false;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('react-native-google-mobile-ads');
   adsAvailable = true;
 } catch {

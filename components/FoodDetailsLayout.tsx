@@ -440,7 +440,9 @@ export default function FoodDetailsLayout({
   };
 
   const handleSave = async () => {
+    console.log('[FoodDetails] Add to Meal button pressed, mode=', mode, 'context=', context, 'mealType=', mealType, 'date=', date);
     if (!product) {
+      console.log('[FoodDetails] handleSave: no product, aborting');
       return;
     }
 
@@ -488,9 +490,15 @@ export default function FoodDetailsLayout({
           router.back();
         }, 500);
       } else {
+        // Sanitize food name — product_name can be undefined from OpenFoodFacts
+        const foodName = (product.product_name || product.generic_name || 'Unknown Product').trim();
+        const foodBrand = (product.brands || '').trim();
+        // barcode may be undefined for search results; only include when present
+        const foodBarcode = product.code && product.code.trim().length > 0 ? product.code.trim() : null;
+
         const foodData = {
-          name: product.product_name,
-          brand: product.brands || '',
+          name: foodName,
+          brand: foodBrand,
           serving_amount: servingInfo.grams,
           serving_unit: 'g',
           calories: macros.calories,
@@ -498,12 +506,14 @@ export default function FoodDetailsLayout({
           carbs: macros.carbs,
           fats: macros.fats,
           fiber: macros.fiber,
-          barcode: product.code,
+          ...(foodBarcode ? { barcode: foodBarcode } : {}),
           user_created: false,
-          off_data: JSON.stringify(product),
         };
 
+        console.log('[FoodDetails] handleSave: foodData =', JSON.stringify(foodData));
+
         if (context === 'my-meals') {
+          console.log('[FoodDetails] handleSave: adding to my-meals draft');
           await addToDraft({
             ...foodData,
             quantity: parseFloat(numberOfServings) || 1,
@@ -521,18 +531,26 @@ export default function FoodDetailsLayout({
             }
           }, 500);
         } else {
+          // Step 1: Find or create the food record
+          console.log('[FoodDetails] handleSave: searching for existing food, name=', foodName, 'brand=', foodBrand);
           const { data: existingFood, error: searchError } = await supabase
             .from('foods')
             .select('id')
-            .eq('name', foodData.name)
-            .eq('brand', foodData.brand)
+            .eq('name', foodName)
+            .eq('brand', foodBrand)
             .maybeSingle();
+
+          if (searchError) {
+            console.error('[FoodDetails] handleSave: food search error:', searchError);
+          }
 
           let foodId: string;
 
           if (existingFood) {
+            console.log('[FoodDetails] handleSave: found existing food id=', existingFood.id);
             foodId = existingFood.id;
           } else {
+            console.log('[FoodDetails] handleSave: inserting new food');
             const { data: newFood, error: insertError } = await supabase
               .from('foods')
               .insert([{ ...foodData, created_by: user.id }])
@@ -540,17 +558,20 @@ export default function FoodDetailsLayout({
               .single();
 
             if (insertError || !newFood) {
-              console.error('Error inserting food:', insertError);
-              Alert.alert('Error', 'Failed to save food');
+              console.error('[FoodDetails] handleSave: food insert error:', insertError);
+              Alert.alert('Error', `Failed to save food: ${insertError?.message ?? 'unknown error'}`);
               return;
             }
 
+            console.log('[FoodDetails] handleSave: new food id=', newFood.id);
             foodId = newFood.id;
           }
 
+          // Step 2: Find or create the meal record for this date + meal type
           const targetDate = date || new Date().toISOString().split('T')[0];
           const targetMealType = mealType || 'breakfast';
 
+          console.log('[FoodDetails] handleSave: looking up meal, date=', targetDate, 'type=', targetMealType, 'user=', user.id);
           const { data: existingMeal, error: mealSearchError } = await supabase
             .from('meals')
             .select('id')
@@ -559,11 +580,17 @@ export default function FoodDetailsLayout({
             .eq('meal_type', targetMealType)
             .maybeSingle();
 
+          if (mealSearchError) {
+            console.error('[FoodDetails] handleSave: meal search error:', mealSearchError);
+          }
+
           let mealId: string;
 
           if (existingMeal) {
+            console.log('[FoodDetails] handleSave: found existing meal id=', existingMeal.id);
             mealId = existingMeal.id;
           } else {
+            console.log('[FoodDetails] handleSave: creating new meal');
             const { data: newMeal, error: mealInsertError } = await supabase
               .from('meals')
               .insert([{
@@ -575,14 +602,17 @@ export default function FoodDetailsLayout({
               .single();
 
             if (mealInsertError || !newMeal) {
-              console.error('Error creating meal:', mealInsertError);
-              Alert.alert('Error', 'Failed to create meal');
+              console.error('[FoodDetails] handleSave: meal insert error:', mealInsertError);
+              Alert.alert('Error', `Failed to create meal: ${mealInsertError?.message ?? 'unknown error'}`);
               return;
             }
 
+            console.log('[FoodDetails] handleSave: new meal id=', newMeal.id);
             mealId = newMeal.id;
           }
 
+          // Step 3: Insert the meal item linking food → meal
+          console.log('[FoodDetails] handleSave: inserting meal_item, meal_id=', mealId, 'food_id=', foodId);
           const { error: mealItemError } = await supabase
             .from('meal_items')
             .insert([{
@@ -599,11 +629,12 @@ export default function FoodDetailsLayout({
             }]);
 
           if (mealItemError) {
-            console.error('Error adding meal item:', mealItemError);
-            Alert.alert('Error', 'Failed to add food to meal');
+            console.error('[FoodDetails] handleSave: meal_item insert error:', mealItemError);
+            Alert.alert('Error', `Failed to add food to meal: ${mealItemError.message}`);
             return;
           }
 
+          console.log('[FoodDetails] handleSave: meal_item inserted successfully');
           setBannerQueue((prev) => [...prev, { id: Date.now(), message: 'Food added to meal', timestamp: Date.now() }]);
 
           setTimeout(() => {

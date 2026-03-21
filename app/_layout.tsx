@@ -28,6 +28,7 @@ import Constants from "expo-constants";
 // Initialize AdMob — must be called once before any BannerAd renders
 let mobileAds: any = null;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   mobileAds = require('react-native-google-mobile-ads').default;
 } catch {
   // Package not available in this environment (e.g. Expo Go / web)

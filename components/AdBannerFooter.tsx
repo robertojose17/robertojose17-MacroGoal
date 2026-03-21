@@ -55,6 +55,7 @@ let BannerAdSize: any = null;
 let TestIds: any = null;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ads = require('react-native-google-mobile-ads');
   BannerAd = ads.BannerAd;
   BannerAdSize = ads.BannerAdSize;
