@@ -1,5 +1,5 @@
 
-import { OpenFoodFactsProduct, extractServingSize, extractNutrition, ServingSizeInfo } from '@/utils/openFoodFacts';
+import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -10,6 +10,12 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platfo
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useColorScheme } from '@/hooks/useColorScheme';
+
+/** Safely coerce any value to a finite number, defaulting to 0 on NaN/null/undefined */
+function safeNum(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return isFinite(n) ? n : fallback;
+}
 
 type ServingUnit = 'g' | 'oz' | 'ml' | 'fl oz' | 'cup' | 'tbsp' | 'tsp' | 'piece' | 'serving';
 
@@ -371,11 +377,11 @@ export default function FoodDetailsLayout({
     await toggleFavorite({
       name: product.product_name,
       brand: product.brands || '',
-      calories: nutrition.calories,
-      protein: nutrition.protein,
-      carbs: nutrition.carbs,
-      fats: nutrition.fat,
-      fiber: nutrition.fiber,
+      calories: safeNum(nutrition.calories),
+      protein: safeNum(nutrition.protein),
+      carbs: safeNum(nutrition.carbs),
+      fats: safeNum(nutrition.fat),
+      fiber: safeNum(nutrition.fiber),
       serving_amount: servingInfo.grams,
       serving_unit: 'g',
       barcode: product.code,
@@ -430,13 +436,13 @@ export default function FoodDetailsLayout({
 
     const multiplier = totalGrams / 100;
 
-    // extractNutrition returns `fat` (not `fats`); coerce all values to numbers
+    // extractNutrition returns `fat` (not `fats`); use safeNum to guard against NaN/null/undefined
     return {
-      calories: Math.round((Number(nutrition.calories) || 0) * multiplier),
-      protein: Math.round((Number(nutrition.protein) || 0) * multiplier * 10) / 10,
-      carbs: Math.round((Number(nutrition.carbs) || 0) * multiplier * 10) / 10,
-      fats: Math.round((Number(nutrition.fat) || 0) * multiplier * 10) / 10,
-      fiber: Math.round((Number(nutrition.fiber) || 0) * multiplier * 10) / 10,
+      calories: Math.round(safeNum(nutrition.calories) * multiplier),
+      protein: Math.round(safeNum(nutrition.protein) * multiplier * 10) / 10,
+      carbs: Math.round(safeNum(nutrition.carbs) * multiplier * 10) / 10,
+      fats: Math.round(safeNum(nutrition.fat) * multiplier * 10) / 10,
+      fiber: Math.round(safeNum(nutrition.fiber) * multiplier * 10) / 10,
     };
   };
 
@@ -456,20 +462,34 @@ export default function FoodDetailsLayout({
 
       const totalGrams = getTotalGrams();
       const macros = calculateMacros();
+      // per-100g nutrition for the foods table (never scaled)
+      const nutrition = extractNutrition(product);
       const servingInfo = extractServingSize(product);
 
       const servingDescription = `${servingAmount} ${servingUnit}`;
 
+      // Ensure all macro values sent to DB are finite numbers, never NaN/null
+      const safeMacros = {
+        calories: safeNum(macros.calories),
+        protein: safeNum(macros.protein),
+        carbs: safeNum(macros.carbs),
+        fats: safeNum(macros.fats),
+        fiber: safeNum(macros.fiber),
+      };
+
+      console.log('[FoodDetails] handleSave: safeMacros =', JSON.stringify(safeMacros));
+
       if (mode === 'edit' && itemId) {
+        console.log('[FoodDetails] handleSave: updating meal_item id=', itemId);
         const { error } = await supabase
           .from('meal_items')
           .update({
             quantity: parseFloat(numberOfServings) || 1,
-            calories: macros.calories,
-            protein: macros.protein,
-            carbs: macros.carbs,
-            fats: macros.fats,
-            fiber: macros.fiber,
+            calories: safeMacros.calories,
+            protein: safeMacros.protein,
+            carbs: safeMacros.carbs,
+            fats: safeMacros.fats,
+            fiber: safeMacros.fiber,
             serving_description: servingDescription,
             grams: totalGrams,
           })
@@ -497,21 +517,24 @@ export default function FoodDetailsLayout({
         // barcode may be undefined for search results; only include when present
         const foodBarcode = product.code && product.code.trim().length > 0 ? product.code.trim() : null;
 
+        // CRITICAL: foods table stores per-100g values, NOT scaled serving values.
+        // Using macros (scaled) here was the root cause of the null constraint violation
+        // when serving size was 0 or NaN, and caused wrong nutrition data in the foods table.
         const foodData = {
           name: foodName,
           brand: foodBrand,
-          serving_amount: servingInfo.grams,
+          serving_amount: 100,
           serving_unit: 'g',
-          calories: macros.calories,
-          protein: macros.protein,
-          carbs: macros.carbs,
-          fats: macros.fats,
-          fiber: macros.fiber,
+          calories: safeNum(nutrition.calories),
+          protein: safeNum(nutrition.protein),
+          carbs: safeNum(nutrition.carbs),
+          fats: safeNum(nutrition.fat),   // extractNutrition returns `fat`, foods table uses `fats`
+          fiber: safeNum(nutrition.fiber),
           ...(foodBarcode ? { barcode: foodBarcode } : {}),
           user_created: false,
         };
 
-        console.log('[FoodDetails] handleSave: foodData =', JSON.stringify(foodData));
+        console.log('[FoodDetails] handleSave: foodData (per-100g) =', JSON.stringify(foodData));
 
         if (context === 'my-meals') {
           console.log('[FoodDetails] handleSave: adding to my-meals draft');
@@ -620,11 +643,11 @@ export default function FoodDetailsLayout({
               meal_id: mealId,
               food_id: foodId,
               quantity: parseFloat(numberOfServings) || 1,
-              calories: macros.calories,
-              protein: macros.protein,
-              carbs: macros.carbs,
-              fats: macros.fats,
-              fiber: macros.fiber,
+              calories: safeMacros.calories,
+              protein: safeMacros.protein,
+              carbs: safeMacros.carbs,
+              fats: safeMacros.fats,
+              fiber: safeMacros.fiber,
               serving_description: servingDescription,
               grams: totalGrams,
             }]);

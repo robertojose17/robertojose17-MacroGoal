@@ -15,6 +15,12 @@ import { Food } from '@/types';
 import { addToDraft } from '@/utils/myMealsDraft';
 import QuickAddHome from '@/components/QuickAddHome';
 
+/** Safely coerce any value to a finite number, defaulting to 0 on NaN/null/undefined */
+function safeNum(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return isFinite(n) ? n : fallback;
+}
+
 type TabType = 'all' | 'favorites' | 'quick-add' | 'my-meals';
 
 interface BannerEvent {
@@ -560,11 +566,11 @@ export default function AddFoodScreen() {
             brand: product.brands || null,
             serving_amount: 100,
             serving_unit: 'g',
-            calories: nutrition.calories,
-            protein: nutrition.protein,
-            carbs: nutrition.carbs,
-            fats: nutrition.fat,
-            fiber: nutrition.fiber,
+            calories: safeNum(nutrition.calories),
+            protein: safeNum(nutrition.protein),
+            carbs: safeNum(nutrition.carbs),
+            fats: safeNum(nutrition.fat),
+            fiber: safeNum(nutrition.fiber),
             barcode: product.code || null,
             user_created: false,
           })
@@ -588,11 +594,11 @@ export default function AddFoodScreen() {
         serving_amount: servingInfo.grams,
         serving_unit: 'g',
         servings_count: 1,
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-        fats: fat,
-        fiber: fiber,
+        calories: safeNum(calories),
+        protein: safeNum(protein),
+        carbs: safeNum(carbs),
+        fats: safeNum(fat),
+        fiber: safeNum(fiber),
       });
 
       console.log('[AddFood] ✅ Quick added to My Meal draft!');
@@ -810,11 +816,11 @@ export default function AddFoodScreen() {
         serving_amount: gramsToAdd,
         serving_unit: 'g',
         servings_count: 1,
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-        fats: fats,
-        fiber: fiber,
+        calories: safeNum(calories),
+        protein: safeNum(protein),
+        carbs: safeNum(carbs),
+        fats: safeNum(fats),
+        fiber: safeNum(fiber),
       });
 
       console.log('[AddFood] ✅ Quick added recent food to My Meal draft!');
@@ -920,11 +926,11 @@ export default function AddFoodScreen() {
           meal_id: mealId,
           food_id: food.id,
           quantity: multiplier,
-          calories: calories,
-          protein: protein,
-          carbs: carbs,
-          fats: fats,
-          fiber: fiber,
+          calories: safeNum(calories),
+          protein: safeNum(protein),
+          carbs: safeNum(carbs),
+          fats: safeNum(fats),
+          fiber: safeNum(fiber),
           serving_description: servingDescription,
           grams: gramsToAdd,
         });
@@ -1040,11 +1046,11 @@ export default function AddFoodScreen() {
             brand: favorite.brand || null,
             serving_amount: 100,
             serving_unit: 'g',
-            calories: favorite.per100_calories,
-            protein: favorite.per100_protein,
-            carbs: favorite.per100_carbs,
-            fats: favorite.per100_fat,
-            fiber: favorite.per100_fiber,
+            calories: safeNum(favorite.per100_calories),
+            protein: safeNum(favorite.per100_protein),
+            carbs: safeNum(favorite.per100_carbs),
+            fats: safeNum(favorite.per100_fat),
+            fiber: safeNum(favorite.per100_fiber),
             barcode: favorite.food_source === 'barcode' ? favorite.food_code : null,
             user_created: false,
           })
@@ -1068,11 +1074,11 @@ export default function AddFoodScreen() {
         serving_amount: favorite.default_grams,
         serving_unit: 'g',
         servings_count: 1,
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-        fats: fat,
-        fiber: fiber,
+        calories: safeNum(calories),
+        protein: safeNum(protein),
+        carbs: safeNum(carbs),
+        fats: safeNum(fat),
+        fiber: safeNum(fiber),
       });
 
       console.log('[AddFood] ✅ Quick added favorite to My Meal draft!');
@@ -1139,11 +1145,11 @@ export default function AddFoodScreen() {
             brand: favorite.brand || null,
             serving_amount: 100,
             serving_unit: 'g',
-            calories: favorite.per100_calories,
-            protein: favorite.per100_protein,
-            carbs: favorite.per100_carbs,
-            fats: favorite.per100_fat,
-            fiber: favorite.per100_fiber,
+            calories: safeNum(favorite.per100_calories),
+            protein: safeNum(favorite.per100_protein),
+            carbs: safeNum(favorite.per100_carbs),
+            fats: safeNum(favorite.per100_fat),
+            fiber: safeNum(favorite.per100_fiber),
             barcode: favorite.food_source === 'barcode' ? favorite.food_code : null,
             user_created: false,
           })
@@ -1198,11 +1204,11 @@ export default function AddFoodScreen() {
           meal_id: mealId,
           food_id: foodId,
           quantity: multiplier,
-          calories: calories,
-          protein: protein,
-          carbs: carbs,
-          fats: fat,
-          fiber: fiber,
+          calories: safeNum(calories),
+          protein: safeNum(protein),
+          carbs: safeNum(carbs),
+          fats: safeNum(fat),
+          fiber: safeNum(fiber),
           serving_description: favorite.serving_size || `${favorite.default_grams}g`,
           grams: favorite.default_grams,
         });

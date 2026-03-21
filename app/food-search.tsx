@@ -96,19 +96,19 @@ const ResultRow = React.memo(({
                 •
               </Text>
               <Text style={[styles.macroText, { color: colors.protein }]}>
-                P: {item.displayProtein.toFixed(1)}g
+                P: {(isFinite(item.displayProtein) ? item.displayProtein : 0).toFixed(1)}g
               </Text>
               <Text style={[styles.macroDivider, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 •
               </Text>
               <Text style={[styles.macroText, { color: colors.carbs }]}>
-                C: {item.displayCarbs.toFixed(1)}g
+                C: {(isFinite(item.displayCarbs) ? item.displayCarbs : 0).toFixed(1)}g
               </Text>
               <Text style={[styles.macroDivider, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 •
               </Text>
               <Text style={[styles.macroText, { color: colors.fats }]}>
-                F: {item.displayFats.toFixed(1)}g
+                F: {(isFinite(item.displayFats) ? item.displayFats : 0).toFixed(1)}g
               </Text>
             </View>
           ) : (
