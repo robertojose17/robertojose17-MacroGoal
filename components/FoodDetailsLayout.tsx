@@ -362,37 +362,68 @@ export default function FoodDetailsLayout({
   }, [bannerQueue, bannerOpacity]);
 
   const checkFavoriteStatus = async (prod: OpenFoodFactsProduct) => {
-    const favStatus = await isFavorite(prod.product_name, prod.brands || '');
-    setIsFav(favStatus);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const foodSource = prod.code ? 'barcode' : 'library';
+      const foodCode = prod.code || undefined;
+      const favStatus = await isFavorite(user.id, foodSource, foodCode, prod.product_name, prod.brands || undefined);
+      console.log('[FoodDetails] checkFavoriteStatus result:', favStatus, 'for', prod.product_name);
+      setIsFav(favStatus);
+    } catch (error) {
+      console.error('[FoodDetails] Error checking favorite status:', error);
+    }
   };
 
   const handleToggleFavorite = async () => {
+    console.log('[FoodDetails] Favorite button pressed, current isFav:', isFav);
     if (!product) {
+      console.log('[FoodDetails] handleToggleFavorite: no product, aborting');
       return;
     }
 
-    const nutrition = extractNutrition(product);
-    const servingInfo = extractServingSize(product);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to save favorites');
+        return;
+      }
 
-    await toggleFavorite({
-      name: product.product_name,
-      brand: product.brands || '',
-      calories: safeNum(nutrition.calories),
-      protein: safeNum(nutrition.protein),
-      carbs: safeNum(nutrition.carbs),
-      fats: safeNum(nutrition.fat),
-      fiber: safeNum(nutrition.fiber),
-      serving_amount: servingInfo.grams,
-      serving_unit: 'g',
-      barcode: product.code,
-      off_data: JSON.stringify(product),
-    });
+      const nutrition = extractNutrition(product);
+      const servingInfo = extractServingSize(product);
+      const foodSource = product.code ? 'barcode' : 'library';
+      const foodCode = product.code || undefined;
 
-    const newFavStatus = !isFav;
-    setIsFav(newFavStatus);
+      console.log('[FoodDetails] Toggling favorite for:', product.product_name, 'source:', foodSource, 'code:', foodCode);
 
-    const message = newFavStatus ? 'Added to favorites' : 'Removed from favorites';
-    setBannerQueue((prev) => [...prev, { id: Date.now(), message, timestamp: Date.now() }]);
+      const newFavStatus = await toggleFavorite(
+        user.id,
+        foodSource,
+        foodCode,
+        {
+          food_name: product.product_name || product.generic_name || 'Unknown Product',
+          brand: product.brands || undefined,
+          per100_calories: safeNum(nutrition.calories),
+          per100_protein: safeNum(nutrition.protein),
+          per100_carbs: safeNum(nutrition.carbs),
+          per100_fat: safeNum(nutrition.fat),
+          per100_fiber: safeNum(nutrition.fiber),
+          serving_size: servingInfo.description,
+          serving_unit: 'g',
+          default_grams: servingInfo.grams,
+        }
+      );
+
+      console.log('[FoodDetails] toggleFavorite returned:', newFavStatus);
+      setIsFav(newFavStatus);
+
+      const message = newFavStatus ? 'Added to favorites' : 'Removed from favorites';
+      setBannerQueue((prev) => [...prev, { id: Date.now(), message, timestamp: Date.now() }]);
+    } catch (error) {
+      console.error('[FoodDetails] Error toggling favorite:', error);
+      Alert.alert('Error', 'Failed to update favorites. Please try again.');
+    }
   };
 
   const convertToGrams = (amount: number, unit: ServingUnit): number => {
