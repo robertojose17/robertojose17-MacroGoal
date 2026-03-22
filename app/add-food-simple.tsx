@@ -210,13 +210,13 @@ export default function AddFoodSimpleScreen() {
       }
 
       console.log('[AddFoodSimple] ✅ Meal item created successfully:', mealItemData);
-      console.log('[AddFoodSimple] Quick Add complete! Navigating back to diary...');
+      console.log('[AddFoodSimple] Quick Add complete! Dismissing modal back to diary...');
       
       // Success! Navigate back
       setSaving(false);
       
-      // Use replace to go directly back to home, which will trigger a refresh
-      router.replace('/(tabs)/(home)/');
+      // Dismiss the modal stack to return to the existing Food tab without pushing a new one
+      router.dismiss();
       
     } catch (error) {
       console.error('[AddFoodSimple] Unexpected error in handleSave:', error);
