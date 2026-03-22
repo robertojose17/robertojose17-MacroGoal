@@ -80,28 +80,6 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [earliestLogDate, setEarliestLogDate] = useState<Date | null>(null);
-
-  const loadEarliestLogDate = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('meals')
-        .select('date')
-        .eq('user_id', user.id)
-        .order('date', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (!error && data) {
-        setEarliestLogDate(new Date(data.date + 'T00:00:00'));
-      }
-    } catch (error) {
-      console.error('[Home Android] Error loading earliest log date:', error);
-    }
-  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -246,8 +224,7 @@ export default function HomeScreen() {
     useCallback(() => {
       console.log('[Home Android] Screen focused, loading data');
       loadData();
-      loadEarliestLogDate();
-    }, [loadData, loadEarliestLogDate])
+    }, [loadData])
   );
 
   const onRefresh = () => {
@@ -350,18 +327,21 @@ export default function HomeScreen() {
   }, [loadData]);
 
   const goToPreviousDay = () => {
+    console.log('[Home Android] Navigating to previous day');
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() - 1);
     setSelectedDate(newDate);
   };
 
   const goToNextDay = () => {
+    console.log('[Home Android] Navigating to next day');
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + 1);
     setSelectedDate(newDate);
   };
 
   const goToToday = () => {
+    console.log('[Home Android] Navigating to today');
     setSelectedDate(new Date());
   };
 
@@ -370,21 +350,12 @@ export default function HomeScreen() {
     return selectedDate.toDateString() === today.toDateString();
   };
 
-  const isFutureDate = () => {
+  const isTodayOrFuture = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const selected = new Date(selectedDate);
     selected.setHours(0, 0, 0, 0);
     return selected >= today;
-  };
-
-  const isEarliestDate = () => {
-    if (!earliestLogDate) return false;
-    const earliest = new Date(earliestLogDate);
-    earliest.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected <= earliest;
   };
 
   if (loading) {
@@ -402,8 +373,8 @@ export default function HomeScreen() {
   const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
   const caloriesProgress = Math.min((totalCalories / (goal?.daily_calories || 2000)) * 100, 100);
 
-  const leftArrowDisabled = isEarliestDate();
-  const rightArrowDisabled = isFutureDate();
+  const leftArrowDisabled = false;
+  const rightArrowDisabled = isTodayOrFuture();
 
   const renderFoodItem = ({ item }: { item: FoodItem }) => (
     <SwipeToDeleteRow onDelete={() => handleDeleteFood(item.id)}>

@@ -78,29 +78,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [earliestLogDate, setEarliestLogDate] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const loadEarliestLogDate = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('meals')
-        .select('date')
-        .eq('user_id', user.id)
-        .order('date', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (!error && data) {
-        setEarliestLogDate(new Date(data.date + 'T00:00:00'));
-      }
-    } catch (err) {
-      console.error('[Home Web] Error loading earliest log date:', err);
-    }
-  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -253,8 +231,7 @@ export default function HomeScreen() {
     useCallback(() => {
       console.log('[Home Web] Screen focused, loading data');
       loadData();
-      loadEarliestLogDate();
-    }, [loadData, loadEarliestLogDate])
+    }, [loadData])
   );
 
   const onRefresh = () => {
@@ -326,21 +303,21 @@ export default function HomeScreen() {
   }, [loadData]);
 
   const goToPreviousDay = () => {
-    console.log('[Home Web] Going to previous day');
+    console.log('[Home Web] Navigating to previous day');
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() - 1);
     setSelectedDate(newDate);
   };
 
   const goToNextDay = () => {
-    console.log('[Home Web] Going to next day');
+    console.log('[Home Web] Navigating to next day');
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + 1);
     setSelectedDate(newDate);
   };
 
   const goToToday = () => {
-    console.log('[Home Web] Going to today');
+    console.log('[Home Web] Navigating to today');
     setSelectedDate(new Date());
   };
 
@@ -351,18 +328,10 @@ export default function HomeScreen() {
   todayMidnight.setHours(0, 0, 0, 0);
   const selectedMidnight = new Date(selectedDate);
   selectedMidnight.setHours(0, 0, 0, 0);
-  const isFutureDateBool = selectedMidnight >= todayMidnight;
+  const isTodayOrFutureBool = selectedMidnight >= todayMidnight;
 
-  const isEarliestDateBool = earliestLogDate
-    ? (() => {
-        const earliest = new Date(earliestLogDate);
-        earliest.setHours(0, 0, 0, 0);
-        return selectedMidnight <= earliest;
-      })()
-    : false;
-
-  const leftArrowDisabled = isEarliestDateBool;
-  const rightArrowDisabled = isFutureDateBool;
+  const leftArrowDisabled = false;
+  const rightArrowDisabled = isTodayOrFutureBool;
 
   const todayLabel = isTodayBool ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' });
   const dateLabel = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
