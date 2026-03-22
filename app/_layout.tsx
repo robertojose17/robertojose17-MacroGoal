@@ -675,7 +675,7 @@ export default function RootLayout() {
                   name="my-foods-edit"
                   options={{
                     headerShown: false,
-                    presentation: "card",
+                    presentation: "modal",
                   }}
                 />
 
@@ -683,7 +683,7 @@ export default function RootLayout() {
                   name="my-foods-create"
                   options={{
                     headerShown: false,
-                    presentation: "card",
+                    presentation: "modal",
                   }}
                 />
                 
