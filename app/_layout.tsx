@@ -662,6 +662,30 @@ export default function RootLayout() {
                     presentation: "card",
                   }}
                 />
+
+                <Stack.Screen
+                  name="my-foods"
+                  options={{
+                    headerShown: false,
+                    presentation: "card",
+                  }}
+                />
+
+                <Stack.Screen
+                  name="my-foods-edit"
+                  options={{
+                    headerShown: false,
+                    presentation: "card",
+                  }}
+                />
+
+                <Stack.Screen
+                  name="my-foods-create"
+                  options={{
+                    headerShown: false,
+                    presentation: "card",
+                  }}
+                />
                 
                 <Stack.Screen
                   name="barcode-scanner"
