@@ -95,14 +95,15 @@ export default function MyFoodsScreen() {
   }, [router, mealType, date, context, returnTo]);
 
   const handleSelectFood = useCallback((food: MyFood) => {
-    console.log('[MyFoods] Selected food:', food.name);
-    
-    // Convert to OpenFoodFacts format for food-details screen
+    console.log('[MyFoods] Selected food:', food.name, 'id:', food.id);
+
+    // Foods DB stores per-100g values. Always pass serving_size as "100 g" so
+    // FoodDetailsLayout multiplies by 100/100 = 1 and displays the correct values.
     const offProduct = {
       code: '',
       product_name: food.name,
       brands: food.brand || '',
-      serving_size: `${food.serving_amount} ${food.serving_unit}`,
+      serving_size: '100 g',
       nutriments: {
         'energy-kcal_100g': food.calories,
         'proteins_100g': food.protein,

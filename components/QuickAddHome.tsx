@@ -125,14 +125,17 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
   };
 
   const handleSelectFood = useCallback((food: MyFood) => {
-    console.log('[QuickAddHome] Selected food:', food.name);
-    
-    // Convert to OpenFoodFacts format for food-details screen
+    console.log('[QuickAddHome] Selected food:', food.name, 'id:', food.id);
+    console.log('[QuickAddHome] Navigating to food-details for saved food');
+
+    // Foods DB stores per-100g values. Always pass serving_size as "100 g" so
+    // FoodDetailsLayout multiplies by 100/100 = 1 and displays the correct values.
+    // The user can then adjust the serving amount/quantity on the food-details screen.
     const offProduct = {
       code: '',
       product_name: food.name,
       brands: food.brand || '',
-      serving_size: `${food.serving_amount} ${food.serving_unit}`,
+      serving_size: '100 g',
       nutriments: {
         'energy-kcal_100g': food.calories,
         'proteins_100g': food.protein,
@@ -143,7 +146,9 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
       },
     };
 
-    router.push({
+    // Bug fix: use router.replace instead of router.push so food-details replaces
+    // the modal on the navigation stack and appears ON TOP of it, not behind it.
+    router.replace({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(offProduct),
@@ -297,6 +302,20 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
     food.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleEditFood = useCallback((food: MyFood) => {
+    console.log('[QuickAddHome] Edit button pressed for food:', food.name, 'id:', food.id);
+    router.push({
+      pathname: '/my-foods-edit',
+      params: {
+        foodId: food.id,
+        meal: mealType,
+        date: date,
+        context: context || 'quickadd',
+        returnTo: returnTo,
+      },
+    });
+  }, [router, mealType, date, context, returnTo]);
+
   const renderFoodItem = useCallback((food: MyFood, index: number) => {
     const servingText = `${food.serving_amount} ${food.serving_unit}`;
     const macrosText = `P: ${Math.round(food.protein)}g • C: ${Math.round(food.carbs)}g • F: ${Math.round(food.fats)}g`;
@@ -326,6 +345,26 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
                   {macrosText}
                 </Text>
               </View>
+
+              {/* Edit button — always visible for saved foods */}
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  if (!isSwiping) {
+                    handleEditFood(food);
+                  }
+                }}
+                activeOpacity={0.7}
+                disabled={isSwiping}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={18}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+              </TouchableOpacity>
               
               {/* Show quick-add button only in meal_log context */}
               {context !== 'my_meals_builder' && (
@@ -363,7 +402,7 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
         </SwipeToDeleteRow>
       </React.Fragment>
     );
-  }, [isDark, context, handleSelectFood, handleDeleteFood, handleQuickAddFood]);
+  }, [isDark, context, handleSelectFood, handleEditFood, handleDeleteFood, handleQuickAddFood]);
 
   return (
     <View style={styles.container}>
@@ -597,6 +636,10 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 12,
   },
+  editButton: {
+    padding: spacing.xs,
+    marginLeft: spacing.sm,
+  },
   addButton: {
     width: 36,
     height: 36,
@@ -604,6 +647,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.md,
+    marginLeft: spacing.sm,
   },
 });
