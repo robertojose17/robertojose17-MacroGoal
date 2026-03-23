@@ -222,8 +222,11 @@ export function calculateGoalFromOnboarding(data: OnboardingData) {
  * Use this for all gram weight display in the UI.
  * Example: formatGrams(253.73134328358208) => "254"
  */
-export function formatGrams(value: number): string {
-  return Math.round(value).toString();
+export function formatGrams(value: number | string | undefined | null): string {
+  if (value === undefined || value === null) return '0';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return '0';
+  return String(Math.round(num));
 }
 
 export function formatDate(date: Date): string {

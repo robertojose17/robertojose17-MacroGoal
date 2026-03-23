@@ -470,10 +470,10 @@ export default function FoodDetailsLayout({
     // extractNutrition returns `fat` (not `fats`); use safeNum to guard against NaN/null/undefined
     return {
       calories: Math.round(safeNum(nutrition.calories) * multiplier),
-      protein: Math.round(safeNum(nutrition.protein) * multiplier * 10) / 10,
-      carbs: Math.round(safeNum(nutrition.carbs) * multiplier * 10) / 10,
-      fats: Math.round(safeNum(nutrition.fat) * multiplier * 10) / 10,
-      fiber: Math.round(safeNum(nutrition.fiber) * multiplier * 10) / 10,
+      protein: Math.round(safeNum(nutrition.protein) * multiplier),
+      carbs: Math.round(safeNum(nutrition.carbs) * multiplier),
+      fats: Math.round(safeNum(nutrition.fat) * multiplier),
+      fiber: Math.round(safeNum(nutrition.fiber) * multiplier),
     };
   };
 
