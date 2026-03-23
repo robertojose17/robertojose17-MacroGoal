@@ -163,10 +163,11 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
           singularUnit = unit.slice(0, -1);
         }
         
+        const roundedGramsPerUnit = Math.round(gramsPerUnit);
         return {
           description: `1 ${singularUnit}`,
-          grams: gramsPerUnit,
-          displayText: `1 ${singularUnit} (${Math.round(gramsPerUnit)} g)`,
+          grams: roundedGramsPerUnit,
+          displayText: `1 ${singularUnit} (${roundedGramsPerUnit} g)`,
           hasValidGrams: true,
           isEstimated: false,
         };

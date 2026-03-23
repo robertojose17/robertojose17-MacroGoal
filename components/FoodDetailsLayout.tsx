@@ -254,7 +254,7 @@ export default function FoodDetailsLayout({
       setProduct(parsedProduct);
 
       const servingInfo = extractServingSize(parsedProduct);
-      setServingAmount(servingInfo.grams.toString());
+      setServingAmount(Math.round(servingInfo.grams).toString());
       setServingUnit('g');
 
       await checkFavoriteStatus(parsedProduct);
@@ -441,7 +441,7 @@ export default function FoodDetailsLayout({
   const handleServingUnitChange = (newUnit: ServingUnit) => {
     const currentGrams = convertToGrams(parseFloat(servingAmount) || 0, servingUnit);
     const newAmount = convertFromGrams(currentGrams, newUnit);
-    setServingAmount(newAmount.toFixed(1));
+    setServingAmount(Math.round(newAmount).toString());
     setServingUnit(newUnit);
     setShowUnitOptions(false);
   };
