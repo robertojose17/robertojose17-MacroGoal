@@ -373,7 +373,7 @@ export default function MyMealsEditScreen() {
                       </Text>
                     )}
                     <Text style={[styles.itemServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      {item.servings_count} × {item.serving_amount} {item.serving_unit} • {Math.round(itemCalories)} cal
+                      {item.servings_count} × {Math.round(item.serving_amount)} {item.serving_unit} • {Math.round(itemCalories)} cal
                     </Text>
                     <Text style={[styles.itemMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                       P: {Math.round(itemProtein)}g • C: {Math.round(itemCarbs)}g • F: {Math.round(itemFats)}g

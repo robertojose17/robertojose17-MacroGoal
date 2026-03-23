@@ -186,7 +186,7 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
 
       // Use the food's serving_amount as the default
       const gramsToAdd = food.serving_amount;
-      const servingDescription = `${food.serving_amount} ${food.serving_unit}`;
+      const servingDescription = `${Math.round(food.serving_amount)} ${food.serving_unit}`;
 
       const multiplier = gramsToAdd / 100;
 
@@ -316,7 +316,7 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
   }, [router, mealType, date, context, returnTo]);
 
   const renderFoodItem = useCallback((food: MyFood, index: number) => {
-    const servingText = `${food.serving_amount} ${food.serving_unit}`;
+    const servingText = `${Math.round(food.serving_amount)} ${food.serving_unit}`;
     const macrosText = `P: ${Math.round(food.protein)}g • C: ${Math.round(food.carbs)}g • F: ${Math.round(food.fats)}g`;
 
     return (

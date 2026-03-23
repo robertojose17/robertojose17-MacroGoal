@@ -217,6 +217,15 @@ export function calculateGoalFromOnboarding(data: OnboardingData) {
   };
 }
 
+/**
+ * Format a gram value as a whole integer string (no decimals, no unit suffix).
+ * Use this for all gram weight display in the UI.
+ * Example: formatGrams(253.73134328358208) => "254"
+ */
+export function formatGrams(value: number): string {
+  return Math.round(value).toString();
+}
+
 export function formatDate(date: Date): string {
   return date.toISOString().split('T')[0];
 }

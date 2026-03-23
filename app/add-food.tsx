@@ -970,7 +970,7 @@ export default function AddFoodScreen() {
         code: favorite.food_code || '',
         product_name: favorite.food_name,
         brands: favorite.brand || '',
-        serving_size: favorite.serving_size || `${favorite.default_grams}g`,
+        serving_size: favorite.serving_size || `${Math.round(favorite.default_grams)}g`,
         nutriments: {
           'energy-kcal_100g': favorite.per100_calories,
           'proteins_100g': favorite.per100_protein,
@@ -1209,7 +1209,7 @@ export default function AddFoodScreen() {
           carbs: safeNum(carbs),
           fats: safeNum(fat),
           fiber: safeNum(fiber),
-          serving_description: favorite.serving_size || `${favorite.default_grams}g`,
+          serving_description: favorite.serving_size || `${Math.round(favorite.default_grams)}g`,
           grams: favorite.default_grams,
         });
 
@@ -1403,7 +1403,7 @@ export default function AddFoodScreen() {
     const carbs = Math.round(favorite.per100_carbs * multiplier);
     const fat = Math.round(favorite.per100_fat * multiplier);
 
-    const servingText = favorite.serving_size || `${favorite.default_grams}g`;
+    const servingText = favorite.serving_size || `${Math.round(favorite.default_grams)}g`;
     const macrosText = `P: ${protein}g • C: ${carbs}g • F: ${fat}g`;
 
     return (
