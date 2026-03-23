@@ -505,7 +505,7 @@ export default function AddFoodScreen() {
     console.log('[AddFood] Context:', context);
     console.log('[AddFood] CRITICAL: Passing context to Food Details');
 
-    router.replace({
+    router.push({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(product),
@@ -751,7 +751,7 @@ export default function AddFoodScreen() {
         },
       };
 
-      router.replace({
+      router.push({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),
@@ -983,7 +983,7 @@ export default function AddFoodScreen() {
 
       console.log('[AddFood] Navigating to food-details with favorite data');
 
-      router.replace({
+      router.push({
         pathname: '/food-details',
         params: {
           offData: JSON.stringify(offProduct),

@@ -93,63 +93,25 @@ export default function BarcodeScannerScreen() {
 
       if (status === 1 && result.product) {
         console.log('[BarcodeScanner] ✅ PRODUCT FOUND:', result.product.product_name);
-        
-        // CRITICAL FIX: Dismiss ALL screens back to home, then push food-details
-        // This ensures Add Food Menu is completely removed from the stack
-        console.log('[BarcodeScanner] 🚀 DISMISSING ALL SCREENS BACK TO HOME');
-        
-        // First, dismiss back to home
-        router.dismissTo('/(tabs)/(home)/');
-        
-        // Then, after a brief moment, push food-details
-        // This ensures the dismiss completes before the push
-        setTimeout(() => {
-          console.log('[BarcodeScanner] 🚀 PUSHING FOOD DETAILS');
-          console.log('[BarcodeScanner] Context:', context);
-          console.log('[BarcodeScanner] ReturnTo:', returnTo);
-          router.push({
-            pathname: '/food-details',
-            params: {
-              offData: JSON.stringify(result.product),
-              meal: mealType,
-              date: date,
-              mode: mode,
-              context: context,
-              returnTo: returnTo || '/(tabs)/(home)/',
-              mealId: myMealId || '',
-            },
-          });
-        }, 100);
+        console.log('[BarcodeScanner] 🚀 Navigating to food-details, preserving add-food stack');
+        console.log('[BarcodeScanner] Context:', context);
+        console.log('[BarcodeScanner] ReturnTo:', returnTo);
+
+        router.push({
+          pathname: '/food-details',
+          params: {
+            offData: JSON.stringify(result.product),
+            meal: mealType,
+            date: date,
+            mode: mode,
+            context: context,
+            returnTo: returnTo,
+            mealId: myMealId || '',
+          },
+        });
       } else {
-        console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND');
-        
-        // Navigate to barcode-lookup screen to show "Not Found" UI
-        // Also dismiss back to home first
-        router.dismissTo('/(tabs)/(home)/');
-        
-        setTimeout(() => {
-          router.push({
-            pathname: '/barcode-lookup',
-            params: {
-              barcode: barcode,
-              meal: mealType,
-              date: date,
-              mode: mode,
-              context: context,
-              returnTo: returnTo,
-              mealId: myMealId || '',
-            },
-          });
-        }, 100);
-      }
-    } catch (error: any) {
-      console.error('[BarcodeScanner] ❌ LOOKUP ERROR:', error);
-      
-      // Navigate to barcode-lookup screen to show error UI
-      // Also dismiss back to home first
-      router.dismissTo('/(tabs)/(home)/');
-      
-      setTimeout(() => {
+        console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND, navigating to barcode-lookup');
+
         router.push({
           pathname: '/barcode-lookup',
           params: {
@@ -160,10 +122,25 @@ export default function BarcodeScannerScreen() {
             context: context,
             returnTo: returnTo,
             mealId: myMealId || '',
-            error: error.message || 'Lookup failed',
           },
         });
-      }, 100);
+      }
+    } catch (error: any) {
+      console.error('[BarcodeScanner] ❌ LOOKUP ERROR:', error);
+
+      router.push({
+        pathname: '/barcode-lookup',
+        params: {
+          barcode: barcode,
+          meal: mealType,
+          date: date,
+          mode: mode,
+          context: context,
+          returnTo: returnTo,
+          mealId: myMealId || '',
+          error: error.message || 'Lookup failed',
+        },
+      });
     }
   }, [router, mealType, date, mode, context, returnTo, myMealId]);
 

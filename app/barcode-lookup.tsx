@@ -29,6 +29,8 @@ export default function BarcodeLookupScreen() {
   const mealType = (params.meal as string) || 'breakfast';
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   const mode = (params.mode as string) || 'diary';
+  const context = (params.context as string) || undefined;
+  const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
   const errorParam = (params.error as string) || undefined;
 
@@ -149,14 +151,15 @@ export default function BarcodeLookupScreen() {
         // Navigate to food-details with product data
         console.log('[BarcodeLookup] NAVIGATING TO: food-details');
         
-        router.replace({
+        router.push({
           pathname: '/food-details',
           params: {
             offData: JSON.stringify(result.product),
             meal: mealType,
             date: date,
             mode: mode,
-            returnTo: '/(tabs)/(home)/',
+            context: context,
+            returnTo: returnTo,
             mealId: myMealId || '',
           },
         });

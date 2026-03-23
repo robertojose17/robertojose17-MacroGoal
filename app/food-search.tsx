@@ -408,24 +408,21 @@ export default function FoodSearchScreen() {
     console.log('[FoodSearch] Product selected:', item.product.product_name);
     console.log('[FoodSearch] Context:', context);
     
-    // Navigate to Food Details screen
-    const detailsParams: any = {
-      meal: mealType,
-      date: date,
-      offData: JSON.stringify(item.product),
-      source: 'search',
-    };
-    
-    if (mode === 'my_meal_builder' || context === 'my_meal_builder') {
-      detailsParams.mode = mode;
-      detailsParams.context = context;
-      detailsParams.returnTo = returnTo;
-      detailsParams.mealId = targetMealId;
-    }
-    
+    console.log('[FoodSearch] Navigating to food-details, context:', context, 'returnTo:', returnTo);
+    // Navigate to Food Details screen — always pass context and returnTo so
+    // food-details can navigate back to add-food after a successful add.
     router.push({
       pathname: '/food-details',
-      params: detailsParams,
+      params: {
+        meal: mealType,
+        date: date,
+        offData: JSON.stringify(item.product),
+        source: 'search',
+        mode: mode,
+        context: context,
+        returnTo: returnTo,
+        mealId: targetMealId,
+      },
     });
   }, [mealType, date, mode, context, returnTo, targetMealId, router]);
 
