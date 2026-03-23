@@ -367,7 +367,7 @@ export default function MyMealsDetailsScreen() {
       setAdding(false);
 
       setTimeout(() => {
-        router.push('/(tabs)/(home)/');
+        router.back();
       }, 600);
     } catch (error) {
       console.error('[MyMealsDetails] Error in handleAddToMeal:', error);
