@@ -405,10 +405,14 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
 
   return (
     <View style={styles.container}>
-      {/* Top Action Row - 2 Buttons Side-by-Side */}
+      {/* Top Action Row - 2 Buttons Side-by-Side (Create New Food hidden in my_meals_builder) */}
       <View style={styles.actionRow}>
         <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+          style={[
+            styles.actionButton,
+            { backgroundColor: isDark ? colors.cardDark : colors.card },
+            context === 'my_meals_builder' && styles.actionButtonFull,
+          ]}
           onPress={handleQuickAddManual}
           activeOpacity={0.7}
         >
@@ -423,21 +427,23 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-          onPress={handleCreateNewFood}
-          activeOpacity={0.7}
-        >
-          <IconSymbol
-            ios_icon_name="fork.knife"
-            android_material_icon_name="restaurant"
-            size={24}
-            color={colors.primary}
-          />
-          <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-            Create New Food
-          </Text>
-        </TouchableOpacity>
+        {context !== 'my_meals_builder' && (
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+            onPress={handleCreateNewFood}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="fork.knife"
+              android_material_icon_name="restaurant"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.actionButtonText, { color: isDark ? colors.textDark : colors.text }]}>
+              Create New Food
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Saved Foods Section */}
@@ -542,6 +548,9 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
     minHeight: 100,
+  },
+  actionButtonFull: {
+    flex: 1,
   },
   actionButtonText: {
     ...typography.bodyBold,

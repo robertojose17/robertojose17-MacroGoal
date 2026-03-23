@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import { addToDraft } from '@/utils/myMealsDraft';
 
 export default function AddFoodSimpleScreen() {
   const router = useRouter();
@@ -110,35 +111,30 @@ export default function AddFoodSimpleScreen() {
       const finalFats = parseFloat(fats) || 0;
       const finalFiber = parseFloat(fiber) || 0;
 
-      // CHECK MODE: If mymeal, return to builder instead of logging to diary
+      // CHECK MODE: If mymeal, add to draft and navigate back to the meal builder
       if (mode === 'mymeal') {
-        console.log('[AddFoodSimple] Mode is mymeal, returning to builder with food item');
+        console.log('[AddFoodSimple] Mode is mymeal, adding food to meal draft');
 
-        const newFoodItem = {
+        await addToDraft({
           food_id: foodData.id,
-          food: foodData,
-          quantity: 1,
+          food_name: foodData.name,
+          food_brand: foodData.brand || undefined,
+          serving_amount: 1,
+          serving_unit: 'serving',
+          servings_count: 1,
           calories: finalCalories,
           protein: finalProtein,
           carbs: finalCarbs,
           fats: finalFats,
           fiber: finalFiber,
-          serving_description: '1 serving',
-          grams: null,
-        };
-
-        console.log('[AddFoodSimple] Dismissing to builder with food item');
-        
-        // Use dismissTo to go directly back to the builder, skipping add-food
-        router.dismissTo({
-          pathname: returnTo || '/my-meal-builder',
-          params: {
-            mealId: myMealId || '',
-            newFoodItem: JSON.stringify(newFoodItem),
-          },
         });
 
+        console.log('[AddFoodSimple] ✅ Food added to draft, navigating back to meal builder');
+
         setSaving(false);
+        // Pop back through add-food to my-meals-create so useFocusEffect reloads the draft
+        router.dismiss();
+        router.dismiss();
         return;
       }
 
