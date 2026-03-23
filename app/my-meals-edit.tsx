@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS } from '@/lib/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
+import { loadDraft, clearDraft } from '@/utils/myMealsDraft';
 
 interface SavedMealItem {
   id: string;
@@ -45,6 +46,9 @@ export default function MyMealsEditScreen() {
   const [mealName, setMealName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Track whether we navigated away to add food so we know to flush the draft on return
+  const didNavigateToAddFood = useRef(false);
 
   const loadSavedMeal = useCallback(async () => {
     if (!mealId) return;
@@ -97,11 +101,54 @@ export default function MyMealsEditScreen() {
     }
   }, [mealId, router]);
 
+  const flushDraftIntoMeal = useCallback(async () => {
+    try {
+      const draftItems = await loadDraft();
+      if (draftItems.length === 0) {
+        console.log('[MyMealsEdit] No draft items to flush');
+        return;
+      }
+
+      console.log('[MyMealsEdit] Flushing', draftItems.length, 'draft item(s) into saved_meal_items for meal:', mealId);
+
+      const itemsToInsert = draftItems.map(item => ({
+        saved_meal_id: mealId,
+        food_id: item.food_id,
+        serving_amount: item.serving_amount,
+        serving_unit: item.serving_unit,
+        servings_count: item.servings_count,
+      }));
+
+      const { error } = await supabase
+        .from(TABLE_SAVED_MEAL_ITEMS)
+        .insert(itemsToInsert);
+
+      if (error) {
+        console.error('[MyMealsEdit] Error inserting draft items into saved_meal_items:', error);
+        Alert.alert('Error', 'Failed to add the new food(s) to the meal');
+      } else {
+        console.log('[MyMealsEdit] Draft items flushed successfully');
+      }
+
+      await clearDraft();
+    } catch (err) {
+      console.error('[MyMealsEdit] Unexpected error in flushDraftIntoMeal:', err);
+      await clearDraft();
+    }
+  }, [mealId]);
+
   useFocusEffect(
     useCallback(() => {
-      console.log('[MyMealsEdit] Screen focused');
-      loadSavedMeal();
-    }, [loadSavedMeal])
+      console.log('[MyMealsEdit] Screen focused, didNavigateToAddFood:', didNavigateToAddFood.current);
+
+      if (didNavigateToAddFood.current) {
+        didNavigateToAddFood.current = false;
+        // Flush any draft items written by the add-food flow into saved_meal_items, then reload
+        flushDraftIntoMeal().then(() => loadSavedMeal());
+      } else {
+        loadSavedMeal();
+      }
+    }, [flushDraftIntoMeal, loadSavedMeal])
   );
 
   const handleSave = async () => {
@@ -184,12 +231,12 @@ export default function MyMealsEditScreen() {
   };
 
   const handleAddFood = () => {
-    console.log('[MyMealsEdit] Adding food to meal');
+    console.log('[MyMealsEdit] Add Food button pressed, navigating to add-food with my_meals_builder context');
+    didNavigateToAddFood.current = true;
     router.push({
       pathname: '/add-food',
       params: {
-        context: 'edit_saved_meal',
-        savedMealId: mealId,
+        context: 'my_meals_builder',
         returnTo: `/my-meals-edit?mealId=${mealId}`,
       },
     });
