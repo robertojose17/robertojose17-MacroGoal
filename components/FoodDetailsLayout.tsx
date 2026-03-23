@@ -567,16 +567,63 @@ export default function FoodDetailsLayout({
 
         console.log('[FoodDetails] handleSave: foodData (per-100g) =', JSON.stringify(foodData));
 
-        if (context === 'my-meals') {
-          console.log('[FoodDetails] handleSave: adding to my-meals draft');
+        if (context === 'my_meals_builder' || context === 'my-meals') {
+          console.log('[FoodDetails] handleSave: my_meals_builder context — upserting food then adding to draft');
+
+          // Step 1: Find or create the food record so we have a real food_id for the draft
+          console.log('[FoodDetails] handleSave (my_meals_builder): searching for existing food, name=', foodName, 'brand=', foodBrand);
+          const { data: existingFoodForDraft, error: searchErrorForDraft } = await supabase
+            .from('foods')
+            .select('id')
+            .eq('name', foodName)
+            .eq('brand', foodBrand)
+            .maybeSingle();
+
+          if (searchErrorForDraft) {
+            console.error('[FoodDetails] handleSave (my_meals_builder): food search error:', searchErrorForDraft);
+          }
+
+          let draftFoodId: string;
+
+          if (existingFoodForDraft) {
+            console.log('[FoodDetails] handleSave (my_meals_builder): found existing food id=', existingFoodForDraft.id);
+            draftFoodId = existingFoodForDraft.id;
+          } else {
+            console.log('[FoodDetails] handleSave (my_meals_builder): inserting new food');
+            const { data: newFoodForDraft, error: insertErrorForDraft } = await supabase
+              .from('foods')
+              .insert([{ ...foodData, created_by: user.id }])
+              .select('id')
+              .single();
+
+            if (insertErrorForDraft || !newFoodForDraft) {
+              console.error('[FoodDetails] handleSave (my_meals_builder): food insert error:', insertErrorForDraft);
+              Alert.alert('Error', `Failed to save food: ${insertErrorForDraft?.message ?? 'unknown error'}`);
+              return;
+            }
+
+            console.log('[FoodDetails] handleSave (my_meals_builder): new food id=', newFoodForDraft.id);
+            draftFoodId = newFoodForDraft.id;
+          }
+
+          // Step 2: Add to draft with the correct DraftItem shape
+          const servingsCount = parseFloat(numberOfServings) || 1;
           await addToDraft({
-            ...foodData,
-            quantity: parseFloat(numberOfServings) || 1,
-            serving_description: servingDescription,
-            grams: totalGrams,
+            food_id: draftFoodId,
+            food_name: foodName,
+            food_brand: foodBrand || undefined,
+            serving_amount: parseFloat(servingAmount) || 100,
+            serving_unit: servingUnit,
+            servings_count: servingsCount,
+            calories: safeMacros.calories,
+            protein: safeMacros.protein,
+            carbs: safeMacros.carbs,
+            fats: safeMacros.fats,
+            fiber: safeMacros.fiber,
           });
 
-          setBannerQueue((prev) => [...prev, { id: Date.now(), message: 'Added to My Meal draft', timestamp: Date.now() }]);
+          console.log('[FoodDetails] handleSave (my_meals_builder): item added to draft, food_id=', draftFoodId);
+          setBannerQueue((prev) => [...prev, { id: Date.now(), message: 'Added to meal', timestamp: Date.now() }]);
 
           setTimeout(() => {
             router.back();
