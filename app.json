@@ -4,11 +4,11 @@
     "slug": "macro-goal",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+    "icon": "./assets/images/0c97e86a-8909-439c-972b-9388f7da61e0.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+      "image": "./assets/images/0c97e86a-8909-439c-972b-9388f7da61e0.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+        "foregroundImage": "./assets/images/0c97e86a-8909-439c-972b-9388f7da61e0.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/02b0be00-cc51-4a2d-b5ec-a2936df17daa.png",
+      "favicon": "./assets/images/0c97e86a-8909-439c-972b-9388f7da61e0.png",
       "bundler": "metro"
     },
     "plugins": [
