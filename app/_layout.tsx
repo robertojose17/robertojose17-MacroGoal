@@ -659,7 +659,15 @@ export default function RootLayout() {
                   name="food-details"
                   options={{
                     headerShown: false,
-                    presentation: "card",
+                    presentation: "modal",
+                  }}
+                />
+
+                <Stack.Screen
+                  name="food-search"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
                   }}
                 />
 
@@ -667,7 +675,31 @@ export default function RootLayout() {
                   name="my-foods"
                   options={{
                     headerShown: false,
-                    presentation: "card",
+                    presentation: "modal",
+                  }}
+                />
+
+                <Stack.Screen
+                  name="barcode-lookup"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
+                  }}
+                />
+
+                <Stack.Screen
+                  name="copy-from-previous"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
+                  }}
+                />
+
+                <Stack.Screen
+                  name="ai-meal-estimator"
+                  options={{
+                    headerShown: false,
+                    presentation: "modal",
                   }}
                 />
 

@@ -579,11 +579,7 @@ export default function FoodDetailsLayout({
           setBannerQueue((prev) => [...prev, { id: Date.now(), message: 'Added to My Meal draft', timestamp: Date.now() }]);
 
           setTimeout(() => {
-            if (returnTo) {
-              router.push(returnTo as any);
-            } else {
-              router.back();
-            }
+            router.back();
           }, 500);
         } else {
           // Step 1: Find or create the food record

@@ -146,9 +146,8 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
       },
     };
 
-    // Bug fix: use router.replace instead of router.push so food-details replaces
-    // the modal on the navigation stack and appears ON TOP of it, not behind it.
-    router.replace({
+    console.log('[QuickAddHome] Navigating to food-details with push');
+    router.push({
       pathname: '/food-details',
       params: {
         offData: JSON.stringify(offProduct),

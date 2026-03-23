@@ -512,7 +512,7 @@ export default function AddFoodScreen() {
         meal: mealType,
         date: date,
         context: context || '',
-        returnTo: returnTo || '/(tabs)/(home)/',
+        returnTo: returnTo || '',
       },
     });
   }, [router, mealType, date, context, returnTo]);
@@ -758,7 +758,7 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           context: context || '',
-          returnTo: returnTo || '/(tabs)/(home)/',
+          returnTo: returnTo || '',
         },
       });
 
@@ -990,7 +990,7 @@ export default function AddFoodScreen() {
           meal: mealType,
           date: date,
           context: context || '',
-          returnTo: returnTo || '/(tabs)/(home)/',
+          returnTo: returnTo || '',
         },
       });
     } catch (error) {
