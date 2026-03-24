@@ -7,8 +7,7 @@ export default function HomeLayout() {
       <Stack.Screen
         name="index"
         options={{
-          headerShown: Platform.OS === 'ios', // Show header on iOS with NativeTabs, hide on Android/Web
-          title: 'Home'
+          headerShown: false,
         }}
       />
     </Stack>

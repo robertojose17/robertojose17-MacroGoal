@@ -412,62 +412,57 @@ export default function HomeScreen() {
     </SwipeToDeleteRow>
   );
 
+  const todayLabel = isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' });
+  const dateDisplay = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+      {/* Sticky date navigation header */}
+      <View style={[styles.stickyHeader, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderBottomColor: isDark ? colors.borderDark : colors.border }]}>
+        <TouchableOpacity
+          onPress={goToPreviousDay}
+          style={styles.dateButton}
+          disabled={leftArrowDisabled}
+          activeOpacity={leftArrowDisabled ? 1 : 0.7}
+        >
+          <IconSymbol
+            ios_icon_name="arrow.left"
+            android_material_icon_name="arrow-back"
+            size={22}
+            color={isDark ? colors.textDark : colors.text}
+            style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.dateCenter} onPress={goToToday} activeOpacity={0.7}>
+          <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            {todayLabel}
+          </Text>
+          <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
+            {dateDisplay}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={goToNextDay}
+          style={styles.dateButton}
+          disabled={rightArrowDisabled}
+          activeOpacity={rightArrowDisabled ? 1 : 0.7}
+        >
+          <IconSymbol
+            ios_icon_name="arrow.right"
+            android_material_icon_name="arrow-forward"
+            size={22}
+            color={isDark ? colors.textDark : colors.text}
+            style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
+          />
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={[{ key: 'content' }]}
         renderItem={() => (
           <View>
-            <View style={[styles.dateNavigation, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-              <TouchableOpacity 
-                onPress={goToPreviousDay} 
-                style={styles.dateButton}
-                disabled={leftArrowDisabled}
-                activeOpacity={leftArrowDisabled ? 1 : 0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="arrow.left"
-                  android_material_icon_name="arrow-back"
-                  size={24}
-                  color={isDark ? colors.textDark : colors.text}
-                  style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
-                />
-              </TouchableOpacity>
-              
-              <View style={styles.dateCenter}>
-                <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  {isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' })}
-                </Text>
-                <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
-                  {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </Text>
-              </View>
-
-              <TouchableOpacity 
-                onPress={goToNextDay} 
-                style={styles.dateButton}
-                disabled={rightArrowDisabled}
-                activeOpacity={rightArrowDisabled ? 1 : 0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="arrow.right"
-                  android_material_icon_name="arrow-forward"
-                  size={24}
-                  color={isDark ? colors.textDark : colors.text}
-                  style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {!isToday() && (
-              <TouchableOpacity 
-                style={[styles.todayButton, { backgroundColor: colors.primary }]}
-                onPress={goToToday}
-              >
-                <Text style={styles.todayButtonText}>Go to Today</Text>
-              </TouchableOpacity>
-            )}
-
             <View style={[styles.caloriesCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
               <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
                 Calories
@@ -618,19 +613,13 @@ const styles = StyleSheet.create({
   loadingText: {
     ...typography.body,
   },
-  scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: 120,
-  },
-  dateNavigation: {
+  stickyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   dateButton: {
     padding: spacing.sm,
@@ -650,17 +639,9 @@ const styles = StyleSheet.create({
   dateText: {
     ...typography.h3,
   },
-  todayButton: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
+  scrollContent: {
     paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  todayButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
+    paddingBottom: 120,
   },
   caloriesCard: {
     borderRadius: borderRadius.lg,
