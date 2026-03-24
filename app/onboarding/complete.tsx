@@ -26,6 +26,12 @@ export default function CompleteOnboardingScreen() {
   
   // Weight
   const [weight, setWeight] = useState('');
+
+  // Goal Weight
+  const [goalWeight, setGoalWeight] = useState('');
+
+  // Journey Start Weight (defaults to current weight if not changed)
+  const [journeyStartWeight, setJourneyStartWeight] = useState('');
   
   // Goal
   const [goalType, setGoalType] = useState<GoalType>('lose');
@@ -38,7 +44,18 @@ export default function CompleteOnboardingScreen() {
   
   const [saving, setSaving] = useState(false);
 
+  // When current weight changes, auto-fill journey start weight if it hasn't been manually set
+  const handleWeightChange = (value: string) => {
+    setWeight(value);
+    // Only auto-fill journey start weight if user hasn't manually edited it
+    if (journeyStartWeight === '' || journeyStartWeight === weight) {
+      setJourneyStartWeight(value);
+    }
+  };
+
   const handleComplete = async () => {
+    console.log('[Onboarding] Complete Setup button pressed');
+
     // Validation
     if (!age || !weight) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -55,6 +72,16 @@ export default function CompleteOnboardingScreen() {
         Alert.alert('Error', 'Please enter your height');
         return;
       }
+    }
+
+    if (!goalWeight) {
+      Alert.alert('Error', 'Please enter your goal weight');
+      return;
+    }
+
+    if (!journeyStartWeight) {
+      Alert.alert('Error', 'Please enter your journey start weight');
+      return;
     }
 
     setSaving(true);
@@ -85,6 +112,22 @@ export default function CompleteOnboardingScreen() {
         weightInKg = parseFloat(weight);
       }
 
+      // Convert goal weight to kg for storage
+      let goalWeightInKg: number;
+      if (units === 'imperial') {
+        goalWeightInKg = parseFloat(goalWeight) * 0.453592;
+      } else {
+        goalWeightInKg = parseFloat(goalWeight);
+      }
+
+      // Convert journey start weight to kg for storage
+      let journeyStartWeightInKg: number;
+      if (units === 'imperial') {
+        journeyStartWeightInKg = parseFloat(journeyStartWeight) * 0.453592;
+      } else {
+        journeyStartWeightInKg = parseFloat(journeyStartWeight);
+      }
+
       const ageNum = parseInt(age);
 
       console.log('[Onboarding] Calculating goals with:', {
@@ -94,6 +137,8 @@ export default function CompleteOnboardingScreen() {
         sex,
         activityLevel,
         goalType,
+        goalWeight: goalWeightInKg,
+        journeyStartWeight: journeyStartWeightInKg,
         lossRateLbsPerWeek: goalType === 'lose' ? lossRateLbsPerWeek : null,
       });
 
@@ -123,7 +168,8 @@ export default function CompleteOnboardingScreen() {
       const birthYear = currentYear - ageNum;
       const dateOfBirth = `${birthYear}-01-01`;
 
-      // Update user profile
+      // Update user profile — include goal_weight and journey_start_weight
+      console.log('[Onboarding] Saving user profile to Supabase...');
       const { error: userError } = await supabase
         .from('users')
         .update({
@@ -131,6 +177,8 @@ export default function CompleteOnboardingScreen() {
           date_of_birth: dateOfBirth,
           height: heightInCm,
           current_weight: weightInKg,
+          goal_weight: goalWeightInKg,
+          journey_start_weight: journeyStartWeightInKg,
           activity_level: activityLevel,
           preferred_units: units,
           onboarding_completed: true,
@@ -143,7 +191,7 @@ export default function CompleteOnboardingScreen() {
         throw userError;
       }
 
-      console.log('[Onboarding] User profile updated');
+      console.log('[Onboarding] User profile updated with goal_weight and journey_start_weight');
 
       // Deactivate any existing goals
       await supabase
@@ -170,6 +218,7 @@ export default function CompleteOnboardingScreen() {
         goalData.loss_rate_lbs_per_week = lossRateLbsPerWeek;
       }
 
+      console.log('[Onboarding] Creating goal in Supabase...');
       const { error: goalError } = await supabase
         .from('goals')
         .insert(goalData);
@@ -198,6 +247,8 @@ export default function CompleteOnboardingScreen() {
       setSaving(false);
     }
   };
+
+  const weightUnit = units === 'metric' ? 'kg' : 'lbs';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -230,7 +281,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   sex === 'male' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setSex('male')}
+                onPress={() => {
+                  console.log('[Onboarding] Sex selected: male');
+                  setSex('male');
+                }}
               >
                 <Text style={[styles.optionText, { color: isDark ? colors.textDark : colors.text }, sex === 'male' && { color: '#FFFFFF' }]}>
                   Male
@@ -242,7 +296,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   sex === 'female' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setSex('female')}
+                onPress={() => {
+                  console.log('[Onboarding] Sex selected: female');
+                  setSex('female');
+                }}
               >
                 <Text style={[styles.optionText, { color: isDark ? colors.textDark : colors.text }, sex === 'female' && { color: '#FFFFFF' }]}>
                   Female
@@ -275,7 +332,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   units === 'metric' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setUnits('metric')}
+                onPress={() => {
+                  console.log('[Onboarding] Units selected: metric');
+                  setUnits('metric');
+                }}
               >
                 <Text style={[styles.optionText, { color: isDark ? colors.textDark : colors.text }, units === 'metric' && { color: '#FFFFFF' }]}>
                   Metric
@@ -287,7 +347,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   units === 'imperial' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setUnits('imperial')}
+                onPress={() => {
+                  console.log('[Onboarding] Units selected: imperial');
+                  setUnits('imperial');
+                }}
               >
                 <Text style={[styles.optionText, { color: isDark ? colors.textDark : colors.text }, units === 'imperial' && { color: '#FFFFFF' }]}>
                   Imperial
@@ -345,10 +408,10 @@ export default function CompleteOnboardingScreen() {
             )}
           </View>
 
-          {/* Weight */}
+          {/* Current Weight */}
           <View style={styles.section}>
             <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Current Weight ({units === 'metric' ? 'kg' : 'lbs'}) *
+              Current Weight ({weightUnit}) *
             </Text>
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
@@ -356,7 +419,45 @@ export default function CompleteOnboardingScreen() {
               placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
               keyboardType="decimal-pad"
               value={weight}
-              onChangeText={setWeight}
+              onChangeText={handleWeightChange}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* Goal Weight */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+              Goal Weight ({weightUnit}) *
+            </Text>
+            <Text style={[styles.helperText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              The weight you want to reach
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
+              placeholder={units === 'metric' ? 'e.g., 70' : 'e.g., 155'}
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              keyboardType="decimal-pad"
+              value={goalWeight}
+              onChangeText={setGoalWeight}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* Journey Start Weight */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+              Journey Start Weight ({weightUnit}) *
+            </Text>
+            <Text style={[styles.helperText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Your weight when you started this journey (defaults to current weight)
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
+              placeholder={units === 'metric' ? 'e.g., 80' : 'e.g., 175'}
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              keyboardType="decimal-pad"
+              value={journeyStartWeight}
+              onChangeText={setJourneyStartWeight}
               returnKeyType="next"
             />
           </View>
@@ -371,7 +472,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   goalType === 'lose' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setGoalType('lose')}
+                onPress={() => {
+                  console.log('[Onboarding] Goal selected: lose');
+                  setGoalType('lose');
+                }}
               >
                 <Text style={styles.goalIcon}>📉</Text>
                 <Text style={[styles.goalText, { color: isDark ? colors.textDark : colors.text }, goalType === 'lose' && { color: '#FFFFFF' }]}>
@@ -384,7 +488,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   goalType === 'maintain' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setGoalType('maintain')}
+                onPress={() => {
+                  console.log('[Onboarding] Goal selected: maintain');
+                  setGoalType('maintain');
+                }}
               >
                 <Text style={styles.goalIcon}>⚖️</Text>
                 <Text style={[styles.goalText, { color: isDark ? colors.textDark : colors.text }, goalType === 'maintain' && { color: '#FFFFFF' }]}>
@@ -397,7 +504,10 @@ export default function CompleteOnboardingScreen() {
                   { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border },
                   goalType === 'gain' && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setGoalType('gain')}
+                onPress={() => {
+                  console.log('[Onboarding] Goal selected: gain');
+                  setGoalType('gain');
+                }}
               >
                 <Text style={styles.goalIcon}>📈</Text>
                 <Text style={[styles.goalText, { color: isDark ? colors.textDark : colors.text }, goalType === 'gain' && { color: '#FFFFFF' }]}>
@@ -419,7 +529,10 @@ export default function CompleteOnboardingScreen() {
                   description="Slow and steady"
                   value={0.5}
                   selected={lossRateLbsPerWeek === 0.5}
-                  onPress={() => setLossRateLbsPerWeek(0.5)}
+                  onPress={() => {
+                    console.log('[Onboarding] Loss rate selected: 0.5 lb/week');
+                    setLossRateLbsPerWeek(0.5);
+                  }}
                   isDark={isDark}
                 />
                 <LossRateOption
@@ -427,7 +540,10 @@ export default function CompleteOnboardingScreen() {
                   description="Moderate"
                   value={1.0}
                   selected={lossRateLbsPerWeek === 1.0}
-                  onPress={() => setLossRateLbsPerWeek(1.0)}
+                  onPress={() => {
+                    console.log('[Onboarding] Loss rate selected: 1.0 lb/week');
+                    setLossRateLbsPerWeek(1.0);
+                  }}
                   isDark={isDark}
                 />
                 <LossRateOption
@@ -435,7 +551,10 @@ export default function CompleteOnboardingScreen() {
                   description="Fast"
                   value={1.5}
                   selected={lossRateLbsPerWeek === 1.5}
-                  onPress={() => setLossRateLbsPerWeek(1.5)}
+                  onPress={() => {
+                    console.log('[Onboarding] Loss rate selected: 1.5 lb/week');
+                    setLossRateLbsPerWeek(1.5);
+                  }}
                   isDark={isDark}
                 />
                 <LossRateOption
@@ -443,7 +562,10 @@ export default function CompleteOnboardingScreen() {
                   description="Very aggressive"
                   value={2.0}
                   selected={lossRateLbsPerWeek === 2.0}
-                  onPress={() => setLossRateLbsPerWeek(2.0)}
+                  onPress={() => {
+                    console.log('[Onboarding] Loss rate selected: 2.0 lb/week');
+                    setLossRateLbsPerWeek(2.0);
+                  }}
                   isDark={isDark}
                 />
               </View>
@@ -458,28 +580,40 @@ export default function CompleteOnboardingScreen() {
                 label="Sedentary"
                 description="Little or no exercise"
                 selected={activityLevel === 'sedentary'}
-                onPress={() => setActivityLevel('sedentary')}
+                onPress={() => {
+                  console.log('[Onboarding] Activity level selected: sedentary');
+                  setActivityLevel('sedentary');
+                }}
                 isDark={isDark}
               />
               <ActivityOption
                 label="Light"
                 description="Exercise 1-3 days/week"
                 selected={activityLevel === 'light'}
-                onPress={() => setActivityLevel('light')}
+                onPress={() => {
+                  console.log('[Onboarding] Activity level selected: light');
+                  setActivityLevel('light');
+                }}
                 isDark={isDark}
               />
               <ActivityOption
                 label="Moderate"
                 description="Exercise 3-5 days/week"
                 selected={activityLevel === 'moderate'}
-                onPress={() => setActivityLevel('moderate')}
+                onPress={() => {
+                  console.log('[Onboarding] Activity level selected: moderate');
+                  setActivityLevel('moderate');
+                }}
                 isDark={isDark}
               />
               <ActivityOption
                 label="Very Active"
                 description="Exercise 6-7 days/week"
                 selected={activityLevel === 'very_active'}
-                onPress={() => setActivityLevel('very_active')}
+                onPress={() => {
+                  console.log('[Onboarding] Activity level selected: very_active');
+                  setActivityLevel('very_active');
+                }}
                 isDark={isDark}
               />
             </View>
@@ -581,6 +715,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.bodyBold,
+    marginBottom: spacing.sm,
+  },
+  helperText: {
+    ...typography.caption,
     marginBottom: spacing.sm,
   },
   optionRow: {

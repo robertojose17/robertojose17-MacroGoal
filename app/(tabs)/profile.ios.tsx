@@ -12,14 +12,13 @@ import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToK
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
+type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'journeyStartWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  // Use the usePremium hook for real-time premium status from RevenueCat
   const { isPremium, loading: premiumLoading, refreshPremiumStatus } = usePremium();
 
   const [user, setUser] = useState<any>(null);
@@ -52,20 +51,17 @@ export default function ProfileScreen() {
 
       console.log('[Profile iOS] Loading profile for user:', authUser.id);
 
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
+      const [userResult, goalResult] = await Promise.all([
+        supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
+        supabase.from('goals').select('*').eq('user_id', authUser.id).eq('is_active', true).order('start_date', { ascending: false }).limit(1),
+      ]);
 
-      if (userError) {
-        console.error('[Profile iOS] Error loading user data:', userError);
-      } else if (userData) {
-        console.log('[Profile iOS] User data loaded:', userData);
-        setUser({ ...authUser, ...userData });
-        
-        // Check if goal weight is missing and user has completed onboarding
-        if (userData.onboarding_completed && !userData.goal_weight) {
+      if (userResult.error) {
+        console.error('[Profile iOS] Error loading user data:', userResult.error);
+      } else if (userResult.data) {
+        console.log('[Profile iOS] User data loaded:', userResult.data);
+        setUser({ ...authUser, ...userResult.data });
+        if (userResult.data.onboarding_completed && !userResult.data.goal_weight) {
           console.log('[Profile iOS] Goal weight is missing, showing prompt');
           setShowGoalWeightPrompt(true);
         }
@@ -74,22 +70,12 @@ export default function ProfileScreen() {
         setUser(authUser);
       }
 
-      // Load active goal with proper handling
-      const { data: goalData, error: goalError } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .order('start_date', { ascending: false })
-        .limit(1);
-
-      if (goalError) {
-        console.error('[Profile iOS] Error loading goal:', goalError);
+      if (goalResult.error) {
+        console.error('[Profile iOS] Error loading goal:', goalResult.error);
         setGoal(null);
-      } else if (goalData && goalData.length > 0) {
-        const activeGoal = goalData[0];
+      } else if (goalResult.data && goalResult.data.length > 0) {
+        const activeGoal = goalResult.data[0];
         console.log('[Profile iOS] Active goal loaded:', activeGoal);
-        console.log('[Profile iOS] Journey Start Date from goal:', activeGoal.start_date);
         setGoal(activeGoal);
       } else {
         console.log('[Profile iOS] No active goal found for user');
@@ -117,6 +103,7 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
+    console.log('[Profile iOS] Log Out button pressed');
     Alert.alert(
       'Log Out',
       'Are you sure you want to log out?',
@@ -126,6 +113,7 @@ export default function ProfileScreen() {
           text: 'Log Out',
           style: 'destructive',
           onPress: async () => {
+            console.log('[Profile iOS] Logging out user');
             await supabase.auth.signOut();
             router.replace('/auth/welcome');
           },
@@ -135,6 +123,7 @@ export default function ProfileScreen() {
   };
 
   const handleEditGoals = () => {
+    console.log('[Profile iOS] Advanced goals button pressed');
     if (!user?.onboarding_completed) {
       router.push('/onboarding/complete');
     } else {
@@ -169,19 +158,8 @@ export default function ProfileScreen() {
     return `${Math.round(weightKg)} kg`;
   };
 
-  const formatGoalType = (goalType: string, lossRate?: number) => {
-    if (goalType === 'lose') {
-      if (lossRate) {
-        return `Lose Weight at ${lossRate} lb/week`;
-      }
-      return 'Lose Weight';
-    } else if (goalType === 'gain') {
-      return 'Gain Weight';
-    }
-    return 'Maintain Weight';
-  };
-
   const openEditModal = (field: EditField) => {
+    console.log('[Profile iOS] Opening edit modal for field:', field);
     const units = user?.preferred_units || 'metric';
     
     switch (field) {
@@ -209,6 +187,13 @@ export default function ProfileScreen() {
           setEditValue(user.goal_weight ? Math.round(kgToLbs(user.goal_weight)).toString() : '');
         } else {
           setEditValue(user.goal_weight ? user.goal_weight.toString() : '');
+        }
+        break;
+      case 'journeyStartWeight':
+        if (units === 'imperial') {
+          setEditValue(user.journey_start_weight ? Math.round(kgToLbs(user.journey_start_weight)).toString() : '');
+        } else {
+          setEditValue(user.journey_start_weight ? user.journey_start_weight.toString() : '');
         }
         break;
       case 'age':
@@ -247,19 +232,16 @@ export default function ProfileScreen() {
         updatedGoal.goal_type === 'lose' ? updatedGoal.loss_rate_lbs_per_week : undefined
       );
 
-      // Use balanced preset for macro calculation
       const macros = calculateMacrosWithPreset(targetCalories, updatedUser.current_weight, 'balanced');
 
       console.log('[Profile iOS] New calculations:', { bmr, tdee, targetCalories, macros });
 
-      // Deactivate current goals
       await supabase
         .from('goals')
         .update({ is_active: false })
         .eq('user_id', updatedUser.id)
         .eq('is_active', true);
 
-      // Create new goal with updated values
       const newGoalData: any = {
         user_id: updatedUser.id,
         goal_type: updatedGoal.goal_type,
@@ -283,9 +265,8 @@ export default function ProfileScreen() {
 
       if (goalError) throw goalError;
 
-      console.log('[Profile iOS] ✅ Goals recalculated and updated');
+      console.log('[Profile iOS] Goals recalculated and updated');
       
-      // Reload data
       await loadUserData();
     } catch (error) {
       console.error('[Profile iOS] Error recalculating goals:', error);
@@ -293,8 +274,64 @@ export default function ProfileScreen() {
     }
   };
 
+  /**
+   * Save a field directly with explicit values — bypasses stale state.
+   * Use this when calling from Alert callbacks where setState hasn't flushed yet.
+   */
+  const saveFieldDirectly = async (field: EditField, value: string) => {
+    if (!user || !field) return;
+    console.log('[Profile iOS] saveFieldDirectly:', field, value);
+
+    setSaving(true);
+    try {
+      let updateData: any = {};
+      let needsRecalculation = false;
+
+      switch (field) {
+        case 'sex':
+          updateData.sex = value as Sex;
+          needsRecalculation = true;
+          break;
+        case 'activity':
+          updateData.activity_level = value as ActivityLevel;
+          needsRecalculation = true;
+          break;
+        default:
+          return;
+      }
+
+      updateData.updated_at = new Date().toISOString();
+
+      console.log('[Profile iOS] Saving to Supabase:', updateData);
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Optimistic update — apply immediately so UI reflects the change
+      const updatedUser = { ...user, ...updateData };
+      setUser(updatedUser);
+
+      console.log('[Profile iOS] User data updated:', updateData);
+
+      if (needsRecalculation && goal) {
+        await recalculateGoals(updatedUser, goal);
+      } else {
+        await loadUserData();
+      }
+    } catch (error: any) {
+      console.error('[Profile iOS] Error in saveFieldDirectly:', error);
+      Alert.alert('Error', error.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveEditedField = async () => {
     if (!user || !editingField) return;
+    console.log('[Profile iOS] Save button pressed for field:', editingField);
 
     setSaving(true);
     try {
@@ -341,8 +378,19 @@ export default function ProfileScreen() {
             }
           }
           updateData.goal_weight = goalWeightKg;
-          // Close the prompt if it was open
           setShowGoalWeightPrompt(false);
+          break;
+
+        case 'journeyStartWeight':
+          let journeyStartWeightKg: number | null = null;
+          if (editValue) {
+            if (units === 'imperial') {
+              journeyStartWeightKg = lbsToKg(parseFloat(editValue));
+            } else {
+              journeyStartWeightKg = parseFloat(editValue);
+            }
+          }
+          updateData.journey_start_weight = journeyStartWeightKg;
           break;
 
         case 'age':
@@ -365,7 +413,6 @@ export default function ProfileScreen() {
           break;
 
         case 'lossRate':
-          // This updates the goal, not the user
           if (goal) {
             const newLossRate = parseFloat(editValue) || 1.0;
             const updatedGoal = { ...goal, loss_rate_lbs_per_week: newLossRate };
@@ -381,6 +428,7 @@ export default function ProfileScreen() {
       if (Object.keys(updateData).length > 0) {
         updateData.updated_at = new Date().toISOString();
         
+        console.log('[Profile iOS] Saving to Supabase:', updateData);
         const { error } = await supabase
           .from('users')
           .update(updateData)
@@ -388,10 +436,13 @@ export default function ProfileScreen() {
 
         if (error) throw error;
 
+        // Optimistic update — apply immediately so the first save always reflects correctly
+        const updatedUser = { ...user, ...updateData };
+        setUser(updatedUser);
+
         console.log('[Profile iOS] User data updated:', updateData);
 
         if (needsRecalculation && goal) {
-          const updatedUser = { ...user, ...updateData };
           await recalculateGoals(updatedUser, goal);
         } else {
           await loadUserData();
@@ -416,10 +467,9 @@ export default function ProfileScreen() {
       setSelectedDate(date);
       
       if (Platform.OS === 'ios') {
-        return; // Wait for user to press Done on iOS
+        return;
       }
 
-      // Save immediately on Android
       await saveStartDate(date);
     }
   };
@@ -438,9 +488,8 @@ export default function ProfileScreen() {
 
       if (error) throw error;
 
-      console.log('[Profile iOS] ✅ Journey Start Date saved successfully:', dateString);
+      console.log('[Profile iOS] Journey Start Date saved successfully:', dateString);
       
-      // Reload data to ensure sync
       await loadUserData();
       
       if (Platform.OS === 'ios') {
@@ -457,18 +506,16 @@ export default function ProfileScreen() {
   };
 
   const openStartDatePicker = () => {
+    console.log('[Profile iOS] Journey Start Date picker opened');
     if (!goal) {
       Alert.alert('No Goal', 'Please set up your goals first');
       return;
     }
     
-    // Initialize with stored date or today
     if (goal.start_date) {
       const storedDate = new Date(goal.start_date + 'T00:00:00');
-      console.log('[Profile iOS] Opening date picker with stored date:', goal.start_date, '→', storedDate.toISOString());
       setSelectedDate(storedDate);
     } else {
-      console.log('[Profile iOS] Opening date picker with today (no stored date)');
       setSelectedDate(new Date());
     }
     setShowDatePicker(true);
@@ -533,7 +580,6 @@ export default function ProfileScreen() {
   const units = user.preferred_units || 'metric';
   const age = calculateAge(user.date_of_birth);
   
-  // Use isPremium from usePremium hook (RevenueCat source of truth)
   const subscriptionStatusText = isPremium ? 'Premium' : 'Free';
   console.log('[Profile iOS] Displaying subscription status:', subscriptionStatusText, '(isPremium:', isPremium, ')');
 
@@ -576,7 +622,10 @@ export default function ProfileScreen() {
         {!isPremium && (
           <TouchableOpacity
             style={[styles.subscriptionCard, { backgroundColor: colors.primary }]}
-            onPress={() => router.push('/subscription')}
+            onPress={() => {
+              console.log('[Profile iOS] Upgrade to Premium button pressed');
+              router.push('/subscription');
+            }}
           >
             <View style={styles.subscriptionContent}>
               <View style={styles.subscriptionIcon}>
@@ -652,6 +701,13 @@ export default function ProfileScreen() {
                 isDark={isDark}
                 highlight={!user.goal_weight}
               />
+              <EditableSettingItem
+                label="Journey Start Weight"
+                value={user.journey_start_weight ? formatWeight(user.journey_start_weight, units) : 'Tap to set start weight'}
+                onPress={() => openEditModal('journeyStartWeight')}
+                isDark={isDark}
+                highlight={!user.journey_start_weight}
+              />
               {age && (
                 <EditableSettingItem
                   label="Age"
@@ -665,12 +721,25 @@ export default function ProfileScreen() {
                   label="Sex"
                   value={user.sex === 'male' ? 'Male' : user.sex === 'female' ? 'Female' : 'Other'}
                   onPress={() => {
+                    console.log('[Profile iOS] Sex field tapped');
                     Alert.alert(
                       'Select Sex',
                       '',
                       [
-                        { text: 'Male', onPress: () => { setEditValue('male'); setEditingField('sex'); saveEditedField(); } },
-                        { text: 'Female', onPress: () => { setEditValue('female'); setEditingField('sex'); saveEditedField(); } },
+                        {
+                          text: 'Male',
+                          onPress: () => {
+                            console.log('[Profile iOS] Sex changed to male');
+                            saveFieldDirectly('sex', 'male');
+                          },
+                        },
+                        {
+                          text: 'Female',
+                          onPress: () => {
+                            console.log('[Profile iOS] Sex changed to female');
+                            saveFieldDirectly('sex', 'female');
+                          },
+                        },
                         { text: 'Cancel', style: 'cancel' },
                       ]
                     );
@@ -683,14 +752,39 @@ export default function ProfileScreen() {
                   label="Activity Level"
                   value={user.activity_level.charAt(0).toUpperCase() + user.activity_level.slice(1).replace('_', ' ')}
                   onPress={() => {
+                    console.log('[Profile iOS] Activity level field tapped');
                     Alert.alert(
                       'Select Activity Level',
                       '',
                       [
-                        { text: 'Sedentary', onPress: () => { setEditValue('sedentary'); setEditingField('activity'); saveEditedField(); } },
-                        { text: 'Light', onPress: () => { setEditValue('light'); setEditingField('activity'); saveEditedField(); } },
-                        { text: 'Moderate', onPress: () => { setEditValue('moderate'); setEditingField('activity'); saveEditedField(); } },
-                        { text: 'Very Active', onPress: () => { setEditValue('very_active'); setEditingField('activity'); saveEditedField(); } },
+                        {
+                          text: 'Sedentary',
+                          onPress: () => {
+                            console.log('[Profile iOS] Activity level changed to sedentary');
+                            saveFieldDirectly('activity', 'sedentary');
+                          },
+                        },
+                        {
+                          text: 'Light',
+                          onPress: () => {
+                            console.log('[Profile iOS] Activity level changed to light');
+                            saveFieldDirectly('activity', 'light');
+                          },
+                        },
+                        {
+                          text: 'Moderate',
+                          onPress: () => {
+                            console.log('[Profile iOS] Activity level changed to moderate');
+                            saveFieldDirectly('activity', 'moderate');
+                          },
+                        },
+                        {
+                          text: 'Very Active',
+                          onPress: () => {
+                            console.log('[Profile iOS] Activity level changed to very_active');
+                            saveFieldDirectly('activity', 'very_active');
+                          },
+                        },
                         { text: 'Cancel', style: 'cancel' },
                       ]
                     );
@@ -861,6 +955,7 @@ export default function ProfileScreen() {
               {editingField === 'height' && 'Edit Height'}
               {editingField === 'weight' && 'Edit Current Weight'}
               {editingField === 'goalWeight' && 'Edit Goal Weight'}
+              {editingField === 'journeyStartWeight' && 'Edit Journey Start Weight'}
               {editingField === 'age' && 'Edit Age'}
               {editingField === 'lossRate' && 'Edit Weight Loss Rate'}
             </Text>
@@ -900,7 +995,7 @@ export default function ProfileScreen() {
                 placeholder={
                   editingField === 'name' ? 'Your first name' :
                   editingField === 'height' ? (units === 'imperial' ? 'inches' : 'cm') :
-                  editingField === 'weight' || editingField === 'goalWeight' ? (units === 'imperial' ? 'lbs' : 'kg') :
+                  editingField === 'weight' || editingField === 'goalWeight' || editingField === 'journeyStartWeight' ? (units === 'imperial' ? 'lbs' : 'kg') :
                   editingField === 'age' ? 'years' :
                   editingField === 'lossRate' ? 'lbs per week' : ''
                 }
