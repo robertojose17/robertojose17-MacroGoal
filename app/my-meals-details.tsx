@@ -336,8 +336,8 @@ export default function MyMealsDetailsScreen() {
             carbs: (Number(item.foods.carbs) || 0) * itemMultiplier,
             fats: (Number(item.foods.fats) || 0) * itemMultiplier,
             fiber: (Number(item.foods.fiber) || 0) * itemMultiplier,
-            serving_description: `${item.servings_count * multiplier} × ${item.serving_amount} ${item.serving_unit}`,
-            grams: item.serving_amount * item.servings_count * multiplier,
+            serving_description: `${Math.round(item.servings_count * multiplier)} × ${Math.round(item.serving_amount)} ${item.serving_unit}`,
+            grams: Math.round(item.serving_amount * item.servings_count * multiplier),
           };
         });
 

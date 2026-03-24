@@ -240,12 +240,14 @@ export async function getRecentFoods(limit: number = 20): Promise<Food[]> {
       seenFoodIds.add(item.food_id);
 
       // Create Food object with the serving info from the last time it was logged
+      // Round grams to integer to prevent decimal values propagating into the UI
+      const rawGrams = item.grams || item.foods.serving_amount;
       const food: Food = {
         id: item.foods.id,
         name: item.foods.name,
         brand: item.foods.brand || undefined,
         barcode: item.foods.barcode || undefined,
-        serving_amount: item.grams || item.foods.serving_amount,
+        serving_amount: Math.round(rawGrams),
         serving_unit: 'g',
         calories: item.calories,
         protein: item.protein,

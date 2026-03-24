@@ -376,7 +376,7 @@ export default function MyMealsCreateScreen() {
                 </Text>
               )}
               <Text style={[styles.itemServing, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {item.servings_count} × {Math.round(item.serving_amount)} {item.serving_unit} • {Math.round(item.calories)} cal
+                {Math.round(item.servings_count)} × {Math.round(item.serving_amount)} {item.serving_unit} • {Math.round(item.calories)} cal
               </Text>
               <Text style={[styles.itemMacros, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                 P: {Math.round(item.protein)}g • C: {Math.round(item.carbs)}g • F: {Math.round(item.fats)}g

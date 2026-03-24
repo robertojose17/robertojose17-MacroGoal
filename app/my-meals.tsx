@@ -291,8 +291,8 @@ export default function MyMealsScreen() {
           carbs: food.carbs * multiplier,
           fats: food.fats * multiplier,
           fiber: food.fiber * multiplier,
-          serving_description: `${item.serving_amount} ${item.serving_unit}`,
-          grams: item.serving_amount,
+          serving_description: `${Math.round(item.serving_amount)} ${item.serving_unit}`,
+          grams: Math.round(item.serving_amount),
         };
       });
 
