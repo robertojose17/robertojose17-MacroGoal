@@ -27,12 +27,18 @@ import Constants from 'expo-constants';
 
 // Premium features list
 const PREMIUM_FEATURES = [
-  'Advanced analytics & trends',
-  'Multiple goal phases',
-  'Custom recipes builder',
-  'Habit tracking & streaks',
-  'Data export (CSV)',
-  'Priority support',
+  {
+    title: 'AI Meal Estimator',
+    description: 'Estimate calories and macros from restaurant meals using a photo and description — no barcode needed.',
+  },
+  {
+    title: 'No Ads',
+    description: 'Enjoy a completely ad-free experience.',
+  },
+  {
+    title: 'Future Premium Features',
+    description: 'Get automatic access to every premium feature we add in the future.',
+  },
 ];
 
 export default function SubscriptionScreen() {
@@ -424,9 +430,14 @@ export default function SubscriptionScreen() {
                   size={20}
                   color={colors.primary}
                 />
-                <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text }]}>
-                  {feature}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text, fontWeight: '700' }]}>
+                    {feature.title}
+                  </Text>
+                  <Text style={[styles.featureText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {feature.description}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
@@ -558,9 +569,14 @@ export default function SubscriptionScreen() {
                   size={20}
                   color={colors.primary}
                 />
-                <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text }]}>
-                  {feature}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text, fontWeight: '700' }]}>
+                    {feature.title}
+                  </Text>
+                  <Text style={[styles.featureText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {feature.description}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
@@ -609,7 +625,7 @@ export default function SubscriptionScreen() {
             Unlock Premium Features
           </Text>
           <Text style={[styles.heroSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Take your fitness journey to the next level
+            Unlock the tools that make tracking easier — and everything we build next.
           </Text>
         </View>
 
@@ -660,9 +676,14 @@ export default function SubscriptionScreen() {
                       size={20}
                       color={colors.primary}
                     />
-                    <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text }]}>
-                      {feature}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text, fontWeight: '700' }]}>
+                        {feature.title}
+                      </Text>
+                      <Text style={[styles.featureText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {feature.description}
+                      </Text>
+                    </View>
                   </View>
                 ))}
               </View>
