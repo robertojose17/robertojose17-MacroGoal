@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput, Linking } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -889,6 +889,34 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Feedback Section */}
+        <View style={[styles.feedbackCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Feedback
+          </Text>
+          <TouchableOpacity
+            style={styles.feedbackRow}
+            onPress={() => {
+              console.log('[Profile] Send Feedback button pressed');
+              const mailtoUrl = 'mailto:macrogoalapp@gmail.com?subject=MacroGoal%20App%20Feedback&body=Hi%2C%20I%27d%20like%20to%20share%20the%20following%20feedback%3A%0A%0A';
+              Linking.openURL(mailtoUrl).catch((err) => {
+                console.error('[Profile] Failed to open mail app:', err);
+                Alert.alert('Error', 'Could not open the mail app. Please email us at macrogoalapp@gmail.com');
+              });
+            }}
+          >
+            <Text style={[styles.feedbackRowLabel, { color: isDark ? colors.textDark : colors.text }]}>
+              Send Feedback
+            </Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={16}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
           onPress={handleLogout}
@@ -1417,6 +1445,22 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  feedbackCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  feedbackRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  feedbackRowLabel: {
+    ...typography.body,
   },
   logoutButton: {
     borderRadius: borderRadius.lg,
