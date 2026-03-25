@@ -12,7 +12,7 @@ import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToK
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'journeyStartWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
+type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -187,13 +187,6 @@ export default function ProfileScreen() {
           setEditValue(user.goal_weight ? Math.round(kgToLbs(user.goal_weight)).toString() : '');
         } else {
           setEditValue(user.goal_weight ? user.goal_weight.toString() : '');
-        }
-        break;
-      case 'journeyStartWeight':
-        if (units === 'imperial') {
-          setEditValue(user.journey_start_weight ? Math.round(kgToLbs(user.journey_start_weight)).toString() : '');
-        } else {
-          setEditValue(user.journey_start_weight ? user.journey_start_weight.toString() : '');
         }
         break;
       case 'age':
@@ -379,18 +372,6 @@ export default function ProfileScreen() {
           }
           updateData.goal_weight = goalWeightKg;
           setShowGoalWeightPrompt(false);
-          break;
-
-        case 'journeyStartWeight':
-          let journeyStartWeightKg: number | null = null;
-          if (editValue) {
-            if (units === 'imperial') {
-              journeyStartWeightKg = lbsToKg(parseFloat(editValue));
-            } else {
-              journeyStartWeightKg = parseFloat(editValue);
-            }
-          }
-          updateData.journey_start_weight = journeyStartWeightKg;
           break;
 
         case 'age':
@@ -701,13 +682,6 @@ export default function ProfileScreen() {
                 isDark={isDark}
                 highlight={!user.goal_weight}
               />
-              <EditableSettingItem
-                label="Journey Start Weight"
-                value={user.journey_start_weight ? formatWeight(user.journey_start_weight, units) : 'Tap to set start weight'}
-                onPress={() => openEditModal('journeyStartWeight')}
-                isDark={isDark}
-                highlight={!user.journey_start_weight}
-              />
               {age && (
                 <EditableSettingItem
                   label="Age"
@@ -890,32 +864,27 @@ export default function ProfileScreen() {
         )}
 
         {/* Feedback Section */}
-        <View style={[styles.feedbackCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Feedback
+        <TouchableOpacity
+          style={[styles.feedbackCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+          onPress={() => {
+            console.log('[Profile iOS] Send Feedback button pressed');
+            const mailtoUrl = 'mailto:macrogoalapp@gmail.com?subject=MacroGoal%20App%20Feedback&body=Hi%2C%20I%27d%20like%20to%20share%20the%20following%20feedback%3A%0A%0A';
+            Linking.openURL(mailtoUrl).catch((err) => {
+              console.error('[Profile iOS] Failed to open mail app:', err);
+              Alert.alert('Error', 'Could not open the mail app. Please email us at macrogoalapp@gmail.com');
+            });
+          }}
+        >
+          <Text style={[styles.feedbackRowLabel, { color: isDark ? colors.textDark : colors.text }]}>
+            Send Feedback
           </Text>
-          <TouchableOpacity
-            style={styles.feedbackRow}
-            onPress={() => {
-              console.log('[Profile iOS] Send Feedback button pressed');
-              const mailtoUrl = 'mailto:macrogoalapp@gmail.com?subject=MacroGoal%20App%20Feedback&body=Hi%2C%20I%27d%20like%20to%20share%20the%20following%20feedback%3A%0A%0A';
-              Linking.openURL(mailtoUrl).catch((err) => {
-                console.error('[Profile iOS] Failed to open mail app:', err);
-                Alert.alert('Error', 'Could not open the mail app. Please email us at macrogoalapp@gmail.com');
-              });
-            }}
-          >
-            <Text style={[styles.feedbackRowLabel, { color: isDark ? colors.textDark : colors.text }]}>
-              Send Feedback
-            </Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={16}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            />
-          </TouchableOpacity>
-        </View>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="arrow-forward"
+            size={16}
+            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+          />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: colors.error }]}
@@ -983,7 +952,6 @@ export default function ProfileScreen() {
               {editingField === 'height' && 'Edit Height'}
               {editingField === 'weight' && 'Edit Current Weight'}
               {editingField === 'goalWeight' && 'Edit Goal Weight'}
-              {editingField === 'journeyStartWeight' && 'Edit Journey Start Weight'}
               {editingField === 'age' && 'Edit Age'}
               {editingField === 'lossRate' && 'Edit Weight Loss Rate'}
             </Text>
@@ -1023,7 +991,7 @@ export default function ProfileScreen() {
                 placeholder={
                   editingField === 'name' ? 'Your first name' :
                   editingField === 'height' ? (units === 'imperial' ? 'inches' : 'cm') :
-                  editingField === 'weight' || editingField === 'goalWeight' || editingField === 'journeyStartWeight' ? (units === 'imperial' ? 'lbs' : 'kg') :
+                  editingField === 'weight' || editingField === 'goalWeight' ? (units === 'imperial' ? 'lbs' : 'kg') :
                   editingField === 'age' ? 'years' :
                   editingField === 'lossRate' ? 'lbs per week' : ''
                 }

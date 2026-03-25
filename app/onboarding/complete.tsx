@@ -30,9 +30,6 @@ export default function CompleteOnboardingScreen() {
   // Goal Weight
   const [goalWeight, setGoalWeight] = useState('');
 
-  // Journey Start Weight (defaults to current weight if not changed)
-  const [journeyStartWeight, setJourneyStartWeight] = useState('');
-  
   // Goal
   const [goalType, setGoalType] = useState<GoalType>('lose');
   
@@ -44,13 +41,8 @@ export default function CompleteOnboardingScreen() {
   
   const [saving, setSaving] = useState(false);
 
-  // When current weight changes, auto-fill journey start weight if it hasn't been manually set
   const handleWeightChange = (value: string) => {
     setWeight(value);
-    // Only auto-fill journey start weight if user hasn't manually edited it
-    if (journeyStartWeight === '' || journeyStartWeight === weight) {
-      setJourneyStartWeight(value);
-    }
   };
 
   const handleComplete = async () => {
@@ -76,11 +68,6 @@ export default function CompleteOnboardingScreen() {
 
     if (!goalWeight) {
       Alert.alert('Error', 'Please enter your goal weight');
-      return;
-    }
-
-    if (!journeyStartWeight) {
-      Alert.alert('Error', 'Please enter your journey start weight');
       return;
     }
 
@@ -120,14 +107,6 @@ export default function CompleteOnboardingScreen() {
         goalWeightInKg = parseFloat(goalWeight);
       }
 
-      // Convert journey start weight to kg for storage
-      let journeyStartWeightInKg: number;
-      if (units === 'imperial') {
-        journeyStartWeightInKg = parseFloat(journeyStartWeight) * 0.453592;
-      } else {
-        journeyStartWeightInKg = parseFloat(journeyStartWeight);
-      }
-
       const ageNum = parseInt(age);
 
       console.log('[Onboarding] Calculating goals with:', {
@@ -138,7 +117,6 @@ export default function CompleteOnboardingScreen() {
         activityLevel,
         goalType,
         goalWeight: goalWeightInKg,
-        journeyStartWeight: journeyStartWeightInKg,
         lossRateLbsPerWeek: goalType === 'lose' ? lossRateLbsPerWeek : null,
       });
 
@@ -168,7 +146,7 @@ export default function CompleteOnboardingScreen() {
       const birthYear = currentYear - ageNum;
       const dateOfBirth = `${birthYear}-01-01`;
 
-      // Update user profile — include goal_weight and journey_start_weight
+      // Update user profile
       console.log('[Onboarding] Saving user profile to Supabase...');
       const { error: userError } = await supabase
         .from('users')
@@ -178,7 +156,6 @@ export default function CompleteOnboardingScreen() {
           height: heightInCm,
           current_weight: weightInKg,
           goal_weight: goalWeightInKg,
-          journey_start_weight: journeyStartWeightInKg,
           activity_level: activityLevel,
           preferred_units: units,
           onboarding_completed: true,
@@ -191,7 +168,7 @@ export default function CompleteOnboardingScreen() {
         throw userError;
       }
 
-      console.log('[Onboarding] User profile updated with goal_weight and journey_start_weight');
+      console.log('[Onboarding] User profile updated with goal_weight');
 
       // Deactivate any existing goals
       await supabase
@@ -439,25 +416,6 @@ export default function CompleteOnboardingScreen() {
               keyboardType="decimal-pad"
               value={goalWeight}
               onChangeText={setGoalWeight}
-              returnKeyType="next"
-            />
-          </View>
-
-          {/* Journey Start Weight */}
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Journey Start Weight ({weightUnit}) *
-            </Text>
-            <Text style={[styles.helperText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Your weight when you started this journey (defaults to current weight)
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder={units === 'metric' ? 'e.g., 80' : 'e.g., 175'}
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              keyboardType="decimal-pad"
-              value={journeyStartWeight}
-              onChangeText={setJourneyStartWeight}
               returnKeyType="next"
             />
           </View>
