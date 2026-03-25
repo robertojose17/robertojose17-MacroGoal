@@ -17,31 +17,95 @@ interface ConsistencyScoreProps {
   isDark: boolean;
 }
 
+type ScoreLabel = 'Locked In' | 'On Track' | 'Slipping';
+
 interface ScoreBreakdown {
-  dailyTracking: number;
-  streakScore: number;
-  proteinAccuracy: number;
-  total: number;
-  streakDays: number;
-  hasLoggedToday: boolean;
-  proteinLogged: number;
-  proteinTarget: number;
+  score: number;
+  label: ScoreLabel;
+  totalDays: number;
+  trackedDays: number;
+  avgCalorieAccuracy: number;
+  avgProteinAccuracy: number;
+  insight: string;
 }
 
-interface DailyScore {
-  date: string;
-  trackingScore: number; // 0 or 40
-  streakScore: number; // 0-35
-  proteinScore: number; // 0-25
+// ─── Scoring helpers ──────────────────────────────────────────────────────────
+
+function calcCalorieScore(pct: number): number {
+  if (pct >= 95 && pct <= 105) return 30;
+  if (pct >= 85) return 24;
+  if (pct >= 70) return 18;
+  if (pct >= 50) return 12;
+  return Math.min(6, (pct / 50) * 6);
 }
+
+function calcProteinScore(pct: number): number {
+  if (pct >= 95 && pct <= 105) return 20;
+  if (pct >= 85) return 16;
+  if (pct >= 70) return 12;
+  if (pct >= 50) return 8;
+  return Math.min(4, (pct / 50) * 4);
+}
+
+function calcDailyScore(
+  hasTracking: boolean,
+  calories: number,
+  calorieTarget: number,
+  protein: number,
+  proteinTarget: number,
+): number {
+  if (!hasTracking) return 0;
+
+  const trackingPts = 50;
+
+  const calPct = calorieTarget > 0 ? (calories / calorieTarget) * 100 : 0;
+  const calPts = calcCalorieScore(calPct);
+
+  const protPct = proteinTarget > 0 ? (protein / proteinTarget) * 100 : 0;
+  const protPts = calcProteinScore(protPct);
+
+  return trackingPts + calPts + protPts;
+}
+
+function getLabel(score: number): ScoreLabel {
+  if (score >= 80) return 'Locked In';
+  if (score >= 60) return 'On Track';
+  return 'Slipping';
+}
+
+function getLabelColor(label: ScoreLabel): string {
+  if (label === 'Locked In') return colors.success;
+  if (label === 'On Track') return '#F59E0B';
+  return colors.error;
+}
+
+function buildInsight(
+  label: ScoreLabel,
+  trackedDays: number,
+  totalDays: number,
+  avgCalPct: number,
+  avgProtPct: number,
+): string {
+  if (trackedDays === 0) return 'Start logging meals to build your consistency score.';
+  if (label === 'Locked In') return 'Outstanding — you\'re hitting your targets consistently.';
+  if (label === 'On Track') {
+    if (avgCalPct < 70) return 'Log more calories each day to push your score higher.';
+    if (avgProtPct < 70) return 'Boost your protein intake to move into "Locked In" territory.';
+    return `You tracked ${trackedDays} of ${totalDays} days — keep the streak going.`;
+  }
+  if (trackedDays < totalDays / 2) return 'Log food every day — missing days are the biggest score killer.';
+  if (avgCalPct < 50) return 'Your calorie accuracy is low — try to hit closer to your daily target.';
+  return 'Stay consistent with logging and hitting your macro targets.';
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ConsistencyScore({ userId, isDark }: ConsistencyScoreProps) {
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<ScoreBreakdown | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
-  
-  // Date range state
+
   const [journeyStartDate, setJourneyStartDate] = useState<string | null>(null);
   const [rangeStartDate, setRangeStartDate] = useState<string | null>(null);
   const [rangeEndDate, setRangeEndDate] = useState<string | null>(null);
@@ -62,65 +126,39 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
   const loadJourneyStartDate = useCallback(async () => {
     try {
-      console.log('[ConsistencyScore] ===== LOADING JOURNEY START DATE =====');
-      console.log('[ConsistencyScore] User ID:', userId);
-      
-      // First, try to get the user's created_at date (when they joined)
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('created_at')
-        .eq('id', userId)
-        .maybeSingle();
+      console.log('[ConsistencyScore] Loading journey start date for user:', userId);
 
-      if (userError) {
-        console.error('[ConsistencyScore] Error loading user data:', userError);
-      }
+      const [{ data: userData }, { data: goalData }] = await Promise.all([
+        supabase.from('users').select('created_at').eq('id', userId).maybeSingle(),
+        supabase
+          .from('goals')
+          .select('start_date')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .order('start_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-      let startDate: string | null = null;
-
-      // Try to get start_date from active goal - THIS IS THE PRIMARY SOURCE
-      const { data: goalData, error: goalError } = await supabase
-        .from('goals')
-        .select('start_date')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('start_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (goalError) {
-        console.error('[ConsistencyScore] Error loading goal:', goalError);
-      }
-
-      console.log('[ConsistencyScore] Goal data retrieved:', goalData);
-      console.log('[ConsistencyScore] Goal start_date from DB:', goalData?.start_date);
-
-      // Priority: goal start_date > user created_at > today
+      let startDate: string;
       if (goalData?.start_date) {
         startDate = goalData.start_date;
-        console.log('[ConsistencyScore] ✅ Using goal start_date from Profile tab:', startDate);
+        console.log('[ConsistencyScore] Using goal start_date:', startDate);
       } else if (userData?.created_at) {
         startDate = userData.created_at.split('T')[0];
-        console.log('[ConsistencyScore] ⚠️ No goal start_date, using user created_at:', startDate);
+        console.log('[ConsistencyScore] Using user created_at:', startDate);
       } else {
         startDate = new Date().toISOString().split('T')[0];
-        console.log('[ConsistencyScore] ⚠️ No start date found, using today:', startDate);
+        console.log('[ConsistencyScore] Falling back to today:', startDate);
       }
 
-      setJourneyStartDate(startDate);
-      
-      // Set default range: journey start → today
-      setRangeStartDate(startDate);
       const today = new Date().toISOString().split('T')[0];
+      setJourneyStartDate(startDate);
+      setRangeStartDate(startDate);
       setRangeEndDate(today);
-      
-      console.log('[ConsistencyScore] ===== RANGE INITIALIZED =====');
-      console.log('[ConsistencyScore] Journey Start Date:', startDate);
-      console.log('[ConsistencyScore] Default Range:', startDate, '→', today);
-      console.log('[ConsistencyScore] =====================================');
+      console.log('[ConsistencyScore] Range initialized:', startDate, '→', today);
     } catch (error) {
       console.error('[ConsistencyScore] Error loading journey start date:', error);
-      // Fallback to today
       const today = new Date().toISOString().split('T')[0];
       setJourneyStartDate(today);
       setRangeStartDate(today);
@@ -133,218 +171,124 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       setLoading(true);
 
       if (!rangeStartDate || !rangeEndDate) {
-        console.log('[ConsistencyScore] Missing date range');
         setLoading(false);
         return;
       }
 
-      console.log('[ConsistencyScore] ===== CALCULATING CONSISTENCY SCORE =====');
-      console.log('[ConsistencyScore] Date range:', rangeStartDate, '→', rangeEndDate);
-      console.log('[ConsistencyScore] User ID:', userId);
+      console.log('[ConsistencyScore] Calculating score for range:', rangeStartDate, '→', rangeEndDate);
 
-      // 1. Get all meals in the date range
-      const { data: allMeals, error: mealsError } = await supabase
-        .from('meals')
-        .select(`
-          id,
-          date,
-          meal_items (
-            id,
-            calories,
-            protein
-          )
-        `)
-        .eq('user_id', userId)
-        .gte('date', rangeStartDate)
-        .lte('date', rangeEndDate)
-        .order('date', { ascending: true });
+      // Fetch meals and active goal in parallel
+      const [{ data: allMeals, error: mealsError }, { data: goalData, error: goalError }] =
+        await Promise.all([
+          supabase
+            .from('meals')
+            .select('id, date, meal_items(id, calories, protein)')
+            .eq('user_id', userId)
+            .gte('date', rangeStartDate)
+            .lte('date', rangeEndDate)
+            .order('date', { ascending: true }),
+          supabase
+            .from('goals')
+            .select('daily_calories, protein_g')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
 
       if (mealsError) {
         console.error('[ConsistencyScore] Error loading meals:', mealsError);
         setLoading(false);
         return;
       }
-
-      console.log('[ConsistencyScore] Meals found:', allMeals?.length || 0);
-
-      // 2. Get protein target from active goal
-      const { data: goalData, error: goalError } = await supabase
-        .from('goals')
-        .select('protein_g')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
       if (goalError) {
         console.error('[ConsistencyScore] Error loading goal:', goalError);
       }
 
+      const calorieTarget = goalData?.daily_calories || 2000;
       const proteinTarget = goalData?.protein_g || 150;
-      console.log('[ConsistencyScore] Protein target:', proteinTarget, 'g');
+      console.log('[ConsistencyScore] Targets — calories:', calorieTarget, 'protein:', proteinTarget);
 
-      // 3. Organize data by date
-      const dailyData: { [date: string]: { calories: number; protein: number; hasMeals: boolean } } = {};
+      // Build per-day totals map
+      const dailyData: Record<string, { calories: number; protein: number; hasMeals: boolean }> = {};
 
-      if (allMeals && allMeals.length > 0) {
-        for (const meal of allMeals) {
-          if (!dailyData[meal.date]) {
-            dailyData[meal.date] = { calories: 0, protein: 0, hasMeals: false };
-          }
-
-          if (meal.meal_items && meal.meal_items.length > 0) {
+      for (const meal of allMeals ?? []) {
+        if (!dailyData[meal.date]) {
+          dailyData[meal.date] = { calories: 0, protein: 0, hasMeals: false };
+        }
+        for (const item of meal.meal_items ?? []) {
+          const cal = parseFloat(String(item.calories || '0'));
+          const prot = parseFloat(String(item.protein || '0'));
+          if (cal > 0 || prot > 0) {
             dailyData[meal.date].hasMeals = true;
-            
-            for (const item of meal.meal_items) {
-              const itemCalories = parseFloat(String(item.calories || '0'));
-              const itemProtein = parseFloat(String(item.protein || '0'));
-              
-              dailyData[meal.date].calories += itemCalories;
-              dailyData[meal.date].protein += itemProtein;
-            }
           }
+          dailyData[meal.date].calories += cal;
+          dailyData[meal.date].protein += prot;
         }
       }
 
-      console.log('[ConsistencyScore] Daily data:', dailyData);
-
-      // 4. Generate all dates in range
-      const allDatesInRange: string[] = [];
-      const startDate = new Date(rangeStartDate + 'T00:00:00');
-      const endDate = new Date(rangeEndDate + 'T00:00:00');
-      const currentDate = new Date(startDate);
-
-      while (currentDate <= endDate) {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        allDatesInRange.push(dateStr);
-        currentDate.setDate(currentDate.getDate() + 1);
+      // Generate every date in range
+      const allDates: string[] = [];
+      const cur = new Date(rangeStartDate + 'T00:00:00');
+      const end = new Date(rangeEndDate + 'T00:00:00');
+      while (cur <= end) {
+        allDates.push(cur.toISOString().split('T')[0]);
+        cur.setDate(cur.getDate() + 1);
       }
 
-      console.log('[ConsistencyScore] Total days in range:', allDatesInRange.length);
-      console.log('[ConsistencyScore] Days with data:', Object.keys(dailyData).length);
+      const totalDays = allDates.length;
+      console.log('[ConsistencyScore] Total days in range:', totalDays);
 
-      // Edge case: If range > 2 days with no data at all, score = 0
-      if (allDatesInRange.length > 2 && Object.keys(dailyData).length === 0) {
-        console.log('[ConsistencyScore] No data in range > 2 days, score = 0');
-        setScoreData({
-          dailyTracking: 0,
-          streakScore: 0,
-          proteinAccuracy: 0,
-          total: 0,
-          streakDays: 0,
-          hasLoggedToday: false,
-          proteinLogged: 0,
-          proteinTarget,
-        });
-        setLoading(false);
-        return;
-      }
+      // Step 1 — compute DailyScore for every day (missing = 0)
+      let trackedDays = 0;
+      let sumCalPct = 0;
+      let sumProtPct = 0;
+      let sumDailyScore = 0;
 
-      // 5. Calculate daily scores for each day in range
-      const dailyScores: DailyScore[] = [];
-      let currentStreakDays = 0;
-      let maxStreakDays = 0;
-      let totalProteinLogged = 0;
-      let daysWithProtein = 0;
+      for (const date of allDates) {
+        const day = dailyData[date];
+        const hasTracking = day?.hasMeals ?? false;
 
-      for (let i = 0; i < allDatesInRange.length; i++) {
-        const date = allDatesInRange[i];
-        const dayData = dailyData[date];
-        
-        // A) Daily Tracking Score (0 or 40)
-        const hasTracking = dayData?.hasMeals || false;
-        const trackingScore = hasTracking ? 40 : 0;
-
-        // B) Streak Score (0-35)
-        // Update streak counter - FIXED: Reset to 0 on break, no carryover
         if (hasTracking) {
-          currentStreakDays++;
-          maxStreakDays = Math.max(maxStreakDays, currentStreakDays);
-        } else {
-          // Reset streak on break (no carryover)
-          currentStreakDays = 0;
+          trackedDays++;
+          const calPct = calorieTarget > 0 ? (day.calories / calorieTarget) * 100 : 0;
+          const protPct = proteinTarget > 0 ? (day.protein / proteinTarget) * 100 : 0;
+          sumCalPct += calPct;
+          sumProtPct += protPct;
         }
 
-        // Calculate streak score using log curve: 35 * (1 - e^(-0.1 * streak))
-        // This gives: 1 day = 3pts, 7 days = 17pts, 14 days = 25pts, 30 days = 32pts
-        const streakScore = currentStreakDays > 0 
-          ? Math.round(35 * (1 - Math.exp(-0.1 * currentStreakDays)))
-          : 0;
-
-        // C) Protein Accuracy Score (0-25)
-        const proteinLogged = dayData?.protein || 0;
-        const proteinScore = calculateProteinAccuracyScore(proteinLogged, proteinTarget);
-
-        if (proteinLogged > 0) {
-          totalProteinLogged += proteinLogged;
-          daysWithProtein++;
-        }
-
-        dailyScores.push({
-          date,
-          trackingScore,
-          streakScore,
-          proteinScore,
-        });
-      }
-
-      console.log('[ConsistencyScore] Daily scores calculated:', dailyScores.length);
-      console.log('[ConsistencyScore] Max streak days:', maxStreakDays);
-
-      // 6. Calculate averages - ONLY across days with actual data
-      // Filter to only include days that have tracking data
-      const daysWithData = dailyScores.filter(day => day.trackingScore > 0);
-      const daysWithDataCount = daysWithData.length;
-
-      console.log('[ConsistencyScore] Days with data:', daysWithDataCount, '/', dailyScores.length);
-
-      // If no days with data, score = 0
-      if (daysWithDataCount === 0) {
-        console.log('[ConsistencyScore] No days with data, score = 0');
-        setScoreData({
-          dailyTracking: 0,
-          streakScore: 0,
-          proteinAccuracy: 0,
-          total: 0,
-          streakDays: 0,
-          hasLoggedToday: false,
-          proteinLogged: 0,
+        const dayScore = calcDailyScore(
+          hasTracking,
+          day?.calories ?? 0,
+          calorieTarget,
+          day?.protein ?? 0,
           proteinTarget,
-        });
-        setLoading(false);
-        return;
+        );
+        sumDailyScore += dayScore;
+
+        console.log(
+          `[ConsistencyScore] ${date}: tracked=${hasTracking}, score=${dayScore.toFixed(1)}`,
+        );
       }
 
-      // Calculate averages ONLY from days with data
-      const avgTracking = daysWithData.reduce((sum, day) => sum + day.trackingScore, 0) / daysWithDataCount;
-      const avgStreak = daysWithData.reduce((sum, day) => sum + day.streakScore, 0) / daysWithDataCount;
-      const avgProtein = daysWithData.reduce((sum, day) => sum + day.proteinScore, 0) / daysWithDataCount;
+      // Step 2 — final score = average over ALL days
+      const score = totalDays > 0 ? Math.round(sumDailyScore / totalDays) : 0;
 
-      const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
-      const avgProteinLogged = daysWithProtein > 0 ? totalProteinLogged / daysWithProtein : 0;
+      // Averages only over tracked days (for display)
+      const avgCalorieAccuracy = trackedDays > 0 ? Math.round(sumCalPct / trackedDays) : 0;
+      const avgProteinAccuracy = trackedDays > 0 ? Math.round(sumProtPct / trackedDays) : 0;
 
-      console.log('[ConsistencyScore] ===== AVERAGES (ONLY DAYS WITH DATA) =====');
-      console.log('[ConsistencyScore] Days counted:', daysWithDataCount, '/', dailyScores.length);
-      console.log('[ConsistencyScore] Avg Daily Tracking:', avgTracking.toFixed(1), '/ 40');
-      console.log('[ConsistencyScore] Avg Streak Score:', avgStreak.toFixed(1), '/ 35');
-      console.log('[ConsistencyScore] Avg Protein Accuracy:', avgProtein.toFixed(1), '/ 25');
-      console.log('[ConsistencyScore] TOTAL SCORE:', totalScore, '/ 100');
+      // Step 3 — label
+      const label = getLabel(score);
+      const insight = buildInsight(label, trackedDays, totalDays, avgCalorieAccuracy, avgProteinAccuracy);
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      const hasLoggedToday = dailyData[todayStr]?.hasMeals || false;
+      console.log('[ConsistencyScore] Final score:', score, '| Label:', label);
+      console.log('[ConsistencyScore] Tracked days:', trackedDays, '/', totalDays);
+      console.log('[ConsistencyScore] Avg calorie accuracy:', avgCalorieAccuracy, '%');
+      console.log('[ConsistencyScore] Avg protein accuracy:', avgProteinAccuracy, '%');
 
-      setScoreData({
-        dailyTracking: Math.round(avgTracking),
-        streakScore: Math.round(avgStreak),
-        proteinAccuracy: Math.round(avgProtein),
-        total: totalScore,
-        streakDays: maxStreakDays,
-        hasLoggedToday,
-        proteinLogged: avgProteinLogged,
-        proteinTarget,
-      });
-
+      setScoreData({ score, label, totalDays, trackedDays, avgCalorieAccuracy, avgProteinAccuracy, insight });
       setLoading(false);
     } catch (error) {
       console.error('[ConsistencyScore] Error calculating score:', error);
@@ -352,132 +296,67 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     }
   }, [userId, rangeStartDate, rangeEndDate]);
 
-  const calculateProteinAccuracyScore = (proteinLogged: number, proteinTarget: number): number => {
-    if (proteinTarget === 0) {
-      return 0;
-    }
-
-    const percentage = (proteinLogged / proteinTarget) * 100;
-
-    // Scoring tiers:
-    // 95-105% → 25 pts
-    // 80-94% → 20 pts
-    // 60-79% → 15 pts
-    // 40-59% → 10 pts
-    // <40% → 0-5 pts (scaled)
-    // >105% → gradually reduce from 25 to 15
-
-    if (percentage >= 95 && percentage <= 105) {
-      return 25;
-    } else if (percentage >= 80 && percentage < 95) {
-      return 20;
-    } else if (percentage >= 60 && percentage < 80) {
-      return 15;
-    } else if (percentage >= 40 && percentage < 60) {
-      return 10;
-    } else if (percentage < 40) {
-      return Math.round((percentage / 40) * 5);
-    } else {
-      // Over 105%, gradually reduce score
-      const excess = percentage - 105;
-      const penalty = Math.min(10, excess / 5);
-      return Math.max(15, Math.round(25 - penalty));
-    }
-  };
-
-  const getScoreColor = (score: number): string => {
-    if (score >= 80) {
-      return colors.success;
-    } else if (score >= 60) {
-      return colors.warning;
-    } else {
-      return colors.error;
-    }
-  };
-
-  const getScoreLabel = (score: number): string => {
-    if (score >= 90) {
-      return 'Excellent';
-    } else if (score >= 80) {
-      return 'Great';
-    } else if (score >= 70) {
-      return 'Good';
-    } else if (score >= 60) {
-      return 'Fair';
-    } else {
-      return 'Needs Work';
-    }
-  };
-
   const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
-    console.log('[ConsistencyScore] ===== DATE RANGE CHANGED =====');
-    console.log('[ConsistencyScore] New range:', startDate.toISOString(), '→', endDate.toISOString());
-    
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
-    
+    console.log('[ConsistencyScore] Date range changed:', startStr, '→', endStr);
     setRangeStartDate(startStr);
     setRangeEndDate(endStr);
-    
-    console.log('[ConsistencyScore] Range state updated, will recalculate');
   };
 
   const handleResetToJourneyStart = () => {
-    console.log('[ConsistencyScore] ===== RESET TO JOURNEY START =====');
     if (journeyStartDate) {
       const today = new Date().toISOString().split('T')[0];
+      console.log('[ConsistencyScore] Reset to journey start:', journeyStartDate, '→', today);
       setRangeStartDate(journeyStartDate);
       setRangeEndDate(today);
-      console.log('[ConsistencyScore] Reset to:', journeyStartDate, '→', today);
     }
+  };
+
+  const handleToggleDetails = () => {
+    const next = !showDetails;
+    console.log('[ConsistencyScore] Toggle details:', next ? 'open' : 'closed');
+    setShowDetails(next);
+  };
+
+  const handleOpenCalendar = () => {
+    console.log('[ConsistencyScore] Open calendar picker');
+    setShowCalendarPicker(true);
   };
 
   const getDateRangeText = () => {
-    if (!rangeStartDate || !rangeEndDate) {
-      return 'Loading...';
-    }
-
-    const isDefaultRange = rangeStartDate === journeyStartDate && rangeEndDate === new Date().toISOString().split('T')[0];
-
-    if (isDefaultRange) {
-      const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      return `${start} - Today`;
-    } else {
-      const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      const end = new Date(rangeEndDate + 'T00:00:00').toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      return `${start} - ${end}`;
-    }
+    if (!rangeStartDate || !rangeEndDate) return 'Loading...';
+    const isDefault =
+      rangeStartDate === journeyStartDate &&
+      rangeEndDate === new Date().toISOString().split('T')[0];
+    const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    if (isDefault) return `${start} - Today`;
+    const end = new Date(rangeEndDate + 'T00:00:00').toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    return `${start} - ${end}`;
   };
 
   const isCustomRange = () => {
-    if (!rangeStartDate || !rangeEndDate || !journeyStartDate) {
-      return false;
-    }
+    if (!rangeStartDate || !rangeEndDate || !journeyStartDate) return false;
     const today = new Date().toISOString().split('T')[0];
     return rangeStartDate !== journeyStartDate || rangeEndDate !== today;
   };
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <View
         style={[
           styles.card,
-          {
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          },
+          { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder },
         ]}
       >
         <View style={styles.loadingContainer}>
@@ -487,36 +366,35 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     );
   }
 
-  if (!scoreData) {
-    return null;
-  }
+  if (!scoreData) return null;
 
-  const scoreColor = getScoreColor(scoreData.total);
-  const scoreLabel = getScoreLabel(scoreData.total);
+  const labelColor = getLabelColor(scoreData.label);
+  const dateRangeText = getDateRangeText();
+  const customRange = isCustomRange();
+  const trackedText = `${scoreData.trackedDays} / ${scoreData.totalDays} days tracked`;
+  const calAccText = `${scoreData.avgCalorieAccuracy}%`;
+  const protAccText = `${scoreData.avgProteinAccuracy}%`;
 
   return (
     <React.Fragment>
       <View
         style={[
           styles.card,
-          {
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          },
+          { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder },
         ]}
       >
-        {/* Main Score Display - Tappable */}
+        {/* Main Score Row */}
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => setShowDetails(!showDetails)}
+          onPress={handleToggleDetails}
           style={styles.mainScoreContainer}
         >
-          <View style={styles.scoreCircle}>
-            <Text style={[styles.scoreValue, { color: scoreColor }]}>
-              {scoreData.total}
+          <View style={[styles.scoreCircle, { borderColor: labelColor + '40' }]}>
+            <Text style={[styles.scoreValue, { color: labelColor }]}>
+              {scoreData.score}
             </Text>
-            <Text style={[styles.scoreLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {scoreLabel}
+            <Text style={[styles.scoreLabelText, { color: labelColor }]}>
+              {scoreData.label}
             </Text>
           </View>
           <View style={styles.titleContainer}>
@@ -524,100 +402,82 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
               Consistency Score
             </Text>
             <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Your daily tracking performance
+              {scoreData.insight}
             </Text>
           </View>
           <IconSymbol
-            ios_icon_name={showDetails ? "chevron.up" : "chevron.down"}
-            android_material_icon_name={showDetails ? "expand_less" : "expand_more"}
+            ios_icon_name={showDetails ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={showDetails ? 'expand_less' : 'expand_more'}
             size={24}
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
         </TouchableOpacity>
 
-        {/* Score Breakdown - Conditionally Rendered */}
+        {/* Breakdown */}
         {showDetails && (
           <View style={styles.breakdownContainer}>
-            {/* Daily Tracking */}
-            <View style={styles.breakdownItem}>
-              <View style={styles.breakdownHeader}>
-                <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                  Daily Tracking
+
+            {/* Stats grid */}
+            <View style={styles.statsGrid}>
+              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
+                  {scoreData.totalDays}
                 </Text>
-                <Text style={[styles.breakdownScore, { color: scoreData.dailyTracking >= 30 ? colors.success : colors.warning }]}>
-                  {scoreData.dailyTracking}/40
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Days in Range
                 </Text>
               </View>
-              <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    {
-                      width: `${(scoreData.dailyTracking / 40) * 100}%`,
-                      backgroundColor: scoreData.dailyTracking >= 30 ? colors.success : colors.warning,
-                    },
-                  ]}
-                />
+              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
+                  {scoreData.trackedDays}
+                </Text>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Days Tracked
+                </Text>
               </View>
-              <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Average across days in range
-              </Text>
+              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <Text style={[styles.statValue, { color: colors.calories }]}>
+                  {calAccText}
+                </Text>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Avg Calorie Acc.
+                </Text>
+              </View>
+              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
+                <Text style={[styles.statValue, { color: colors.protein }]}>
+                  {protAccText}
+                </Text>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Avg Protein Acc.
+                </Text>
+              </View>
             </View>
 
-            {/* Streak Score */}
-            <View style={styles.breakdownItem}>
-              <View style={styles.breakdownHeader}>
-                <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                  Streak Score
+            {/* Score bar */}
+            <View style={styles.scoreBarSection}>
+              <View style={styles.scoreBarHeader}>
+                <Text style={[styles.scoreBarLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                  {trackedText}
                 </Text>
-                <Text style={[styles.breakdownScore, { color: colors.primary }]}>
-                  {scoreData.streakScore}/35
-                </Text>
-              </View>
-              <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    {
-                      width: `${(scoreData.streakScore / 35) * 100}%`,
-                      backgroundColor: colors.primary,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {scoreData.streakDays} day{scoreData.streakDays !== 1 ? 's' : ''} longest streak
-              </Text>
-            </View>
-
-            {/* Protein Accuracy */}
-            <View style={styles.breakdownItem}>
-              <View style={styles.breakdownHeader}>
-                <Text style={[styles.breakdownLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                  Protein Accuracy
-                </Text>
-                <Text style={[styles.breakdownScore, { color: colors.protein }]}>
-                  {scoreData.proteinAccuracy}/25
+                <Text style={[styles.scoreBarValue, { color: labelColor }]}>
+                  {scoreData.score}
+                  <Text style={[styles.scoreBarMax, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    /100
+                  </Text>
                 </Text>
               </View>
               <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
                 <View
                   style={[
                     styles.progressBarFill,
-                    {
-                      width: `${(scoreData.proteinAccuracy / 25) * 100}%`,
-                      backgroundColor: colors.protein,
-                    },
+                    { width: `${scoreData.score}%`, backgroundColor: labelColor },
                   ]}
                 />
               </View>
-              <Text style={[styles.breakdownHint, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {Math.round(scoreData.proteinLogged)}g / {scoreData.proteinTarget}g avg ({Math.round((scoreData.proteinLogged / scoreData.proteinTarget) * 100)}%)
-              </Text>
             </View>
 
             {/* Date Range Control */}
-            <View style={styles.dateRangeSection}>
+            <View style={[styles.dateRangeSection, { borderTopColor: (isDark ? colors.borderDark : colors.border) + '50' }]}>
               <View style={styles.dateRangeHeader}>
                 <Text style={[styles.dateRangeLabel, { color: isDark ? colors.textDark : colors.text }]}>
                   Date range
@@ -625,12 +485,9 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
                 <TouchableOpacity
                   style={[
                     styles.changeDateButton,
-                    {
-                      backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                      borderColor: isDark ? colors.borderDark : colors.border,
-                    },
+                    { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border },
                   ]}
-                  onPress={() => setShowCalendarPicker(true)}
+                  onPress={handleOpenCalendar}
                 >
                   <IconSymbol
                     ios_icon_name="calendar"
@@ -644,13 +501,10 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
                 </TouchableOpacity>
               </View>
               <Text style={[styles.dateRangeText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {getDateRangeText()}
+                {dateRangeText}
               </Text>
-              {isCustomRange() && (
-                <TouchableOpacity
-                  style={styles.resetButton}
-                  onPress={handleResetToJourneyStart}
-                >
+              {customRange && (
+                <TouchableOpacity style={styles.resetButton} onPress={handleResetToJourneyStart}>
                   <Text style={[styles.resetButtonText, { color: colors.primary }]}>
                     Reset to journey start
                   </Text>
@@ -661,7 +515,6 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         )}
       </View>
 
-      {/* Calendar Date Range Picker */}
       {journeyStartDate && rangeStartDate && rangeEndDate && (
         <CalendarDateRangePicker
           visible={showCalendarPicker}
@@ -701,21 +554,22 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.background + '40',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: colors.primary + '30',
+    backgroundColor: 'transparent',
   },
   scoreValue: {
-    ...typography.h1,
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
+    lineHeight: 32,
   },
-  scoreLabel: {
-    ...typography.caption,
-    fontSize: 10,
-    marginTop: 2,
+  scoreLabelText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    marginTop: 1,
+    textTransform: 'uppercase',
   },
   titleContainer: {
     flex: 1,
@@ -727,29 +581,59 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.caption,
     fontSize: 12,
+    lineHeight: 16,
   },
   breakdownContainer: {
     gap: spacing.md,
     marginTop: spacing.lg,
   },
-  breakdownItem: {
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  statCell: {
+    flex: 1,
+    minWidth: '44%',
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  scoreBarSection: {
     gap: spacing.xs,
   },
-  breakdownHeader: {
+  scoreBarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  breakdownLabel: {
-    ...typography.bodyBold,
-    fontSize: 13,
+  scoreBarLabel: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '600',
   },
-  breakdownScore: {
-    ...typography.bodyBold,
-    fontSize: 13,
+  scoreBarValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  scoreBarMax: {
+    fontSize: 12,
+    fontWeight: '400',
   },
   progressBar: {
-    height: 6,
+    height: 8,
     borderRadius: borderRadius.full,
     overflow: 'hidden',
   },
@@ -757,15 +641,10 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: borderRadius.full,
   },
-  breakdownHint: {
-    ...typography.caption,
-    fontSize: 11,
-  },
   dateRangeSection: {
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border + '30',
   },
   dateRangeHeader: {
     flexDirection: 'row',
