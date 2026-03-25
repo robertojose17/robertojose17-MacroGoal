@@ -1,19 +1,11 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ImageSourcePropType } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const logoSource = require('@/assets/images/72ae1849-bd62-45ba-89bf-c2232486e3a0.png');
-
-function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
-  if (!source) return { uri: '' };
-  if (typeof source === 'string') return { uri: source };
-  return source as ImageSourcePropType;
-}
 
 export default function AuthWelcomeScreen() {
   const router = useRouter();
@@ -27,16 +19,8 @@ export default function AuthWelcomeScreen() {
         style={styles.gradient}
       >
         <View style={styles.content}>
-          <View style={styles.iconContainer}>
-            <Image source={resolveImageSource(logoSource)} style={styles.logo} resizeMode="contain" />
-          </View>
-          
-          <Text style={[styles.title, { color: isDark ? colors.textDark : '#F8F9FA' }]}>
-            Macro Goal
-          </Text>
-          
-          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : '#F8F9FA' }]}>
-            Track your macros. Hit your goals.
+          <Text style={styles.appName}>
+            MacroGoal
           </Text>
 
           <View style={styles.features}>
@@ -101,35 +85,20 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xxl * 2,
+    paddingTop: 110,
     alignItems: 'center',
   },
-  iconContainer: {
-    width: 140,
-    height: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
+  appName: {
+    fontSize: 38,
+    fontWeight: '800',
+    textAlign: 'center',
+    color: '#F8F9FA',
     marginBottom: spacing.xl,
-  },
-  logo: {
-    width: 140,
-    height: 140,
-  },
-  title: {
-    ...typography.h1,
-    fontSize: 36,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    ...typography.body,
-    fontSize: 18,
-    textAlign: 'center',
-    marginBottom: spacing.xxl,
+    letterSpacing: -0.5,
   },
   features: {
     width: '100%',
-    marginTop: spacing.lg,
+    marginTop: 18,
   },
   featureItem: {
     flexDirection: 'row',
