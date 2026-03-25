@@ -1,11 +1,19 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ImageSourcePropType } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { LinearGradient } from 'expo-linear-gradient';
+
+const logoSource = require('@/assets/images/72ae1849-bd62-45ba-89bf-c2232486e3a0.png');
+
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 export default function AuthWelcomeScreen() {
   const router = useRouter();
@@ -20,7 +28,7 @@ export default function AuthWelcomeScreen() {
       >
         <View style={styles.content}>
           <View style={styles.iconContainer}>
-            <Text style={styles.icon}>💪</Text>
+            <Image source={resolveImageSource(logoSource)} style={styles.logo} resizeMode="contain" />
           </View>
           
           <Text style={[styles.title, { color: isDark ? colors.textDark : '#F8F9FA' }]}>
@@ -97,16 +105,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 140,
+    height: 140,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xl,
   },
-  icon: {
-    fontSize: 64,
+  logo: {
+    width: 140,
+    height: 140,
   },
   title: {
     ...typography.h1,
