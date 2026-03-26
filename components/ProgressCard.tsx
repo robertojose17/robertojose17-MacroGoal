@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Dimensions,
   ActivityIndicator,
   TouchableOpacity,
+  Animated,
 } from 'react-native';
 import Svg, { Line, Path, Circle, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -37,6 +38,93 @@ interface WeightCheckIn {
   weightLbs: number;
 }
 
+// ─── Small reusable stat card ────────────────────────────────────────────────
+interface StatCardProps {
+  label: string;
+  bigText: string;
+  subtitle?: string;
+  subline?: string;
+  bigColor?: string;
+  fullWidth?: boolean;
+  tintBg?: boolean;
+  isDark: boolean;
+  animValue?: Animated.Value;
+}
+
+function StatCard({
+  label,
+  bigText,
+  subtitle,
+  subline,
+  bigColor,
+  fullWidth,
+  tintBg,
+  isDark,
+  animValue,
+}: StatCardProps) {
+  const bgColor = tintBg
+    ? (isDark ? colors.primary + '22' : colors.primary + '15')
+    : (isDark ? 'rgba(255,255,255,0.07)' : '#F8F8F8');
+
+  const textColor = isDark ? colors.textDark : colors.text;
+  const grayColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
+
+  return (
+    <View
+      style={[
+        statStyles.card,
+        fullWidth && statStyles.fullWidth,
+        {
+          backgroundColor: bgColor,
+          shadowColor: '#000',
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 2,
+        },
+      ]}
+    >
+      <Text style={[statStyles.label, { color: grayColor }]}>{label}</Text>
+      <Text style={[statStyles.bigNumber, { color: bigColor ?? textColor }]}>{bigText}</Text>
+      {subtitle ? <Text style={[statStyles.subtitle, { color: grayColor }]}>{subtitle}</Text> : null}
+      {subline ? <Text style={[statStyles.subline, { color: grayColor }]}>{subline}</Text> : null}
+    </View>
+  );
+}
+
+const statStyles = StyleSheet.create({
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    flex: 1,
+  },
+  fullWidth: {
+    flex: 0,
+    width: '100%',
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  bigNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    lineHeight: 34,
+  },
+  subtitle: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  subline: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+});
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +132,46 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [calorieLogs, setCalorieLogs] = useState<CalorieLog[]>([]);
   const [actualWeightPoints, setActualWeightPoints] = useState<WeightCheckIn[]>([]);
 
-  // ========================================
-  // VISIBILITY TOGGLES STATE
-  // ========================================
+  // ── View toggle ──────────────────────────────────────────────────────────
+  const [activeView, setActiveView] = useState<'graph' | 'stats'>('graph');
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const switchView = useCallback((view: 'graph' | 'stats') => {
+    if (view === activeView) return;
+    console.log('[ProgressCard] Switching view to:', view);
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      setActiveView(view);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [activeView, fadeAnim]);
+
+  // ── Graph dataset toggles ────────────────────────────────────────────────
   const [showPlannedLine, setShowPlannedLine] = useState(true);
   const [showCalorieProjectionLine, setShowCalorieProjectionLine] = useState(true);
   const [showActualWeightDots, setShowActualWeightDots] = useState(true);
 
+  // ── Stats count-up animations ────────────────────────────────────────────
+  const countUpAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (activeView === 'stats') {
+      countUpAnim.setValue(0);
+      Animated.timing(countUpAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [activeView, countUpAnim]);
+
+  // ── Data loading ─────────────────────────────────────────────────────────
   const loadProfileData = useCallback(async () => {
     try {
       setLoading(true);
@@ -58,7 +179,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       console.log('[ProgressCard] Loading profile data for user:', userId);
 
-      // Load user profile data
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('starting_weight, goal_weight, weight_unit, maintenance_calories, created_at')
@@ -70,12 +190,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         throw userError;
       }
 
-      // ========================================
-      // ROBUST GOAL QUERY WITH MULTIPLE-ROW HANDLING
-      // ========================================
       let goalData = null;
-      
-      // First, try to get active goal with proper ordering and limit
+
       const { data: activeGoalData, error: activeGoalError } = await supabase
         .from('goals')
         .select('start_date, loss_rate_lbs_per_week, daily_calories, is_active')
@@ -94,7 +210,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         goalData = activeGoalData[0];
         console.log('[ProgressCard] Found active goal:', goalData);
       } else {
-        // Fallback: get most recent goal (active or not)
         console.log('[ProgressCard] No active goal found, falling back to most recent goal');
         const { data: recentGoalData, error: recentGoalError } = await supabase
           .from('goals')
@@ -115,19 +230,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         }
       }
 
-      // ========================================
-      // LOG RAW SUPABASE PAYLOADS
-      // ========================================
       console.log('[ProgressCard] === RAW SUPABASE DATA ===');
       console.log('[ProgressCard] userData:', JSON.stringify(userData, null, 2));
       console.log('[ProgressCard] goalData:', JSON.stringify(goalData, null, 2));
-      console.log('[ProgressCard] userData.starting_weight (raw):', userData?.starting_weight);
-      console.log('[ProgressCard] userData.goal_weight (raw):', userData?.goal_weight);
-      console.log('[ProgressCard] userData.weight_unit (raw):', userData?.weight_unit);
-      console.log('[ProgressCard] goalData?.start_date (raw):', goalData?.start_date);
-      console.log('[ProgressCard] goalData?.is_active (raw):', goalData?.is_active);
 
-      // Validate required data with defensive checks
       if (!userData) {
         console.log('[ProgressCard] No user data found');
         setError('Set your weight goal in Profile to see progress.');
@@ -135,28 +241,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         return;
       }
 
-      // ========================================
-      // ROBUST NUMERIC PARSING
-      // ========================================
       const rawStartingWeight = userData.starting_weight;
       const rawGoalWeight = userData.goal_weight;
-      
-      // Parse to float, treating null/undefined/'' as invalid
       const parsedStartingWeight = parseFloat(rawStartingWeight);
       const parsedGoalWeight = parseFloat(rawGoalWeight);
 
-      console.log('[ProgressCard] === PARSED NUMERIC VALUES ===');
       console.log('[ProgressCard] parsedStartingWeight:', parsedStartingWeight);
       console.log('[ProgressCard] parsedGoalWeight:', parsedGoalWeight);
-      console.log('[ProgressCard] isNaN(parsedStartingWeight):', isNaN(parsedStartingWeight));
-      console.log('[ProgressCard] isNaN(parsedGoalWeight):', isNaN(parsedGoalWeight));
 
-      // ========================================
-      // DECOUPLE PROGRESS FROM GOAL ROW DEPENDENCY
-      // Only require valid starting_weight and goal_weight from users table
-      // ========================================
-      
-      // Check if goal_weight exists and is valid
       if (!rawGoalWeight || isNaN(parsedGoalWeight) || parsedGoalWeight <= 0) {
         console.log('[ProgressCard] Goal weight is missing or invalid:', rawGoalWeight);
         setError('Set your weight goal in Profile to see progress.');
@@ -164,7 +256,6 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         return;
       }
 
-      // Check if starting_weight exists and is valid
       if (!rawStartingWeight || isNaN(parsedStartingWeight) || parsedStartingWeight <= 0) {
         console.log('[ProgressCard] Starting weight is missing or invalid:', rawStartingWeight);
         setError('Set your weight goal in Profile to see progress.');
@@ -172,109 +263,50 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         return;
       }
 
-      console.log('[ProgressCard] ✓ Valid starting_weight and goal_weight found - Progress will render');
-
-      // ========================================
-      // ROBUST WEIGHT UNIT HANDLING
-      // ========================================
       const rawWeightUnit = userData.weight_unit;
-      let normalizedWeightUnit = 'lbs'; // Default to lbs
-
-      console.log('[ProgressCard] === WEIGHT UNIT NORMALIZATION ===');
-      console.log('[ProgressCard] rawWeightUnit:', rawWeightUnit);
+      let normalizedWeightUnit = 'lbs';
 
       if (rawWeightUnit) {
         const unitLower = rawWeightUnit.toLowerCase().trim();
-        
         if (['lb', 'lbs', 'pound', 'pounds'].includes(unitLower)) {
           normalizedWeightUnit = 'lbs';
-          console.log('[ProgressCard] Normalized to lbs');
         } else if (['kg', 'kgs', 'kilogram', 'kilograms'].includes(unitLower)) {
           normalizedWeightUnit = 'kg';
-          console.log('[ProgressCard] Normalized to kg');
-        } else {
-          console.log('[ProgressCard] Unknown unit, defaulting to lbs');
         }
-      } else {
-        console.log('[ProgressCard] No weight_unit provided, defaulting to lbs');
       }
 
-      // Convert weights to lbs if needed
       let startWeightLbs: number;
       let goalWeightLbs: number;
 
       if (normalizedWeightUnit === 'kg') {
-        // Convert from kg to lbs
         startWeightLbs = parsedStartingWeight * 2.20462;
         goalWeightLbs = parsedGoalWeight * 2.20462;
-        console.log('[ProgressCard] Converted from kg to lbs');
       } else {
-        // Already in lbs
         startWeightLbs = parsedStartingWeight;
         goalWeightLbs = parsedGoalWeight;
-        console.log('[ProgressCard] Using lbs directly');
       }
 
-      console.log('[ProgressCard] === COMPUTED WEIGHT VALUES ===');
-      console.log('[ProgressCard] startWeightLbs:', startWeightLbs);
-      console.log('[ProgressCard] goalWeightLbs:', goalWeightLbs);
-
-      // ========================================
-      // HANDLE START DATE WITH FALLBACK
-      // ========================================
       let startDate: Date;
-      
+
       if (goalData && goalData.start_date) {
         startDate = new Date(goalData.start_date + 'T00:00:00');
-        console.log('[ProgressCard] Using goal start_date:', startDate.toISOString().split('T')[0]);
       } else if (userData.created_at) {
-        // Fallback to user's created_at date
         startDate = new Date(userData.created_at);
         startDate.setHours(0, 0, 0, 0);
-        console.log('[ProgressCard] No goal start_date, using user created_at as fallback:', startDate.toISOString().split('T')[0]);
       } else {
-        // Final fallback: use today's date
         startDate = new Date();
         startDate.setHours(0, 0, 0, 0);
-        console.log('[ProgressCard] No start_date or created_at found, using today as fallback:', startDate.toISOString().split('T')[0]);
       }
 
-      // Get weekly loss rate (default to 1.0 if not set)
       const rawLossRate = goalData?.loss_rate_lbs_per_week;
       const weeklyLossLbs = parseFloat(rawLossRate) || 1.0;
-      
-      console.log('[ProgressCard] === LOSS RATE ===');
-      console.log('[ProgressCard] rawLossRate:', rawLossRate);
-      console.log('[ProgressCard] weeklyLossLbs (with fallback):', weeklyLossLbs);
-
-      // Get maintenance calories and daily calories
       const maintenanceCalories = userData.maintenance_calories || 2000;
       const dailyCalories = goalData?.daily_calories || maintenanceCalories || 2000;
 
-      console.log('[ProgressCard] === CALORIE VALUES ===');
-      console.log('[ProgressCard] maintenanceCalories:', maintenanceCalories);
-      console.log('[ProgressCard] dailyCalories:', dailyCalories);
-
-      // ========================================
-      // FINAL VALIDATION BEFORE RENDERING
-      // ========================================
-      console.log('[ProgressCard] === FINAL VALIDATION ===');
-      console.log('[ProgressCard] startWeightLbs > 0:', startWeightLbs > 0);
-      console.log('[ProgressCard] goalWeightLbs > 0:', goalWeightLbs > 0);
-      console.log('[ProgressCard] weeklyLossLbs > 0:', weeklyLossLbs > 0);
-      console.log('[ProgressCard] !isNaN(startWeightLbs):', !isNaN(startWeightLbs));
-      console.log('[ProgressCard] !isNaN(goalWeightLbs):', !isNaN(goalWeightLbs));
-      console.log('[ProgressCard] !isNaN(weeklyLossLbs):', !isNaN(weeklyLossLbs));
-
       const hasValidData =
-        !isNaN(startWeightLbs) &&
-        startWeightLbs > 0 &&
-        !isNaN(goalWeightLbs) &&
-        goalWeightLbs > 0 &&
-        !isNaN(weeklyLossLbs) &&
-        weeklyLossLbs > 0;
-
-      console.log('[ProgressCard] hasValidData:', hasValidData);
+        !isNaN(startWeightLbs) && startWeightLbs > 0 &&
+        !isNaN(goalWeightLbs) && goalWeightLbs > 0 &&
+        !isNaN(weeklyLossLbs) && weeklyLossLbs > 0;
 
       if (!hasValidData) {
         console.log('[ProgressCard] Invalid weight or loss rate data after conversion');
@@ -292,20 +324,9 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         dailyCalories,
       });
 
-      console.log('[ProgressCard] === PROFILE DATA LOADED SUCCESSFULLY ===');
-      console.log('[ProgressCard] Profile data:', {
-        startDate: startDate.toISOString().split('T')[0],
-        startWeightLbs,
-        goalWeightLbs,
-        weeklyLossLbs,
-        maintenanceCalories,
-        dailyCalories,
-      });
+      console.log('[ProgressCard] Profile data loaded successfully');
 
-      // Load calorie logs
       await loadCalorieLogs(userId, startDate);
-
-      // Load weight check-ins
       await loadWeightCheckIns(userId, startDate, normalizedWeightUnit);
 
       setLoading(false);
@@ -320,7 +341,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     loadProfileData();
   }, [userId, loadProfileData]);
 
-  const loadCalorieLogs = async (userId: string, startDate: Date) => {
+  const loadCalorieLogs = async (uid: string, startDate: Date) => {
     try {
       const today = new Date();
       const startDateStr = startDate.toISOString().split('T')[0];
@@ -328,16 +349,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       console.log('[ProgressCard] Loading calorie logs from', startDateStr, 'to', todayStr);
 
-      // Query meals and meal_items to get daily calorie totals
       const { data: mealsData, error: mealsError } = await supabase
         .from('meals')
-        .select(`
-          date,
-          meal_items (
-            calories
-          )
-        `)
-        .eq('user_id', userId)
+        .select(`date, meal_items ( calories )`)
+        .eq('user_id', uid)
         .gte('date', startDateStr)
         .lte('date', todayStr);
 
@@ -348,26 +363,22 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       console.log('[ProgressCard] Meals data returned:', mealsData?.length || 0, 'meals');
 
-      // Aggregate calories by date
       const caloriesByDate: { [key: string]: number } = {};
 
       if (mealsData && mealsData.length > 0) {
         mealsData.forEach((meal: any) => {
           if (meal.meal_items) {
             meal.meal_items.forEach((item: any) => {
-              if (!caloriesByDate[meal.date]) {
-                caloriesByDate[meal.date] = 0;
-              }
+              if (!caloriesByDate[meal.date]) caloriesByDate[meal.date] = 0;
               caloriesByDate[meal.date] += item.calories || 0;
             });
           }
         });
       }
 
-      // Convert to CalorieLog array
-      const logs: CalorieLog[] = Object.entries(caloriesByDate).map(([dateStr, calories]) => ({
+      const logs: CalorieLog[] = Object.entries(caloriesByDate).map(([dateStr, cals]) => ({
         date: new Date(dateStr + 'T00:00:00'),
-        calories,
+        calories: cals,
       }));
 
       console.log('[ProgressCard] Calorie logs loaded:', logs.length, 'days with data');
@@ -377,7 +388,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     }
   };
 
-  const loadWeightCheckIns = async (userId: string, startDate: Date, weightUnit: string) => {
+  const loadWeightCheckIns = async (uid: string, startDate: Date, weightUnit: string) => {
     try {
       const today = new Date();
       const startDateStr = startDate.toISOString().split('T')[0];
@@ -385,11 +396,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       console.log('[ProgressCard] Loading weight check-ins from', startDateStr, 'to', todayStr);
 
-      // Query check_ins table for weight data
       const { data: checkInsData, error: checkInsError } = await supabase
         .from('check_ins')
         .select('date, weight')
-        .eq('user_id', userId)
+        .eq('user_id', uid)
         .gte('date', startDateStr)
         .lte('date', todayStr)
         .not('weight', 'is', null)
@@ -403,139 +413,54 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] Weight check-ins returned:', checkInsData?.length || 0, 'entries');
 
       if (!checkInsData || checkInsData.length === 0) {
-        console.log('[ProgressCard] No weight check-ins found');
         setActualWeightPoints([]);
         return;
       }
 
-      // Convert weights to lbs if needed (check_ins table stores weight in kg)
-      const weightPoints: WeightCheckIn[] = checkInsData.map((checkIn: any) => {
-        let weightLbs: number;
-        
-        // The check_ins table stores weight in kg, so we need to convert based on user preference
-        if (weightUnit === 'lbs') {
-          // If user prefers lbs, the weight in the table is actually in kg, so convert
-          weightLbs = checkIn.weight * 2.20462;
-        } else {
-          // If user prefers kg, the weight in the table is in kg, so convert to lbs for chart
-          weightLbs = checkIn.weight * 2.20462;
-        }
-
-        return {
-          date: new Date(checkIn.date + 'T00:00:00'),
-          weightLbs,
-        };
-      });
+      const weightPoints: WeightCheckIn[] = checkInsData.map((checkIn: any) => ({
+        date: new Date(checkIn.date + 'T00:00:00'),
+        weightLbs: checkIn.weight * 2.20462,
+      }));
 
       console.log('[ProgressCard] Weight check-ins loaded:', weightPoints.length, 'points');
-      console.log('[ProgressCard] First check-in:', {
-        date: weightPoints[0]?.date.toISOString().split('T')[0],
-        weightLbs: weightPoints[0]?.weightLbs.toFixed(1),
-      });
-      console.log('[ProgressCard] Last check-in:', {
-        date: weightPoints[weightPoints.length - 1]?.date.toISOString().split('T')[0],
-        weightLbs: weightPoints[weightPoints.length - 1]?.weightLbs.toFixed(1),
-      });
-
       setActualWeightPoints(weightPoints);
     } catch (err: any) {
       console.error('[ProgressCard] Error loading weight check-ins:', err);
     }
   };
 
-  // Calculate planned weight data points
+  // ── Planned line data ────────────────────────────────────────────────────
   const plannedData = useMemo(() => {
-    if (!profileData) {
-      return null;
-    }
+    if (!profileData) return null;
 
     const { startDate, startWeightLbs, goalWeightLbs, weeklyLossLbs } = profileData;
-
-    console.log('[ProgressCard] Computing planned line with:', {
-      startDate: startDate.toISOString().split('T')[0],
-      startWeightLbs,
-      goalWeightLbs,
-      weeklyLossLbs,
-    });
-
-    // Calculate total weight change needed
     const totalWeightChange = Math.abs(goalWeightLbs - startWeightLbs);
-    
-    // Calculate total weeks needed to reach goal
     const totalWeeks = totalWeightChange / weeklyLossLbs;
-    
-    // Calculate total days needed (inclusive of start and end date)
     const totalDays = Math.ceil(totalWeeks * 7);
-    
-    // Calculate the goal date
-    const goalDate = new Date(startDate);
-    goalDate.setDate(goalDate.getDate() + totalDays);
 
-    console.log('[ProgressCard] Calculated goal date:', {
-      totalWeightChange,
-      totalWeeks: totalWeeks.toFixed(2),
-      totalDays,
-      goalDate: goalDate.toISOString().split('T')[0],
-    });
-
-    // Generate daily data points from start date to goal date (inclusive)
     const dataPoints: { date: Date; weightLbs: number }[] = [];
-
     for (let i = 0; i <= totalDays; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(currentDate.getDate() + i);
-
-      // Linear interpolation: weight = startWeight + (goalWeight - startWeight) * (i / totalDays)
       const weight = startWeightLbs + (goalWeightLbs - startWeightLbs) * (i / totalDays);
-
-      dataPoints.push({
-        date: currentDate,
-        weightLbs: weight,
-      });
+      dataPoints.push({ date: currentDate, weightLbs: weight });
     }
 
     console.log('[ProgressCard] Generated', dataPoints.length, 'planned data points');
-    console.log('[ProgressCard] First point:', {
-      date: dataPoints[0].date.toISOString().split('T')[0],
-      weight: dataPoints[0].weightLbs.toFixed(1),
-    });
-    console.log('[ProgressCard] Last point:', {
-      date: dataPoints[dataPoints.length - 1].date.toISOString().split('T')[0],
-      weight: dataPoints[dataPoints.length - 1].weightLbs.toFixed(1),
-    });
-
     return dataPoints;
   }, [profileData]);
 
-  // Calculate calorie projection data
+  // ── Calorie projection data ──────────────────────────────────────────────
   const calorieProjectionData = useMemo(() => {
-    if (!profileData || !plannedData || plannedData.length === 0) {
-      return null;
-    }
+    if (!profileData || !plannedData || plannedData.length === 0) return null;
 
-    const { weeklyLossLbs, maintenanceCalories, dailyCalories } = profileData;
-
-    console.log('[ProgressCard] Computing calorie projection with:', {
-      weeklyLossLbs,
-      maintenanceCalories,
-      dailyCalories,
-      calorieLogsCount: calorieLogs.length,
-    });
-
-    // Create a map of calorie logs by date
+    const { weeklyLossLbs, dailyCalories } = profileData;
     const logsByDate: { [key: string]: number } = {};
     calorieLogs.forEach((log) => {
-      const dateStr = log.date.toISOString().split('T')[0];
-      logsByDate[dateStr] = log.calories;
+      logsByDate[log.date.toISOString().split('T')[0]] = log.calories;
     });
 
-    // Calculate planned daily deficit and calories
-    const plannedDailyDeficit = (weeklyLossLbs * 3500) / 7;
-    const plannedDailyCalories = dailyCalories; // Use the daily_calories from goals table
-
-    console.log('[ProgressCard] Planned daily deficit:', plannedDailyDeficit);
-    console.log('[ProgressCard] Planned daily calories:', plannedDailyCalories);
-
+    const plannedDailyCalories = dailyCalories;
     let cumulativeDeviation = 0;
     const projectionPoints: { date: Date; weightLbs: number }[] = [];
     const today = new Date();
@@ -546,123 +471,53 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       const currentDate = new Date(plannedPoint.date);
       currentDate.setHours(0, 0, 0, 0);
       const dateStr = currentDate.toISOString().split('T')[0];
-      const plannedWeightForDay = plannedPoint.weightLbs;
-
-      let projectedWeight: number;
 
       if (currentDate <= today) {
-        // For past and current days, calculate deviation
         const actualCalories = logsByDate[dateStr];
-        
         if (actualCalories !== undefined && actualCalories !== null) {
-          // Calculate delta from planned calories
           const delta = actualCalories - plannedDailyCalories;
-          const deltaWeight = delta / 3500;
-          cumulativeDeviation += deltaWeight;
-          
-          console.log('[ProgressCard] Day', dateStr, ':', {
-            actualCalories,
-            plannedDailyCalories,
-            delta,
-            deltaWeight: deltaWeight.toFixed(4),
-            cumulativeDeviation: cumulativeDeviation.toFixed(4),
-          });
+          cumulativeDeviation += delta / 3500;
         }
-        
-        projectedWeight = plannedWeightForDay + cumulativeDeviation;
-      } else {
-        // For future days, use frozen deviation
-        projectedWeight = plannedWeightForDay + cumulativeDeviation;
       }
 
       projectionPoints.push({
         date: currentDate,
-        weightLbs: projectedWeight,
+        weightLbs: plannedPoint.weightLbs + cumulativeDeviation,
       });
     }
 
-    console.log('[ProgressCard] Generated', projectionPoints.length, 'projection data points');
-    console.log('[ProgressCard] Final cumulative deviation:', cumulativeDeviation.toFixed(4), 'lbs');
-
+    console.log('[ProgressCard] Generated', projectionPoints.length, 'projection points, final deviation:', cumulativeDeviation.toFixed(4));
     return projectionPoints;
   }, [profileData, plannedData, calorieLogs]);
 
-  // Prepare chart data with custom SVG rendering
+  // ── Chart config ─────────────────────────────────────────────────────────
   const chartConfig = useMemo(() => {
-    if (!profileData || !plannedData || plannedData.length === 0) {
-      return null;
-    }
+    if (!profileData || !plannedData || plannedData.length === 0) return null;
 
     const { startWeightLbs, goalWeightLbs } = profileData;
-
-    // ========================================
-    // CHART DIMENSIONS - INDEPENDENT CONTROL
-    // ========================================
     const screenWidth = Dimensions.get('window').width;
     const cardPadding = spacing.lg * 2;
-    
-    // Y-axis configuration (left side)
-    const yAxisWidth = 55; // Space for "189 lb" labels
-    const yAxisLabelPadding = 8;
-    
-    // X-axis configuration (bottom)
+    const yAxisWidth = 55;
     const xAxisHeight = 30;
-    const xAxisLabelPadding = 8;
-    
-    // Top padding to prevent label cutoff
-    const topPadding = 16; // Extra space at the top for the highest label
-    
-    // Chart area dimensions
-    const chartAreaWidth = screenWidth - cardPadding - yAxisWidth - 20; // 20 for right padding
+    const topPadding = 16;
+    const chartAreaWidth = screenWidth - cardPadding - yAxisWidth - 20;
     const chartAreaHeight = 220;
-    
     const totalWidth = screenWidth - cardPadding;
     const totalHeight = chartAreaHeight + xAxisHeight + topPadding;
 
-    console.log('[ProgressCard] Chart dimensions:', {
-      screenWidth,
-      totalWidth,
-      totalHeight,
-      chartAreaWidth,
-      chartAreaHeight,
-      yAxisWidth,
-      xAxisHeight,
-      topPadding,
-    });
-
-    // ========================================
-    // Y-AXIS CONFIGURATION (Weight in lbs)
-    // ========================================
-    // Include plannedData, calorieProjectionData, and actualWeightPoints in yMin/yMax calculation
     let minWeight = Math.min(startWeightLbs, goalWeightLbs);
     let maxWeight = Math.max(startWeightLbs, goalWeightLbs);
 
     if (calorieProjectionData && calorieProjectionData.length > 0) {
-      const projectionWeights = calorieProjectionData.map(p => p.weightLbs);
-      const projectionMin = Math.min(...projectionWeights);
-      const projectionMax = Math.max(...projectionWeights);
-      
-      minWeight = Math.min(minWeight, projectionMin);
-      maxWeight = Math.max(maxWeight, projectionMax);
-      
-      console.log('[ProgressCard] Including projection data in Y-axis range:', {
-        projectionMin: projectionMin.toFixed(1),
-        projectionMax: projectionMax.toFixed(1),
-      });
+      const ws = calorieProjectionData.map(p => p.weightLbs);
+      minWeight = Math.min(minWeight, ...ws);
+      maxWeight = Math.max(maxWeight, ...ws);
     }
 
     if (actualWeightPoints && actualWeightPoints.length > 0) {
-      const actualWeights = actualWeightPoints.map(p => p.weightLbs);
-      const actualMin = Math.min(...actualWeights);
-      const actualMax = Math.max(...actualWeights);
-      
-      minWeight = Math.min(minWeight, actualMin);
-      maxWeight = Math.max(maxWeight, actualMax);
-      
-      console.log('[ProgressCard] Including actual weight points in Y-axis range:', {
-        actualMin: actualMin.toFixed(1),
-        actualMax: actualMax.toFixed(1),
-      });
+      const ws = actualWeightPoints.map(p => p.weightLbs);
+      minWeight = Math.min(minWeight, ...ws);
+      maxWeight = Math.max(maxWeight, ...ws);
     }
 
     const weightPadding = 3;
@@ -670,189 +525,195 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     const yMax = maxWeight + weightPadding;
     const yRange = yMax - yMin;
 
-    console.log('[ProgressCard] Y-axis range:', {
-      yMin: yMin.toFixed(1),
-      yMax: yMax.toFixed(1),
-      yRange: yRange.toFixed(1),
-    });
-
-    // Generate Y-axis labels (6 evenly spaced ticks)
     const numYTicks = 6;
     const yTicks: { value: number; label: string; y: number }[] = [];
-    
     for (let i = 0; i < numYTicks; i++) {
       const value = yMax - (yRange * i / (numYTicks - 1));
       const y = topPadding + (chartAreaHeight * i / (numYTicks - 1));
-      yTicks.push({
-        value,
-        label: `${Math.round(value)} lb`,
-        y,
-      });
+      yTicks.push({ value, label: `${Math.round(value)} lb`, y });
     }
 
-    console.log('[ProgressCard] Y-axis ticks:', yTicks);
-
-    // ========================================
-    // X-AXIS CONFIGURATION (Dates in MM/DD format)
-    // ========================================
     const totalPoints = plannedData.length;
-    const numXTicks = 6; // Show 6 date labels
-
-    // Select evenly distributed indices for X-axis labels
+    const numXTicks = 6;
     const xTickIndices: number[] = [];
     if (totalPoints <= numXTicks) {
-      // Show all points if we have fewer than max ticks
-      for (let i = 0; i < totalPoints; i++) {
-        xTickIndices.push(i);
-      }
+      for (let i = 0; i < totalPoints; i++) xTickIndices.push(i);
     } else {
-      // Evenly distribute ticks
       for (let i = 0; i < numXTicks; i++) {
-        const index = Math.round((totalPoints - 1) * i / (numXTicks - 1));
-        xTickIndices.push(index);
+        xTickIndices.push(Math.round((totalPoints - 1) * i / (numXTicks - 1)));
       }
     }
 
-    const xTicks: { index: number; label: string; x: number }[] = xTickIndices.map((index) => {
+    const xTicks = xTickIndices.map((index) => {
       const point = plannedData[index];
       const month = (point.date.getMonth() + 1).toString().padStart(2, '0');
       const day = point.date.getDate().toString().padStart(2, '0');
-      const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
-      
-      return {
-        index,
-        label: `${month}/${day}`,
-        x,
-      };
+      return { index, label: `${month}/${day}`, x: yAxisWidth + (chartAreaWidth * index / (totalPoints - 1)) };
     });
 
-    console.log('[ProgressCard] X-axis ticks:', xTicks);
+    const plannedPathPoints = plannedData.map((point, index) => ({
+      x: yAxisWidth + (chartAreaWidth * index / (totalPoints - 1)),
+      y: topPadding + (chartAreaHeight * (1 - (point.weightLbs - yMin) / yRange)),
+    }));
 
-    // ========================================
-    // GENERATE PLANNED LINE PATH
-    // ========================================
-    const plannedPathPoints = plannedData.map((point, index) => {
-      const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
-      const normalizedWeight = (point.weightLbs - yMin) / yRange;
-      const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
-      return { x, y };
-    });
-
-    // Create SVG path string for planned line
     let plannedPathData = `M ${plannedPathPoints[0].x} ${plannedPathPoints[0].y}`;
     for (let i = 1; i < plannedPathPoints.length; i++) {
       plannedPathData += ` L ${plannedPathPoints[i].x} ${plannedPathPoints[i].y}`;
     }
 
-    // Create filled area path (for gradient under the planned line)
     const chartBottom = topPadding + chartAreaHeight;
     let fillPathData = `M ${plannedPathPoints[0].x} ${chartBottom}`;
     fillPathData += ` L ${plannedPathPoints[0].x} ${plannedPathPoints[0].y}`;
     for (let i = 1; i < plannedPathPoints.length; i++) {
       fillPathData += ` L ${plannedPathPoints[i].x} ${plannedPathPoints[i].y}`;
     }
-    fillPathData += ` L ${plannedPathPoints[plannedPathPoints.length - 1].x} ${chartBottom}`;
-    fillPathData += ' Z';
+    fillPathData += ` L ${plannedPathPoints[plannedPathPoints.length - 1].x} ${chartBottom} Z`;
 
-    console.log('[ProgressCard] Generated planned path with', plannedPathPoints.length, 'points');
-
-    // ========================================
-    // GENERATE CALORIE PROJECTION LINE PATH
-    // ========================================
     let projectionPathData: string | null = null;
-    
     if (calorieProjectionData && calorieProjectionData.length > 0) {
-      const projectionPathPoints = calorieProjectionData.map((point, index) => {
-        const x = yAxisWidth + (chartAreaWidth * index / (totalPoints - 1));
-        const normalizedWeight = (point.weightLbs - yMin) / yRange;
-        const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
-        return { x, y };
-      });
-
-      // Create SVG path string for projection line
-      projectionPathData = `M ${projectionPathPoints[0].x} ${projectionPathPoints[0].y}`;
-      for (let i = 1; i < projectionPathPoints.length; i++) {
-        projectionPathData += ` L ${projectionPathPoints[i].x} ${projectionPathPoints[i].y}`;
-      }
-
-      console.log('[ProgressCard] Generated projection path with', projectionPathPoints.length, 'points');
+      const pts = calorieProjectionData.map((point, index) => ({
+        x: yAxisWidth + (chartAreaWidth * index / (totalPoints - 1)),
+        y: topPadding + (chartAreaHeight * (1 - (point.weightLbs - yMin) / yRange)),
+      }));
+      projectionPathData = `M ${pts[0].x} ${pts[0].y}`;
+      for (let i = 1; i < pts.length; i++) projectionPathData += ` L ${pts[i].x} ${pts[i].y}`;
     }
 
-    // ========================================
-    // GENERATE ACTUAL WEIGHT POINTS (NO LINE)
-    // ========================================
     const actualWeightCircles: { x: number; y: number; weightLbs: number }[] = [];
-    
     if (actualWeightPoints && actualWeightPoints.length > 0) {
-      // Create a date-to-index map for the planned data
-      const dateToIndexMap: { [key: string]: number } = {};
-      plannedData.forEach((point, index) => {
-        const dateStr = point.date.toISOString().split('T')[0];
-        dateToIndexMap[dateStr] = index;
-      });
-
-      // Map each actual weight point to its corresponding position on the chart
       actualWeightPoints.forEach((point) => {
-        const dateStr = point.date.toISOString().split('T')[0];
-        
-        // Find the closest index in the planned data
         let closestIndex = 0;
         let minDiff = Math.abs(point.date.getTime() - plannedData[0].date.getTime());
-        
         for (let i = 1; i < plannedData.length; i++) {
           const diff = Math.abs(point.date.getTime() - plannedData[i].date.getTime());
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestIndex = i;
-          }
+          if (diff < minDiff) { minDiff = diff; closestIndex = i; }
         }
-
-        // Calculate x position based on the closest index
-        const x = yAxisWidth + (chartAreaWidth * closestIndex / (totalPoints - 1));
-        
-        // Calculate y position based on weight
-        const normalizedWeight = (point.weightLbs - yMin) / yRange;
-        const y = topPadding + (chartAreaHeight * (1 - normalizedWeight));
-
-        actualWeightCircles.push({ x, y, weightLbs: point.weightLbs });
+        actualWeightCircles.push({
+          x: yAxisWidth + (chartAreaWidth * closestIndex / (totalPoints - 1)),
+          y: topPadding + (chartAreaHeight * (1 - (point.weightLbs - yMin) / yRange)),
+          weightLbs: point.weightLbs,
+        });
       });
-
-      console.log('[ProgressCard] Generated', actualWeightCircles.length, 'actual weight point circles');
     }
 
     return {
-      totalWidth,
-      totalHeight,
-      chartAreaWidth,
-      chartAreaHeight,
-      yAxisWidth,
-      xAxisHeight,
-      topPadding,
-      yTicks,
-      xTicks,
-      pathData: plannedPathData,
-      fillPathData,
-      projectionPathData,
-      actualWeightCircles,
-      yMin,
-      yMax,
+      totalWidth, totalHeight, chartAreaWidth, chartAreaHeight,
+      yAxisWidth, xAxisHeight, topPadding,
+      yTicks, xTicks,
+      pathData: plannedPathData, fillPathData, projectionPathData,
+      actualWeightCircles, yMin, yMax,
     };
   }, [profileData, plannedData, calorieProjectionData, actualWeightPoints]);
 
+  // ── Derived stats ────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    if (!profileData || !plannedData || plannedData.length === 0) return null;
+
+    const { startWeightLbs, goalWeightLbs, startDate, dailyCalories } = profileData;
+    const totalDays = plannedData.length - 1;
+
+    // Weight lost
+    const latestWeight = actualWeightPoints.length > 0
+      ? actualWeightPoints[actualWeightPoints.length - 1].weightLbs
+      : null;
+    const weightLost = latestWeight !== null ? startWeightLbs - latestWeight : null;
+
+    // Current pace (last 14 days of check-ins)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const fourteenDaysAgo = new Date(today);
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const recentPoints = actualWeightPoints.filter(p => p.date >= fourteenDaysAgo);
+    let currentPaceLbsPerWeek: number | null = null;
+    if (recentPoints.length >= 2) {
+      const first = recentPoints[0];
+      const last = recentPoints[recentPoints.length - 1];
+      const daysDiff = (last.date.getTime() - first.date.getTime()) / (1000 * 60 * 60 * 24);
+      const weeksDiff = daysDiff / 7;
+      currentPaceLbsPerWeek = weeksDiff > 0 ? (first.weightLbs - last.weightLbs) / weeksDiff : null;
+    }
+
+    // Adherence
+    const logsByDate: { [key: string]: number } = {};
+    calorieLogs.forEach(log => {
+      logsByDate[log.date.toISOString().split('T')[0]] = log.calories;
+    });
+    const trackedDays = calorieLogs.length;
+    const adherentDays = calorieLogs.filter(log => {
+      const lower = dailyCalories * 0.85;
+      const upper = dailyCalories * 1.15;
+      return log.calories >= lower && log.calories <= upper;
+    }).length;
+    const adherencePct = trackedDays > 0 ? Math.round((adherentDays / trackedDays) * 100) : null;
+
+    // Cumulative calorie deviation → days ahead/behind
+    let cumulativeCalDev = 0;
+    calorieLogs.forEach(log => {
+      cumulativeCalDev += log.calories - dailyCalories;
+    });
+    const daysDeviation = dailyCalories > 0 ? cumulativeCalDev / dailyCalories : 0;
+    // positive = surplus = behind plan; negative = deficit = ahead of plan
+    const daysAhead = -daysDeviation; // positive means ahead
+
+    // Planned goal date
+    const plannedGoalDate = new Date(startDate);
+    plannedGoalDate.setDate(plannedGoalDate.getDate() + totalDays);
+
+    // Projected goal date
+    const projectedGoalDate = new Date(plannedGoalDate);
+    projectedGoalDate.setDate(projectedGoalDate.getDate() - Math.round(daysAhead));
+
+    // Status vs plan
+    let vsStatus: 'ahead' | 'behind' | 'on-track';
+    if (daysAhead > 1) vsStatus = 'ahead';
+    else if (daysAhead < -1) vsStatus = 'behind';
+    else vsStatus = 'on-track';
+
+    // Graph status label (from calorie projection vs planned last point)
+    let graphStatus: 'on-track' | 'ahead' | 'behind' = 'on-track';
+    if (calorieProjectionData && calorieProjectionData.length > 0 && plannedData.length > 0) {
+      const lastProjected = calorieProjectionData[calorieProjectionData.length - 1].weightLbs;
+      const lastPlanned = plannedData[plannedData.length - 1].weightLbs;
+      const diff = lastProjected - lastPlanned;
+      if (diff > 0.5) graphStatus = 'behind';
+      else if (diff < -0.5) graphStatus = 'ahead';
+      else graphStatus = 'on-track';
+    }
+
+    // Days since start
+    const daysSinceStart = Math.round((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    return {
+      latestWeight,
+      weightLost,
+      startWeightLbs,
+      goalWeightLbs,
+      currentPaceLbsPerWeek,
+      adherencePct,
+      adherentDays,
+      trackedDays,
+      daysAhead,
+      vsStatus,
+      plannedGoalDate,
+      projectedGoalDate,
+      graphStatus,
+      daysSinceStart,
+      daysDeviation: Math.abs(Math.round(daysAhead)),
+    };
+  }, [profileData, plannedData, actualWeightPoints, calorieLogs, calorieProjectionData]);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const formatDate = (d: Date) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  };
+
+  // ── Loading / error states ───────────────────────────────────────────────
   if (loading) {
     return (
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          },
-        ]}
-      >
-        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Progress
-        </Text>
+      <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>Progress</Text>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -862,33 +723,11 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   if (error) {
     return (
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          },
-        ]}
-      >
-        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Progress
-        </Text>
+      <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>Progress</Text>
         <View style={styles.errorContainer}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle"
-            android_material_icon_name="warning"
-            size={48}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.errorText,
-              { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
-            ]}
-          >
-            {error}
-          </Text>
+          <IconSymbol ios_icon_name="exclamationmark.triangle" android_material_icon_name="warning" size={48} color={isDark ? colors.textSecondaryDark : colors.textSecondary} />
+          <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>{error}</Text>
         </View>
       </View>
     );
@@ -896,27 +735,10 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
   if (!chartConfig) {
     return (
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: isDark ? colors.cardDark : colors.card,
-            borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
-          },
-        ]}
-      >
-        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Progress
-        </Text>
+      <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>Progress</Text>
         <View style={styles.errorContainer}>
-          <Text
-            style={[
-              styles.errorText,
-              { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
-            ]}
-          >
-            Set your weight goal in Profile to see progress.
-          </Text>
+          <Text style={[styles.errorText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>Set your weight goal in Profile to see progress.</Text>
         </View>
       </View>
     );
@@ -926,7 +748,86 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const gridColor = isDark ? colors.borderDark : colors.border;
   const lineColor = colors.success;
   const projectionColor = colors.primary;
-  const actualWeightColor = colors.warning; // Using warning color (orange) for actual weight points
+  const actualWeightColor = colors.warning;
+
+  // ── Graph status badge ───────────────────────────────────────────────────
+  const graphStatusConfig = stats ? {
+    'on-track': { label: 'On track', bg: colors.success + '22', text: colors.success },
+    'ahead': { label: 'Ahead of plan', bg: colors.primary + '22', text: colors.primary },
+    'behind': { label: 'Behind plan', bg: colors.warning + '22', text: colors.warning },
+  }[stats.graphStatus] : null;
+
+  // ── Stats view computed strings ──────────────────────────────────────────
+  const weightUnit = 'lb';
+
+  const weightLostText = stats?.weightLost !== null && stats?.weightLost !== undefined
+    ? `${stats.weightLost >= 0 ? '↓' : '↑'} ${Math.abs(stats.weightLost).toFixed(1)} ${weightUnit}`
+    : '--';
+  const weightLostColor = stats?.weightLost !== null && stats?.weightLost !== undefined
+    ? (stats.weightLost >= 0 ? colors.success : colors.error)
+    : (isDark ? colors.textDark : colors.text);
+  const weightRangeText = stats?.latestWeight !== null && stats?.latestWeight !== undefined
+    ? `${stats.startWeightLbs.toFixed(1)} → ${stats.latestWeight.toFixed(1)} ${weightUnit}`
+    : '--';
+
+  const paceText = stats?.currentPaceLbsPerWeek !== null && stats?.currentPaceLbsPerWeek !== undefined
+    ? `${stats.currentPaceLbsPerWeek >= 0 ? '-' : '+'}${Math.abs(stats.currentPaceLbsPerWeek).toFixed(1)} ${weightUnit}/week`
+    : 'Not enough data';
+  const paceColor = stats?.currentPaceLbsPerWeek !== null && stats?.currentPaceLbsPerWeek !== undefined
+    ? (stats.currentPaceLbsPerWeek > 0 ? colors.success : colors.warning)
+    : (isDark ? colors.textDark : colors.text);
+
+  const adherenceText = stats?.adherencePct !== null && stats?.adherencePct !== undefined
+    ? `${stats.adherencePct}%`
+    : '0%';
+  const adherenceSubline = stats
+    ? `${stats.adherentDays} / ${stats.trackedDays} days`
+    : '--';
+
+  const vsText = stats
+    ? (stats.vsStatus === 'on-track'
+        ? 'On track'
+        : stats.vsStatus === 'ahead'
+          ? `↑ ${stats.daysDeviation} days ahead`
+          : `↓ ${stats.daysDeviation} days behind`)
+    : '--';
+  const vsColor = stats
+    ? (stats.vsStatus === 'on-track'
+        ? (isDark ? colors.textSecondaryDark : colors.textSecondary)
+        : stats.vsStatus === 'ahead' ? colors.success : colors.error)
+    : (isDark ? colors.textDark : colors.text);
+
+  const projectedGoalText = stats ? formatDate(stats.projectedGoalDate) : '--';
+  const plannedGoalText = stats ? `Original: ${formatDate(stats.plannedGoalDate)}` : '--';
+
+  const calorieImpactText = stats
+    ? (stats.vsStatus === 'ahead'
+        ? `Your deficit moved your goal ${stats.daysDeviation} days earlier`
+        : stats.vsStatus === 'behind'
+          ? `Recent surplus delayed your goal by ${stats.daysDeviation} days`
+          : "You're right on track with your plan")
+    : '--';
+
+  const narrativeText = stats
+    ? (() => {
+        const parts: string[] = [];
+        if (stats.weightLost !== null) {
+          const dir = stats.weightLost >= 0 ? 'lost' : 'gained';
+          parts.push(`You've ${dir} ${Math.abs(stats.weightLost).toFixed(1)} lb in ${stats.daysSinceStart} days.`);
+        }
+        if (stats.vsStatus === 'ahead') {
+          parts.push(`Your calorie deficit has put you ${stats.daysDeviation} days ahead of your plan.`);
+        } else if (stats.vsStatus === 'behind') {
+          parts.push(`A calorie surplus has put you ${stats.daysDeviation} days behind your plan.`);
+        } else {
+          parts.push("You're right on track with your calorie plan.");
+        }
+        if (stats.currentPaceLbsPerWeek !== null) {
+          parts.push(`At this pace, you'll reach your goal by ${formatDate(stats.projectedGoalDate)}.`);
+        }
+        return parts.join(' ');
+      })()
+    : '';
 
   return (
     <View
@@ -938,223 +839,263 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         },
       ]}
     >
-      {/* ========================================
-          HEADER WITH TITLE AND TOGGLE CONTROLS
-          ======================================== */}
+      {/* ── Header ── */}
       <View style={styles.cardHeader}>
         <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Progress
+          Weight Progress
         </Text>
-        
-        {/* Toggle Controls Panel */}
-        <View style={styles.togglesContainer}>
-          {/* Planned Line Toggle */}
+
+        {/* Segmented toggle */}
+        <View
+          style={[
+            styles.segmentedControl,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+              borderColor: isDark ? colors.borderDark : colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity
             style={[
-              styles.toggleChip,
-              {
-                backgroundColor: showPlannedLine
-                  ? (isDark ? colors.success + '30' : colors.success + '20')
-                  : (isDark ? colors.cardDark : colors.card),
-                borderColor: showPlannedLine
-                  ? colors.success
-                  : (isDark ? colors.borderDark : colors.border),
+              styles.segment,
+              activeView === 'graph' && {
+                backgroundColor: colors.primary,
               },
             ]}
-            onPress={() => setShowPlannedLine(!showPlannedLine)}
-            activeOpacity={0.7}
+            onPress={() => {
+              console.log('[ProgressCard] Toggle pressed: graph');
+              switchView('graph');
+            }}
+            activeOpacity={0.8}
           >
             <Text
               style={[
-                styles.toggleChipText,
-                {
-                  color: showPlannedLine
-                    ? colors.success
-                    : (isDark ? colors.textSecondaryDark : colors.textSecondary),
-                  fontWeight: showPlannedLine ? '600' : '400',
-                },
+                styles.segmentText,
+                { color: activeView === 'graph' ? '#fff' : (isDark ? colors.textSecondaryDark : colors.textSecondary) },
               ]}
             >
-              Planned
+              📈 Graph
             </Text>
           </TouchableOpacity>
 
-          {/* Calorie Projection Toggle */}
-          {chartConfig.projectionPathData && (
-            <TouchableOpacity
+          <TouchableOpacity
+            style={[
+              styles.segment,
+              activeView === 'stats' && {
+                backgroundColor: colors.primary,
+              },
+            ]}
+            onPress={() => {
+              console.log('[ProgressCard] Toggle pressed: stats');
+              switchView('stats');
+            }}
+            activeOpacity={0.8}
+          >
+            <Text
               style={[
-                styles.toggleChip,
-                {
-                  backgroundColor: showCalorieProjectionLine
-                    ? (isDark ? colors.primary + '30' : colors.primary + '20')
-                    : (isDark ? colors.cardDark : colors.card),
-                  borderColor: showCalorieProjectionLine
-                    ? colors.primary
-                    : (isDark ? colors.borderDark : colors.border),
-                },
+                styles.segmentText,
+                { color: activeView === 'stats' ? '#fff' : (isDark ? colors.textSecondaryDark : colors.textSecondary) },
               ]}
-              onPress={() => setShowCalorieProjectionLine(!showCalorieProjectionLine)}
-              activeOpacity={0.7}
             >
-              <Text
-                style={[
-                  styles.toggleChipText,
-                  {
-                    color: showCalorieProjectionLine
-                      ? colors.primary
-                      : (isDark ? colors.textSecondaryDark : colors.textSecondary),
-                    fontWeight: showCalorieProjectionLine ? '600' : '400',
-                  },
-                ]}
-              >
-                Calories
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Actual Weight Dots Toggle */}
-          {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
-            <TouchableOpacity
-              style={[
-                styles.toggleChip,
-                {
-                  backgroundColor: showActualWeightDots
-                    ? (isDark ? colors.warning + '30' : colors.warning + '20')
-                    : (isDark ? colors.cardDark : colors.card),
-                  borderColor: showActualWeightDots
-                    ? colors.warning
-                    : (isDark ? colors.borderDark : colors.border),
-                },
-              ]}
-              onPress={() => setShowActualWeightDots(!showActualWeightDots)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleChipText,
-                  {
-                    color: showActualWeightDots
-                      ? colors.warning
-                      : (isDark ? colors.textSecondaryDark : colors.textSecondary),
-                    fontWeight: showActualWeightDots ? '600' : '400',
-                  },
-                ]}
-              >
-                Actual Weight
-              </Text>
-            </TouchableOpacity>
-          )}
+              📊 Stats
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Custom SVG Chart with Independent Axis Control */}
-      <View style={styles.chartContainer}>
-        <Svg width={chartConfig.totalWidth} height={chartConfig.totalHeight}>
-          <Defs>
-            <LinearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={lineColor} stopOpacity="0.3" />
-              <Stop offset="1" stopColor={lineColor} stopOpacity="0.05" />
-            </LinearGradient>
-          </Defs>
+      {/* ── Animated content area ── */}
+      <Animated.View style={{ opacity: fadeAnim }}>
 
-          {/* Horizontal grid lines */}
-          {chartConfig.yTicks.map((tick, index) => (
-            <Line
-              key={`grid-h-${index}`}
-              x1={chartConfig.yAxisWidth}
-              y1={tick.y}
-              x2={chartConfig.yAxisWidth + chartConfig.chartAreaWidth}
-              y2={tick.y}
-              stroke={gridColor}
-              strokeWidth="1"
-              strokeDasharray="4 4"
+        {/* ════════════════════════════════════════
+            GRAPH VIEW
+            ════════════════════════════════════════ */}
+        {activeView === 'graph' && (
+          <View>
+            {/* Dataset toggle chips */}
+            <View style={styles.togglesContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.toggleChip,
+                  {
+                    backgroundColor: showPlannedLine ? colors.success + '20' : (isDark ? colors.cardDark : colors.card),
+                    borderColor: showPlannedLine ? colors.success : (isDark ? colors.borderDark : colors.border),
+                  },
+                ]}
+                onPress={() => {
+                  console.log('[ProgressCard] Toggle planned line:', !showPlannedLine);
+                  setShowPlannedLine(!showPlannedLine);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.toggleChipText, { color: showPlannedLine ? colors.success : (isDark ? colors.textSecondaryDark : colors.textSecondary), fontWeight: showPlannedLine ? '600' : '400' }]}>
+                  Planned
+                </Text>
+              </TouchableOpacity>
+
+              {chartConfig.projectionPathData && (
+                <TouchableOpacity
+                  style={[
+                    styles.toggleChip,
+                    {
+                      backgroundColor: showCalorieProjectionLine ? colors.primary + '20' : (isDark ? colors.cardDark : colors.card),
+                      borderColor: showCalorieProjectionLine ? colors.primary : (isDark ? colors.borderDark : colors.border),
+                    },
+                  ]}
+                  onPress={() => {
+                    console.log('[ProgressCard] Toggle calorie projection:', !showCalorieProjectionLine);
+                    setShowCalorieProjectionLine(!showCalorieProjectionLine);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.toggleChipText, { color: showCalorieProjectionLine ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary), fontWeight: showCalorieProjectionLine ? '600' : '400' }]}>
+                    Calories
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.toggleChip,
+                    {
+                      backgroundColor: showActualWeightDots ? colors.warning + '20' : (isDark ? colors.cardDark : colors.card),
+                      borderColor: showActualWeightDots ? colors.warning : (isDark ? colors.borderDark : colors.border),
+                    },
+                  ]}
+                  onPress={() => {
+                    console.log('[ProgressCard] Toggle actual weight dots:', !showActualWeightDots);
+                    setShowActualWeightDots(!showActualWeightDots);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.toggleChipText, { color: showActualWeightDots ? colors.warning : (isDark ? colors.textSecondaryDark : colors.textSecondary), fontWeight: showActualWeightDots ? '600' : '400' }]}>
+                    Actual Weight
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* SVG Chart */}
+            <View style={styles.chartContainer}>
+              <Svg width={chartConfig.totalWidth} height={chartConfig.totalHeight}>
+                <Defs>
+                  <LinearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={lineColor} stopOpacity="0.3" />
+                    <Stop offset="1" stopColor={lineColor} stopOpacity="0.05" />
+                  </LinearGradient>
+                </Defs>
+
+                {chartConfig.yTicks.map((tick, index) => (
+                  <Line key={`grid-h-${index}`} x1={chartConfig.yAxisWidth} y1={tick.y} x2={chartConfig.yAxisWidth + chartConfig.chartAreaWidth} y2={tick.y} stroke={gridColor} strokeWidth="1" strokeDasharray="4 4" />
+                ))}
+
+                {showPlannedLine && <Path d={chartConfig.fillPathData} fill="url(#lineGradient)" />}
+                {showPlannedLine && <Path d={chartConfig.pathData} stroke={lineColor} strokeWidth="2.5" fill="none" />}
+                {showCalorieProjectionLine && chartConfig.projectionPathData && (
+                  <Path d={chartConfig.projectionPathData} stroke={projectionColor} strokeWidth="2" fill="none" />
+                )}
+                {showActualWeightDots && chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.map((circle, index) => (
+                  <Circle key={`actual-weight-${index}`} cx={circle.x} cy={circle.y} r="5" fill={actualWeightColor} stroke={isDark ? colors.cardDark : colors.card} strokeWidth="2" />
+                ))}
+
+                {chartConfig.yTicks.map((tick, index) => (
+                  <SvgText key={`y-label-${index}`} x={chartConfig.yAxisWidth - 8} y={tick.y + 4} fontSize="11" fill={labelColor} textAnchor="end">{tick.label}</SvgText>
+                ))}
+                {chartConfig.xTicks.map((tick, index) => (
+                  <SvgText key={`x-label-${index}`} x={tick.x} y={chartConfig.topPadding + chartConfig.chartAreaHeight + 20} fontSize="10" fill={labelColor} textAnchor="middle">{tick.label}</SvgText>
+                ))}
+              </Svg>
+            </View>
+
+            {/* Y-axis label */}
+            <Text style={[styles.yAxisLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Weight (lbs)
+            </Text>
+
+            {/* Status badge */}
+            {graphStatusConfig && (
+              <View style={styles.statusBadgeRow}>
+                <View style={[styles.statusBadge, { backgroundColor: graphStatusConfig.bg }]}>
+                  <Text style={[styles.statusBadgeText, { color: graphStatusConfig.text }]}>
+                    {graphStatusConfig.label}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ════════════════════════════════════════
+            STATS VIEW
+            ════════════════════════════════════════ */}
+        {activeView === 'stats' && (
+          <View style={styles.statsContainer}>
+
+            {/* Row 1: Weight Lost (full width) */}
+            <StatCard
+              label="WEIGHT LOST"
+              bigText={weightLostText}
+              subtitle="since start"
+              subline={weightRangeText}
+              bigColor={weightLostColor}
+              fullWidth
+              isDark={isDark}
             />
-          ))}
 
-          {/* ========================================
-              CONDITIONAL RENDERING OF DATASETS
-              ======================================== */}
+            {/* Row 2: Pace + Adherence */}
+            <View style={styles.statsRow}>
+              <StatCard
+                label="CURRENT PACE"
+                bigText={paceText}
+                bigColor={paceColor}
+                isDark={isDark}
+              />
+              <View style={styles.statsGap} />
+              <StatCard
+                label="ADHERENCE"
+                bigText={adherenceText}
+                subtitle="days on plan"
+                subline={adherenceSubline}
+                isDark={isDark}
+              />
+            </View>
 
-          {/* Filled area under the planned line (only if planned line is visible) */}
-          {showPlannedLine && (
-            <Path
-              d={chartConfig.fillPathData}
-              fill="url(#lineGradient)"
+            {/* Row 3: VS Plan + Goal Projection */}
+            <View style={styles.statsRow}>
+              <StatCard
+                label="VS PLAN"
+                bigText={vsText}
+                bigColor={vsColor}
+                isDark={isDark}
+              />
+              <View style={styles.statsGap} />
+              <StatCard
+                label="PROJECTED GOAL"
+                bigText={projectedGoalText}
+                subtitle={plannedGoalText}
+                isDark={isDark}
+              />
+            </View>
+
+            {/* Row 4: Calorie Impact (full width, tinted) */}
+            <StatCard
+              label="CALORIE IMPACT"
+              bigText=""
+              subtitle={calorieImpactText}
+              fullWidth
+              tintBg
+              isDark={isDark}
             />
-          )}
 
-          {/* Planned line */}
-          {showPlannedLine && (
-            <Path
-              d={chartConfig.pathData}
-              stroke={lineColor}
-              strokeWidth="2.5"
-              fill="none"
-            />
-          )}
-
-          {/* Calorie projection line */}
-          {showCalorieProjectionLine && chartConfig.projectionPathData && (
-            <Path
-              d={chartConfig.projectionPathData}
-              stroke={projectionColor}
-              strokeWidth="2"
-              fill="none"
-            />
-          )}
-
-          {/* Actual weight points (circles only, no line) */}
-          {showActualWeightDots && chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.map((circle, index) => (
-            <Circle
-              key={`actual-weight-${index}`}
-              cx={circle.x}
-              cy={circle.y}
-              r="5"
-              fill={actualWeightColor}
-              stroke={isDark ? colors.cardDark : colors.card}
-              strokeWidth="2"
-            />
-          ))}
-
-          {/* Y-axis labels (Weight in lbs) - INDEPENDENT CONTROL */}
-          {chartConfig.yTicks.map((tick, index) => (
-            <SvgText
-              key={`y-label-${index}`}
-              x={chartConfig.yAxisWidth - 8}
-              y={tick.y + 4}
-              fontSize="11"
-              fill={labelColor}
-              textAnchor="end"
-            >
-              {tick.label}
-            </SvgText>
-          ))}
-
-          {/* X-axis labels (Dates in MM/DD) - INDEPENDENT CONTROL */}
-          {chartConfig.xTicks.map((tick, index) => (
-            <SvgText
-              key={`x-label-${index}`}
-              x={tick.x}
-              y={chartConfig.topPadding + chartConfig.chartAreaHeight + 20}
-              fontSize="10"
-              fill={labelColor}
-              textAnchor="middle"
-            >
-              {tick.label}
-            </SvgText>
-          ))}
-        </Svg>
-      </View>
-
-      {/* Y-axis label */}
-      <Text
-        style={[
-          styles.yAxisLabel,
-          { color: isDark ? colors.textSecondaryDark : colors.textSecondary },
-        ]}
-      >
-        Weight (lbs)
-      </Text>
+            {/* Narrative summary */}
+            {narrativeText ? (
+              <Text style={[styles.narrative, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                {narrativeText}
+              </Text>
+            ) : null}
+          </View>
+        )}
+      </Animated.View>
     </View>
   );
 }
@@ -1171,18 +1112,37 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: spacing.md,
-    flexWrap: 'wrap',
-    gap: spacing.sm,
   },
   cardTitle: {
     ...typography.h3,
   },
+  // ── Segmented control ──
+  segmentedControl: {
+    flexDirection: 'row',
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    overflow: 'hidden',
+    padding: 2,
+  },
+  segment: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // ── Graph dataset toggles ──
   togglesContainer: {
     flexDirection: 'row',
     gap: spacing.xs,
     flexWrap: 'wrap',
+    marginBottom: spacing.sm,
   },
   toggleChip: {
     paddingHorizontal: spacing.sm,
@@ -1194,6 +1154,52 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.2,
   },
+  // ── Chart ──
+  chartContainer: {
+    marginBottom: spacing.sm,
+    overflow: 'visible',
+    alignItems: 'center',
+  },
+  yAxisLabel: {
+    ...typography.caption,
+    textAlign: 'center',
+    fontSize: 11,
+    marginTop: spacing.xs,
+  },
+  // ── Status badge ──
+  statusBadgeRow: {
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // ── Stats view ──
+  statsContainer: {
+    gap: spacing.sm,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  statsGap: {
+    width: spacing.sm,
+  },
+  narrative: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    lineHeight: 20,
+  },
+  // ── Loading / error ──
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1208,16 +1214,5 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.body,
     textAlign: 'center',
-  },
-  chartContainer: {
-    marginBottom: spacing.sm,
-    overflow: 'visible',
-    alignItems: 'center',
-  },
-  yAxisLabel: {
-    ...typography.caption,
-    textAlign: 'center',
-    fontSize: 11,
-    marginTop: spacing.xs,
   },
 });
