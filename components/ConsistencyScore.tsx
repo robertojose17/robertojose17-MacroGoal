@@ -420,35 +420,44 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
             {/* Stats grid */}
             <View style={styles.statsGrid}>
               <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
-                  {scoreData.totalDays}
+                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text, fontSize: 13 }]}>
+                  No tracking yet
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Days in Range
+                  Today
                 </Text>
               </View>
               <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
                 <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
-                  {scoreData.trackedDays}
+                  {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Days Tracked
+                  Consistency
+                </Text>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  days completed
                 </Text>
               </View>
               <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
                 <Text style={[styles.statValue, { color: colors.calories }]}>
-                  {calAccText}
+                  {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Avg Calorie Acc.
+                  Calories
+                </Text>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  on target
                 </Text>
               </View>
               <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
                 <Text style={[styles.statValue, { color: colors.protein }]}>
-                  {protAccText}
+                  {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  Avg Protein Acc.
+                  Protein
+                </Text>
+                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  on target
                 </Text>
               </View>
             </View>
