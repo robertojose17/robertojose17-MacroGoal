@@ -6,10 +6,10 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
-  TouchableOpacity,
   Animated,
+  ScrollView,
 } from 'react-native';
-import Svg, { Line, Path, Circle, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Line, Path, Circle, Text as SvgText, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
@@ -38,91 +38,69 @@ interface WeightCheckIn {
   weightLbs: number;
 }
 
-// ─── Small reusable stat card ────────────────────────────────────────────────
-interface StatCardProps {
-  label: string;
-  bigText: string;
-  subtitle?: string;
-  subline?: string;
-  bigColor?: string;
-  fullWidth?: boolean;
-  tintBg?: boolean;
+// ─── Premium stat card for Stats view ────────────────────────────────────────
+interface PremiumStatCardProps {
+  title: string;
+  value: string;
+  subtitle: string;
+  accent?: string;
   isDark: boolean;
-  animValue?: Animated.Value;
 }
 
-function StatCard({
-  label,
-  bigText,
-  subtitle,
-  subline,
-  bigColor,
-  fullWidth,
-  tintBg,
-  isDark,
-  animValue,
-}: StatCardProps) {
-  const bgColor = tintBg
-    ? (isDark ? colors.primary + '22' : colors.primary + '15')
-    : (isDark ? 'rgba(255,255,255,0.07)' : '#F8F8F8');
-
-  const textColor = isDark ? colors.textDark : colors.text;
-  const grayColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
-
+function PremiumStatCard({ title, value, subtitle, accent, isDark }: PremiumStatCardProps) {
+  const valueColor = accent || (isDark ? '#FFFFFF' : '#111111');
   return (
     <View
-      style={[
-        statStyles.card,
-        fullWidth && statStyles.fullWidth,
-        {
-          backgroundColor: bgColor,
-          shadowColor: '#000',
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 2,
-        },
-      ]}
+      style={{
+        flex: 1,
+        backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+        borderRadius: 16,
+        padding: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.4 : 0.08,
+        shadowRadius: 8,
+        elevation: 3,
+        borderWidth: isDark ? 0 : 1,
+        borderColor: '#F0F0F0',
+      }}
     >
-      <Text style={[statStyles.label, { color: grayColor }]}>{label}</Text>
-      <Text style={[statStyles.bigNumber, { color: bigColor ?? textColor }]}>{bigText}</Text>
-      {subtitle ? <Text style={[statStyles.subtitle, { color: grayColor }]}>{subtitle}</Text> : null}
-      {subline ? <Text style={[statStyles.subline, { color: grayColor }]}>{subline}</Text> : null}
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: '600',
+          color: isDark ? '#666' : '#999',
+          letterSpacing: 0.8,
+          textTransform: 'uppercase',
+          marginBottom: 8,
+        }}
+      >
+        {title}
+      </Text>
+      <Text
+        style={{
+          fontSize: 28,
+          fontWeight: '700',
+          color: valueColor,
+          letterSpacing: -0.5,
+          lineHeight: 32,
+        }}
+      >
+        {value}
+      </Text>
+      <Text
+        style={{
+          fontSize: 12,
+          color: isDark ? '#888' : '#999',
+          marginTop: 4,
+          lineHeight: 16,
+        }}
+      >
+        {subtitle}
+      </Text>
     </View>
   );
 }
-
-const statStyles = StyleSheet.create({
-  card: {
-    borderRadius: 16,
-    padding: 16,
-    flex: 1,
-  },
-  fullWidth: {
-    flex: 0,
-    width: '100%',
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  bigNumber: {
-    fontSize: 28,
-    fontWeight: '700',
-    lineHeight: 34,
-  },
-  subtitle: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  subline: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-});
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
@@ -132,44 +110,33 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const [calorieLogs, setCalorieLogs] = useState<CalorieLog[]>([]);
   const [actualWeightPoints, setActualWeightPoints] = useState<WeightCheckIn[]>([]);
 
-  // ── View toggle ──────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<'graph' | 'stats'>('graph');
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  // ── Carousel state ───────────────────────────────────────────────────────
+  const [activePage, setActivePage] = useState(0);
+  const [cardWidth, setCardWidth] = useState(0);
+  const dot0Anim = useRef(new Animated.Value(20)).current;
+  const dot1Anim = useRef(new Animated.Value(6)).current;
 
-  const switchView = useCallback((view: 'graph' | 'stats') => {
-    if (view === activeView) return;
-    console.log('[ProgressCard] Switching view to:', view);
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 100,
-      useNativeDriver: true,
-    }).start(() => {
-      setActiveView(view);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }).start();
-    });
-  }, [activeView, fadeAnim]);
+  const animateDots = useCallback((page: number) => {
+    Animated.spring(dot0Anim, {
+      toValue: page === 0 ? 20 : 6,
+      useNativeDriver: false,
+    }).start();
+    Animated.spring(dot1Anim, {
+      toValue: page === 1 ? 20 : 6,
+      useNativeDriver: false,
+    }).start();
+  }, [dot0Anim, dot1Anim]);
 
-  // ── Graph dataset toggles ────────────────────────────────────────────────
-  const [showPlannedLine, setShowPlannedLine] = useState(true);
-  const [showCalorieProjectionLine, setShowCalorieProjectionLine] = useState(true);
-  const [showActualWeightDots, setShowActualWeightDots] = useState(true);
-
-  // ── Stats count-up animations ────────────────────────────────────────────
-  const countUpAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (activeView === 'stats') {
-      countUpAnim.setValue(0);
-      Animated.timing(countUpAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: false,
-      }).start();
+  const handleScroll = useCallback((event: any) => {
+    if (cardWidth <= 0) return;
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const page = Math.round(offsetX / cardWidth);
+    if (page !== activePage) {
+      console.log('[ProgressCard] Carousel swiped to page:', page === 0 ? 'Graph' : 'Stats');
+      setActivePage(page);
+      animateDots(page);
     }
-  }, [activeView, countUpAnim]);
+  }, [cardWidth, activePage, animateDots]);
 
   // ── Data loading ─────────────────────────────────────────────────────────
   const loadProfileData = useCallback(async () => {
@@ -596,12 +563,33 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       });
     }
 
+    // ── Smoothed trend line (moving average window=3) ──────────────────────
+    let trendPathData: string | null = null;
+    if (actualWeightPoints && actualWeightPoints.length >= 3) {
+      const window = 3;
+      const smoothed: { x: number; y: number }[] = [];
+      for (let i = 0; i < actualWeightCircles.length; i++) {
+        const start = Math.max(0, i - Math.floor(window / 2));
+        const end = Math.min(actualWeightCircles.length - 1, i + Math.floor(window / 2));
+        let sum = 0;
+        for (let j = start; j <= end; j++) sum += actualWeightCircles[j].y;
+        smoothed.push({ x: actualWeightCircles[i].x, y: sum / (end - start + 1) });
+      }
+      if (smoothed.length >= 2) {
+        trendPathData = `M ${smoothed[0].x} ${smoothed[0].y}`;
+        for (let i = 1; i < smoothed.length; i++) {
+          trendPathData += ` L ${smoothed[i].x} ${smoothed[i].y}`;
+        }
+      }
+    }
+
     return {
       totalWidth, totalHeight, chartAreaWidth, chartAreaHeight,
       yAxisWidth, xAxisHeight, topPadding,
       yTicks, xTicks,
       pathData: plannedPathData, fillPathData, projectionPathData,
       actualWeightCircles, yMin, yMax,
+      trendPathData,
     };
   }, [profileData, plannedData, calorieProjectionData, actualWeightPoints]);
 
@@ -670,14 +658,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     else vsStatus = 'on-track';
 
     // Graph status label (from calorie projection vs planned last point)
-    let graphStatus: 'on-track' | 'ahead' | 'behind' = 'on-track';
+    let graphStatus: 'on_track' | 'ahead' | 'behind' = 'on_track';
     if (calorieProjectionData && calorieProjectionData.length > 0 && plannedData.length > 0) {
       const lastProjected = calorieProjectionData[calorieProjectionData.length - 1].weightLbs;
       const lastPlanned = plannedData[plannedData.length - 1].weightLbs;
       const diff = lastProjected - lastPlanned;
       if (diff > 0.5) graphStatus = 'behind';
       else if (diff < -0.5) graphStatus = 'ahead';
-      else graphStatus = 'on-track';
+      else graphStatus = 'on_track';
     }
 
     // Days since start
@@ -750,84 +738,71 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
   const projectionColor = colors.primary;
   const actualWeightColor = colors.warning;
 
-  // ── Graph status badge ───────────────────────────────────────────────────
+  // ── Graph status pill config ─────────────────────────────────────────────
   const graphStatusConfig = stats ? {
-    'on-track': { label: 'On track', bg: colors.success + '22', text: colors.success },
-    'ahead': { label: 'Ahead of plan', bg: colors.primary + '22', text: colors.primary },
-    'behind': { label: 'Behind plan', bg: colors.warning + '22', text: colors.warning },
+    'on_track': { label: '● On track', pillFill: '#3B82F6', textFill: '#FFFFFF' },
+    'ahead': { label: '↑ Ahead of plan', pillFill: '#22C55E', textFill: '#FFFFFF' },
+    'behind': { label: '↓ Behind plan', pillFill: '#F97316', textFill: '#FFFFFF' },
   }[stats.graphStatus] : null;
 
-  // ── Stats view computed strings ──────────────────────────────────────────
-  const weightUnit = 'lb';
+  // ── Stats view computed values ───────────────────────────────────────────
+  const currentWeightLbs = actualWeightPoints.length > 0
+    ? actualWeightPoints[actualWeightPoints.length - 1].weightLbs
+    : (profileData ? profileData.startWeightLbs : 0);
 
-  const weightLostText = stats?.weightLost !== null && stats?.weightLost !== undefined
-    ? `${stats.weightLost >= 0 ? '↓' : '↑'} ${Math.abs(stats.weightLost).toFixed(1)} ${weightUnit}`
+  const card1Value = stats && stats.weightLost !== null
+    ? (stats.weightLost >= 0
+        ? `↓ ${stats.weightLost.toFixed(1)} lb`
+        : `↑ ${Math.abs(stats.weightLost).toFixed(1)} lb`)
     : '--';
-  const weightLostColor = stats?.weightLost !== null && stats?.weightLost !== undefined
-    ? (stats.weightLost >= 0 ? colors.success : colors.error)
-    : (isDark ? colors.textDark : colors.text);
-  const weightRangeText = stats?.latestWeight !== null && stats?.latestWeight !== undefined
-    ? `${stats.startWeightLbs.toFixed(1)} → ${stats.latestWeight.toFixed(1)} ${weightUnit}`
+  const card1Subtitle = stats ? `since start · ${stats.daysSinceStart} days` : '--';
+  const card1Accent = stats && stats.weightLost !== null
+    ? (stats.weightLost >= 0 ? '#22C55E' : '#EF4444')
+    : undefined;
+
+  const card2Value = stats && stats.currentPaceLbsPerWeek !== null
+    ? `${stats.currentPaceLbsPerWeek >= 0 ? '-' : '+'}${Math.abs(stats.currentPaceLbsPerWeek).toFixed(1)} lb/wk`
+    : 'No data';
+  const card2Subtitle = stats && stats.adherencePct !== null ? `${stats.adherencePct}% on plan` : '--';
+
+  const card3RawDaysAhead = stats ? stats.daysAhead : 0;
+  const card3Value = stats
+    ? (card3RawDaysAhead > 0
+        ? `↑ ${Math.round(card3RawDaysAhead)}d ahead`
+        : card3RawDaysAhead < 0
+          ? `↓ ${Math.abs(Math.round(card3RawDaysAhead))}d behind`
+          : 'On track')
     : '--';
-
-  const paceText = stats?.currentPaceLbsPerWeek !== null && stats?.currentPaceLbsPerWeek !== undefined
-    ? `${stats.currentPaceLbsPerWeek >= 0 ? '-' : '+'}${Math.abs(stats.currentPaceLbsPerWeek).toFixed(1)} ${weightUnit}/week`
-    : 'Not enough data';
-  const paceColor = stats?.currentPaceLbsPerWeek !== null && stats?.currentPaceLbsPerWeek !== undefined
-    ? (stats.currentPaceLbsPerWeek > 0 ? colors.success : colors.warning)
-    : (isDark ? colors.textDark : colors.text);
-
-  const adherenceText = stats?.adherencePct !== null && stats?.adherencePct !== undefined
-    ? `${stats.adherencePct}%`
-    : '0%';
-  const adherenceSubline = stats
-    ? `${stats.adherentDays} / ${stats.trackedDays} days`
+  const card3Subtitle = stats && stats.adherencePct !== null
+    ? (stats.adherencePct >= 90
+        ? 'from calorie deficit'
+        : stats.adherencePct >= 70
+          ? 'mostly on plan'
+          : 'recent surplus slowed progress')
     : '--';
+  const card3Accent = stats
+    ? (card3RawDaysAhead > 0 ? '#22C55E' : card3RawDaysAhead < 0 ? '#EF4444' : '#3B82F6')
+    : undefined;
 
-  const vsText = stats
-    ? (stats.vsStatus === 'on-track'
-        ? 'On track'
-        : stats.vsStatus === 'ahead'
-          ? `↑ ${stats.daysDeviation} days ahead`
-          : `↓ ${stats.daysDeviation} days behind`)
-    : '--';
-  const vsColor = stats
-    ? (stats.vsStatus === 'on-track'
-        ? (isDark ? colors.textSecondaryDark : colors.textSecondary)
-        : stats.vsStatus === 'ahead' ? colors.success : colors.error)
-    : (isDark ? colors.textDark : colors.text);
+  const card4StartStr = profileData ? profileData.startWeightLbs.toFixed(1) : '--';
+  const card4CurrentStr = currentWeightLbs.toFixed(1);
+  const card4Value = `${card4StartStr} → ${card4CurrentStr} lb`;
+  const card4GoalDateStr = stats
+    ? (stats.projectedGoalDate
+        ? formatDate(stats.projectedGoalDate)
+        : stats.plannedGoalDate
+          ? formatDate(stats.plannedGoalDate)
+          : 'TBD')
+    : 'TBD';
+  const card4Subtitle = `Goal: ${card4GoalDateStr}`;
 
-  const projectedGoalText = stats ? formatDate(stats.projectedGoalDate) : '--';
-  const plannedGoalText = stats ? `Original: ${formatDate(stats.plannedGoalDate)}` : '--';
-
-  const calorieImpactText = stats
-    ? (stats.vsStatus === 'ahead'
-        ? `Your deficit moved your goal ${stats.daysDeviation} days earlier`
-        : stats.vsStatus === 'behind'
-          ? `Recent surplus delayed your goal by ${stats.daysDeviation} days`
-          : "You're right on track with your plan")
-    : '--';
-
-  const narrativeText = stats
-    ? (() => {
-        const parts: string[] = [];
-        if (stats.weightLost !== null) {
-          const dir = stats.weightLost >= 0 ? 'lost' : 'gained';
-          parts.push(`You've ${dir} ${Math.abs(stats.weightLost).toFixed(1)} lb in ${stats.daysSinceStart} days.`);
-        }
-        if (stats.vsStatus === 'ahead') {
-          parts.push(`Your calorie deficit has put you ${stats.daysDeviation} days ahead of your plan.`);
-        } else if (stats.vsStatus === 'behind') {
-          parts.push(`A calorie surplus has put you ${stats.daysDeviation} days behind your plan.`);
-        } else {
-          parts.push("You're right on track with your calorie plan.");
-        }
-        if (stats.currentPaceLbsPerWeek !== null) {
-          parts.push(`At this pace, you'll reach your goal by ${formatDate(stats.projectedGoalDate)}.`);
-        }
-        return parts.join(' ');
-      })()
-    : '';
+  // ── Legend items ─────────────────────────────────────────────────────────
+  const legendItems = [
+    { color: lineColor, label: 'Planned' },
+    { color: projectionColor, label: 'Calories' },
+    ...(chartConfig.actualWeightCircles.length > 0 ? [{ color: actualWeightColor, label: 'Actual' }] : []),
+    ...(chartConfig.trendPathData ? [{ color: '#8B5CF6', label: 'Trend' }] : []),
+  ];
 
   return (
     <View
@@ -838,141 +813,49 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
           borderColor: isDark ? colors.cardBorderDark : colors.cardBorder,
         },
       ]}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width - spacing.lg * 2;
+        if (w > 0 && w !== cardWidth) setCardWidth(w);
+      }}
     >
       {/* ── Header ── */}
       <View style={styles.cardHeader}>
-        <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-          Weight Progress
-        </Text>
-
-        {/* Segmented toggle */}
-        <View
-          style={[
-            styles.segmentedControl,
-            {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-              borderColor: isDark ? colors.borderDark : colors.border,
-            },
-          ]}
-        >
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              activeView === 'graph' && {
-                backgroundColor: colors.primary,
-              },
-            ]}
-            onPress={() => {
-              console.log('[ProgressCard] Toggle pressed: graph');
-              switchView('graph');
-            }}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: activeView === 'graph' ? '#fff' : (isDark ? colors.textSecondaryDark : colors.textSecondary) },
-              ]}
-            >
-              📈 Graph
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              activeView === 'stats' && {
-                backgroundColor: colors.primary,
-              },
-            ]}
-            onPress={() => {
-              console.log('[ProgressCard] Toggle pressed: stats');
-              switchView('stats');
-            }}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: activeView === 'stats' ? '#fff' : (isDark ? colors.textSecondaryDark : colors.textSecondary) },
-              ]}
-            >
-              📊 Stats
-            </Text>
-          </TouchableOpacity>
+        <View>
+          <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Weight Progress
+          </Text>
+          <Text style={[styles.cardSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Swipe to see stats
+          </Text>
         </View>
       </View>
 
-      {/* ── Animated content area ── */}
-      <Animated.View style={{ opacity: fadeAnim }}>
-
-        {/* ════════════════════════════════════════
-            GRAPH VIEW
-            ════════════════════════════════════════ */}
-        {activeView === 'graph' && (
-          <View>
-            {/* Dataset toggle chips */}
-            <View style={styles.togglesContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.toggleChip,
-                  {
-                    backgroundColor: showPlannedLine ? colors.success + '20' : (isDark ? colors.cardDark : colors.card),
-                    borderColor: showPlannedLine ? colors.success : (isDark ? colors.borderDark : colors.border),
-                  },
-                ]}
-                onPress={() => {
-                  console.log('[ProgressCard] Toggle planned line:', !showPlannedLine);
-                  setShowPlannedLine(!showPlannedLine);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.toggleChipText, { color: showPlannedLine ? colors.success : (isDark ? colors.textSecondaryDark : colors.textSecondary), fontWeight: showPlannedLine ? '600' : '400' }]}>
-                  Planned
-                </Text>
-              </TouchableOpacity>
-
-              {chartConfig.projectionPathData && (
-                <TouchableOpacity
-                  style={[
-                    styles.toggleChip,
-                    {
-                      backgroundColor: showCalorieProjectionLine ? colors.primary + '20' : (isDark ? colors.cardDark : colors.card),
-                      borderColor: showCalorieProjectionLine ? colors.primary : (isDark ? colors.borderDark : colors.border),
-                    },
-                  ]}
-                  onPress={() => {
-                    console.log('[ProgressCard] Toggle calorie projection:', !showCalorieProjectionLine);
-                    setShowCalorieProjectionLine(!showCalorieProjectionLine);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.toggleChipText, { color: showCalorieProjectionLine ? colors.primary : (isDark ? colors.textSecondaryDark : colors.textSecondary), fontWeight: showCalorieProjectionLine ? '600' : '400' }]}>
-                    Calories
+      {/* ── Carousel ── */}
+      {cardWidth > 0 && (
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={handleScroll}
+          style={{ width: cardWidth }}
+          contentContainerStyle={{ width: cardWidth * 2 }}
+          decelerationRate="fast"
+          snapToInterval={cardWidth}
+          snapToAlignment="start"
+        >
+          {/* ── Page 0: Graph ── */}
+          <View style={{ width: cardWidth }}>
+            {/* Legend */}
+            <View style={styles.legendRow}>
+              {legendItems.map((item, idx) => (
+                <View key={idx} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                  <Text style={[styles.legendLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    {item.label}
                   </Text>
-                </TouchableOpacity>
-              )}
-
-              {chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.length > 0 && (
-                <TouchableOpacity
-                  style={[
-                    styles.toggleChip,
-                    {
-                      backgroundColor: showActualWeightDots ? colors.warning + '20' : (isDark ? colors.cardDark : colors.card),
-                      borderColor: showActualWeightDots ? colors.warning : (isDark ? colors.borderDark : colors.border),
-                    },
-                  ]}
-                  onPress={() => {
-                    console.log('[ProgressCard] Toggle actual weight dots:', !showActualWeightDots);
-                    setShowActualWeightDots(!showActualWeightDots);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.toggleChipText, { color: showActualWeightDots ? colors.warning : (isDark ? colors.textSecondaryDark : colors.textSecondary), fontWeight: showActualWeightDots ? '600' : '400' }]}>
-                    Actual Weight
-                  </Text>
-                </TouchableOpacity>
-              )}
+                </View>
+              ))}
             </View>
 
             {/* SVG Chart */}
@@ -985,25 +868,72 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                   </LinearGradient>
                 </Defs>
 
+                {/* Grid lines */}
                 {chartConfig.yTicks.map((tick, index) => (
                   <Line key={`grid-h-${index}`} x1={chartConfig.yAxisWidth} y1={tick.y} x2={chartConfig.yAxisWidth + chartConfig.chartAreaWidth} y2={tick.y} stroke={gridColor} strokeWidth="1" strokeDasharray="4 4" />
                 ))}
 
-                {showPlannedLine && <Path d={chartConfig.fillPathData} fill="url(#lineGradient)" />}
-                {showPlannedLine && <Path d={chartConfig.pathData} stroke={lineColor} strokeWidth="2.5" fill="none" />}
-                {showCalorieProjectionLine && chartConfig.projectionPathData && (
+                {/* Planned fill + line */}
+                <Path d={chartConfig.fillPathData} fill="url(#lineGradient)" />
+                <Path d={chartConfig.pathData} stroke={lineColor} strokeWidth="2.5" fill="none" />
+
+                {/* Calorie projection */}
+                {chartConfig.projectionPathData && (
                   <Path d={chartConfig.projectionPathData} stroke={projectionColor} strokeWidth="2" fill="none" />
                 )}
-                {showActualWeightDots && chartConfig.actualWeightCircles && chartConfig.actualWeightCircles.map((circle, index) => (
+
+                {/* Trend line (moving average) */}
+                {chartConfig.trendPathData && (
+                  <Path
+                    d={chartConfig.trendPathData}
+                    stroke="#8B5CF6"
+                    strokeWidth="2"
+                    strokeOpacity="0.7"
+                    strokeDasharray="6 3"
+                    fill="none"
+                  />
+                )}
+
+                {/* Actual weight dots */}
+                {chartConfig.actualWeightCircles.map((circle, index) => (
                   <Circle key={`actual-weight-${index}`} cx={circle.x} cy={circle.y} r="5" fill={actualWeightColor} stroke={isDark ? colors.cardDark : colors.card} strokeWidth="2" />
                 ))}
 
+                {/* Y-axis labels */}
                 {chartConfig.yTicks.map((tick, index) => (
                   <SvgText key={`y-label-${index}`} x={chartConfig.yAxisWidth - 8} y={tick.y + 4} fontSize="11" fill={labelColor} textAnchor="end">{tick.label}</SvgText>
                 ))}
+
+                {/* X-axis labels */}
                 {chartConfig.xTicks.map((tick, index) => (
                   <SvgText key={`x-label-${index}`} x={tick.x} y={chartConfig.topPadding + chartConfig.chartAreaHeight + 20} fontSize="10" fill={labelColor} textAnchor="middle">{tick.label}</SvgText>
                 ))}
+
+                {/* Status pill in top-right of chart area */}
+                {graphStatusConfig && (
+                  <>
+                    <Rect
+                      x={chartConfig.yAxisWidth + chartConfig.chartAreaWidth - 110}
+                      y={chartConfig.topPadding + 4}
+                      width={108}
+                      height={22}
+                      rx={11}
+                      ry={11}
+                      fill={graphStatusConfig.pillFill}
+                      opacity={0.9}
+                    />
+                    <SvgText
+                      x={chartConfig.yAxisWidth + chartConfig.chartAreaWidth - 56}
+                      y={chartConfig.topPadding + 19}
+                      fontSize="11"
+                      fontWeight="600"
+                      fill={graphStatusConfig.textFill}
+                      textAnchor="middle"
+                    >
+                      {graphStatusConfig.label}
+                    </SvgText>
+                  </>
+                )}
               </Svg>
             </View>
 
@@ -1011,91 +941,67 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
             <Text style={[styles.yAxisLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               Weight (lbs)
             </Text>
-
-            {/* Status badge */}
-            {graphStatusConfig && (
-              <View style={styles.statusBadgeRow}>
-                <View style={[styles.statusBadge, { backgroundColor: graphStatusConfig.bg }]}>
-                  <Text style={[styles.statusBadgeText, { color: graphStatusConfig.text }]}>
-                    {graphStatusConfig.label}
-                  </Text>
-                </View>
-              </View>
-            )}
           </View>
-        )}
 
-        {/* ════════════════════════════════════════
-            STATS VIEW
-            ════════════════════════════════════════ */}
-        {activeView === 'stats' && (
-          <View style={styles.statsContainer}>
-
-            {/* Row 1: Weight Lost (full width) */}
-            <StatCard
-              label="WEIGHT LOST"
-              bigText={weightLostText}
-              subtitle="since start"
-              subline={weightRangeText}
-              bigColor={weightLostColor}
-              fullWidth
-              isDark={isDark}
-            />
-
-            {/* Row 2: Pace + Adherence */}
-            <View style={styles.statsRow}>
-              <StatCard
-                label="CURRENT PACE"
-                bigText={paceText}
-                bigColor={paceColor}
+          {/* ── Page 1: Stats ── */}
+          <View style={{ width: cardWidth, paddingTop: 4 }}>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+              <PremiumStatCard
+                title="PROGRESS"
+                value={card1Value}
+                subtitle={card1Subtitle}
+                accent={card1Accent}
                 isDark={isDark}
               />
-              <View style={styles.statsGap} />
-              <StatCard
-                label="ADHERENCE"
-                bigText={adherenceText}
-                subtitle="days on plan"
-                subline={adherenceSubline}
+              <PremiumStatCard
+                title="MOMENTUM"
+                value={card2Value}
+                subtitle={card2Subtitle}
+                accent={isDark ? '#FFFFFF' : '#111111'}
                 isDark={isDark}
               />
             </View>
-
-            {/* Row 3: VS Plan + Goal Projection */}
-            <View style={styles.statsRow}>
-              <StatCard
-                label="VS PLAN"
-                bigText={vsText}
-                bigColor={vsColor}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <PremiumStatCard
+                title="TIMELINE"
+                value={card3Value}
+                subtitle={card3Subtitle}
+                accent={card3Accent}
                 isDark={isDark}
               />
-              <View style={styles.statsGap} />
-              <StatCard
-                label="PROJECTED GOAL"
-                bigText={projectedGoalText}
-                subtitle={plannedGoalText}
+              <PremiumStatCard
+                title="TARGET"
+                value={card4Value}
+                subtitle={card4Subtitle}
+                accent={isDark ? '#FFFFFF' : '#111111'}
                 isDark={isDark}
               />
             </View>
-
-            {/* Row 4: Calorie Impact (full width, tinted) */}
-            <StatCard
-              label="CALORIE IMPACT"
-              bigText=""
-              subtitle={calorieImpactText}
-              fullWidth
-              tintBg
-              isDark={isDark}
-            />
-
-            {/* Narrative summary */}
-            {narrativeText ? (
-              <Text style={[styles.narrative, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {narrativeText}
-              </Text>
-            ) : null}
           </View>
-        )}
-      </Animated.View>
+        </ScrollView>
+      )}
+
+      {/* ── Dot indicators ── */}
+      <View style={styles.dotsRow}>
+        <Animated.View
+          style={[
+            styles.dot,
+            {
+              width: dot0Anim,
+              backgroundColor: activePage === 0 ? colors.primary : (isDark ? '#444' : '#ddd'),
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.dot,
+            {
+              width: dot1Anim,
+              backgroundColor: activePage === 1 ? colors.primary : (isDark ? '#444' : '#ddd'),
+            },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -1112,47 +1018,36 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: spacing.md,
   },
   cardTitle: {
     ...typography.h3,
   },
-  // ── Segmented control ──
-  segmentedControl: {
-    flexDirection: 'row',
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    overflow: 'hidden',
-    padding: 2,
-  },
-  segment: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentText: {
+  cardSubtitle: {
     fontSize: 12,
-    fontWeight: '600',
+    marginTop: 2,
   },
-  // ── Graph dataset toggles ──
-  togglesContainer: {
+  // ── Legend ──
+  legendRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
     flexWrap: 'wrap',
+    gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  toggleChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs - 2,
-    borderRadius: borderRadius.full,
-    borderWidth: 1.5,
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  toggleChipText: {
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendLabel: {
     fontSize: 11,
-    letterSpacing: 0.2,
+    fontWeight: '500',
   },
   // ── Chart ──
   chartContainer: {
@@ -1166,38 +1061,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: spacing.xs,
   },
-  // ── Status badge ──
-  statusBadgeRow: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  // ── Stats view ──
-  statsContainer: {
-    gap: spacing.sm,
-  },
-  statsRow: {
+  // ── Dots ──
+  dotsRow: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: spacing.md,
   },
-  statsGap: {
-    width: spacing.sm,
-  },
-  narrative: {
-    fontSize: 13,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    lineHeight: 20,
+  dot: {
+    height: 6,
+    borderRadius: 3,
   },
   // ── Loading / error ──
   loadingContainer: {
