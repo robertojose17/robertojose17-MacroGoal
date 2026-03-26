@@ -462,29 +462,6 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
               </View>
             </View>
 
-            {/* Score bar */}
-            <View style={styles.scoreBarSection}>
-              <View style={styles.scoreBarHeader}>
-                <Text style={[styles.scoreBarLabel, { color: isDark ? colors.textDark : colors.text }]}>
-                  {trackedText}
-                </Text>
-                <Text style={[styles.scoreBarValue, { color: labelColor }]}>
-                  {scoreData.score}
-                  <Text style={[styles.scoreBarMax, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    /100
-                  </Text>
-                </Text>
-              </View>
-              <View style={[styles.progressBar, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    { width: `${scoreData.score}%`, backgroundColor: labelColor },
-                  ]}
-                />
-              </View>
-            </View>
-
             {/* Date Range Control */}
             <View style={[styles.dateRangeSection, { borderTopColor: (isDark ? colors.borderDark : colors.border) + '50' }]}>
               <View style={styles.dateRangeHeader}>
@@ -610,9 +587,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    lineHeight: 26,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
   },
   statLabel: {
     fontSize: 10,
