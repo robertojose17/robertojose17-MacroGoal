@@ -93,16 +93,10 @@ export default function CheckInFormScreen() {
         console.log('[CheckInForm] ⚖️ Weight from DB (always kg):', weightInKg);
         console.log('[CheckInForm] ⚖️ User preferred_units:', units);
         
-        if (units === 'imperial') {
-          // Convert kg to lbs for display
-          const lbs = weightInKg * 2.20462;
-          console.log('[CheckInForm] ⚖️ Converting kg → lbs for display:', weightInKg, 'kg →', lbs, 'lbs');
-          setWeight(Math.round(lbs).toString());
-        } else {
-          // Display in kg
-          console.log('[CheckInForm] ⚖️ Displaying in kg (no conversion):', weightInKg);
-          setWeight(Math.round(weightInKg).toString());
-        }
+        // Always convert kg → lbs for display
+        const lbs = weightInKg * 2.20462;
+        console.log('[CheckInForm] ⚖️ Converting kg → lbs for display:', weightInKg, 'kg →', lbs, 'lbs');
+        setWeight(Math.round(lbs).toString());
       }
       
       setSteps(data.steps?.toString() || '');
@@ -288,7 +282,7 @@ export default function CheckInFormScreen() {
         `${SUPABASE_URL}/storage/v1/object/check-ins/${filePath}`,
         compressedUri,
         {
-          httpMethod: 'POST',
+          httpMethod: 'PUT',
           uploadType: FileSystemUploadType.BINARY_CONTENT,
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -443,20 +437,10 @@ export default function CheckInFormScreen() {
       };
 
       if (checkInType === 'weight') {
-        // ALWAYS convert weight to kg for storage, regardless of user's preferred unit
-        const units = user?.preferred_units || 'metric';
+        // Always convert lbs input to kg for storage
         const weightValue = parseFloat(weight);
-        let weightInKg: number;
-        
-        if (units === 'imperial') {
-          // User entered lbs, convert to kg for storage
-          weightInKg = weightValue / 2.20462;
-          console.log('[CheckInForm] ⚖️ Converting weight for storage:', weightValue, 'lbs →', weightInKg, 'kg');
-        } else {
-          // User entered kg, store as-is
-          weightInKg = weightValue;
-          console.log('[CheckInForm] ⚖️ Storing weight (no conversion needed):', weightInKg, 'kg');
-        }
+        const weightInKg = weightValue / 2.20462;
+        console.log('[CheckInForm] ⚖️ Converting weight for storage:', weightValue, 'lbs →', weightInKg, 'kg');
         
         checkInData.weight = weightInKg;
         checkInData.photo_url = finalPhotoUrl;
@@ -520,9 +504,7 @@ export default function CheckInFormScreen() {
     }
   };
 
-  const getWeightUnit = () => {
-    return user?.preferred_units === 'imperial' ? 'lbs' : 'kg';
-  };
+  const getWeightUnit = () => 'lbs';
 
   const handleDateSelect = (selectedDate: Date) => {
     console.log('[CheckInForm] 📅 Date selected from calendar:', selectedDate.toLocaleDateString());
