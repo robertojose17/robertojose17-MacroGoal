@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase/client';
 import * as ImagePicker from 'expo-image-picker';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { compressImage, uriToBlob, generateCheckInPhotoFilename } from '@/utils/imageUtils';
+import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
 
@@ -324,6 +325,53 @@ export default function CheckInFormScreen() {
     }
   };
 
+  // Sync a check-in entry to tracker_entries so the tracker detail "Recent Entries" stays in sync
+  const syncToTrackerEntries = async (
+    _userId: string,
+    type: CheckInType,
+    dateString: string,
+    checkInData: any,
+    entryNotes: string,
+  ) => {
+    try {
+      console.log('[CheckInForm] Syncing to tracker_entries — type:', type, 'date:', dateString);
+      const trackers = await listTrackers();
+      const tracker = trackers.find(t => t.name.toLowerCase() === type);
+      if (!tracker) {
+        console.warn('[CheckInForm] No matching tracker found for type:', type);
+        return;
+      }
+
+      let trackerValue: number | null = null;
+      if (type === 'weight') {
+        // check_ins stores weight in kg; tracker unit is 'lb' for imperial users
+        // Store in the tracker's native unit (same unit shown in the tracker card)
+        const units = user?.preferred_units || 'metric';
+        const weightInKg = checkInData.weight as number;
+        if (units === 'imperial') {
+          trackerValue = weightInKg * 2.20462; // convert back to lbs for tracker_entries
+        } else {
+          trackerValue = weightInKg;
+        }
+      } else if (type === 'steps') {
+        trackerValue = checkInData.steps ?? null;
+      } else if (type === 'gym') {
+        trackerValue = checkInData.went_to_gym ? 1 : 0;
+      }
+
+      if (trackerValue === null) {
+        console.warn('[CheckInForm] No value to sync for type:', type);
+        return;
+      }
+
+      await logTrackerEntry(tracker.id, dateString, trackerValue, entryNotes || undefined);
+      console.log('[CheckInForm] ✅ Synced to tracker_entries — tracker:', tracker.name, 'value:', trackerValue);
+    } catch (e) {
+      // Non-fatal: log but don't block the check-in save
+      console.error('[CheckInForm] Failed to sync to tracker_entries:', e);
+    }
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -423,6 +471,10 @@ export default function CheckInFormScreen() {
         }
 
         console.log('[CheckInForm] ✅ Check-in updated successfully');
+
+        // Mirror update to tracker_entries so Recent Entries stays in sync
+        await syncToTrackerEntries(authUser.id, checkInType, dateString, checkInData, notes);
+
         Alert.alert('Success', 'Check-in updated successfully', [
           { text: 'OK', onPress: () => router.back() },
         ]);
@@ -439,6 +491,10 @@ export default function CheckInFormScreen() {
         }
 
         console.log('[CheckInForm] ✅ Check-in created successfully');
+
+        // Mirror to tracker_entries so Recent Entries stays in sync
+        await syncToTrackerEntries(authUser.id, checkInType, dateString, checkInData, notes);
+
         Alert.alert('Success', 'Check-in saved successfully', [
           { text: 'OK', onPress: () => router.back() },
         ]);
