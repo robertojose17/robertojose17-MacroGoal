@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase/client';
 import * as ImagePicker from 'expo-image-picker';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import * as FileSystem from 'expo-file-system';
+import { FileSystemUploadType } from 'expo-file-system';
 import { compressImage, generateCheckInPhotoFilename } from '@/utils/imageUtils';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 
@@ -257,54 +258,58 @@ export default function CheckInFormScreen() {
     retryCount: number = 0
   ): Promise<string | null> => {
     const maxRetries = 1;
-    
+
+    const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
+
     try {
       console.log('[CheckInForm] 📤 Uploading photo (attempt', retryCount + 1, 'of', maxRetries + 1, ')...');
-      
+
       // Step 1: Compress the image
       const compressedUri = await compressImage(uri);
-      console.log('[CheckInForm] ✅ Image compressed');
-      
-      // Step 2: Read as base64 and convert to ArrayBuffer (avoids typeless Blob issue in RN)
-      console.log('[CheckInForm] 📖 Reading image as base64...');
-      const base64 = await FileSystem.readAsStringAsync(compressedUri, {
-        encoding: 'base64' as any,
-      });
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      console.log('[CheckInForm] ✅ ArrayBuffer ready, size:', bytes.byteLength, 'bytes');
+      console.log('[CheckInForm] ✅ Image compressed:', compressedUri);
 
-      // Step 3: Generate unique filename with correct path structure
+      // Step 2: Generate unique filename
       // Path: userId/check-in-photos/checkin_DATE_TIMESTAMP.jpg
       const filePath = generateCheckInPhotoFilename(userId, dateString);
       console.log('[CheckInForm] 📁 Upload path:', filePath);
 
-      // Step 4: Upload to Supabase Storage
-      const { error } = await supabase.storage
-        .from('check-ins')
-        .upload(filePath, bytes.buffer, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
+      // Step 3: Get the current session access token
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        console.error('[CheckInForm] ❌ No access token available for upload');
+        return null;
+      }
 
-      if (error) {
-        console.error('[CheckInForm] ❌ Supabase Storage upload error:', error);
-        console.error('[CheckInForm] Error details:', {
-          message: error.message,
-          statusCode: (error as any).statusCode,
-          error: (error as any).error,
-        });
-        
-        // Retry logic for transient errors
+      // Step 4: Upload using FileSystem.uploadAsync — handles binary correctly in React Native
+      // (avoids atob / ArrayBuffer issues which are browser-only APIs)
+      console.log('[CheckInForm] 📤 Starting FileSystem.uploadAsync...');
+      const uploadResult = await FileSystem.uploadAsync(
+        `${SUPABASE_URL}/storage/v1/object/check-ins/${filePath}`,
+        compressedUri,
+        {
+          httpMethod: 'POST',
+          uploadType: FileSystemUploadType.BINARY_CONTENT,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true',
+          },
+        }
+      );
+
+      console.log('[CheckInForm] 📥 Upload response status:', uploadResult.status);
+      console.log('[CheckInForm] 📥 Upload response body:', uploadResult.body);
+
+      if (uploadResult.status !== 200 && uploadResult.status !== 201) {
+        console.error('[CheckInForm] ❌ Upload failed:', uploadResult.status, uploadResult.body);
+
         if (retryCount < maxRetries) {
           console.log('[CheckInForm] 🔄 Retrying upload...');
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+          await new Promise(resolve => setTimeout(resolve, 1000));
           return uploadPhoto(uri, userId, dateString, retryCount + 1);
         }
-        
+
         return null;
       }
 
@@ -316,21 +321,19 @@ export default function CheckInFormScreen() {
       const publicUrl = urlData.publicUrl + '?t=' + Date.now();
       console.log('[CheckInForm] ✅ Photo uploaded successfully');
       console.log('[CheckInForm] 🔗 Public URL:', publicUrl);
-      
+
       return publicUrl;
     } catch (error: any) {
       console.error('[CheckInForm] ❌ Unexpected error in uploadPhoto:', error);
       console.error('[CheckInForm] Error type:', error instanceof Error ? error.constructor.name : typeof error);
       console.error('[CheckInForm] Error message:', error instanceof Error ? error.message : String(error));
-      console.error('[CheckInForm] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-      
-      // Retry logic for unexpected errors
+
       if (retryCount < maxRetries) {
         console.log('[CheckInForm] 🔄 Retrying upload after error...');
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        await new Promise(resolve => setTimeout(resolve, 1000));
         return uploadPhoto(uri, userId, dateString, retryCount + 1);
       }
-      
+
       return null;
     }
   };
