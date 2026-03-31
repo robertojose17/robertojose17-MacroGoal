@@ -229,19 +229,7 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
             </TouchableOpacity>
           </View>
 
-          {/* Arrow */}
-          <View style={styles.arrowContainer}>
-            <View style={[styles.arrowCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
-              <IconSymbol
-                ios_icon_name="arrow.right"
-                android_material_icon_name="arrow_forward"
-                size={18}
-                color={colors.primary}
-              />
-            </View>
-          </View>
-
-          {/* After photo */}
+            {/* After photo */}
           <View style={styles.photoColumn}>
             <View style={styles.labelRow}>
               <Text style={[styles.sideLabel, { color: subtextColor }]}>AFTER</Text>
@@ -276,14 +264,6 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
           </View>
         </View>
 
-        <Text style={[styles.photoCount, { color: subtextColor }]}>
-          {checkIns.length}
-          {' '}
-          photo
-          {checkIns.length !== 1 ? 's' : ''}
-          {' '}
-          available
-        </Text>
       </View>
 
       {/* Before picker modal */}
@@ -504,7 +484,7 @@ const styles = StyleSheet.create({
   photosRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 0,
+    gap: spacing.sm,
   },
   photoColumn: {
     flex: 1,
@@ -521,13 +501,17 @@ const styles = StyleSheet.create({
   },
   photoFrame: {
     width: '100%',
+    aspectRatio: 3 / 4,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
   },
   photoImage: {
-    width: '100%',
-    aspectRatio: 3 / 4,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#E5E5EA',
   },
   dateChip: {
@@ -542,23 +526,6 @@ const styles = StyleSheet.create({
   dateChipText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  arrowContainer: {
-    paddingTop: 52,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-  },
-  arrowCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoCount: {
-    ...typography.caption,
-    textAlign: 'center',
-    marginTop: spacing.sm,
   },
   // ── Modal ──
   modalOverlay: {
