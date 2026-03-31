@@ -222,7 +222,13 @@ export default function CheckInsScreen() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load trackers';
       console.error('[CheckIns] Error loading data:', msg);
-      setError(msg);
+      // 404 means the feature endpoint isn't available yet — show empty state, not error
+      if (msg.includes('404')) {
+        setTrackers([]);
+        setError(null);
+      } else {
+        setError(msg);
+      }
     } finally {
       loadingRef.current = false;
       setLoading(false);

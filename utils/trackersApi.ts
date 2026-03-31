@@ -38,8 +38,8 @@ export interface TrackerStats {
   this_week_count: number;
   last_week_count: number;
   total_entries: number;
-  avg_value: number;
-  status: 'on_track' | 'improving' | 'behind';
+  avg_value: number | null;
+  status: 'on_track' | 'improving' | 'behind' | 'no_data' | 'off_track';
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -54,18 +54,19 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
-    console.error('[TrackersApi] HTTP error', response.status, text);
+    console.error('[TrackersApi] HTTP error', response.status, response.url, text);
     throw new Error(`Request failed (${response.status}): ${text}`);
   }
   return response.json() as Promise<T>;
 }
 
 export async function listTrackers(): Promise<Tracker[]> {
-  console.log('[TrackersApi] listTrackers()');
+  console.log('[TrackersApi] listTrackers() →', BASE_URL);
   const headers = await getAuthHeaders();
   const response = await fetch(BASE_URL, { headers });
-  const data = await handleResponse<{ trackers: Tracker[] }>(response);
-  return data.trackers ?? [];
+  console.log('[TrackersApi] listTrackers status:', response.status);
+  const data = await handleResponse<Tracker[]>(response);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
@@ -107,11 +108,13 @@ export async function deleteTracker(id: string): Promise<void> {
 }
 
 export async function listEntries(trackerId: string, limit = 90): Promise<TrackerEntry[]> {
-  console.log('[TrackersApi] listEntries()', trackerId, 'limit:', limit);
+  const url = `${BASE_URL}/${trackerId}/entries?limit=${limit}`;
+  console.log('[TrackersApi] listEntries() →', url);
   const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${trackerId}/entries?limit=${limit}`, { headers });
-  const data = await handleResponse<{ entries: TrackerEntry[] }>(response);
-  return data.entries ?? [];
+  const response = await fetch(url, { headers });
+  console.log('[TrackersApi] listEntries status:', response.status);
+  const data = await handleResponse<TrackerEntry[]>(response);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function logEntry(
