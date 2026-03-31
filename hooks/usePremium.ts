@@ -76,13 +76,13 @@ export function usePremium(): UsePremiumReturn {
       if (Platform.OS !== 'web') {
         try {
           console.log('[usePremium] 🔍 Checking RevenueCat entitlements...');
-          
-          // CRITICAL: Add a small delay to allow RevenueCat to sync after login
-          // This ensures we get the latest subscription status
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Force a fresh fetch from RevenueCat servers
-          const info = await Purchases.getCustomerInfo();
+
+          // Wrap getCustomerInfo in a 3s timeout so a slow/uninitialized RevenueCat
+          // never blocks the tab layout from rendering.
+          const rcTimeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('RevenueCat getCustomerInfo timed out')), 3000)
+          );
+          const info = await Promise.race([Purchases.getCustomerInfo(), rcTimeout]);
           setCustomerInfo(info);
 
           console.log('[usePremium] RevenueCat Customer Info:');
