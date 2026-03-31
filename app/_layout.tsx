@@ -735,6 +735,35 @@ export default function RootLayout() {
                     presentation: "modal",
                   }}
                 />
+
+                <Stack.Screen
+                  name="tracker/[id]"
+                  options={{
+                    headerShown: true,
+                    headerBackButtonDisplayMode: 'minimal',
+                    title: '',
+                  }}
+                />
+                <Stack.Screen
+                  name="tracker/log"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: [0.5, 0.75],
+                    headerShown: true,
+                    title: 'Log Entry',
+                  }}
+                />
+                <Stack.Screen
+                  name="tracker/create"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: [0.75, 1.0],
+                    headerShown: true,
+                    title: 'New Tracker',
+                  }}
+                />
               </Stack>
               <SystemBars style="dark" />
             </AdBannerProvider>

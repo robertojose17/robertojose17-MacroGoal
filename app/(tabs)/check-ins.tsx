@@ -1,87 +1,224 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  Platform,
   RefreshControl,
-  Alert,
+  Animated,
+  Pressable,
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { IconSymbol } from '@/components/IconSymbol';
-import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
-import { supabase } from '@/lib/supabase/client';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { listTrackers, getStats, Tracker, TrackerStats } from '@/utils/trackersApi';
+import { Flame, Trophy, Plus, ChevronRight, CheckCircle2 } from 'lucide-react-native';
 
-type CheckInType = 'weight' | 'steps' | 'gym';
-
-interface CheckIn {
-  id: string;
-  date: string;
-  weight: number | null;
-  steps: number | null;
-  steps_goal: number | null;
-  went_to_gym: boolean;
-  photo_url: string | null;
-  notes: string | null;
+// ─── AnimatedPressable ────────────────────────────────────────────────────────
+function AnimatedPressable({
+  onPress,
+  style,
+  children,
+  scaleValue = 0.97,
+}: {
+  onPress?: () => void;
+  style?: object | object[];
+  children: React.ReactNode;
+  scaleValue?: number;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const animIn = () =>
+    Animated.spring(scale, { toValue: scaleValue, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+  const animOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable onPressIn={animIn} onPressOut={animOut} onPress={onPress} style={style}>
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
 }
 
+// ─── AnimatedListItem ─────────────────────────────────────────────────────────
+function AnimatedListItem({ index, children }: { index: number; children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(14)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
+    ]).start();
+  }, []);
+  return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
+}
+
+// ─── SkeletonCard ─────────────────────────────────────────────────────────────
+function SkeletonCard({ isDark }: { isDark: boolean }) {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const bg = isDark ? colors.cardDark : colors.card;
+  const shimmer = isDark ? '#3A3C52' : '#D4D6DA';
+  return (
+    <Animated.View style={[styles.card, { backgroundColor: bg, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder, opacity }]}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.skeletonCircle, { backgroundColor: shimmer }]} />
+        <View style={{ flex: 1, gap: 6 }}>
+          <View style={[styles.skeletonLine, { width: '50%', backgroundColor: shimmer }]} />
+          <View style={[styles.skeletonLine, { width: '30%', height: 11, backgroundColor: shimmer }]} />
+        </View>
+        <View style={[styles.skeletonPill, { backgroundColor: shimmer }]} />
+      </View>
+      <View style={[styles.divider, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
+      <View style={styles.statsRow}>
+        <View style={[styles.skeletonLine, { width: 80, backgroundColor: shimmer }]} />
+        <View style={[styles.skeletonLine, { width: 70, backgroundColor: shimmer }]} />
+        <View style={[styles.skeletonLine, { width: 50, backgroundColor: shimmer }]} />
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── Default tracker type mapping ────────────────────────────────────────────
+function getCheckInType(name: string): 'weight' | 'steps' | 'gym' | null {
+  const lower = name.toLowerCase();
+  if (lower === 'weight') return 'weight';
+  if (lower === 'steps') return 'steps';
+  if (lower === 'gym') return 'gym';
+  return null;
+}
+
+// ─── TrackerCard ──────────────────────────────────────────────────────────────
+function TrackerCard({
+  tracker,
+  stats,
+  isDark,
+  onPress,
+  onLog,
+}: {
+  tracker: Tracker;
+  stats: TrackerStats | null;
+  isDark: boolean;
+  onPress: () => void;
+  onLog: () => void;
+}) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const completionPct = stats ? Math.round(Number(stats.completion_rate) * 100) : 0;
+  const streak = stats ? Number(stats.current_streak) : 0;
+  const statusColor =
+    stats?.status === 'on_track' ? colors.success :
+    stats?.status === 'improving' ? colors.primary :
+    colors.warning;
+
+  const cardBg = isDark ? colors.cardDark : colors.card;
+  const cardBorder = isDark ? colors.cardBorderDark : colors.cardBorder;
+  const textColor = isDark ? colors.textDark : colors.text;
+  const subColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
+
+  return (
+    <AnimatedPressable onPress={onPress} style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      {/* Header row */}
+      <View style={styles.cardHeader}>
+        <View style={[styles.emojiCircle, { backgroundColor: isDark ? '#2A2C40' : '#EEF2FF' }]}>
+          <Text style={styles.emojiText}>{tracker.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.trackerName, { color: textColor }]} numberOfLines={1}>
+            {tracker.name}
+          </Text>
+          {tracker.unit ? (
+            <Text style={[styles.trackerUnit, { color: subColor }]}>{tracker.unit}</Text>
+          ) : null}
+        </View>
+        <AnimatedPressable onPress={onLog} style={[styles.logButton, { backgroundColor: colors.primary }]} scaleValue={0.94}>
+          <Plus size={14} color="#fff" strokeWidth={2.5} />
+          <Text style={styles.logButtonText}>Log</Text>
+        </AnimatedPressable>
+        <ChevronRight size={16} color={subColor} strokeWidth={2} style={{ marginLeft: 4 }} />
+      </View>
+
+      {/* Divider */}
+      <View style={[styles.divider, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
+
+      {/* Stats row */}
+      <View style={styles.statsRow}>
+        {/* Streak */}
+        <View style={styles.statChip}>
+          <Flame size={13} color="#FF8A5B" strokeWidth={2} />
+          <Text style={[styles.statChipText, { color: textColor }]}>
+            {streak}
+            <Text style={[styles.statChipLabel, { color: subColor }]}> day streak</Text>
+          </Text>
+        </View>
+
+        {/* Completion */}
+        <View style={styles.statChip}>
+          <CheckCircle2 size={13} color={colors.success} strokeWidth={2} />
+          <Text style={[styles.statChipText, { color: textColor }]}>
+            {completionPct}
+            <Text style={[styles.statChipLabel, { color: subColor }]}>% rate</Text>
+          </Text>
+        </View>
+
+        {/* Status badge */}
+        {stats ? (
+          <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {stats.status === 'on_track' ? 'on track' : stats.status === 'improving' ? 'improving' : 'behind'}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.statusBadge, { backgroundColor: subColor + '22' }]}>
+            <Text style={[styles.statusText, { color: subColor }]}>no data</Text>
+          </View>
+        )}
+      </View>
+    </AnimatedPressable>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CheckInsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [selectedType, setSelectedType] = useState<CheckInType>('weight');
-  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [trackers, setTrackers] = useState<Tracker[]>([]);
+  const [statsMap, setStatsMap] = useState<Record<string, TrackerStats>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadCheckIns = useCallback(async () => {
+  const loadData = useCallback(async () => {
+    console.log('[CheckIns] Loading trackers and stats');
     try {
-      setLoading(true);
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        console.log('[CheckIns] No user found');
-        setLoading(false);
-        return;
-      }
+      setError(null);
+      const list = await listTrackers();
+      console.log('[CheckIns] Loaded', list.length, 'trackers');
+      setTrackers(list);
 
-      setUser(authUser);
-
-      // Load user profile to get preferred units
-      const { data: userData } = await supabase
-        .from('users')
-        .select('preferred_units')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (userData) {
-        setUser({ ...authUser, ...userData });
-      }
-
-      console.log('[CheckIns] Loading check-ins for user:', authUser.id);
-
-      const { data, error } = await supabase
-        .from('check_ins')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .order('date', { ascending: false });
-
-      if (error) {
-        console.error('[CheckIns] Error loading check-ins:', error);
-        Alert.alert('Error', 'Failed to load check-ins');
-      } else {
-        console.log('[CheckIns] Loaded', data?.length || 0, 'check-ins');
-        setCheckIns(data || []);
-      }
-    } catch (error) {
-      console.error('[CheckIns] Error in loadCheckIns:', error);
+      const statsResults = await Promise.all(
+        list.map(t => getStats(t.id).catch(() => null))
+      );
+      const map: Record<string, TrackerStats> = {};
+      list.forEach((t, i) => {
+        if (statsResults[i]) map[t.id] = statsResults[i]!;
+      });
+      setStatsMap(map);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to load trackers';
+      console.error('[CheckIns] Error loading data:', msg);
+      setError(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -90,408 +227,336 @@ export default function CheckInsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[CheckIns] Screen focused, loading data');
-      loadCheckIns();
-    }, [loadCheckIns])
+      console.log('[CheckIns] Screen focused');
+      setLoading(true);
+      loadData();
+    }, [loadData])
   );
 
   const onRefresh = () => {
+    console.log('[CheckIns] Pull-to-refresh triggered');
     setRefreshing(true);
-    loadCheckIns();
+    loadData();
   };
 
-  const handleNewCheckIn = () => {
-    router.push({
-      pathname: '/check-in-form',
-      params: { type: selectedType },
-    });
+  const handleCardPress = (tracker: Tracker) => {
+    console.log('[CheckIns] Tracker card tapped:', tracker.name, tracker.id);
+    router.push({ pathname: '/tracker/[id]', params: { id: tracker.id } });
   };
 
-  const handleViewCheckIn = (checkIn: CheckIn) => {
-    // For all check-in types, navigate directly to the edit form
-    // This provides a consistent tap-to-edit experience across Weight, Steps, and Gym
-    router.push({
-      pathname: '/check-in-form',
-      params: { checkInId: checkIn.id, type: selectedType },
-    });
-  };
-
-  const handleDeleteCheckIn = async (checkIn: CheckIn) => {
-    try {
-      console.log('[CheckIns] Deleting check-in:', checkIn.id);
-      
-      const { error } = await supabase
-        .from('check_ins')
-        .delete()
-        .eq('id', checkIn.id);
-
-      if (error) {
-        console.error('[CheckIns] Error deleting check-in:', error);
-        Alert.alert('Error', 'Failed to delete check-in');
-      } else {
-        console.log('[CheckIns] ✅ Check-in deleted successfully');
-        // Reload the list
-        loadCheckIns();
+  const handleLog = (tracker: Tracker) => {
+    console.log('[CheckIns] Log button tapped:', tracker.name, tracker.id);
+    if (tracker.is_default) {
+      const type = getCheckInType(tracker.name);
+      if (type) {
+        router.push({ pathname: '/check-in-form', params: { type } });
+        return;
       }
-    } catch (error) {
-      console.error('[CheckIns] Error in handleDeleteCheckIn:', error);
-      Alert.alert('Error', 'An error occurred while deleting');
     }
+    router.push({ pathname: '/tracker/log', params: { trackerId: tracker.id } });
   };
 
-  const formatDate = (dateString: string) => {
-    const [year, month, day] = dateString.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
-
-    if (checkDate.getTime() === today.getTime()) {
-      return 'Today';
-    } else if (checkDate.getTime() === yesterday.getTime()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined 
-      });
-    }
+  const handleCreateTracker = () => {
+    console.log('[CheckIns] Create tracker button tapped');
+    router.push('/tracker/create');
   };
 
-  const formatWeight = (weight: number | null) => {
-    if (!weight) return 'N/A';
-    const units = user?.preferred_units || 'metric';
-    console.log('[CheckIns] ⚖️ Formatting weight:', weight, 'kg, units:', units);
-    
-    if (units === 'imperial') {
-      const lbs = Math.round(weight * 2.20462);
-      console.log('[CheckIns] ⚖️ Converted to:', lbs, 'lbs');
-      return `${lbs} lbs`;
-    }
-    return `${Math.round(weight)} kg`;
-  };
-
-  const getFilteredCheckIns = () => {
-    return checkIns.filter(checkIn => {
-      switch (selectedType) {
-        case 'weight':
-          return checkIn.weight !== null;
-        case 'steps':
-          return checkIn.steps !== null;
-        case 'gym':
-          return checkIn.went_to_gym !== null && checkIn.went_to_gym !== false;
-        default:
-          return false;
-      }
-    });
-  };
-
-  const filteredCheckIns = getFilteredCheckIns();
-
-  if (loading) {
-    return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-        edges={['top']}
-      >
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Loading check-ins...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const bg = isDark ? colors.backgroundDark : colors.background;
+  const textColor = isDark ? colors.textDark : colors.text;
+  const subColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
-      edges={['top']}
-    >
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-          Check-Ins
-        </Text>
-      </View>
-
-      {/* Segmented Control */}
-      <View style={styles.segmentedControlContainer}>
-        <View style={[styles.segmentedControl, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              selectedType === 'weight' && { backgroundColor: colors.primary },
-            ]}
-            onPress={() => setSelectedType('weight')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: selectedType === 'weight' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-              ]}
-            >
-              Weight
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              selectedType === 'steps' && { backgroundColor: colors.primary },
-            ]}
-            onPress={() => setSelectedType('steps')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: selectedType === 'steps' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-              ]}
-            >
-              Steps
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              selectedType === 'gym' && { backgroundColor: colors.primary },
-            ]}
-            onPress={() => setSelectedType('gym')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: selectedType === 'gym' ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) },
-              ]}
-            >
-              Gym
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Check-Ins',
+          headerLargeTitle: true,
+          headerTransparent: true,
+          headerShadowVisible: false,
+          headerLargeTitleShadowVisible: false,
+          headerLargeStyle: { backgroundColor: 'transparent' },
+          headerRight: () => (
+            <AnimatedPressable onPress={handleCreateTracker} style={styles.headerButton} scaleValue={0.9}>
+              <Plus size={22} color={colors.primary} strokeWidth={2.5} />
+            </AnimatedPressable>
+          ),
+        }}
+      />
       <ScrollView
+        style={{ flex: 1, backgroundColor: bg }}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {/* New Check-In Button */}
-        <TouchableOpacity
-          style={[styles.newButton, { backgroundColor: colors.primary }]}
-          onPress={handleNewCheckIn}
-          activeOpacity={0.8}
-        >
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add_circle"
-            size={24}
-            color="#FFFFFF"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
           />
-          <Text style={styles.newButtonText}>
-            New {selectedType === 'weight' ? 'Weight' : selectedType === 'steps' ? 'Steps' : 'Gym'} Check-In
-          </Text>
-        </TouchableOpacity>
+        }
+      >
+        {/* Section header */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Your Trackers</Text>
+          {!loading && (
+            <View style={[styles.countBadge, { backgroundColor: colors.primary + '22' }]}>
+              <Text style={[styles.countBadgeText, { color: colors.primary }]}>{trackers.length}</Text>
+            </View>
+          )}
+        </View>
 
-        {/* Check-Ins List */}
-        {filteredCheckIns.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-            <IconSymbol
-              ios_icon_name={
-                selectedType === 'weight' ? 'scalemass' :
-                selectedType === 'steps' ? 'figure.walk' :
-                'dumbbell.fill'
-              }
-              android_material_icon_name={
-                selectedType === 'weight' ? 'monitor_weight' :
-                selectedType === 'steps' ? 'directions_walk' :
-                'fitness_center'
-              }
-              size={48}
-              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-            />
-            <Text style={[styles.emptyTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              No {selectedType === 'weight' ? 'Weight' : selectedType === 'steps' ? 'Steps' : 'Gym'} Check-Ins Yet
+        {/* Error state */}
+        {error && !loading ? (
+          <View style={[styles.errorCard, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder }]}>
+            <Text style={[styles.errorTitle, { color: textColor }]}>Couldn't load trackers</Text>
+            <Text style={[styles.errorSub, { color: subColor }]}>Check your connection and try again</Text>
+            <AnimatedPressable onPress={() => { setLoading(true); loadData(); }} style={[styles.retryButton, { backgroundColor: colors.primary }]}>
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </AnimatedPressable>
+          </View>
+        ) : loading ? (
+          /* Skeleton */
+          <View style={styles.list}>
+            {[0, 1, 2].map(i => <SkeletonCard key={i} isDark={isDark} />)}
+          </View>
+        ) : trackers.length === 0 ? (
+          /* Empty state */
+          <View style={[styles.emptyCard, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder }]}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: colors.primary + '18' }]}>
+              <Trophy size={32} color={colors.primary} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: textColor }]}>No trackers yet</Text>
+            <Text style={[styles.emptySub, { color: subColor }]}>
+              Create your first tracker to start building healthy habits
             </Text>
-            <Text style={[styles.emptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {selectedType === 'weight' && 'Track your weight progress over time.'}
-              {selectedType === 'steps' && 'Log your daily steps and goals.'}
-              {selectedType === 'gym' && 'Record your gym workouts.'}
-            </Text>
-            <TouchableOpacity
-              style={[styles.emptyButton, { backgroundColor: colors.primary }]}
-              onPress={handleNewCheckIn}
-            >
-              <Text style={styles.emptyButtonText}>Create Your First Check-In</Text>
-            </TouchableOpacity>
+            <AnimatedPressable onPress={handleCreateTracker} style={[styles.emptyButton, { backgroundColor: colors.primary }]}>
+              <Plus size={16} color="#fff" strokeWidth={2.5} />
+              <Text style={styles.emptyButtonText}>Create tracker</Text>
+            </AnimatedPressable>
           </View>
         ) : (
-          <View style={styles.checkInsList}>
-            {filteredCheckIns.map((checkIn, index) => (
-              <SwipeToDeleteRow
-                key={checkIn.id}
-                onDelete={() => handleDeleteCheckIn(checkIn)}
-              >
-                <TouchableOpacity
-                  style={[
-                    styles.checkInRow,
-                    { backgroundColor: isDark ? colors.cardDark : colors.card }
-                  ]}
-                  onPress={() => handleViewCheckIn(checkIn)}
-                  activeOpacity={0.6}
-                >
-                  <View style={styles.checkInRowContent}>
-                    <Text style={[styles.checkInRowDate, { color: isDark ? colors.textDark : colors.text }]}>
-                      {formatDate(checkIn.date)}
-                    </Text>
-                    <Text style={[styles.checkInRowSeparator, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      —
-                    </Text>
-                    <Text style={[styles.checkInRowValue, { color: isDark ? colors.textDark : colors.text }]}>
-                      {selectedType === 'weight' && checkIn.weight && formatWeight(checkIn.weight)}
-                      {selectedType === 'steps' && checkIn.steps !== null && `${checkIn.steps.toLocaleString()} steps`}
-                      {selectedType === 'gym' && checkIn.went_to_gym && 'Workout: Yes'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </SwipeToDeleteRow>
+          /* Tracker list */
+          <View style={styles.list}>
+            {trackers.map((tracker, index) => (
+              <AnimatedListItem key={tracker.id} index={index}>
+                <TrackerCard
+                  tracker={tracker}
+                  stats={statsMap[tracker.id] ?? null}
+                  isDark={isDark}
+                  onPress={() => handleCardPress(tracker)}
+                  onLog={() => handleLog(tracker)}
+                />
+              </AnimatedListItem>
             ))}
           </View>
         )}
-
-        <View style={styles.bottomSpacer} />
       </ScrollView>
-    </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    ...typography.body,
-  },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
-    paddingBottom: spacing.md,
-  },
-  title: {
-    ...typography.h2,
-  },
-  segmentedControlContainer: {
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
-  },
-  segmentedControl: {
-    flexDirection: 'row',
-    borderRadius: borderRadius.lg,
-    padding: 4,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   scrollContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: 120,
   },
-  newButton: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginBottom: spacing.lg,
     gap: spacing.sm,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
-    elevation: 3,
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
   },
-  newButtonText: {
-    color: '#FFFFFF',
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  countBadge: {
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  countBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  list: {
+    gap: spacing.sm,
+  },
+  card: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    boxShadow: '0px 1px 3px rgba(0,0,0,0.04), 0px 4px 12px rgba(0,0,0,0.03)',
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  emojiCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiText: {
+    fontSize: 20,
+  },
+  trackerName: {
     fontSize: 16,
     fontWeight: '600',
+    letterSpacing: -0.2,
   },
+  trackerUnit: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 1,
+  },
+  logButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+  },
+  logButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    marginVertical: spacing.sm,
+    opacity: 0.5,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  statChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statChipLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+    marginLeft: 'auto',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  headerButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Skeleton
+  skeletonCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+  },
+  skeletonLine: {
+    height: 13,
+    borderRadius: 6,
+  },
+  skeletonPill: {
+    width: 56,
+    height: 28,
+    borderRadius: borderRadius.sm,
+  },
+  // Error
+  errorCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  errorTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  errorSub: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  retryButton: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  // Empty
   emptyCard: {
     borderRadius: borderRadius.lg,
     padding: spacing.xl,
     alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
+    borderWidth: 1,
+  },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
   },
   emptyTitle: {
-    ...typography.h3,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 6,
   },
-  emptyText: {
-    ...typography.body,
+  emptySub: {
+    fontSize: 14,
     textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 280,
     marginBottom: spacing.lg,
   },
   emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: 12,
     borderRadius: borderRadius.md,
   },
   emptyButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontWeight: '600',
-  },
-  checkInsList: {
-    gap: spacing.xs,
-  },
-  checkInRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  checkInRowContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: spacing.sm,
-  },
-  checkInRowDate: {
     fontSize: 15,
-    fontWeight: '500',
-    minWidth: 80,
-  },
-  checkInRowSeparator: {
-    fontSize: 15,
-    fontWeight: '400',
-  },
-  checkInRowValue: {
-    fontSize: 15,
-    fontWeight: '400',
-    flex: 1,
-  },
-  bottomSpacer: {
-    height: 40,
   },
 });
