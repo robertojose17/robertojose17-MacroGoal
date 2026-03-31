@@ -205,8 +205,12 @@ export async function updateEntry(
   return result;
 }
 
-export async function deleteEntry(trackerId: string, entryId: string): Promise<void> {
-  console.log('[TrackersApi] deleteEntry()', entryId);
+export async function deleteEntry(
+  trackerId: string,
+  entryId: string,
+  opts?: { syncCheckIns?: boolean; date?: string },
+): Promise<void> {
+  console.log('[TrackersApi] deleteEntry()', entryId, opts);
   const userId = await getCurrentUserId();
 
   const { error } = await supabase
@@ -218,6 +222,73 @@ export async function deleteEntry(trackerId: string, entryId: string): Promise<v
   if (error) {
     console.error('[TrackersApi] deleteEntry error:', error.message);
     throw new Error(error.message);
+  }
+
+  // Bidirectional sync: also remove the matching check_ins row for weight entries
+  if (opts?.syncCheckIns && opts.date) {
+    console.log('[TrackersApi] deleteEntry — syncing deletion to check_ins for date:', opts.date);
+    const { error: ciError } = await supabase
+      .from('check_ins')
+      .delete()
+      .eq('user_id', userId)
+      .eq('date', opts.date)
+      .eq('type', 'weight');
+
+    if (ciError) {
+      // Non-fatal: log but don't throw — tracker_entries row is already gone
+      console.warn('[TrackersApi] deleteEntry check_ins sync error:', ciError.message);
+    } else {
+      console.log('[TrackersApi] deleteEntry — check_ins row removed for date:', opts.date);
+    }
+  }
+}
+
+/**
+ * Backfill tracker_entries from check_ins for the weight tracker.
+ * Fetches all weight check-ins for the user and upserts any that are
+ * missing from tracker_entries, so historical data appears in Recent Entries.
+ */
+export async function backfillWeightFromCheckIns(weightTrackerId: string): Promise<void> {
+  console.log('[TrackersApi] backfillWeightFromCheckIns() trackerId:', weightTrackerId);
+  const userId = await getCurrentUserId();
+
+  // Fetch all weight check-ins
+  const { data: checkIns, error: ciError } = await supabase
+    .from('check_ins')
+    .select('date, weight')
+    .eq('user_id', userId)
+    .eq('type', 'weight')
+    .not('weight', 'is', null)
+    .order('date', { ascending: false });
+
+  if (ciError) {
+    console.warn('[TrackersApi] backfillWeightFromCheckIns fetch error:', ciError.message);
+    return;
+  }
+
+  if (!checkIns || checkIns.length === 0) {
+    console.log('[TrackersApi] backfillWeightFromCheckIns — no check_ins to backfill');
+    return;
+  }
+
+  console.log('[TrackersApi] backfillWeightFromCheckIns — found', checkIns.length, 'check_ins to upsert');
+
+  const rows = checkIns.map((ci: { date: string; weight: number }) => ({
+    tracker_id: weightTrackerId,
+    user_id: userId,
+    date: ci.date,
+    value: ci.weight,
+    notes: null,
+  }));
+
+  const { error: upsertError } = await supabase
+    .from('tracker_entries')
+    .upsert(rows, { onConflict: 'tracker_id,date' });
+
+  if (upsertError) {
+    console.warn('[TrackersApi] backfillWeightFromCheckIns upsert error:', upsertError.message);
+  } else {
+    console.log('[TrackersApi] backfillWeightFromCheckIns — upserted', rows.length, 'rows successfully');
   }
 }
 

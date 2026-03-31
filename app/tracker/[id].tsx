@@ -23,8 +23,9 @@ import {
   listEntries,
   deleteEntry,
   deleteTracker,
+  listTrackers,
+  backfillWeightFromCheckIns,
 } from '@/utils/trackersApi';
-import { listTrackers } from '@/utils/trackersApi';
 import {
   Flame,
   Trophy,
@@ -181,14 +182,21 @@ export default function TrackerDetailScreen() {
     console.log('[TrackerDetail] Loading data for tracker:', id);
     try {
       setError(null);
-      const [allTrackers, statsData, entriesData] = await Promise.all([
+      const [allTrackers, statsData] = await Promise.all([
         listTrackers(),
         getStats(id),
-        listEntries(id, 10),
       ]);
       const found = allTrackers.find(t => t.id === id) ?? null;
       setTracker(found);
       setStats(statsData);
+
+      // Backfill check_ins → tracker_entries for the weight tracker before listing entries
+      if (found && found.name.toLowerCase() === 'weight') {
+        console.log('[TrackerDetail] Weight tracker detected — running check_ins backfill');
+        await backfillWeightFromCheckIns(id);
+      }
+
+      const entriesData = await listEntries(id, 500);
       setEntries(entriesData);
       console.log('[TrackerDetail] Loaded tracker:', found?.name, 'entries:', entriesData.length);
     } catch (e: unknown) {
@@ -266,9 +274,10 @@ export default function TrackerDetailScreen() {
   };
 
   const handleDeleteEntry = async (entry: TrackerEntry) => {
-    console.log('[TrackerDetail] Delete entry:', entry.id);
+    const isWeightTracker = tracker?.name.toLowerCase() === 'weight';
+    console.log('[TrackerDetail] Delete entry:', entry.id, 'date:', entry.date, 'syncCheckIns:', isWeightTracker);
     try {
-      await deleteEntry(id!, entry.id);
+      await deleteEntry(id!, entry.id, isWeightTracker ? { syncCheckIns: true, date: entry.date } : undefined);
       setEntries(prev => prev.filter(e => e.id !== entry.id));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delete entry';
