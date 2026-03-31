@@ -1,0 +1,258 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return json({ error: "Unauthorized" }, 401);
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) return json({ error: "Unauthorized" }, 401);
+
+  const url = new URL(req.url);
+  let path = url.pathname.replace(/^\/functions\/v1\/trackers/, "") || "/";
+  if (path === "") path = "/";
+  const method = req.method;
+  const segments = path.split("/").filter(Boolean);
+
+  try {
+    // GET /trackers
+    if (method === "GET" && segments.length === 0) {
+      const { data: trackers, error } = await supabase
+        .from("trackers")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (error) return json({ error: error.message }, 500);
+
+      if (!trackers || trackers.length === 0) {
+        const defaults = [
+          { user_id: user.id, name: "weight", emoji: "⚖️", tracker_type: "numeric", unit: "kg", goal_value: null, frequency: "daily", is_default: true, sort_order: 0 },
+          { user_id: user.id, name: "steps", emoji: "👟", tracker_type: "numeric", unit: "steps", goal_value: 10000, frequency: "daily", is_default: true, sort_order: 1 },
+          { user_id: user.id, name: "gym", emoji: "🏋️", tracker_type: "binary", unit: null, goal_value: null, frequency: "daily", is_default: true, sort_order: 2 },
+        ];
+        const { data: created, error: createError } = await supabase
+          .from("trackers")
+          .insert(defaults)
+          .select();
+        if (createError) return json({ error: createError.message }, 500);
+        return json(created);
+      }
+
+      return json(trackers);
+    }
+
+    // POST /trackers
+    if (method === "POST" && segments.length === 0) {
+      const body = await req.json();
+      const { data, error } = await supabase
+        .from("trackers")
+        .insert({ ...body, user_id: user.id })
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 500);
+      return json(data, 201);
+    }
+
+    const trackerId = segments[0];
+
+    // PUT /trackers/:id
+    if (method === "PUT" && segments.length === 1) {
+      const body = await req.json();
+      const { data, error } = await supabase
+        .from("trackers")
+        .update(body)
+        .eq("id", trackerId)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
+    }
+
+    // DELETE /trackers/:id
+    if (method === "DELETE" && segments.length === 1) {
+      const { error } = await supabase
+        .from("trackers")
+        .delete()
+        .eq("id", trackerId)
+        .eq("user_id", user.id);
+      if (error) return json({ error: error.message }, 500);
+      return json({ success: true });
+    }
+
+    // GET /trackers/:id/stats
+    if (method === "GET" && segments.length === 2 && segments[1] === "stats") {
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+
+      const { data: entries, error } = await supabase
+        .from("tracker_entries")
+        .select("date, value")
+        .eq("tracker_id", trackerId)
+        .eq("user_id", user.id)
+        .gte("date", thirtyDaysAgoStr)
+        .order("date", { ascending: false });
+
+      if (error) return json({ error: error.message }, 500);
+
+      const { data: tracker } = await supabase
+        .from("trackers")
+        .select("goal_value")
+        .eq("id", trackerId)
+        .single();
+
+      const entryDates = new Set((entries || []).map((e: { date: string }) => e.date));
+      const daysTracked = entryDates.size;
+
+      let streak = 0;
+      const today = now.toISOString().split("T")[0];
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      let checkDate: Date | null = entryDates.has(today) ? new Date(now) : (entryDates.has(yesterdayStr) ? new Date(yesterday) : null);
+      if (checkDate) {
+        while (true) {
+          const dateStr = checkDate.toISOString().split("T")[0];
+          if (entryDates.has(dateStr)) {
+            streak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+          } else {
+            break;
+          }
+        }
+      }
+
+      let daysGoalMet = 0;
+      if (tracker?.goal_value != null) {
+        daysGoalMet = (entries || []).filter((e: { value: number }) => e.value >= tracker.goal_value).length;
+      }
+
+      const dayOfWeek = now.getDay();
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const thisMonday = new Date(now);
+      thisMonday.setDate(now.getDate() + mondayOffset);
+      thisMonday.setHours(0, 0, 0, 0);
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+      const lastSunday = new Date(thisMonday);
+      lastSunday.setDate(thisMonday.getDate() - 1);
+
+      const thisMondayStr = thisMonday.toISOString().split("T")[0];
+      const lastMondayStr = lastMonday.toISOString().split("T")[0];
+      const lastSundayStr = lastSunday.toISOString().split("T")[0];
+
+      const thisWeekCount = (entries || []).filter((e: { date: string }) => e.date >= thisMondayStr).length;
+      const lastWeekCount = (entries || []).filter((e: { date: string }) => e.date >= lastMondayStr && e.date <= lastSundayStr).length;
+
+      const avgValue = daysTracked > 0
+        ? (entries || []).reduce((sum: number, e: { value: number }) => sum + e.value, 0) / daysTracked
+        : null;
+
+      let status = "no_data";
+      if (daysTracked > 0) {
+        status = streak > 0 || thisWeekCount > 0 ? "on_track" : "off_track";
+      }
+
+      return json({
+        current_streak: streak,
+        best_streak: streak,
+        completion_rate: daysTracked / 30,
+        days_tracked: daysTracked,
+        days_goal_met: daysGoalMet,
+        this_week_count: thisWeekCount,
+        last_week_count: lastWeekCount,
+        total_entries: daysTracked,
+        avg_value: avgValue,
+        status,
+      });
+    }
+
+    // GET /trackers/:id/entries
+    if (method === "GET" && segments.length === 2 && segments[1] === "entries") {
+      const limit = parseInt(url.searchParams.get("limit") || "30");
+      const { data, error } = await supabase
+        .from("tracker_entries")
+        .select("*")
+        .eq("tracker_id", trackerId)
+        .eq("user_id", user.id)
+        .order("date", { ascending: false })
+        .limit(limit);
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
+    }
+
+    // POST /trackers/:id/entries
+    if (method === "POST" && segments.length === 2 && segments[1] === "entries") {
+      const body = await req.json();
+      const { data, error } = await supabase
+        .from("tracker_entries")
+        .upsert(
+          { tracker_id: trackerId, user_id: user.id, date: body.date, value: body.value, notes: body.notes ?? null },
+          { onConflict: "tracker_id,date" }
+        )
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 500);
+      return json(data, 201);
+    }
+
+    // PUT /trackers/:id/entries/:entryId
+    if (method === "PUT" && segments.length === 3 && segments[1] === "entries") {
+      const entryId = segments[2];
+      const body = await req.json();
+      const { data, error } = await supabase
+        .from("tracker_entries")
+        .update({ value: body.value, notes: body.notes })
+        .eq("id", entryId)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
+    }
+
+    // DELETE /trackers/:id/entries/:entryId
+    if (method === "DELETE" && segments.length === 3 && segments[1] === "entries") {
+      const entryId = segments[2];
+      const { error } = await supabase
+        .from("tracker_entries")
+        .delete()
+        .eq("id", entryId)
+        .eq("user_id", user.id);
+      if (error) return json({ error: error.message }, 500);
+      return json({ success: true });
+    }
+
+    return json({ error: "Not found" }, 404);
+  } catch (err) {
+    return json({ error: String(err) }, 500);
+  }
+});
