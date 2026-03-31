@@ -51,7 +51,7 @@ serve(async (req: Request) => {
 
       if (!trackers || trackers.length === 0) {
         const defaults = [
-          { user_id: user.id, name: "weight", emoji: "⚖️", tracker_type: "numeric", unit: "kg", goal_value: null, frequency: "daily", is_default: true, sort_order: 0 },
+          { user_id: user.id, name: "weight", emoji: "⚖️", tracker_type: "numeric", unit: "lb", goal_value: null, frequency: "daily", is_default: true, sort_order: 0 },
           { user_id: user.id, name: "steps", emoji: "👟", tracker_type: "numeric", unit: "steps", goal_value: 10000, frequency: "daily", is_default: true, sort_order: 1 },
           { user_id: user.id, name: "gym", emoji: "🏋️", tracker_type: "binary", unit: null, goal_value: null, frequency: "daily", is_default: true, sort_order: 2 },
         ];

@@ -65,7 +65,7 @@ export async function listTrackers(): Promise<Tracker[]> {
   if (trackers.length === 0) {
     console.log('[TrackersApi] No trackers found, seeding defaults');
     const defaults = [
-      { user_id: userId, name: 'weight', emoji: '⚖️', tracker_type: 'numeric', unit: 'kg', goal_value: null, frequency: 'daily', is_default: true, sort_order: 0 },
+      { user_id: userId, name: 'weight', emoji: '⚖️', tracker_type: 'numeric', unit: 'lb', goal_value: null, frequency: 'daily', is_default: true, sort_order: 0 },
       { user_id: userId, name: 'steps',  emoji: '👟', tracker_type: 'numeric', unit: 'steps', goal_value: 10000, frequency: 'daily', is_default: true, sort_order: 1 },
       { user_id: userId, name: 'gym',    emoji: '🏋️', tracker_type: 'binary',  unit: null, goal_value: null, frequency: 'daily', is_default: true, sort_order: 2 },
     ];

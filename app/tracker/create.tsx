@@ -283,7 +283,7 @@ export default function CreateTrackerScreen() {
                 onChangeText={setUnit}
                 placeholder={
                   trackerType === 'count' ? 'e.g. glasses, reps' :
-                  trackerType === 'numeric' ? 'e.g. kg, miles' :
+                  trackerType === 'numeric' ? 'e.g. lb, miles' :
                   'e.g. minutes, hours'
                 }
                 placeholderTextColor={subColor}
