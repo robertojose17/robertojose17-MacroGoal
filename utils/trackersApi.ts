@@ -224,46 +224,45 @@ export async function deleteEntry(
     throw new Error(error.message);
   }
 
-  // Bidirectional sync: also remove the matching check_ins row for weight entries
+  // Bidirectional sync: also null-out the weight column on the matching check_ins row.
+  // check_ins has no 'type' column — weight rows are identified by weight IS NOT NULL.
+  // We null the weight field rather than deleting the whole row (the row may have
+  // other fields like steps that should be preserved).
   if (opts?.syncCheckIns && opts.date) {
-    console.log('[TrackersApi] deleteEntry — syncing deletion to check_ins for date:', opts.date);
+    console.log('[TrackersApi] deleteEntry — nulling check_ins.weight for date:', opts.date);
     const { error: ciError } = await supabase
       .from('check_ins')
-      .delete()
+      .update({ weight: null })
       .eq('user_id', userId)
-      .eq('date', opts.date)
-      .eq('type', 'weight');
+      .eq('date', opts.date);
 
     if (ciError) {
       // Non-fatal: log but don't throw — tracker_entries row is already gone
       console.warn('[TrackersApi] deleteEntry check_ins sync error:', ciError.message);
     } else {
-      console.log('[TrackersApi] deleteEntry — check_ins row removed for date:', opts.date);
+      console.log('[TrackersApi] deleteEntry — check_ins.weight nulled for date:', opts.date);
     }
   }
 }
 
 /**
  * Backfill tracker_entries from check_ins for the weight tracker.
- * Fetches all check-ins that have a non-null weight column (there is no
- * 'type' column — weight rows are identified by weight IS NOT NULL).
- * check_ins stores weight in kg; the weight tracker unit is 'lb', so we
- * convert kg → lb before upserting into tracker_entries.
+ *
+ * Mirrors EXACTLY what ProgressCard.loadWeightCheckIns does:
+ *   - Table: check_ins
+ *   - Columns: date, weight
+ *   - Filter: user_id, weight IS NOT NULL
+ *   - Conversion: weight (kg) * 2.20462 → lbs  (ProgressCard always does this)
+ *
+ * The weight tracker unit is 'lb', so every entry is stored in lbs to match
+ * the dots shown on the Weight Progress graph.
  */
 export async function backfillWeightFromCheckIns(weightTrackerId: string): Promise<void> {
   console.log('[TrackersApi] backfillWeightFromCheckIns() trackerId:', weightTrackerId);
   const userId = await getCurrentUserId();
 
-  // Fetch user's preferred_units so we can convert kg → lb for imperial users
-  const { data: userData } = await supabase
-    .from('users')
-    .select('preferred_units')
-    .eq('id', userId)
-    .maybeSingle();
-  const isImperial = userData?.preferred_units === 'imperial';
-  console.log('[TrackersApi] backfillWeightFromCheckIns — preferred_units:', userData?.preferred_units, 'isImperial:', isImperial);
-
-  // check_ins has no 'type' column — weight rows are those where weight IS NOT NULL
+  // Fetch ALL check_ins rows that have a weight value — no date range restriction,
+  // so every dot on the graph gets a matching tracker_entries row.
   const { data: checkIns, error: ciError } = await supabase
     .from('check_ins')
     .select('date, weight')
@@ -281,16 +280,17 @@ export async function backfillWeightFromCheckIns(weightTrackerId: string): Promi
     return;
   }
 
-  console.log('[TrackersApi] backfillWeightFromCheckIns — found', checkIns.length, 'weight check_ins to upsert');
+  console.log('[TrackersApi] backfillWeightFromCheckIns — found', checkIns.length, 'check_ins rows');
 
+  // ProgressCard always converts kg → lbs with * 2.20462 — we do the same so
+  // the value stored here matches the dot position on the graph exactly.
   const rows = checkIns.map((ci: { date: string; weight: number }) => {
-    // check_ins always stores weight in kg; convert to lb for imperial users
-    const value = isImperial ? ci.weight * 2.20462 : ci.weight;
+    const valueLbs = Number(ci.weight) * 2.20462;
     return {
       tracker_id: weightTrackerId,
       user_id: userId,
       date: ci.date,
-      value: Math.round(value * 10) / 10, // round to 1 decimal
+      value: Math.round(valueLbs * 10) / 10, // 1 decimal place, matches graph display
       notes: null,
     };
   });
@@ -302,7 +302,7 @@ export async function backfillWeightFromCheckIns(weightTrackerId: string): Promi
   if (upsertError) {
     console.warn('[TrackersApi] backfillWeightFromCheckIns upsert error:', upsertError.message);
   } else {
-    console.log('[TrackersApi] backfillWeightFromCheckIns — upserted', rows.length, 'rows successfully');
+    console.log('[TrackersApi] backfillWeightFromCheckIns — upserted', rows.length, 'rows (kg→lbs) successfully');
   }
 }
 
