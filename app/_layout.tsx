@@ -56,12 +56,14 @@ export default function RootLayout() {
   // on every auth-state-change event (e.g. TOKEN_REFRESHED).
   const [initialSessionResolved, setInitialSessionResolved] = useState(false);
 
-  // Initialize app and auth
+  // Initialize app and auth — runs immediately on mount, does NOT wait for
+  // fonts. Font loading is non-blocking; the 8-second hard timeout ensures
+  // the app always becomes ready even if fonts or any other async step hangs.
   useEffect(() => {
-    if (loaded) {
-      initializeApp();
-    }
-  }, [loaded]);
+    console.log('[App] Mount — starting initialization (fonts may still be loading)');
+    initializeApp();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
@@ -582,7 +584,9 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded || !isReady) {
+  // Only block on isReady (auth + session resolved). Font loading is non-blocking
+  // — the app renders fine with system fonts while custom fonts finish loading.
+  if (!isReady) {
     return null;
   }
 
