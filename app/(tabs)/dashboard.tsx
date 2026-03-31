@@ -22,7 +22,6 @@ import ProgressCircle from '@/components/ProgressCircle';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
-import PhotoProgressCard from '@/components/PhotoProgressCard';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/lib/supabase/client';
 import * as Sharing from 'expo-sharing';
@@ -595,30 +594,6 @@ export default function DashboardScreen() {
                           proteinAccuracy >= 60 ? 15 : 10;
       const disciplineScore = Math.round(dailyTrackingScore + streakScore + proteinScore);
 
-      // Get photos for transformation
-      const { data: photoCheckIns } = await supabase
-        .from('check_ins')
-        .select('photo_url, date')
-        .eq('user_id', authUser.id)
-        .not('photo_url', 'is', null)
-        .order('date', { ascending: true });
-
-      let leftPhotoUrl, rightPhotoUrl, leftPhotoDate, rightPhotoDate;
-      if (photoCheckIns && photoCheckIns.length >= 2) {
-        leftPhotoUrl = photoCheckIns[0].photo_url;
-        leftPhotoDate = new Date(photoCheckIns[0].date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        rightPhotoUrl = photoCheckIns[photoCheckIns.length - 1].photo_url;
-        rightPhotoDate = new Date(photoCheckIns[photoCheckIns.length - 1].date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-      }
-
       // Format date range
       const startDate = new Date(goalForShare.start_date + 'T00:00:00');
       const dateRange = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - Today`;
@@ -644,8 +619,6 @@ export default function DashboardScreen() {
         weightGoalProgress,
         weightLost,
         dayStreak: streakDays,
-        progressPhotoUrl: rightPhotoUrl,
-        beforePhotoUrl: leftPhotoUrl,
         motivationalLine,
       };
 
@@ -940,9 +913,6 @@ export default function DashboardScreen() {
 
         {/* Progress Card */}
         {user && <ProgressCard userId={user.id} isDark={isDark} />}
-
-        {/* Photo Progress Card */}
-        {user && <PhotoProgressCard userId={user.id} isDark={isDark} />}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>

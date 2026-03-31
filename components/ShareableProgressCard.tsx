@@ -14,8 +14,6 @@ interface ShareableProgressCardProps {
   weightGoalProgress: number; // % complete (0-100)
   weightLost: number; // in lbs
   dayStreak: number;
-  progressPhotoUrl?: string;
-  beforePhotoUrl?: string;
   motivationalLine: string;
   onCapture?: (ref: React.RefObject<ViewShot>) => void;
 }
@@ -25,8 +23,6 @@ export default function ShareableProgressCard({
   weightGoalProgress,
   weightLost,
   dayStreak,
-  progressPhotoUrl,
-  beforePhotoUrl,
   onCapture,
 }: ShareableProgressCardProps) {
   const viewShotRef = useRef<ViewShot>(null);
@@ -96,47 +92,7 @@ export default function ShareableProgressCard({
           </Text>
         </View>
 
-        {/* SECTION 4 — TRANSFORMATION (KEEP AS IS) */}
-        {/* Before → Now photos */}
-        {(progressPhotoUrl || beforePhotoUrl) && (
-          <View style={styles.photoSection}>
-            {beforePhotoUrl && progressPhotoUrl ? (
-              // Before → Now
-              <View style={styles.photoRow}>
-                <View style={styles.photoContainer}>
-                  <Image
-                    source={{ uri: beforePhotoUrl }}
-                    style={styles.photo}
-                    resizeMode="cover"
-                  />
-                  <Text style={styles.photoLabel}>Before</Text>
-                </View>
-                <View style={styles.photoArrow}>
-                  <Text style={styles.photoArrowText}>→</Text>
-                </View>
-                <View style={styles.photoContainer}>
-                  <Image
-                    source={{ uri: progressPhotoUrl }}
-                    style={styles.photo}
-                    resizeMode="cover"
-                  />
-                  <Text style={styles.photoLabel}>Now</Text>
-                </View>
-              </View>
-            ) : (
-              // Single photo
-              <View style={styles.singlePhotoContainer}>
-                <Image
-                  source={{ uri: progressPhotoUrl || beforePhotoUrl }}
-                  style={styles.singlePhoto}
-                  resizeMode="cover"
-                />
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* SECTION 5 — FOOTER (OPTIONAL BUT CLEAN) */}
+        {/* SECTION 4 — FOOTER (OPTIONAL BUT CLEAN) */}
         {/* Subtle branding */}
         <View style={styles.footer}>
           <Text style={styles.footerBrand}>Macro Goal</Text>

@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -18,11 +17,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
-import * as ImagePicker from 'expo-image-picker';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
-import * as FileSystem from 'expo-file-system';
-import { FileSystemUploadType } from 'expo-file-system';
-import { compressImage, generateCheckInPhotoFilename } from '@/utils/imageUtils';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
@@ -47,8 +42,6 @@ export default function CheckInFormScreen() {
   
   // Weight fields
   const [weight, setWeight] = useState('');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   
   // Steps fields
   const [steps, setSteps] = useState('');
@@ -86,14 +79,10 @@ export default function CheckInFormScreen() {
       setDate(localDate);
       
       // Weight is ALWAYS stored in kg in the database
-      // Convert to user's preferred unit for display
+      // Convert to lbs for display
       if (data.weight) {
-        const units = userWithPrefs?.preferred_units || 'metric';
         const weightInKg = parseFloat(data.weight);
         console.log('[CheckInForm] ⚖️ Weight from DB (always kg):', weightInKg);
-        console.log('[CheckInForm] ⚖️ User preferred_units:', units);
-        
-        // Always convert kg → lbs for display
         const lbs = weightInKg * 2.20462;
         console.log('[CheckInForm] ⚖️ Converting kg → lbs for display:', weightInKg, 'kg →', lbs, 'lbs');
         setWeight(Math.round(lbs).toString());
@@ -103,13 +92,6 @@ export default function CheckInFormScreen() {
       setStepsGoal(data.steps_goal?.toString() || '');
       setWentToGym(data.went_to_gym || false);
       setNotes(data.notes || '');
-      
-      // Load the photo URL from the database
-      if (data.photo_url) {
-        console.log('[CheckInForm] 📸 Photo URL from DB:', data.photo_url);
-        setPhotoUrl(data.photo_url);
-        setPhotoUri(null); // Clear any local URI
-      }
     } catch (error) {
       console.error('[CheckInForm] Error in loadCheckInData:', error);
     }
@@ -177,161 +159,6 @@ export default function CheckInFormScreen() {
     initializeForm();
   }, [initializeForm]);
 
-  const handleTakePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'We need camera access to use this function', [
-          { text: 'Close', style: 'cancel' },
-          { text: 'Continue', onPress: () => ImagePicker.requestCameraPermissionsAsync() }
-        ]);
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [3, 4],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        console.log('[CheckInForm] 📸 New photo taken:', result.assets[0].uri);
-        setPhotoUri(result.assets[0].uri);
-        // Don't clear photoUrl yet - we'll update it after upload
-      }
-    } catch (error) {
-      console.error('[CheckInForm] Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo');
-    }
-  };
-
-  const handleChoosePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Photo library permission is required to choose photos.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [3, 4],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        console.log('[CheckInForm] 📸 Photo selected:', result.assets[0].uri);
-        setPhotoUri(result.assets[0].uri);
-        // Don't clear photoUrl yet - we'll update it after upload
-      }
-    } catch (error) {
-      console.error('[CheckInForm] Error choosing photo:', error);
-      Alert.alert('Error', 'Failed to choose photo');
-    }
-  };
-
-  const handleRemovePhoto = () => {
-    setPhotoUri(null);
-    setPhotoUrl(null);
-  };
-
-  /**
-   * Upload photo to Supabase Storage with retry logic
-   * @param uri - The local URI of the image
-   * @param userId - The user's ID
-   * @param dateString - The check-in date (YYYY-MM-DD)
-   * @param retryCount - Current retry attempt (default: 0)
-   * @returns The public URL of the uploaded photo, or null if failed
-   */
-  const uploadPhoto = async (
-    uri: string,
-    userId: string,
-    dateString: string,
-    retryCount: number = 0
-  ): Promise<string | null> => {
-    const maxRetries = 1;
-
-    const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
-
-    try {
-      console.log('[CheckInForm] 📤 Uploading photo (attempt', retryCount + 1, 'of', maxRetries + 1, ')...');
-
-      // Step 1: Compress the image
-      const compressedUri = await compressImage(uri);
-      console.log('[CheckInForm] ✅ Image compressed:', compressedUri);
-
-      // Step 2: Generate unique filename
-      // Path: userId/check-in-photos/checkin_DATE_TIMESTAMP.jpg
-      const filePath = generateCheckInPhotoFilename(userId, dateString);
-      console.log('[CheckInForm] 📁 Upload path:', filePath);
-
-      // Step 3: Get the current session access token
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-      if (!accessToken) {
-        console.error('[CheckInForm] ❌ No access token available for upload');
-        return null;
-      }
-
-      // Step 4: Upload using FileSystem.uploadAsync — handles binary correctly in React Native
-      // (avoids atob / ArrayBuffer issues which are browser-only APIs)
-      console.log('[CheckInForm] 📤 Starting FileSystem.uploadAsync...');
-      const uploadResult = await FileSystem.uploadAsync(
-        `${SUPABASE_URL}/storage/v1/object/check-ins/${filePath}`,
-        compressedUri,
-        {
-          httpMethod: 'PUT',
-          uploadType: FileSystemUploadType.BINARY_CONTENT,
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'image/jpeg',
-            'x-upsert': 'true',
-          },
-        }
-      );
-
-      console.log('[CheckInForm] 📥 Upload response status:', uploadResult.status);
-      console.log('[CheckInForm] 📥 Upload response body:', uploadResult.body);
-
-      if (uploadResult.status !== 200 && uploadResult.status !== 201) {
-        console.error('[CheckInForm] ❌ Upload failed:', uploadResult.status, uploadResult.body);
-
-        if (retryCount < maxRetries) {
-          console.log('[CheckInForm] 🔄 Retrying upload...');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return uploadPhoto(uri, userId, dateString, retryCount + 1);
-        }
-
-        return null;
-      }
-
-      // Step 5: Get public URL
-      const { data: urlData } = supabase.storage
-        .from('check-ins')
-        .getPublicUrl(filePath);
-
-      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
-      console.log('[CheckInForm] ✅ Photo uploaded successfully');
-      console.log('[CheckInForm] 🔗 Public URL:', publicUrl);
-
-      return publicUrl;
-    } catch (error: any) {
-      console.error('[CheckInForm] ❌ Unexpected error in uploadPhoto:', error);
-      console.error('[CheckInForm] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-      console.error('[CheckInForm] Error message:', error instanceof Error ? error.message : String(error));
-
-      if (retryCount < maxRetries) {
-        console.log('[CheckInForm] 🔄 Retrying upload after error...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return uploadPhoto(uri, userId, dateString, retryCount + 1);
-      }
-
-      return null;
-    }
-  };
-
   // Sync a check-in entry to tracker_entries so the tracker detail "Recent Entries" stays in sync
   const syncToTrackerEntries = async (
     _userId: string,
@@ -352,7 +179,6 @@ export default function CheckInFormScreen() {
       let trackerValue: number | null = null;
       if (type === 'weight') {
         // check_ins stores weight in kg; tracker unit is 'lb' for imperial users
-        // Store in the tracker's native unit (same unit shown in the tracker card)
         const units = user?.preferred_units || 'metric';
         const weightInKg = checkInData.weight as number;
         if (units === 'imperial') {
@@ -380,6 +206,7 @@ export default function CheckInFormScreen() {
   };
 
   const handleSave = async () => {
+    console.log('[CheckInForm] Save button pressed — type:', checkInType, 'isEditing:', isEditing);
     try {
       setSaving(true);
 
@@ -409,25 +236,6 @@ export default function CheckInFormScreen() {
       
       console.log('[CheckInForm] 📅 Saving date:', dateString, '(from', date.toLocaleDateString(), ')');
 
-      // Upload photo if new one was selected (only for weight check-ins)
-      let finalPhotoUrl = photoUrl;
-      if (checkInType === 'weight' && photoUri) {
-        console.log('[CheckInForm] 📸 New photo selected, uploading...');
-        const uploadedUrl = await uploadPhoto(photoUri, authUser.id, dateString);
-        
-        if (uploadedUrl) {
-          finalPhotoUrl = uploadedUrl;
-          console.log('[CheckInForm] ✅ Photo uploaded successfully, URL:', uploadedUrl);
-        } else {
-          console.error('[CheckInForm] ❌ Photo upload failed - showing alert to user');
-          Alert.alert(
-            'Photo Upload Failed',
-            'Photo upload failed, but check-in will be saved without it.',
-            [{ text: 'OK' }]
-          );
-        }
-      }
-
       // Build check-in data based on type
       const checkInData: any = {
         user_id: authUser.id,
@@ -441,10 +249,7 @@ export default function CheckInFormScreen() {
         const weightValue = parseFloat(weight);
         const weightInKg = weightValue / 2.20462;
         console.log('[CheckInForm] ⚖️ Converting weight for storage:', weightValue, 'lbs →', weightInKg, 'kg');
-        
         checkInData.weight = weightInKg;
-        checkInData.photo_url = finalPhotoUrl;
-        console.log('[CheckInForm] 💾 Saving photo_url:', finalPhotoUrl);
       } else if (checkInType === 'steps') {
         checkInData.steps = steps ? parseInt(steps, 10) : null;
         checkInData.steps_goal = stepsGoal ? parseInt(stepsGoal, 10) : null;
@@ -511,9 +316,6 @@ export default function CheckInFormScreen() {
     setDate(selectedDate);
   };
 
-  // Determine which image to display
-  const displayImageUri = photoUri || photoUrl;
-
   if (loading) {
     return (
       <SafeAreaView
@@ -563,7 +365,10 @@ export default function CheckInFormScreen() {
                 borderColor: isDark ? colors.borderDark : colors.border,
               },
             ]}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => {
+              console.log('[CheckInForm] Date picker opened');
+              setShowDatePicker(true);
+            }}
           >
             <IconSymbol
               ios_icon_name="calendar"
@@ -579,96 +384,26 @@ export default function CheckInFormScreen() {
 
         {/* Weight Fields */}
         {checkInType === 'weight' && (
-          <>
-            <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-                Weight ({getWeightUnit()})
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? colors.backgroundDark : colors.background,
-                    borderColor: isDark ? colors.borderDark : colors.border,
-                    color: isDark ? colors.textDark : colors.text,
-                  },
-                ]}
-                placeholder={`Enter weight in ${getWeightUnit()}`}
-                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-                value={weight}
-                onChangeText={setWeight}
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            {/* Photo */}
-            <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-              <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-                Progress Photo (Optional)
-              </Text>
-              
-              {displayImageUri ? (
-                <View style={styles.photoPreview}>
-                  <Image
-                    key={displayImageUri}
-                    source={{ uri: displayImageUri }}
-                    style={styles.photoImage}
-                    resizeMode="cover"
-                    onError={(error) => {
-                      console.error('[CheckInForm] ❌ Image failed to load:', displayImageUri);
-                      console.error('[CheckInForm] Error:', error.nativeEvent.error);
-                    }}
-                    onLoad={() => {
-                      console.log('[CheckInForm] ✅ Image loaded successfully:', displayImageUri);
-                    }}
-                  />
-                  <TouchableOpacity
-                    style={[styles.removePhotoButton, { backgroundColor: colors.error }]}
-                    onPress={handleRemovePhoto}
-                  >
-                    <IconSymbol
-                      ios_icon_name="trash"
-                      android_material_icon_name="delete"
-                      size={20}
-                      color="#FFFFFF"
-                    />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.photoButtons}>
-                  <TouchableOpacity
-                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border }]}
-                    onPress={handleTakePhoto}
-                  >
-                    <IconSymbol
-                      ios_icon_name="camera"
-                      android_material_icon_name="photo_camera"
-                      size={24}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.photoButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                      Take Photo
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border }]}
-                    onPress={handleChoosePhoto}
-                  >
-                    <IconSymbol
-                      ios_icon_name="photo"
-                      android_material_icon_name="photo_library"
-                      size={24}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.photoButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-                      Choose Photo
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </>
+          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+              Weight ({getWeightUnit()})
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                  borderColor: isDark ? colors.borderDark : colors.border,
+                  color: isDark ? colors.textDark : colors.text,
+                },
+              ]}
+              placeholder={`Enter weight in ${getWeightUnit()}`}
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="decimal-pad"
+            />
+          </View>
         )}
 
         {/* Steps Fields */}
@@ -717,7 +452,10 @@ export default function CheckInFormScreen() {
           <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <TouchableOpacity
               style={styles.toggleRow}
-              onPress={() => setWentToGym(!wentToGym)}
+              onPress={() => {
+                console.log('[CheckInForm] Gym toggle pressed — new value:', !wentToGym);
+                setWentToGym(!wentToGym);
+              }}
               activeOpacity={0.7}
             >
               <View style={styles.toggleLeft}>
@@ -896,46 +634,6 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
-  },
-  photoButtons: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  photoButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-  },
-  photoButtonText: {
-    ...typography.body,
-  },
-  photoPreview: {
-    position: 'relative',
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
-  },
-  photoImage: {
-    width: '100%',
-    height: 300,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.border,
-  },
-  removePhotoButton: {
-    position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.3)',
-    elevation: 3,
   },
   textArea: {
     borderWidth: 1,

@@ -25,8 +25,6 @@ interface CardData {
   weightGoalProgress: number;
   weightLost: number;
   dayStreak: number;
-  progressPhotoUrl?: string;
-  beforePhotoUrl?: string;
   motivationalLine: string;
 }
 
@@ -347,39 +345,6 @@ export default function ShareProgressScreen() {
   };
 
   /**
-   * Get Progress Photos
-   * Returns the most recent photo and the first photo (if available)
-   */
-  const getProgressPhotos = async (
-    userId: string
-  ): Promise<{ progressPhotoUrl?: string; beforePhotoUrl?: string }> => {
-    try {
-      const { data: photoCheckIns } = await supabase
-        .from('check_ins')
-        .select('photo_url, date')
-        .eq('user_id', userId)
-        .not('photo_url', 'is', null)
-        .order('date', { ascending: true });
-
-      if (!photoCheckIns || photoCheckIns.length === 0) {
-        return {};
-      }
-
-      if (photoCheckIns.length === 1) {
-        return { progressPhotoUrl: photoCheckIns[0].photo_url };
-      }
-
-      return {
-        beforePhotoUrl: photoCheckIns[0].photo_url,
-        progressPhotoUrl: photoCheckIns[photoCheckIns.length - 1].photo_url,
-      };
-    } catch (error) {
-      console.error('[ShareProgress] Error getting progress photos:', error);
-      return {};
-    }
-  };
-
-  /**
    * Get Motivational Line
    * Based on consistency score, weight lost, and day streak
    */
@@ -465,11 +430,6 @@ export default function ShareProgressScreen() {
       const dayStreak = await calculateDayStreak(authUser.id, startDate);
       console.log('[ShareProgress] Day Streak:', dayStreak);
 
-      // ===== GET PROGRESS PHOTOS =====
-      const { progressPhotoUrl, beforePhotoUrl } = await getProgressPhotos(authUser.id);
-      console.log('[ShareProgress] Progress Photo:', progressPhotoUrl);
-      console.log('[ShareProgress] Before Photo:', beforePhotoUrl);
-
       // ===== GET MOTIVATIONAL LINE =====
       const motivationalLine = getMotivationalLine(consistencyScore, weightLost, dayStreak);
       console.log('[ShareProgress] Motivational Line:', motivationalLine);
@@ -479,8 +439,6 @@ export default function ShareProgressScreen() {
         weightGoalProgress,
         weightLost,
         dayStreak,
-        progressPhotoUrl,
-        beforePhotoUrl,
         motivationalLine,
       });
 
