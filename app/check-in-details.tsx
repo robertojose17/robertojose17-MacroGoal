@@ -41,59 +41,51 @@ export default function CheckInDetailsScreen() {
   const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
   const [user, setUser] = useState<any>(null);
 
-  const loadUserData = useCallback(async () => {
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('preferred_units')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      setUser({ ...authUser, ...userData });
-    } catch (error) {
-      console.error('[CheckInDetails] Error loading user data:', error);
-    }
-  }, []);
-
-  const loadCheckInData = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('check_ins')
-        .select('*')
-        .eq('id', checkInId)
-        .single();
 
-      if (error) {
-        console.error('[CheckInDetails] Error loading check-in:', error);
+      const [checkInResult, authResult] = await Promise.all([
+        supabase.from('check_ins').select('*').eq('id', checkInId).single(),
+        supabase.auth.getUser(),
+      ]);
+
+      if (checkInResult.error) {
+        console.error('[CheckInDetails] Error loading check-in:', checkInResult.error);
         Alert.alert('Error', 'Failed to load check-in data');
         router.back();
         return;
       }
 
-      setCheckIn(data);
+      const authUser = authResult.data.user;
+      if (authUser) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('preferred_units')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        setUser({ ...authUser, ...userData });
+      }
+
+      setCheckIn(checkInResult.data);
     } catch (error) {
-      console.error('[CheckInDetails] Error in loadCheckInData:', error);
+      console.error('[CheckInDetails] Error in loadData:', error);
     } finally {
       setLoading(false);
     }
   }, [checkInId, router]);
 
   useEffect(() => {
-    loadCheckInData();
-    loadUserData();
-  }, [loadCheckInData, loadUserData]);
+    loadData();
+  }, [loadData]);
 
   const handleEdit = () => {
     if (!checkIn) return;
     
-    // Determine check-in type
+    // Determine check-in type — check gym FIRST before steps
     let type: 'weight' | 'steps' | 'gym' = 'weight';
-    if (checkIn.steps !== null) type = 'steps';
-    else if (checkIn.went_to_gym) type = 'gym';
+    if (checkIn.went_to_gym === true) type = 'gym';
+    else if (checkIn.steps !== null) type = 'steps';
     
     router.push({
       pathname: '/check-in-form',
@@ -114,7 +106,7 @@ export default function CheckInDetailsScreen() {
   };
 
   const formatWeight = (weight: number | null) => {
-    if (!weight) return 'N/A';
+    if (weight === null || weight === undefined) return 'N/A';
     const units = user?.preferred_units || 'metric';
     console.log('[CheckInDetails] ⚖️ Formatting weight:', weight, 'kg, units:', units);
     

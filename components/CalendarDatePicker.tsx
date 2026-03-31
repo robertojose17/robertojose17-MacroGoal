@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,10 @@ export default function CalendarDatePicker({
   const [selectedDate, setSelectedDate] = useState<string>(
     initialDate.toISOString().split('T')[0]
   );
+
+  useEffect(() => {
+    setSelectedDate(initialDate.toISOString().split('T')[0]);
+  }, [initialDate]);
 
   const handleDayPress = (day: DateData) => {
     console.log('[CalendarDatePicker] Day pressed:', day.dateString);

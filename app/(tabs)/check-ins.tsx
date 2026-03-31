@@ -198,7 +198,11 @@ export default function CheckInsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadingRef = useRef(false);
+
   const loadData = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     console.log('[CheckIns] Loading trackers and stats');
     try {
       setError(null);
@@ -220,6 +224,7 @@ export default function CheckInsScreen() {
       console.error('[CheckIns] Error loading data:', msg);
       setError(msg);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }

@@ -192,7 +192,7 @@ export default function CheckInFormScreen() {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [3, 4],
         quality: 0.8,
@@ -218,7 +218,7 @@ export default function CheckInFormScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [3, 4],
         quality: 0.8,
@@ -273,7 +273,7 @@ export default function CheckInFormScreen() {
       console.log('[CheckInForm] 📁 Upload path:', filePath);
 
       // Step 4: Upload to Supabase Storage
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('check-ins')
         .upload(filePath, blob, {
           contentType: 'image/jpeg',
@@ -586,7 +586,7 @@ export default function CheckInFormScreen() {
               ) : (
                 <View style={styles.photoButtons}>
                   <TouchableOpacity
-                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border }]}
                     onPress={handleTakePhoto}
                   >
                     <IconSymbol
@@ -601,7 +601,7 @@ export default function CheckInFormScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+                    style={[styles.photoButton, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderColor: isDark ? colors.borderDark : colors.border }]}
                     onPress={handleChoosePhoto}
                   >
                     <IconSymbol
@@ -859,7 +859,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: colors.border,
   },
   photoButtonText: {
     ...typography.body,

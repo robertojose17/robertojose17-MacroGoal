@@ -20,14 +20,7 @@ export async function compressImage(
     
     const manipulatedImage = await ImageManipulator.manipulateAsync(
       uri,
-      [
-        {
-          resize: {
-            width: maxWidth,
-            height: maxHeight,
-          },
-        },
-      ],
+      [{ resize: { width: maxWidth } }],
       {
         compress: quality,
         format: ImageManipulator.SaveFormat.JPEG,
