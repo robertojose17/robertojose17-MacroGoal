@@ -20,7 +20,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 import * as ImagePicker from 'expo-image-picker';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
-import { compressImage, uriToBlob, generateCheckInPhotoFilename } from '@/utils/imageUtils';
+import * as FileSystem from 'expo-file-system';
+import { compressImage, generateCheckInPhotoFilename } from '@/utils/imageUtils';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 
 type CheckInType = 'weight' | 'steps' | 'gym';
@@ -264,10 +265,18 @@ export default function CheckInFormScreen() {
       const compressedUri = await compressImage(uri);
       console.log('[CheckInForm] ✅ Image compressed');
       
-      // Step 2: Convert to blob
-      const blob = await uriToBlob(compressedUri);
-      console.log('[CheckInForm] ✅ Blob created, size:', blob.size, 'bytes');
-      
+      // Step 2: Read as base64 and convert to ArrayBuffer (avoids typeless Blob issue in RN)
+      console.log('[CheckInForm] 📖 Reading image as base64...');
+      const base64 = await FileSystem.readAsStringAsync(compressedUri, {
+        encoding: 'base64' as any,
+      });
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      console.log('[CheckInForm] ✅ ArrayBuffer ready, size:', bytes.byteLength, 'bytes');
+
       // Step 3: Generate unique filename with correct path structure
       // Path: userId/check-in-photos/checkin_DATE_TIMESTAMP.jpg
       const filePath = generateCheckInPhotoFilename(userId, dateString);
@@ -276,7 +285,7 @@ export default function CheckInFormScreen() {
       // Step 4: Upload to Supabase Storage
       const { error } = await supabase.storage
         .from('check-ins')
-        .upload(filePath, blob, {
+        .upload(filePath, bytes.buffer, {
           contentType: 'image/jpeg',
           upsert: true,
         });
@@ -304,10 +313,11 @@ export default function CheckInFormScreen() {
         .from('check-ins')
         .getPublicUrl(filePath);
 
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
       console.log('[CheckInForm] ✅ Photo uploaded successfully');
-      console.log('[CheckInForm] 🔗 Public URL:', urlData.publicUrl);
+      console.log('[CheckInForm] 🔗 Public URL:', publicUrl);
       
-      return urlData.publicUrl;
+      return publicUrl;
     } catch (error: any) {
       console.error('[CheckInForm] ❌ Unexpected error in uploadPhoto:', error);
       console.error('[CheckInForm] Error type:', error instanceof Error ? error.constructor.name : typeof error);

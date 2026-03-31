@@ -72,6 +72,9 @@ export default function PhotoProgressCard() {
   const beforeDate = formatDate(before.date);
   const afterDate = formatDate(after.date);
 
+  const beforeUri = before.photo_url.includes('?') ? before.photo_url : before.photo_url + '?t=' + Date.now();
+  const afterUri = after.photo_url.includes('?') ? after.photo_url : after.photo_url + '?t=' + Date.now();
+
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Photo Progress</Text>
@@ -80,11 +83,11 @@ export default function PhotoProgressCard() {
         <View style={styles.col}>
           <View style={{ width: PW, height: PH, borderRadius: 12, overflow: 'hidden', backgroundColor: '#2a2a2a' }}>
             <Image
-              source={{ uri: before.photo_url }}
+              source={{ uri: beforeUri }}
               style={{ width: PW, height: PH }}
               resizeMode="cover"
-              onError={(e) => console.warn('Before image error:', before.photo_url, e.nativeEvent.error)}
-              onLoad={() => console.log('Before image loaded:', before.photo_url)}
+              onError={(e) => console.warn('Before image error:', beforeUri, e.nativeEvent.error)}
+              onLoad={() => console.log('Before image loaded:', beforeUri)}
             />
           </View>
           <Text style={styles.label}>BEFORE</Text>
@@ -100,11 +103,11 @@ export default function PhotoProgressCard() {
         <View style={styles.col}>
           <View style={{ width: PW, height: PH, borderRadius: 12, overflow: 'hidden', backgroundColor: '#2a2a2a' }}>
             <Image
-              source={{ uri: after.photo_url }}
+              source={{ uri: afterUri }}
               style={{ width: PW, height: PH }}
               resizeMode="cover"
-              onError={(e) => console.warn('After image error:', after.photo_url, e.nativeEvent.error)}
-              onLoad={() => console.log('After image loaded:', after.photo_url)}
+              onError={(e) => console.warn('After image error:', afterUri, e.nativeEvent.error)}
+              onLoad={() => console.log('After image loaded:', afterUri)}
             />
           </View>
           <Text style={styles.label}>AFTER</Text>
