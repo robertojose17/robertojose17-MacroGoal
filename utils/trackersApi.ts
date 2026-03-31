@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 
 const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
 const BASE_URL = `${SUPABASE_URL}/functions/v1/trackers`;
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzZ3B0ZmlvZm9hZWd1c2xndmNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1NDI4NjcsImV4cCI6MjA3OTExODg2N30.iC4P3lp4fJHLsYNWBwHwFwGP-WZuJONETOYd2q1lQWA';
 
 export interface Tracker {
   id: string;
@@ -45,6 +46,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession();
   return {
     Authorization: `Bearer ${session?.access_token ?? ''}`,
+    'apikey': SUPABASE_ANON_KEY,
     'Content-Type': 'application/json',
   };
 }
