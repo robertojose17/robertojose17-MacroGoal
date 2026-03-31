@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,36 +11,26 @@ import {
   FlatList,
   Dimensions,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { supabase } from '@/lib/supabase/client';
 
-const BUCKET = 'check-ins';
-const SCREEN_WIDTH = Dimensions.get('window').width;
-// Card has padding of 16 on each side, gap of 8 between columns
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
 const COL_GAP = 8;
-const PHOTO_WIDTH = Math.floor((SCREEN_WIDTH - CARD_PADDING * 2 - COL_GAP * 3) / 2);
-const PHOTO_HEIGHT = 260;
+const PHOTO_W = Math.floor((SCREEN_WIDTH - 48) / 2); // 48 = padding + gap
+const PHOTO_H = 260;
 
 interface CheckInWithPhoto {
   id: string;
   date: string;
   weight: number | null;
-  photo_url: string; // resolved full https URL
+  photo_url: string;
 }
 
 interface PhotoProgressCardProps {
   userId: string;
   isDark: boolean;
-}
-
-function resolveUrl(raw: string): string {
-  if (raw.startsWith('http://') || raw.startsWith('https://')) {
-    return raw;
-  }
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(raw);
-  console.log('[PhotoProgressCard] Resolved storage path to URL:', data.publicUrl);
-  return data.publicUrl;
 }
 
 function formatDate(dateString: string): string {
@@ -64,59 +54,58 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   const [showBeforePicker, setShowBeforePicker] = useState(false);
   const [showAfterPicker, setShowAfterPicker] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('[PhotoProgressCard] Fetching check-ins with photos for user:', userId);
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id ?? userId;
+      console.log('[PhotoProgressCard] Fetching check-ins with photos for user:', uid);
 
-        const { data, error: dbError } = await supabase
-          .from('check_ins')
-          .select('id, date, weight, photo_url')
-          .eq('user_id', userId)
-          .not('photo_url', 'is', null)
-          .order('date', { ascending: true });
+      const { data, error: dbError } = await supabase
+        .from('check_ins')
+        .select('id, date, weight, photo_url')
+        .eq('user_id', uid)
+        .not('photo_url', 'is', null)
+        .order('date', { ascending: true });
 
-        if (cancelled) return;
-
-        if (dbError) {
-          console.log('[PhotoProgressCard] DB error:', dbError.message);
-          setError('Failed to load photos');
-          setLoading(false);
-          return;
-        }
-
-        console.log('[PhotoProgressCard] Raw results count:', data?.length ?? 0);
-
-        const resolved: CheckInWithPhoto[] = (data ?? [])
-          .filter((row) => row.photo_url && row.photo_url.trim() !== '')
-          .map((row) => {
-            const url = resolveUrl(row.photo_url);
-            console.log('[PhotoProgressCard] date:', row.date, 'url:', url);
-            return { id: row.id, date: row.date, weight: row.weight ?? null, photo_url: url };
-          });
-
-        console.log('[PhotoProgressCard] Resolved photos count:', resolved.length);
-
-        setCheckIns(resolved);
-        setBeforeIndex(0);
-        setAfterIndex(Math.max(0, resolved.length - 1));
-      } catch (err: any) {
-        if (!cancelled) {
-          console.log('[PhotoProgressCard] Unexpected error:', err?.message ?? err);
-          setError('Something went wrong loading photos');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (dbError) {
+        console.log('[PhotoProgressCard] DB error:', dbError.message);
+        setError('Failed to load photos');
+        setLoading(false);
+        return;
       }
-    }
 
-    load();
-    return () => { cancelled = true; };
+      console.log('[PhotoProgressCard] Fetched rows:', data?.length ?? 0, '| first photo_url:', data?.[0]?.photo_url ?? 'none');
+
+      const entries: CheckInWithPhoto[] = (data ?? [])
+        .filter((row) => row.photo_url && row.photo_url.trim() !== '')
+        .map((row) => ({
+          id: row.id,
+          date: row.date,
+          weight: row.weight ?? null,
+          photo_url: row.photo_url,
+        }));
+
+      console.log('[PhotoProgressCard] Entries with photos:', entries.length);
+
+      setCheckIns(entries);
+      setBeforeIndex(0);
+      setAfterIndex(Math.max(0, entries.length - 1));
+    } catch (err: any) {
+      console.log('[PhotoProgressCard] Unexpected error:', err?.message ?? err);
+      setError('Something went wrong loading photos');
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const cardBg = isDark ? colors.cardDark : colors.card;
   const cardBorder = isDark ? colors.cardBorderDark : colors.cardBorder;
@@ -171,13 +160,13 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
         {/* BEFORE */}
         <View style={styles.col}>
           <Text style={[styles.sideLabel, { color: subtextColor }]}>BEFORE</Text>
-          <View style={styles.photoBox}>
+          <View style={{ width: PHOTO_W, height: PHOTO_H, borderRadius: 12, overflow: 'hidden', backgroundColor: '#333' }}>
             <Image
               source={{ uri: beforeEntry.photo_url }}
-              style={styles.photo}
+              style={{ width: PHOTO_W, height: PHOTO_H }}
               resizeMode="cover"
-              onError={(e) => console.log('[PhotoProgressCard] Before image error:', e.nativeEvent)}
-              onLoad={() => console.log('[PhotoProgressCard] Before image loaded:', beforeEntry.photo_url)}
+              onError={(e) => console.warn('Photo load error:', beforeEntry.photo_url, e.nativeEvent.error)}
+              onLoad={() => console.log('Photo loaded OK:', beforeEntry.photo_url)}
             />
           </View>
           <TouchableOpacity
@@ -195,13 +184,13 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
         {/* AFTER */}
         <View style={styles.col}>
           <Text style={[styles.sideLabel, { color: subtextColor }]}>AFTER</Text>
-          <View style={styles.photoBox}>
+          <View style={{ width: PHOTO_W, height: PHOTO_H, borderRadius: 12, overflow: 'hidden', backgroundColor: '#333' }}>
             <Image
               source={{ uri: afterEntry.photo_url }}
-              style={styles.photo}
+              style={{ width: PHOTO_W, height: PHOTO_H }}
               resizeMode="cover"
-              onError={(e) => console.log('[PhotoProgressCard] After image error:', e.nativeEvent)}
-              onLoad={() => console.log('[PhotoProgressCard] After image loaded:', afterEntry.photo_url)}
+              onError={(e) => console.warn('Photo load error:', afterEntry.photo_url, e.nativeEvent.error)}
+              onLoad={() => console.log('Photo loaded OK:', afterEntry.photo_url)}
             />
           </View>
           <TouchableOpacity
@@ -355,7 +344,7 @@ const styles = StyleSheet.create({
     gap: COL_GAP,
   },
   col: {
-    width: PHOTO_WIDTH,
+    width: PHOTO_W,
     alignItems: 'center',
     gap: spacing.xs,
   },
@@ -364,17 +353,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     marginBottom: 2,
-  },
-  photoBox: {
-    width: PHOTO_WIDTH,
-    height: PHOTO_HEIGHT,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#D1D5DB',
-  },
-  photo: {
-    width: PHOTO_WIDTH,
-    height: PHOTO_HEIGHT,
   },
   dateBtn: {
     paddingVertical: 5,
