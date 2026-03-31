@@ -62,8 +62,10 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
 
       const count = data?.length || 0;
       console.log('[PhotoProgressCard] Loaded', count, 'check-ins with photos');
-
       if (data && data.length > 0) {
+        data.forEach((ci, i) => {
+          console.log('[PhotoProgressCard] check-in[' + i + '] photo_url:', ci.photo_url);
+        });
         setCheckIns(data);
         setBeforeIndex(0);
         setAfterIndex(data.length - 1);
@@ -460,6 +462,10 @@ const styles = StyleSheet.create({
   },
   singlePhotoWrapper: {
     width: '60%',
+    aspectRatio: 3 / 4,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    backgroundColor: '#E5E5EA',
     position: 'relative',
   },
   dateBadge: {
@@ -505,14 +511,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
+    backgroundColor: '#E5E5EA',
   },
   photoImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#E5E5EA',
+    width: '100%',
+    height: '100%',
   },
   dateChip: {
     flexDirection: 'row',
