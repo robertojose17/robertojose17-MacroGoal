@@ -203,7 +203,8 @@ export default function CheckInsScreen() {
     console.log('[CheckIns] Loading trackers and stats');
     try {
       setError(null);
-      const list = await listTrackers();
+      const rawTrackers = await listTrackers();
+      const list = Array.isArray(rawTrackers) ? rawTrackers : [];
       console.log('[CheckIns] Loaded', list.length, 'trackers');
       setTrackers(list);
 

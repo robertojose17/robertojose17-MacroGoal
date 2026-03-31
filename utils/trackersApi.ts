@@ -64,7 +64,8 @@ export async function listTrackers(): Promise<Tracker[]> {
   console.log('[TrackersApi] listTrackers()');
   const headers = await getAuthHeaders();
   const response = await fetch(BASE_URL, { headers });
-  return handleResponse<Tracker[]>(response);
+  const data = await handleResponse<{ trackers: Tracker[] }>(response);
+  return data.trackers ?? [];
 }
 
 export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
@@ -75,7 +76,8 @@ export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
     headers,
     body: JSON.stringify(data),
   });
-  return handleResponse<Tracker>(response);
+  const result = await handleResponse<{ tracker: Tracker }>(response);
+  return result.tracker;
 }
 
 export async function updateTracker(id: string, data: Partial<Tracker>): Promise<Tracker> {
@@ -86,7 +88,8 @@ export async function updateTracker(id: string, data: Partial<Tracker>): Promise
     headers,
     body: JSON.stringify(data),
   });
-  return handleResponse<Tracker>(response);
+  const result = await handleResponse<{ tracker: Tracker }>(response);
+  return result.tracker;
 }
 
 export async function deleteTracker(id: string): Promise<void> {
@@ -107,7 +110,8 @@ export async function listEntries(trackerId: string, limit = 90): Promise<Tracke
   console.log('[TrackersApi] listEntries()', trackerId, 'limit:', limit);
   const headers = await getAuthHeaders();
   const response = await fetch(`${BASE_URL}/${trackerId}/entries?limit=${limit}`, { headers });
-  return handleResponse<TrackerEntry[]>(response);
+  const data = await handleResponse<{ entries: TrackerEntry[] }>(response);
+  return data.entries ?? [];
 }
 
 export async function logEntry(
@@ -123,7 +127,8 @@ export async function logEntry(
     headers,
     body: JSON.stringify({ date, value, notes: notes ?? null }),
   });
-  return handleResponse<TrackerEntry>(response);
+  const result = await handleResponse<{ entry: TrackerEntry }>(response);
+  return result.entry;
 }
 
 export async function updateEntry(
@@ -138,7 +143,8 @@ export async function updateEntry(
     headers,
     body: JSON.stringify(data),
   });
-  return handleResponse<TrackerEntry>(response);
+  const result = await handleResponse<{ entry: TrackerEntry }>(response);
+  return result.entry;
 }
 
 export async function deleteEntry(trackerId: string, entryId: string): Promise<void> {
@@ -159,5 +165,6 @@ export async function getStats(trackerId: string): Promise<TrackerStats> {
   console.log('[TrackersApi] getStats()', trackerId);
   const headers = await getAuthHeaders();
   const response = await fetch(`${BASE_URL}/${trackerId}/stats`, { headers });
-  return handleResponse<TrackerStats>(response);
+  const data = await handleResponse<{ stats: TrackerStats } | TrackerStats>(response);
+  return ('stats' in data ? data.stats : data) as TrackerStats;
 }
