@@ -51,6 +51,7 @@ function AnimatedListItem({ index, children }: { index: number; children: React.
       Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
       Animated.timing(translateY, { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
     ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
@@ -65,6 +66,7 @@ function SkeletonCard({ isDark }: { isDark: boolean }) {
         Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
       ])
     ).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const bg = isDark ? colors.cardDark : colors.card;
   const shimmer = isDark ? '#3A3C52' : '#D4D6DA';

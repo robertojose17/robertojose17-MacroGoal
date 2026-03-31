@@ -71,6 +71,7 @@ export default function LogEntryScreen() {
 
   useEffect(() => {
     loadTracker();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackerId]);
 
   const loadTracker = async () => {

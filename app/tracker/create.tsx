@@ -83,6 +83,7 @@ export default function CreateTrackerScreen() {
 
   useEffect(() => {
     if (isEditing) loadExisting();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackerId]);
 
   const loadExisting = async () => {

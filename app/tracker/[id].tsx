@@ -112,6 +112,7 @@ function SkeletonStatCard({ isDark }: { isDark: boolean }) {
         Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
       ])
     ).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const shimmer = isDark ? '#3A3C52' : '#D4D6DA';
   const cardBg = isDark ? colors.cardDark : colors.card;
