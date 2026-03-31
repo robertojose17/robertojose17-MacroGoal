@@ -42,5 +42,5 @@ export function AdBannerProvider({
 }
 
 export function useAdBanner(): AdBannerContextValue {
-  return React.use(AdBannerContext);
+  return React.useContext(AdBannerContext);
 }
