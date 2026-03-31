@@ -295,7 +295,7 @@ export default function TrackerDetailScreen() {
   const cardBorder = isDark ? colors.cardBorderDark : colors.cardBorder;
 
   const trackerTitle = tracker ? `${tracker.emoji} ${tracker.name}` : '';
-  const completionPct = stats ? Math.round(Number(stats.completion_rate) * 100) : 0;
+  const completionPct = stats ? Math.round(Number(stats.completion_rate)) : 0;
   const avgDisplay = stats && tracker
     ? formatValue(Number(stats.avg_value), tracker.tracker_type, tracker.unit)
     : '—';

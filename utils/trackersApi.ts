@@ -76,8 +76,8 @@ export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
     headers,
     body: JSON.stringify(data),
   });
-  const result = await handleResponse<{ tracker: Tracker }>(response);
-  return result.tracker;
+  const result = await handleResponse<Tracker>(response);
+  return result;
 }
 
 export async function updateTracker(id: string, data: Partial<Tracker>): Promise<Tracker> {
@@ -88,8 +88,8 @@ export async function updateTracker(id: string, data: Partial<Tracker>): Promise
     headers,
     body: JSON.stringify(data),
   });
-  const result = await handleResponse<{ tracker: Tracker }>(response);
-  return result.tracker;
+  const result = await handleResponse<Tracker>(response);
+  return result;
 }
 
 export async function deleteTracker(id: string): Promise<void> {
@@ -127,8 +127,8 @@ export async function logEntry(
     headers,
     body: JSON.stringify({ date, value, notes: notes ?? null }),
   });
-  const result = await handleResponse<{ entry: TrackerEntry }>(response);
-  return result.entry;
+  const result = await handleResponse<TrackerEntry>(response);
+  return result;
 }
 
 export async function updateEntry(
@@ -143,8 +143,8 @@ export async function updateEntry(
     headers,
     body: JSON.stringify(data),
   });
-  const result = await handleResponse<{ entry: TrackerEntry }>(response);
-  return result.entry;
+  const result = await handleResponse<TrackerEntry>(response);
+  return result;
 }
 
 export async function deleteEntry(trackerId: string, entryId: string): Promise<void> {
