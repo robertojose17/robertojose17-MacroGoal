@@ -1,9 +1,4 @@
-
 import { supabase } from '@/lib/supabase/client';
-
-const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
-const BASE_URL = `${SUPABASE_URL}/functions/v1/trackers`;
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzZ3B0ZmlvZm9hZWd1c2xndmNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1NDI4NjcsImV4cCI6MjA3OTExODg2N30.iC4P3lp4fJHLsYNWBwHwFwGP-WZuJONETOYd2q1lQWA';
 
 export interface Tracker {
   id: string;
@@ -42,79 +37,124 @@ export interface TrackerStats {
   status: 'on_track' | 'improving' | 'behind' | 'no_data' | 'off_track';
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return {
-    Authorization: `Bearer ${session?.access_token ?? ''}`,
-    'apikey': SUPABASE_ANON_KEY,
-    'Content-Type': 'application/json',
-  };
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const text = await response.text();
-    console.error('[TrackersApi] HTTP error', response.status, response.url, text);
-    throw new Error(`Request failed (${response.status}): ${text}`);
-  }
-  return response.json() as Promise<T>;
+async function getCurrentUserId(): Promise<string> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error('Not authenticated');
+  return user.id;
 }
 
 export async function listTrackers(): Promise<Tracker[]> {
-  console.log('[TrackersApi] listTrackers() →', BASE_URL);
-  const headers = await getAuthHeaders();
-  const response = await fetch(BASE_URL, { headers });
-  console.log('[TrackersApi] listTrackers status:', response.status);
-  const data = await handleResponse<Tracker[]>(response);
-  return Array.isArray(data) ? data : [];
+  console.log('[TrackersApi] listTrackers()');
+  const userId = await getCurrentUserId();
+
+  const { data, error } = await supabase
+    .from('trackers')
+    .select('*')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[TrackersApi] listTrackers error:', error.message);
+    throw new Error(error.message);
+  }
+
+  const trackers = data ?? [];
+
+  // Seed default trackers if none exist
+  if (trackers.length === 0) {
+    console.log('[TrackersApi] No trackers found, seeding defaults');
+    const defaults = [
+      { user_id: userId, name: 'weight', emoji: '⚖️', tracker_type: 'numeric', unit: 'kg', goal_value: null, frequency: 'daily', is_default: true, sort_order: 0 },
+      { user_id: userId, name: 'steps',  emoji: '👟', tracker_type: 'numeric', unit: 'steps', goal_value: 10000, frequency: 'daily', is_default: true, sort_order: 1 },
+      { user_id: userId, name: 'gym',    emoji: '🏋️', tracker_type: 'binary',  unit: null, goal_value: null, frequency: 'daily', is_default: true, sort_order: 2 },
+    ];
+    const { data: created, error: createError } = await supabase
+      .from('trackers')
+      .insert(defaults)
+      .select();
+    if (createError) {
+      console.error('[TrackersApi] Seed error:', createError.message);
+      throw new Error(createError.message);
+    }
+    console.log('[TrackersApi] Seeded', created?.length, 'default trackers');
+    return created ?? [];
+  }
+
+  console.log('[TrackersApi] Loaded', trackers.length, 'trackers');
+  return trackers;
 }
 
 export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
   console.log('[TrackersApi] createTracker()', data);
-  const headers = await getAuthHeaders();
-  const response = await fetch(BASE_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data),
-  });
-  const result = await handleResponse<Tracker>(response);
+  const userId = await getCurrentUserId();
+
+  const { data: result, error } = await supabase
+    .from('trackers')
+    .insert({ ...data, user_id: userId })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[TrackersApi] createTracker error:', error.message);
+    throw new Error(error.message);
+  }
+  console.log('[TrackersApi] Created tracker:', result.id);
   return result;
 }
 
 export async function updateTracker(id: string, data: Partial<Tracker>): Promise<Tracker> {
-  console.log('[TrackersApi] updateTracker()', id, data);
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${id}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify(data),
-  });
-  const result = await handleResponse<Tracker>(response);
+  console.log('[TrackersApi] updateTracker()', id);
+  const userId = await getCurrentUserId();
+
+  const { data: result, error } = await supabase
+    .from('trackers')
+    .update(data)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[TrackersApi] updateTracker error:', error.message);
+    throw new Error(error.message);
+  }
   return result;
 }
 
 export async function deleteTracker(id: string): Promise<void> {
   console.log('[TrackersApi] deleteTracker()', id);
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${id}`, {
-    method: 'DELETE',
-    headers,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    console.error('[TrackersApi] deleteTracker error', response.status, text);
-    throw new Error(`Delete failed (${response.status}): ${text}`);
+  const userId = await getCurrentUserId();
+
+  const { error } = await supabase
+    .from('trackers')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[TrackersApi] deleteTracker error:', error.message);
+    throw new Error(error.message);
   }
 }
 
 export async function listEntries(trackerId: string, limit = 90): Promise<TrackerEntry[]> {
-  const url = `${BASE_URL}/${trackerId}/entries?limit=${limit}`;
-  console.log('[TrackersApi] listEntries() →', url);
-  const headers = await getAuthHeaders();
-  const response = await fetch(url, { headers });
-  console.log('[TrackersApi] listEntries status:', response.status);
-  const data = await handleResponse<TrackerEntry[]>(response);
-  return Array.isArray(data) ? data : [];
+  console.log('[TrackersApi] listEntries()', trackerId);
+  const userId = await getCurrentUserId();
+
+  const { data, error } = await supabase
+    .from('tracker_entries')
+    .select('*')
+    .eq('tracker_id', trackerId)
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('[TrackersApi] listEntries error:', error.message);
+    throw new Error(error.message);
+  }
+  return data ?? [];
 }
 
 export async function logEntry(
@@ -124,14 +164,22 @@ export async function logEntry(
   notes?: string,
 ): Promise<TrackerEntry> {
   console.log('[TrackersApi] logEntry()', trackerId, date, value);
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${trackerId}/entries`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ date, value, notes: notes ?? null }),
-  });
-  const result = await handleResponse<TrackerEntry>(response);
-  return result;
+  const userId = await getCurrentUserId();
+
+  const { data, error } = await supabase
+    .from('tracker_entries')
+    .upsert(
+      { tracker_id: trackerId, user_id: userId, date, value, notes: notes ?? null },
+      { onConflict: 'tracker_id,date' }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[TrackersApi] logEntry error:', error.message);
+    throw new Error(error.message);
+  }
+  return data;
 }
 
 export async function updateEntry(
@@ -139,35 +187,145 @@ export async function updateEntry(
   entryId: string,
   data: Partial<TrackerEntry>,
 ): Promise<TrackerEntry> {
-  console.log('[TrackersApi] updateEntry()', trackerId, entryId, data);
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${trackerId}/entries/${entryId}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify(data),
-  });
-  const result = await handleResponse<TrackerEntry>(response);
+  console.log('[TrackersApi] updateEntry()', entryId);
+  const userId = await getCurrentUserId();
+
+  const { data: result, error } = await supabase
+    .from('tracker_entries')
+    .update({ value: data.value, notes: data.notes })
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[TrackersApi] updateEntry error:', error.message);
+    throw new Error(error.message);
+  }
   return result;
 }
 
 export async function deleteEntry(trackerId: string, entryId: string): Promise<void> {
-  console.log('[TrackersApi] deleteEntry()', trackerId, entryId);
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${trackerId}/entries/${entryId}`, {
-    method: 'DELETE',
-    headers,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    console.error('[TrackersApi] deleteEntry error', response.status, text);
-    throw new Error(`Delete entry failed (${response.status}): ${text}`);
+  console.log('[TrackersApi] deleteEntry()', entryId);
+  const userId = await getCurrentUserId();
+
+  const { error } = await supabase
+    .from('tracker_entries')
+    .delete()
+    .eq('id', entryId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[TrackersApi] deleteEntry error:', error.message);
+    throw new Error(error.message);
   }
 }
 
 export async function getStats(trackerId: string): Promise<TrackerStats> {
   console.log('[TrackersApi] getStats()', trackerId);
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${BASE_URL}/${trackerId}/stats`, { headers });
-  const data = await handleResponse<{ stats: TrackerStats } | TrackerStats>(response);
-  return ('stats' in data ? data.stats : data) as TrackerStats;
+  const userId = await getCurrentUserId();
+
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+  const [entriesResult, trackerResult] = await Promise.all([
+    supabase
+      .from('tracker_entries')
+      .select('date, value')
+      .eq('tracker_id', trackerId)
+      .eq('user_id', userId)
+      .gte('date', thirtyDaysAgoStr)
+      .order('date', { ascending: false }),
+    supabase
+      .from('trackers')
+      .select('goal_value')
+      .eq('id', trackerId)
+      .eq('user_id', userId)
+      .single(),
+  ]);
+
+  if (entriesResult.error) {
+    console.error('[TrackersApi] getStats entries error:', entriesResult.error.message);
+    throw new Error(entriesResult.error.message);
+  }
+
+  const entries = entriesResult.data ?? [];
+  const tracker = trackerResult.data;
+
+  const entryDates = new Set(entries.map((e: { date: string }) => e.date));
+  const daysTracked = entryDates.size;
+
+  // Calculate streak
+  let streak = 0;
+  const today = now.toISOString().split('T')[0];
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  let checkDate: Date | null = entryDates.has(today)
+    ? new Date(now)
+    : entryDates.has(yesterdayStr)
+    ? new Date(yesterday)
+    : null;
+
+  if (checkDate) {
+    let keepGoing = true;
+    while (keepGoing) {
+      const dateStr = checkDate.toISOString().split('T')[0];
+      if (entryDates.has(dateStr)) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        keepGoing = false;
+      }
+    }
+  }
+
+  // Days goal met
+  let daysGoalMet = 0;
+  if (tracker?.goal_value != null) {
+    daysGoalMet = entries.filter((e: { value: number }) => e.value >= tracker.goal_value).length;
+  }
+
+  // This week / last week
+  const dayOfWeek = now.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const thisMonday = new Date(now);
+  thisMonday.setDate(now.getDate() + mondayOffset);
+  thisMonday.setHours(0, 0, 0, 0);
+  const lastMonday = new Date(thisMonday);
+  lastMonday.setDate(thisMonday.getDate() - 7);
+  const lastSunday = new Date(thisMonday);
+  lastSunday.setDate(thisMonday.getDate() - 1);
+
+  const thisMondayStr = thisMonday.toISOString().split('T')[0];
+  const lastMondayStr = lastMonday.toISOString().split('T')[0];
+  const lastSundayStr = lastSunday.toISOString().split('T')[0];
+
+  const thisWeekCount = entries.filter((e: { date: string }) => e.date >= thisMondayStr).length;
+  const lastWeekCount = entries.filter((e: { date: string }) => e.date >= lastMondayStr && e.date <= lastSundayStr).length;
+
+  const avgValue = daysTracked > 0
+    ? entries.reduce((sum: number, e: { value: number }) => sum + Number(e.value), 0) / daysTracked
+    : null;
+
+  let status: TrackerStats['status'] = 'no_data';
+  if (daysTracked > 0) {
+    status = streak > 0 || thisWeekCount > 0 ? 'on_track' : 'off_track';
+  }
+
+  return {
+    current_streak: streak,
+    best_streak: streak,
+    completion_rate: daysTracked / 30,
+    days_tracked: daysTracked,
+    days_goal_met: daysGoalMet,
+    this_week_count: thisWeekCount,
+    last_week_count: lastWeekCount,
+    total_entries: daysTracked,
+    avg_value: avgValue,
+    status,
+  };
 }
