@@ -68,10 +68,11 @@ export default function RootLayout() {
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
 
+    // Hard 3-second cap — app MUST become ready within 3 seconds no matter what
     const timeout = new Promise<void>(resolve => setTimeout(() => {
-      console.log('[App] ⏱️ 8-second timeout reached — forcing app ready');
+      console.log('[App] ⏱️ 3-second timeout reached — forcing app ready');
       resolve();
-    }, 8000));
+    }, 3000));
 
     const mainLogic = async () => {
       try {
@@ -83,97 +84,83 @@ export default function RootLayout() {
         }
 
         console.log('[App] Step 2: Initialize food database (non-blocking)');
-        
-        // Let food database init run in background
         initializeFoodDatabase()
           .then(() => console.log('[App] ✅ Food database initialized'))
           .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
 
-        console.log('[App] Step 2: Get current session');
-        
-        const { data } = await supabase.auth.getSession();
+        console.log('[App] Step 3: Get current session');
+
+        // Wrap getSession in its own 2s timeout so a slow network never blocks startup
+        const sessionTimeout = new Promise<{ data: { session: null } }>(resolve =>
+          setTimeout(() => {
+            console.log('[App] ⏱️ getSession timed out — continuing without session');
+            resolve({ data: { session: null } });
+          }, 2000)
+        );
+        const { data } = await Promise.race([supabase.auth.getSession(), sessionTimeout]);
         const currentSession = data?.session || null;
         console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
-        
         setSession(currentSession);
 
-        console.log('[App] Step 3: Initialize RevenueCat (native only)');
-        
-        // Initialize RevenueCat on native platforms
+        console.log('[App] Step 4: Initialize RevenueCat (non-blocking, native only)');
+        // RevenueCat init is fully non-blocking — never delays app startup
         if (Platform.OS !== 'web') {
-          try {
-            const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
-            const apiKey = Platform.select({
-              ios: revenueCatConfig?.iosApiKey,
-              android: revenueCatConfig?.androidApiKey,
-            });
-
-            if (apiKey && !apiKey.includes('YOUR')) {
-              // CRITICAL: Configure RevenueCat WITHOUT an initial appUserID
-              // This allows each user to be identified separately when they log in
-              console.log('[App] Configuring RevenueCat with anonymous user (will identify on login)');
-              
-              await Purchases.configure({
-                apiKey,
-                // DO NOT set appUserID here - let RevenueCat create an anonymous ID
-                // We'll call Purchases.logIn() when the user authenticates
+          (async () => {
+            try {
+              const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+              const apiKey = Platform.select({
+                ios: revenueCatConfig?.iosApiKey,
+                android: revenueCatConfig?.androidApiKey,
               });
 
-              // Enable debug logs in development
-              if (__DEV__) {
-                await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-              }
+              if (apiKey && !apiKey.includes('YOUR')) {
+                console.log('[App] Configuring RevenueCat with anonymous user (will identify on login)');
+                await Purchases.configure({ apiKey });
 
-              console.log('[App] ✅ RevenueCat initialized (anonymous)');
-
-              // If we already have a session, identify the user immediately
-              if (currentSession?.user?.id) {
-                console.log('[App] Current session found, identifying user with RevenueCat');
-                try {
-                  const { customerInfo } = await Purchases.logIn(currentSession.user.id);
-                  console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
-                  console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-                  
-                  // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
-                  console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
-                  const userEmail = currentSession.user.email;
-                  
-                  // Get user's name from the users table
-                  const { data: userData } = await supabase
-                    .from('users')
-                    .select('email')
-                    .eq('id', currentSession.user.id)
-                    .maybeSingle();
-
-                  if (userEmail) {
-                    await Purchases.setEmail(userEmail);
-                    console.log('[App] ✅ Email set in RevenueCat:', userEmail);
-                  }
-
-                  // Set display name (use email username as display name if no name available)
-                  const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                  await Purchases.setDisplayName(displayName);
-                  console.log('[App] ✅ Display name set in RevenueCat:', displayName);
-                  
-                  // CRITICAL: Force a customer info refresh to ensure we have the latest data
-                  console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
-                  const refreshedInfo = await Purchases.getCustomerInfo();
-                  console.log('[App] ✅ Customer info refreshed');
-                  console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
-                } catch (loginError) {
-                  console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
+                if (__DEV__) {
+                  await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
                 }
+                console.log('[App] ✅ RevenueCat initialized (anonymous)');
+
+                if (currentSession?.user?.id) {
+                  console.log('[App] Current session found, identifying user with RevenueCat');
+                  try {
+                    const { customerInfo } = await Purchases.logIn(currentSession.user.id);
+                    console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
+                    console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+
+                    const userEmail = currentSession.user.email;
+                    const { data: userData } = await supabase
+                      .from('users')
+                      .select('email')
+                      .eq('id', currentSession.user.id)
+                      .maybeSingle();
+
+                    if (userEmail) {
+                      await Purchases.setEmail(userEmail);
+                      console.log('[App] ✅ Email set in RevenueCat:', userEmail);
+                    }
+                    const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                    await Purchases.setDisplayName(displayName);
+                    console.log('[App] ✅ Display name set in RevenueCat:', displayName);
+
+                    const refreshedInfo = await Purchases.getCustomerInfo();
+                    console.log('[App] ✅ Customer info refreshed, active entitlements:', Object.keys(refreshedInfo.entitlements.active));
+                  } catch (loginError) {
+                    console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
+                  }
+                }
+              } else {
+                console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
               }
-            } else {
-              console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
+            } catch (revenueCatError) {
+              console.error('[App] ⚠️ RevenueCat initialization failed (non-blocking):', revenueCatError);
             }
-          } catch (revenueCatError) {
-            console.error('[App] ⚠️ RevenueCat initialization failed (non-blocking):', revenueCatError);
-          }
+          })();
         }
 
-        console.log('[App] Step 4: Setup auth listener');
-        
+        console.log('[App] Step 5: Setup auth listener');
+
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -345,14 +332,25 @@ export default function RootLayout() {
       console.log('[Navigation] Session found, checking onboarding...');
 
       try {
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('onboarding_completed')
-          .eq('id', session.user.id)
-          .maybeSingle();
+        // Hard 3s timeout on the DB query — if it hangs, fall through to home
+        const dbTimeout = new Promise<{ data: null; error: Error }>(resolve =>
+          setTimeout(() => {
+            console.log('[Navigation] ⏱️ Onboarding DB query timed out — defaulting to home');
+            resolve({ data: null, error: new Error('timeout') });
+          }, 3000)
+        );
+
+        const { data: userData, error } = await Promise.race([
+          supabase
+            .from('users')
+            .select('onboarding_completed')
+            .eq('id', session.user.id)
+            .maybeSingle(),
+          dbTimeout,
+        ]);
 
         if (error || !userData) {
-          console.log('[Navigation] User data not found, redirecting to onboarding');
+          console.log('[Navigation] User data not found or timed out, redirecting to onboarding');
           if (!inOnboarding) {
             router.replace('/onboarding/complete');
           }
@@ -373,6 +371,10 @@ export default function RootLayout() {
         }
       } catch (err) {
         console.error('[Navigation] Error checking onboarding:', err);
+        // On any unexpected error, send to home rather than leaving user stuck
+        if (!inTabsGroup) {
+          router.replace('/(tabs)/(home)/');
+        }
       }
 
       setInitialSessionResolved(true);
