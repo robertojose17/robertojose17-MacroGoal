@@ -65,76 +65,142 @@ export default function RootLayout() {
 
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
-    
-    try {
-      console.log('[App] Step 1: Initialize AdMob (non-blocking)');
-      if (mobileAds && Platform.OS !== 'web') {
-        mobileAds.initialize()
-          .then(() => console.log('[App] ✅ AdMob initialized'))
-          .catch((err: unknown) => console.warn('[App] ⚠️ AdMob init failed (non-blocking):', err));
-      }
 
-      console.log('[App] Step 2: Initialize food database (non-blocking)');
-      
-      // Let food database init run in background
-      initializeFoodDatabase()
-        .then(() => console.log('[App] ✅ Food database initialized'))
-        .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
+    const timeout = new Promise<void>(resolve => setTimeout(() => {
+      console.log('[App] ⏱️ 8-second timeout reached — forcing app ready');
+      resolve();
+    }, 8000));
 
-      console.log('[App] Step 2: Get current session');
-      
-      const { data } = await supabase.auth.getSession();
-      const currentSession = data?.session || null;
-      console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
-      
-      setSession(currentSession);
+    const mainLogic = async () => {
+      try {
+        console.log('[App] Step 1: Initialize AdMob (non-blocking)');
+        if (mobileAds && Platform.OS !== 'web') {
+          mobileAds.initialize()
+            .then(() => console.log('[App] ✅ AdMob initialized'))
+            .catch((err: unknown) => console.warn('[App] ⚠️ AdMob init failed (non-blocking):', err));
+        }
 
-      console.log('[App] Step 3: Initialize RevenueCat (native only)');
-      
-      // Initialize RevenueCat on native platforms
-      if (Platform.OS !== 'web') {
-        try {
-          const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
-          const apiKey = Platform.select({
-            ios: revenueCatConfig?.iosApiKey,
-            android: revenueCatConfig?.androidApiKey,
-          });
+        console.log('[App] Step 2: Initialize food database (non-blocking)');
+        
+        // Let food database init run in background
+        initializeFoodDatabase()
+          .then(() => console.log('[App] ✅ Food database initialized'))
+          .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
 
-          if (apiKey && !apiKey.includes('YOUR')) {
-            // CRITICAL: Configure RevenueCat WITHOUT an initial appUserID
-            // This allows each user to be identified separately when they log in
-            console.log('[App] Configuring RevenueCat with anonymous user (will identify on login)');
-            
-            await Purchases.configure({
-              apiKey,
-              // DO NOT set appUserID here - let RevenueCat create an anonymous ID
-              // We'll call Purchases.logIn() when the user authenticates
+        console.log('[App] Step 2: Get current session');
+        
+        const { data } = await supabase.auth.getSession();
+        const currentSession = data?.session || null;
+        console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
+        
+        setSession(currentSession);
+
+        console.log('[App] Step 3: Initialize RevenueCat (native only)');
+        
+        // Initialize RevenueCat on native platforms
+        if (Platform.OS !== 'web') {
+          try {
+            const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+            const apiKey = Platform.select({
+              ios: revenueCatConfig?.iosApiKey,
+              android: revenueCatConfig?.androidApiKey,
             });
 
-            // Enable debug logs in development
-            if (__DEV__) {
-              await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+            if (apiKey && !apiKey.includes('YOUR')) {
+              // CRITICAL: Configure RevenueCat WITHOUT an initial appUserID
+              // This allows each user to be identified separately when they log in
+              console.log('[App] Configuring RevenueCat with anonymous user (will identify on login)');
+              
+              await Purchases.configure({
+                apiKey,
+                // DO NOT set appUserID here - let RevenueCat create an anonymous ID
+                // We'll call Purchases.logIn() when the user authenticates
+              });
+
+              // Enable debug logs in development
+              if (__DEV__) {
+                await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+              }
+
+              console.log('[App] ✅ RevenueCat initialized (anonymous)');
+
+              // If we already have a session, identify the user immediately
+              if (currentSession?.user?.id) {
+                console.log('[App] Current session found, identifying user with RevenueCat');
+                try {
+                  const { customerInfo } = await Purchases.logIn(currentSession.user.id);
+                  console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
+                  console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                  
+                  // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
+                  console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
+                  const userEmail = currentSession.user.email;
+                  
+                  // Get user's name from the users table
+                  const { data: userData } = await supabase
+                    .from('users')
+                    .select('email')
+                    .eq('id', currentSession.user.id)
+                    .maybeSingle();
+
+                  if (userEmail) {
+                    await Purchases.setEmail(userEmail);
+                    console.log('[App] ✅ Email set in RevenueCat:', userEmail);
+                  }
+
+                  // Set display name (use email username as display name if no name available)
+                  const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                  await Purchases.setDisplayName(displayName);
+                  console.log('[App] ✅ Display name set in RevenueCat:', displayName);
+                  
+                  // CRITICAL: Force a customer info refresh to ensure we have the latest data
+                  console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
+                  const refreshedInfo = await Purchases.getCustomerInfo();
+                  console.log('[App] ✅ Customer info refreshed');
+                  console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
+                } catch (loginError) {
+                  console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
+                }
+              }
+            } else {
+              console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
             }
+          } catch (revenueCatError) {
+            console.error('[App] ⚠️ RevenueCat initialization failed (non-blocking):', revenueCatError);
+          }
+        }
 
-            console.log('[App] ✅ RevenueCat initialized (anonymous)');
+        console.log('[App] Step 4: Setup auth listener');
+        
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('[App] Auth state changed:', event);
+          console.log('[App] User ID:', session?.user?.id || 'none');
+          console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          setSession(session);
 
-            // If we already have a session, identify the user immediately
-            if (currentSession?.user?.id) {
-              console.log('[App] Current session found, identifying user with RevenueCat');
+          // Update RevenueCat user ID when auth state changes (native only)
+          if (Platform.OS !== 'web') {
+            if (event === 'SIGNED_IN' && session?.user?.id) {
+              // User logged in - identify them with RevenueCat
               try {
-                const { customerInfo } = await Purchases.logIn(currentSession.user.id);
-                console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
+                console.log('[App] 🔐 User signed in, identifying with RevenueCat:', session.user.id);
+                const { customerInfo } = await Purchases.logIn(session.user.id);
+                console.log('[App] ✅ RevenueCat user identified:', session.user.id);
                 console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                console.log('[App] Original App User ID:', customerInfo.originalAppUserId);
                 
                 // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
                 console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
-                const userEmail = currentSession.user.email;
+                const userEmail = session.user.email;
                 
                 // Get user's name from the users table
                 const { data: userData } = await supabase
                   .from('users')
                   .select('email')
-                  .eq('id', currentSession.user.id)
+                  .eq('id', session.user.id)
                   .maybeSingle();
 
                 if (userEmail) {
@@ -152,141 +218,76 @@ export default function RootLayout() {
                 const refreshedInfo = await Purchases.getCustomerInfo();
                 console.log('[App] ✅ Customer info refreshed');
                 console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
-              } catch (loginError) {
-                console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
+              } catch (error) {
+                console.error('[App] ❌ Failed to identify user with RevenueCat:', error);
               }
-            }
-          } else {
-            console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
-          }
-        } catch (revenueCatError) {
-          console.error('[App] ⚠️ RevenueCat initialization failed (non-blocking):', revenueCatError);
-        }
-      }
-
-      console.log('[App] Step 4: Setup auth listener');
-      
-      // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('[App] Auth state changed:', event);
-        console.log('[App] User ID:', session?.user?.id || 'none');
-        console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        
-        setSession(session);
-
-        // Update RevenueCat user ID when auth state changes (native only)
-        if (Platform.OS !== 'web') {
-          if (event === 'SIGNED_IN' && session?.user?.id) {
-            // User logged in - identify them with RevenueCat
-            try {
-              console.log('[App] 🔐 User signed in, identifying with RevenueCat:', session.user.id);
-              const { customerInfo } = await Purchases.logIn(session.user.id);
-              console.log('[App] ✅ RevenueCat user identified:', session.user.id);
-              console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-              console.log('[App] Original App User ID:', customerInfo.originalAppUserId);
-              
-              // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
-              console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
-              const userEmail = session.user.email;
-              
-              // Get user's name from the users table
-              const { data: userData } = await supabase
-                .from('users')
-                .select('email')
-                .eq('id', session.user.id)
-                .maybeSingle();
-
-              if (userEmail) {
-                await Purchases.setEmail(userEmail);
-                console.log('[App] ✅ Email set in RevenueCat:', userEmail);
+            } else if (event === 'SIGNED_OUT') {
+              // User logged out - reset RevenueCat to anonymous
+              try {
+                console.log('[App] 🚪 User signed out, resetting RevenueCat to anonymous');
+                const { customerInfo } = await Purchases.logOut();
+                console.log('[App] ✅ RevenueCat user logged out (now anonymous)');
+                console.log('[App] New anonymous ID:', customerInfo.originalAppUserId);
+              } catch (error) {
+                console.error('[App] ⚠️ Failed to log out RevenueCat user:', error);
               }
-
-              // Set display name (use email username as display name if no name available)
-              const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-              await Purchases.setDisplayName(displayName);
-              console.log('[App] ✅ Display name set in RevenueCat:', displayName);
-              
-              // CRITICAL: Force a customer info refresh to ensure we have the latest data
-              console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
-              const refreshedInfo = await Purchases.getCustomerInfo();
-              console.log('[App] ✅ Customer info refreshed');
-              console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
-            } catch (error) {
-              console.error('[App] ❌ Failed to identify user with RevenueCat:', error);
-            }
-          } else if (event === 'SIGNED_OUT') {
-            // User logged out - reset RevenueCat to anonymous
-            try {
-              console.log('[App] 🚪 User signed out, resetting RevenueCat to anonymous');
-              const { customerInfo } = await Purchases.logOut();
-              console.log('[App] ✅ RevenueCat user logged out (now anonymous)');
-              console.log('[App] New anonymous ID:', customerInfo.originalAppUserId);
-            } catch (error) {
-              console.error('[App] ⚠️ Failed to log out RevenueCat user:', error);
-            }
-          } else if (event === 'TOKEN_REFRESHED' && session?.user?.id) {
-            // Token refreshed - ensure user is still identified
-            try {
-              console.log('[App] 🔄 Token refreshed, verifying RevenueCat user ID');
-              const currentInfo = await Purchases.getCustomerInfo();
-              
-              // Check if the current RevenueCat user matches the session user
-              if (currentInfo.originalAppUserId !== session.user.id) {
-                console.log('[App] ⚠️ RevenueCat user ID mismatch, re-identifying');
-                console.log('[App] Expected:', session.user.id);
-                console.log('[App] Current:', currentInfo.originalAppUserId);
+            } else if (event === 'TOKEN_REFRESHED' && session?.user?.id) {
+              // Token refreshed - ensure user is still identified
+              try {
+                console.log('[App] 🔄 Token refreshed, verifying RevenueCat user ID');
+                const currentInfo = await Purchases.getCustomerInfo();
                 
-                const { customerInfo } = await Purchases.logIn(session.user.id);
-                console.log('[App] ✅ RevenueCat user re-identified:', session.user.id);
-                console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-                
-                // Re-set user attributes
-                const userEmail = session.user.email;
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('email')
-                  .eq('id', session.user.id)
-                  .maybeSingle();
+                // Check if the current RevenueCat user matches the session user
+                if (currentInfo.originalAppUserId !== session.user.id) {
+                  console.log('[App] ⚠️ RevenueCat user ID mismatch, re-identifying');
+                  console.log('[App] Expected:', session.user.id);
+                  console.log('[App] Current:', currentInfo.originalAppUserId);
+                  
+                  const { customerInfo } = await Purchases.logIn(session.user.id);
+                  console.log('[App] ✅ RevenueCat user re-identified:', session.user.id);
+                  console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                  
+                  // Re-set user attributes
+                  const userEmail = session.user.email;
+                  const { data: userData } = await supabase
+                    .from('users')
+                    .select('email')
+                    .eq('id', session.user.id)
+                    .maybeSingle();
 
-                if (userEmail) {
-                  await Purchases.setEmail(userEmail);
+                  if (userEmail) {
+                    await Purchases.setEmail(userEmail);
+                  }
+                  const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
+                  await Purchases.setDisplayName(displayName);
+                  console.log('[App] ✅ User attributes re-set');
+                } else {
+                  console.log('[App] ✅ RevenueCat user ID matches session');
                 }
-                const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                await Purchases.setDisplayName(displayName);
-                console.log('[App] ✅ User attributes re-set');
-              } else {
-                console.log('[App] ✅ RevenueCat user ID matches session');
+              } catch (error) {
+                console.error('[App] ⚠️ Failed to verify RevenueCat user ID:', error);
               }
-            } catch (error) {
-              console.error('[App] ⚠️ Failed to verify RevenueCat user ID:', error);
             }
           }
-        }
-      });
+        });
 
-      console.log('[App] ✅ Initialization complete');
+        console.log('[App] ✅ Initialization complete');
+      } catch (error) {
+        console.error('[App] ❌ CRITICAL: Initialization failed:', error);
+      }
+    };
+
+    try {
+      await Promise.race([mainLogic(), timeout]);
+    } finally {
       setIsReady(true);
-      
+      console.log('[App] ✅ setIsReady(true) called');
+
       // Hide splash screen
       setTimeout(async () => {
         try {
           await SplashScreen.hideAsync();
           console.log('[App] ✅ Splash screen hidden');
-        } catch (e) {
-          console.error('[App] Error hiding splash:', e);
-        }
-      }, 300);
-
-    } catch (error) {
-      console.error('[App] ❌ CRITICAL: Initialization failed:', error);
-      
-      // Even on error, app must load
-      setIsReady(true);
-      
-      setTimeout(async () => {
-        try {
-          await SplashScreen.hideAsync();
         } catch (e) {
           console.error('[App] Error hiding splash:', e);
         }
