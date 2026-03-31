@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -41,7 +41,7 @@ export default function CheckInDetailsScreen() {
   const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
   const [user, setUser] = useState<any>(null);
 
-  const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
@@ -56,7 +56,7 @@ export default function CheckInDetailsScreen() {
     } catch (error) {
       console.error('[CheckInDetails] Error loading user data:', error);
     }
-  };
+  }, []);
 
   const loadCheckInData = useCallback(async () => {
     try {
@@ -85,7 +85,7 @@ export default function CheckInDetailsScreen() {
   useEffect(() => {
     loadCheckInData();
     loadUserData();
-  }, [loadCheckInData]);
+  }, [loadCheckInData, loadUserData]);
 
   const handleEdit = () => {
     if (!checkIn) return;

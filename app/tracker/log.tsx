@@ -67,6 +67,7 @@ export default function LogEntryScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     loadTracker();
@@ -180,15 +181,20 @@ export default function LogEntryScreen() {
           {/* Date picker */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, { color: textColor }]}>Date</Text>
-            <View style={[styles.datePickerWrapper, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-              <CalendarDatePicker
-                value={date}
-                onChange={(d: string) => {
-                  console.log('[LogEntry] Date changed:', d);
-                  setDate(d);
-                }}
-              />
-            </View>
+            <Pressable onPress={() => setShowDatePicker(true)} style={[styles.datePickerWrapper, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <Text style={[styles.dateButtonText, { color: textColor }]}>{date}</Text>
+            </Pressable>
+            <CalendarDatePicker
+              visible={showDatePicker}
+              onClose={() => setShowDatePicker(false)}
+              onSelectDate={(d: Date) => {
+                console.log('[LogEntry] Date changed:', d.toISOString().split('T')[0]);
+                setDate(d.toISOString().split('T')[0]);
+                setShowDatePicker(false);
+              }}
+              initialDate={new Date(date)}
+              maxDate={new Date()}
+            />
           </View>
 
           {/* Value input */}
@@ -323,7 +329,12 @@ const styles = StyleSheet.create({
   datePickerWrapper: {
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    overflow: 'hidden',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  dateButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   inputWrapper: {
     flexDirection: 'row',

@@ -118,6 +118,29 @@ export default function CheckInFormScreen() {
     }
   }, [checkInId, router]);
 
+  const loadDefaultStepsGoal = useCallback(async (userId: string) => {
+    try {
+      // Try to get the most recent steps goal
+      const { data } = await supabase
+        .from('check_ins')
+        .select('steps_goal')
+        .eq('user_id', userId)
+        .not('steps_goal', 'is', null)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data?.steps_goal) {
+        setStepsGoal(data.steps_goal.toString());
+      } else {
+        // Default to 10,000 steps
+        setStepsGoal('10000');
+      }
+    } catch (error) {
+      console.error('[CheckInForm] Error loading default steps goal:', error);
+    }
+  }, []);
+
   const initializeForm = useCallback(async () => {
     try {
       setLoading(true);
@@ -151,34 +174,11 @@ export default function CheckInFormScreen() {
     } finally {
       setLoading(false);
     }
-  }, [isEditing, checkInType, loadCheckInData]);
+  }, [isEditing, checkInType, loadCheckInData, loadDefaultStepsGoal]);
 
   useEffect(() => {
     initializeForm();
   }, [initializeForm]);
-
-  const loadDefaultStepsGoal = async (userId: string) => {
-    try {
-      // Try to get the most recent steps goal
-      const { data } = await supabase
-        .from('check_ins')
-        .select('steps_goal')
-        .eq('user_id', userId)
-        .not('steps_goal', 'is', null)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (data?.steps_goal) {
-        setStepsGoal(data.steps_goal.toString());
-      } else {
-        // Default to 10,000 steps
-        setStepsGoal('10000');
-      }
-    } catch (error) {
-      console.error('[CheckInForm] Error loading default steps goal:', error);
-    }
-  };
 
   const handleTakePhoto = async () => {
     try {

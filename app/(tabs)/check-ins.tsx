@@ -111,7 +111,6 @@ function TrackerCard({
   onPress: () => void;
   onLog: () => void;
 }) {
-  const todayStr = new Date().toISOString().split('T')[0];
   const completionPct = stats ? Math.round(Number(stats.completion_rate) * 100) : 0;
   const streak = stats ? Number(stats.current_streak) : 0;
   const statusColor =
