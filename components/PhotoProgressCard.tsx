@@ -15,6 +15,27 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 
+const PHOTO_BUCKET = 'check-ins';
+const PHOTO_HEIGHT = 280;
+const SINGLE_PHOTO_HEIGHT = 320;
+
+/** Ensure we always have a full https:// URL.
+ *  Old records may have stored just the storage path instead of the public URL. */
+function resolvePhotoUrl(raw: string | null | undefined): string {
+  if (!raw) return '';
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    return raw;
+  }
+  // It's a storage path — convert to public URL
+  const { data } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(raw);
+  console.log('[PhotoProgressCard] photo_url was a path, resolved to:', data.publicUrl);
+  return data.publicUrl;
+}
+
+function resolveImageSource(url: string): ImageSourcePropType {
+  return { uri: url };
+}
+
 interface PhotoProgressCardProps {
   userId: string;
   isDark: boolean;
@@ -25,12 +46,6 @@ interface CheckInWithPhoto {
   date: string;
   photo_url: string;
   weight: number | null;
-}
-
-function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
-  if (!source) return { uri: '' };
-  if (typeof source === 'string') return { uri: source };
-  return source as ImageSourcePropType;
 }
 
 export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardProps) {
@@ -62,13 +77,21 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
 
       const count = data?.length || 0;
       console.log('[PhotoProgressCard] Loaded', count, 'check-ins with photos');
+
       if (data && data.length > 0) {
         data.forEach((ci, i) => {
-          console.log('[PhotoProgressCard] check-in[' + i + '] photo_url:', ci.photo_url);
+          console.log('[PhotoProgressCard] check-in[' + i + '] raw photo_url:', ci.photo_url);
+          const resolved = resolvePhotoUrl(ci.photo_url);
+          console.log('[PhotoProgressCard] check-in[' + i + '] resolved URL:', resolved);
         });
-        setCheckIns(data);
+        // Normalise all photo_urls to full public URLs before storing in state
+        const normalised = data.map((ci) => ({
+          ...ci,
+          photo_url: resolvePhotoUrl(ci.photo_url),
+        }));
+        setCheckIns(normalised);
         setBeforeIndex(0);
-        setAfterIndex(data.length - 1);
+        setAfterIndex(normalised.length - 1);
       } else {
         setCheckIns([]);
       }
@@ -168,10 +191,10 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
           <View style={styles.singlePhotoWrapper}>
             <Image
               source={singleImageSource}
-              style={styles.photoImage}
+              style={styles.singlePhotoImage}
               resizeMode="cover"
               onError={() => console.error('[PhotoProgressCard] Single photo failed to load:', single.photo_url)}
-              onLoad={() => console.log('[PhotoProgressCard] Single photo loaded')}
+              onLoad={() => console.log('[PhotoProgressCard] Single photo loaded successfully')}
             />
             <View style={[styles.dateBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)' }]}>
               <Text style={styles.dateBadgeText}>{singleDateLabel}</Text>
@@ -188,8 +211,8 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   // ── Comparison state ───────────────────────────────────────────────────────
   const beforeDateLabel = beforeCheckIn ? formatShortDate(beforeCheckIn.date) : '';
   const afterDateLabel = afterCheckIn ? formatShortDate(afterCheckIn.date) : '';
-  const beforeImageSource = resolveImageSource(beforeCheckIn?.photo_url);
-  const afterImageSource = resolveImageSource(afterCheckIn?.photo_url);
+  const beforeImageSource = resolveImageSource(beforeCheckIn?.photo_url ?? '');
+  const afterImageSource = resolveImageSource(afterCheckIn?.photo_url ?? '');
 
   return (
     <React.Fragment>
@@ -203,15 +226,15 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
               <Text style={[styles.sideLabel, { color: subtextColor }]}>BEFORE</Text>
             </View>
             <View style={[styles.photoFrame, { borderColor: isDark ? colors.borderDark : colors.border }]}>
-              {beforeCheckIn && (
+              {beforeCheckIn ? (
                 <Image
                   source={beforeImageSource}
                   style={styles.photoImage}
                   resizeMode="cover"
-                  onError={() => console.error('[PhotoProgressCard] Before photo failed:', beforeCheckIn.photo_url)}
-                  onLoad={() => console.log('[PhotoProgressCard] Before photo loaded')}
+                  onError={() => console.error('[PhotoProgressCard] Before photo failed to load:', beforeCheckIn.photo_url)}
+                  onLoad={() => console.log('[PhotoProgressCard] Before photo loaded successfully')}
                 />
-              )}
+              ) : null}
             </View>
             <TouchableOpacity
               onPress={() => {
@@ -231,21 +254,21 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
             </TouchableOpacity>
           </View>
 
-            {/* After photo */}
+          {/* After photo */}
           <View style={styles.photoColumn}>
             <View style={styles.labelRow}>
               <Text style={[styles.sideLabel, { color: subtextColor }]}>AFTER</Text>
             </View>
             <View style={[styles.photoFrame, { borderColor: isDark ? colors.borderDark : colors.border }]}>
-              {afterCheckIn && (
+              {afterCheckIn ? (
                 <Image
                   source={afterImageSource}
                   style={styles.photoImage}
                   resizeMode="cover"
-                  onError={() => console.error('[PhotoProgressCard] After photo failed:', afterCheckIn.photo_url)}
-                  onLoad={() => console.log('[PhotoProgressCard] After photo loaded')}
+                  onError={() => console.error('[PhotoProgressCard] After photo failed to load:', afterCheckIn.photo_url)}
+                  onLoad={() => console.log('[PhotoProgressCard] After photo loaded successfully')}
                 />
-              )}
+              ) : null}
             </View>
             <TouchableOpacity
               onPress={() => {
@@ -265,7 +288,6 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
             </TouchableOpacity>
           </View>
         </View>
-
       </View>
 
       {/* Before picker modal */}
@@ -365,6 +387,9 @@ function PhotoDatePickerModal({
               const rowBg = isSelected
                 ? isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,122,255,0.06)'
                 : 'transparent';
+              const weightDisplay = checkIn.weight != null
+                ? Number(checkIn.weight * 2.20462).toFixed(1) + ' lbs'
+                : null;
 
               return (
                 <TouchableOpacity
@@ -385,11 +410,9 @@ function PhotoDatePickerModal({
                     <Text style={[styles.pickerRowDate, { color: isSelected ? colors.primary : textColor }]}>
                       {dateLabel}
                     </Text>
-                    {checkIn.weight != null && (
+                    {weightDisplay != null && (
                       <Text style={[styles.pickerRowWeight, { color: subtextColor }]}>
-                        {Number(checkIn.weight * 2.20462).toFixed(1)}
-                        {' '}
-                        lbs
+                        {weightDisplay}
                       </Text>
                     )}
                   </View>
@@ -462,11 +485,15 @@ const styles = StyleSheet.create({
   },
   singlePhotoWrapper: {
     width: '60%',
-    aspectRatio: 3 / 4,
+    height: SINGLE_PHOTO_HEIGHT,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     backgroundColor: '#E5E5EA',
     position: 'relative',
+  },
+  singlePhotoImage: {
+    width: '100%',
+    height: SINGLE_PHOTO_HEIGHT,
   },
   dateBadge: {
     position: 'absolute',
@@ -507,7 +534,7 @@ const styles = StyleSheet.create({
   },
   photoFrame: {
     width: '100%',
-    aspectRatio: 3 / 4,
+    height: PHOTO_HEIGHT,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
@@ -515,7 +542,7 @@ const styles = StyleSheet.create({
   },
   photoImage: {
     width: '100%',
-    height: '100%',
+    height: PHOTO_HEIGHT,
   },
   dateChip: {
     flexDirection: 'row',
