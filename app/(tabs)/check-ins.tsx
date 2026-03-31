@@ -134,7 +134,7 @@ function TrackerCard({
           <Text style={[styles.trackerName, { color: textColor }]} numberOfLines={1}>
             {tracker.name}
           </Text>
-          {tracker.unit ? (
+          {tracker.unit && !tracker.is_default ? (
             <Text style={[styles.trackerUnit, { color: subColor }]}>{tracker.unit}</Text>
           ) : null}
         </View>

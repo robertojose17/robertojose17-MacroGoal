@@ -245,19 +245,29 @@ export async function deleteEntry(
 
 /**
  * Backfill tracker_entries from check_ins for the weight tracker.
- * Fetches all weight check-ins for the user and upserts any that are
- * missing from tracker_entries, so historical data appears in Recent Entries.
+ * Fetches all check-ins that have a non-null weight column (there is no
+ * 'type' column — weight rows are identified by weight IS NOT NULL).
+ * check_ins stores weight in kg; the weight tracker unit is 'lb', so we
+ * convert kg → lb before upserting into tracker_entries.
  */
 export async function backfillWeightFromCheckIns(weightTrackerId: string): Promise<void> {
   console.log('[TrackersApi] backfillWeightFromCheckIns() trackerId:', weightTrackerId);
   const userId = await getCurrentUserId();
 
-  // Fetch all weight check-ins
+  // Fetch user's preferred_units so we can convert kg → lb for imperial users
+  const { data: userData } = await supabase
+    .from('users')
+    .select('preferred_units')
+    .eq('id', userId)
+    .maybeSingle();
+  const isImperial = userData?.preferred_units === 'imperial';
+  console.log('[TrackersApi] backfillWeightFromCheckIns — preferred_units:', userData?.preferred_units, 'isImperial:', isImperial);
+
+  // check_ins has no 'type' column — weight rows are those where weight IS NOT NULL
   const { data: checkIns, error: ciError } = await supabase
     .from('check_ins')
     .select('date, weight')
     .eq('user_id', userId)
-    .eq('type', 'weight')
     .not('weight', 'is', null)
     .order('date', { ascending: false });
 
@@ -267,19 +277,23 @@ export async function backfillWeightFromCheckIns(weightTrackerId: string): Promi
   }
 
   if (!checkIns || checkIns.length === 0) {
-    console.log('[TrackersApi] backfillWeightFromCheckIns — no check_ins to backfill');
+    console.log('[TrackersApi] backfillWeightFromCheckIns — no weight check_ins to backfill');
     return;
   }
 
-  console.log('[TrackersApi] backfillWeightFromCheckIns — found', checkIns.length, 'check_ins to upsert');
+  console.log('[TrackersApi] backfillWeightFromCheckIns — found', checkIns.length, 'weight check_ins to upsert');
 
-  const rows = checkIns.map((ci: { date: string; weight: number }) => ({
-    tracker_id: weightTrackerId,
-    user_id: userId,
-    date: ci.date,
-    value: ci.weight,
-    notes: null,
-  }));
+  const rows = checkIns.map((ci: { date: string; weight: number }) => {
+    // check_ins always stores weight in kg; convert to lb for imperial users
+    const value = isImperial ? ci.weight * 2.20462 : ci.weight;
+    return {
+      tracker_id: weightTrackerId,
+      user_id: userId,
+      date: ci.date,
+      value: Math.round(value * 10) / 10, // round to 1 decimal
+      notes: null,
+    };
+  });
 
   const { error: upsertError } = await supabase
     .from('tracker_entries')
