@@ -79,11 +79,11 @@ function PremiumStatCard({ title, value, subtitle, accent, isDark }: PremiumStat
       </Text>
       <Text
         style={{
-          fontSize: 28,
+          fontSize: 20,
           fontWeight: '700',
           color: valueColor,
           letterSpacing: -0.5,
-          lineHeight: 32,
+          lineHeight: 24,
         }}
       >
         {value}
