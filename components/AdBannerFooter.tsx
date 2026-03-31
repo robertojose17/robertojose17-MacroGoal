@@ -49,21 +49,25 @@ export const AD_BANNER_HEIGHT = 60;
 const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-3940256099942544/2435281174';
 
 // react-native-google-mobile-ads requires a native build.
-// We use a try/catch require so the app works gracefully without it installed.
+// Platform.OS guard is required — Metro resolves requires at build time so
+// a try/catch alone does NOT prevent the native-only module from being
+// bundled on web, causing a hard build error.
 let BannerAd: any = null;
 let BannerAdSize: any = null;
 let TestIds: any = null;
 
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const ads = require('react-native-google-mobile-ads');
-  BannerAd = ads.BannerAd;
-  BannerAdSize = ads.BannerAdSize;
-  TestIds = ads.TestIds;
-} catch {
-  // react-native-google-mobile-ads not installed — ads will not render.
-  // Run: npx expo install react-native-google-mobile-ads
-  // Then rebuild the native app.
+if (Platform.OS !== 'web') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ads = require('react-native-google-mobile-ads');
+    BannerAd = ads.BannerAd;
+    BannerAdSize = ads.BannerAdSize;
+    TestIds = ads.TestIds;
+  } catch {
+    // react-native-google-mobile-ads not installed — ads will not render.
+    // Run: npx expo install react-native-google-mobile-ads
+    // Then rebuild the native app.
+  }
 }
 
 interface AdBannerFooterProps {
