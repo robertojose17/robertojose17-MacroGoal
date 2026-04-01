@@ -32,7 +32,6 @@ import {
   Target,
   TrendingUp,
   Calendar,
-  Pencil,
   MoreHorizontal,
   Plus,
   Trash2,
@@ -224,11 +223,6 @@ export default function TrackerDetailScreen() {
     loadData();
   };
 
-  const handleEdit = () => {
-    console.log('[TrackerDetail] Edit button tapped');
-    router.push({ pathname: '/tracker/create', params: { trackerId: id } });
-  };
-
   const handleMore = () => {
     console.log('[TrackerDetail] More button tapped');
     if (!tracker || tracker.is_default) return;
@@ -325,16 +319,11 @@ export default function TrackerDetailScreen() {
           title: trackerTitle,
           headerBackButtonDisplayMode: 'minimal',
           headerRight: () => (
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              <AnimatedPressable onPress={handleEdit} style={styles.headerIconBtn} scaleValue={0.9}>
-                <Pencil size={20} color={colors.primary} strokeWidth={2} />
+            tracker && !tracker.is_default ? (
+              <AnimatedPressable onPress={handleMore} style={styles.headerIconBtn} scaleValue={0.9}>
+                <MoreHorizontal size={20} color={subColor} strokeWidth={2} />
               </AnimatedPressable>
-              {tracker && !tracker.is_default ? (
-                <AnimatedPressable onPress={handleMore} style={styles.headerIconBtn} scaleValue={0.9}>
-                  <MoreHorizontal size={20} color={subColor} strokeWidth={2} />
-                </AnimatedPressable>
-              ) : null}
-            </View>
+            ) : null
           ),
         }}
       />
