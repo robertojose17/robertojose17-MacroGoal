@@ -60,6 +60,18 @@ export default function RootLayout() {
   // on every auth-state-change event (e.g. TOKEN_REFRESHED).
   const [initialSessionResolved, setInitialSessionResolved] = useState(false);
 
+  // HARD TIMEOUT — guarantees the app shows within 2 seconds no matter what.
+  // This runs independently of all other logic and is the first effect registered.
+  useEffect(() => {
+    console.log('[App] Hard timeout armed (2s)');
+    const hardTimeout = setTimeout(() => {
+      console.log('[App] ⏱️ Hard 2s timeout fired — forcing isReady=true');
+      setIsReady(true);
+      SplashScreen.hideAsync().catch(() => {});
+    }, 2000);
+    return () => clearTimeout(hardTimeout);
+  }, []);
+
   // Initialize app and auth — runs immediately on mount, does NOT wait for
   // fonts. Font loading is non-blocking; the 8-second hard timeout ensures
   // the app always becomes ready even if fonts or any other async step hangs.
@@ -543,34 +555,49 @@ export default function RootLayout() {
     }
   };
 
-  // Listen for app state changes to sync subscription when returning from background
+  // Listen for app state changes to sync subscription when returning from background.
+  // We track the previous state so the handler only fires on genuine foreground
+  // transitions (background/inactive → active), NOT on the initial mount event.
   useEffect(() => {
     console.log('[AppState] Setting up app state listener');
-    
+    let previousAppState: AppStateStatus = AppState.currentState;
+
     const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        console.log('[AppState] App became active, checking for subscription updates...');
-        
+      const wasBackground = previousAppState === 'background' || previousAppState === 'inactive';
+      const isNowActive = nextAppState === 'active';
+      previousAppState = nextAppState;
+
+      if (!wasBackground || !isNowActive) {
+        return; // Ignore initial mount fire and non-foreground transitions
+      }
+
+      console.log('[AppState] App foregrounded, checking for subscription updates...');
+
+      // Hard 5s timeout so a slow/hanging Edge Function never blocks anything
+      const syncTimeout = new Promise<void>(resolve => setTimeout(resolve, 5000));
+
+      const doSync = async () => {
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            // Sync subscription when app comes to foreground
-            const { data, error } = await supabase.functions.invoke('sync-subscription', {
-              headers: {
-                Authorization: `Bearer ${session.access_token}`,
-              },
-            });
+          if (!session) return;
 
-            if (error) {
-              console.error('[AppState] Error syncing subscription:', error);
-            } else {
-              console.log('[AppState] ✅ Subscription synced:', data);
-            }
+          const { data, error } = await supabase.functions.invoke('sync-subscription', {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+
+          if (error) {
+            console.error('[AppState] Error syncing subscription:', error);
+          } else {
+            console.log('[AppState] ✅ Subscription synced:', data);
           }
         } catch (error) {
           console.error('[AppState] Error in sync:', error);
         }
-      }
+      };
+
+      Promise.race([doSync(), syncTimeout]).catch(err =>
+        console.error('[AppState] Sync race error:', err)
+      );
     });
 
     return () => {
