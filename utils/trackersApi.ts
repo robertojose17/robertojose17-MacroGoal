@@ -81,6 +81,14 @@ export async function listTrackers(): Promise<Tracker[]> {
     return created ?? [];
   }
 
+  // Fix existing weight tracker records that have the wrong unit (kg instead of lb)
+  const weightTracker = trackers.find(t => t.name.toLowerCase() === 'weight');
+  if (weightTracker && weightTracker.unit !== 'lb') {
+    console.log('[TrackersApi] Weight tracker has wrong unit:', weightTracker.unit, '— updating to lb');
+    await supabase.from('trackers').update({ unit: 'lb' }).eq('id', weightTracker.id);
+    weightTracker.unit = 'lb'; // update in memory too
+  }
+
   console.log('[TrackersApi] Loaded', trackers.length, 'trackers');
   return trackers;
 }
