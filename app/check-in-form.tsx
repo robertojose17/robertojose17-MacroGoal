@@ -178,14 +178,9 @@ export default function CheckInFormScreen() {
 
       let trackerValue: number | null = null;
       if (type === 'weight') {
-        // check_ins stores weight in kg; tracker unit is 'lb' for imperial users
-        const units = user?.preferred_units || 'metric';
+        // check_ins always stores weight in kg; tracker unit is always 'lb'
         const weightInKg = checkInData.weight as number;
-        if (units === 'imperial') {
-          trackerValue = weightInKg * 2.20462; // convert back to lbs for tracker_entries
-        } else {
-          trackerValue = weightInKg;
-        }
+        trackerValue = Math.round(weightInKg * 2.20462 * 10) / 10; // always lbs
       } else if (type === 'steps') {
         trackerValue = checkInData.steps ?? null;
       } else if (type === 'gym') {
