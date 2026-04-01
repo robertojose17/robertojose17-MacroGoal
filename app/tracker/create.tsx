@@ -15,7 +15,8 @@ import {
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { colors, spacing, borderRadius } from '@/styles/commonStyles';
-import { listTrackers, createTracker, updateTracker, Tracker } from '@/utils/trackersApi';
+import { createTracker, updateTracker, Tracker } from '@/utils/trackersApi';
+import { supabase } from '@/lib/supabase/client';
 
 // ─── AnimatedPressable ────────────────────────────────────────────────────────
 function AnimatedPressable({
@@ -89,18 +90,27 @@ export default function CreateTrackerScreen() {
   const loadExisting = async () => {
     console.log('[CreateTracker] Loading existing tracker:', trackerId);
     try {
-      const all = await listTrackers();
-      const found = all.find(t => t.id === trackerId);
-      if (found) {
-        setEmoji(found.emoji);
-        setName(found.name);
-        setTrackerType(found.tracker_type);
-        setUnit(found.unit ?? '');
-        setGoalValue(found.goal_value != null ? String(found.goal_value) : '');
-        setFrequency(found.frequency);
+      const { data, error } = await supabase
+        .from('trackers')
+        .select('*')
+        .eq('id', trackerId)
+        .single();
+
+      if (error || !data) {
+        console.error('[CreateTracker] Tracker not found:', error);
+        router.back();
+        return;
       }
+
+      setEmoji(data.emoji ?? '🎯');
+      setName(data.name ?? '');
+      setTrackerType(data.tracker_type ?? 'numeric');
+      setUnit(data.unit ?? '');
+      setGoalValue(data.goal_value != null ? String(data.goal_value) : '');
+      setFrequency(data.frequency ?? 'daily');
     } catch (e) {
       console.error('[CreateTracker] Error loading tracker:', e);
+      router.back();
     } finally {
       setLoading(false);
     }
