@@ -16,12 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { usePremium } from '@/hooks/usePremium';
 
 /**
  * AI Meal Estimator Screen
  * 
  * This screen allows users to describe their meal in text and get AI-powered
- * nutrition estimates. 
+ * nutrition estimates. Premium feature — non-subscribers are redirected to the
+ * subscription screen.
  * 
  * NOTE: All voice/microphone/transcription functionality has been removed.
  * Users can only input meal descriptions via text.
@@ -31,10 +33,82 @@ export default function AIMealEstimatorScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { isPremium, loading: premiumLoading } = usePremium();
 
   const [mealDescription, setMealDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  // --- Premium gate ---
+  if (premiumLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={styles.gateLoadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isPremium) {
+    console.log('[AIMealEstimator] Non-premium user attempted access — showing paywall');
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: colors.card }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>AI Meal Estimator</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.gateContainer}>
+          <View style={[styles.gateIconCircle, { backgroundColor: colors.primary + '20' }]}>
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={48}
+              color={colors.primary}
+            />
+          </View>
+          <Text style={[styles.gateTitle, { color: colors.text }]}>Premium Feature</Text>
+          <Text style={[styles.gateMessage, { color: colors.grey }]}>
+            AI Meal Estimator is a premium feature. Describe any meal and get instant calorie and macro estimates — no barcode needed.
+          </Text>
+          <TouchableOpacity
+            style={[styles.gateButton, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              console.log('[AIMealEstimator] User tapped Upgrade to Premium');
+              router.push('/subscription');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={18}
+              color="#FFFFFF"
+            />
+            <Text style={styles.gateButtonText}>Upgrade to Premium</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.gateBackButton}
+            onPress={() => {
+              console.log('[AIMealEstimator] Non-premium user tapped Go Back');
+              router.back();
+            }}
+          >
+            <Text style={[styles.gateBackText, { color: colors.grey }]}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  // --- End premium gate ---
 
   const handleAnalyze = async () => {
     if (!mealDescription.trim()) {
@@ -267,5 +341,59 @@ const styles = StyleSheet.create({
   macroValue: {
     fontSize: typography.md,
     fontWeight: '500',
+  },
+  gateLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  gateIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  gateTitle: {
+    fontSize: typography.xl,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  gateMessage: {
+    fontSize: typography.md,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: spacing.xl,
+  },
+  gateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.md,
+    width: '100%',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  gateButtonText: {
+    color: '#FFFFFF',
+    fontSize: typography.md,
+    fontWeight: '700',
+  },
+  gateBackButton: {
+    paddingVertical: spacing.sm,
+  },
+  gateBackText: {
+    fontSize: typography.md,
+    textDecorationLine: 'underline',
   },
 });
