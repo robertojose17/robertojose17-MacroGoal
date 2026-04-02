@@ -434,7 +434,7 @@ export default function SubscriptionScreen() {
                   <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text, fontWeight: '700' }]}>
                     {feature.title}
                   </Text>
-                  <Text style={[styles.featureText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  <Text style={[styles.featureDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     {feature.description}
                   </Text>
                 </View>
@@ -573,7 +573,7 @@ export default function SubscriptionScreen() {
                   <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text, fontWeight: '700' }]}>
                     {feature.title}
                   </Text>
-                  <Text style={[styles.featureText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  <Text style={[styles.featureDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                     {feature.description}
                   </Text>
                 </View>
@@ -680,7 +680,7 @@ export default function SubscriptionScreen() {
                       <Text style={[styles.featureText, { color: isDark ? colors.textDark : colors.text, fontWeight: '700' }]}>
                         {feature.title}
                       </Text>
-                      <Text style={[styles.featureText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                      <Text style={[styles.featureDescription, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                         {feature.description}
                       </Text>
                     </View>
@@ -874,13 +874,16 @@ const styles = StyleSheet.create({
   },
   featureRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    marginBottom: 14,
   },
   featureText: {
     ...typography.body,
-    flex: 1,
+  },
+  featureDescription: {
+    ...typography.body,
+    marginTop: 2,
   },
   subscribeButton: {
     borderRadius: borderRadius.md,
@@ -942,6 +945,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.xl,
+    paddingBottom: spacing.xl,
   },
   featuresTitle: {
     ...typography.h3,
