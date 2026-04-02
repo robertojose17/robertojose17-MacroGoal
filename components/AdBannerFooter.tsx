@@ -46,7 +46,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export const AD_BANNER_HEIGHT = 60;
 
 // Production Ad Unit ID (also used as test ID per user config):
-const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-3940256099942544/2435281174';
+const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-5592015069000241/7688730087';
 
 // react-native-google-mobile-ads requires a native build.
 // Platform.OS guard is required — Metro resolves requires at build time so
