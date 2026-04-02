@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Food } from '@/types';
 import { addToDraft } from '@/utils/myMealsDraft';
 import QuickAddHome from '@/components/QuickAddHome';
+import { usePremium } from '@/hooks/usePremium';
 
 /** Safely coerce any value to a finite number, defaulting to 0 on NaN/null/undefined */
 function safeNum(value: unknown, fallback = 0): number {
@@ -57,6 +58,7 @@ export default function AddFoodScreen() {
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { isPremium } = usePremium();
 
   const date = (params.date as string) || new Date().toISOString().split('T')[0];
   
@@ -627,8 +629,15 @@ export default function AddFoodScreen() {
   const handleAIMealEstimator = useCallback(() => {
     console.log('[AddFood] ========== NAVIGATING TO AI MEAL ESTIMATOR ==========');
     console.log('[AddFood] Context:', context);
+    console.log('[AddFood] isPremium:', isPremium);
+
+    if (!isPremium) {
+      console.log('[AddFood] User is not premium — redirecting to subscription screen');
+      router.push('/subscription');
+      return;
+    }
+
     console.log('[AddFood] CRITICAL: Passing context to AI Meal Estimator');
-    
     router.push({
       pathname: '/chatbot',
       params: {
@@ -638,7 +647,7 @@ export default function AddFoodScreen() {
         returnTo: returnTo,
       },
     });
-  }, [router, mealType, date, context, returnTo]);
+  }, [router, mealType, date, context, returnTo, isPremium]);
 
   const handleCreateMeal = useCallback(() => {
     console.log('[AddFood] Navigating to create meal');
