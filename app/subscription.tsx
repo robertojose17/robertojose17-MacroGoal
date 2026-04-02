@@ -869,13 +869,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   featuresContainer: {
-    gap: spacing.sm,
+    gap: spacing.md,
     marginBottom: spacing.md,
   },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   featureText: {
     ...typography.body,
