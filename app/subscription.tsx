@@ -29,15 +29,15 @@ import Constants from 'expo-constants';
 const PREMIUM_FEATURES = [
   {
     title: 'AI Meal Estimator',
-    description: 'Estimate calories and macros from restaurant meals using a photo and description — no barcode needed.',
+    description: 'Snap a photo or describe a meal — get instant calorie and macro estimates.',
   },
   {
-    title: 'No Ads',
-    description: 'Enjoy a completely ad-free experience.',
+    title: 'Ad-Free Experience',
+    description: 'No interruptions. Just clean, focused tracking.',
   },
   {
-    title: 'Future Premium Features',
-    description: 'Get automatic access to every premium feature we add in the future.',
+    title: 'All Future Features',
+    description: 'Every new premium feature we ship — yours automatically.',
   },
 ];
 
