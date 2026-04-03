@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Alert } from 'react-native';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -196,12 +196,46 @@ export default function BarcodeScannerScreen() {
     );
   }
 
-  // Show permission request screen
+  // Undetermined: show explanation with a single "Continue" button — no dismiss option
+  if (permission.status === 'undetermined') {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top', 'bottom']}>
+        <View style={styles.permissionContainer}>
+          <IconSymbol
+            ios_icon_name="camera.fill"
+            android_material_icon_name="camera_alt"
+            size={72}
+            color={colors.primary}
+          />
+          <Text style={[styles.permissionTitle, { color: isDark ? colors.textDark : colors.text }]}>
+            Camera Access
+          </Text>
+          <Text style={[styles.permissionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Macro Goal needs access to your camera to scan food barcodes and look up nutrition information.
+          </Text>
+          <TouchableOpacity
+            style={[styles.permissionButton, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              console.log('[BarcodeScanner] Continue pressed — requesting camera permission');
+              requestPermission();
+            }}
+          >
+            <Text style={styles.permissionButtonText}>Continue</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Denied: camera access was refused — guide user to Settings
   if (!permission.granted) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => {
+            console.log('[BarcodeScanner] Back pressed from denied screen');
+            router.back();
+          }}>
             <IconSymbol
               ios_icon_name="chevron.left"
               android_material_icon_name="arrow_back"
@@ -217,30 +251,25 @@ export default function BarcodeScannerScreen() {
 
         <View style={styles.permissionContainer}>
           <IconSymbol
-            ios_icon_name="camera"
+            ios_icon_name="camera.fill"
             android_material_icon_name="camera_alt"
-            size={64}
+            size={72}
             color={isDark ? colors.textSecondaryDark : colors.textSecondary}
           />
           <Text style={[styles.permissionTitle, { color: isDark ? colors.textDark : colors.text }]}>
             Camera Access Required
           </Text>
           <Text style={[styles.permissionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            We need camera access to use this function
+            Camera access has been denied. To scan barcodes, please enable camera access for Macro Goal in your device Settings.
           </Text>
           <TouchableOpacity
             style={[styles.permissionButton, { backgroundColor: colors.primary }]}
-            onPress={requestPermission}
+            onPress={() => {
+              console.log('[BarcodeScanner] Open Settings pressed');
+              Linking.openURL('app-settings:');
+            }}
           >
-            <Text style={styles.permissionButtonText}>Continue</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={[styles.backButtonText, { color: isDark ? colors.textDark : colors.text }]}>
-              Close
-            </Text>
+            <Text style={styles.permissionButtonText}>Open Settings</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -366,14 +395,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
-  },
-  backButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   cameraContainer: {
     flex: 1,
