@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -19,6 +19,8 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const confirmPasswordRef = useRef<View>(null);
 
   const handleSignUp = async () => {
     console.log('[SignUp] Starting signup process...');
@@ -232,9 +234,29 @@ export default function SignUpScreen() {
     }
   };
 
+  const handleConfirmPasswordFocus = () => {
+    confirmPasswordRef.current?.measureLayout(
+      scrollViewRef.current as any,
+      (_x, y) => {
+        scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
+      },
+      () => {}
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      >
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
@@ -304,7 +326,7 @@ export default function SignUpScreen() {
             />
           </View>
 
-          <View style={styles.inputContainer}>
+          <View ref={confirmPasswordRef} style={styles.inputContainer}>
             <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
               Confirm Password
             </Text>
@@ -317,6 +339,7 @@ export default function SignUpScreen() {
               autoCorrect={false}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
+              onFocus={handleConfirmPasswordFocus}
             />
           </View>
 
@@ -344,12 +367,16 @@ export default function SignUpScreen() {
           </View>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  keyboardAvoidingView: {
     flex: 1,
   },
   scrollContent: {
