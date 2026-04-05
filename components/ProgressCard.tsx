@@ -147,7 +147,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('starting_weight, goal_weight, weight_unit, maintenance_calories, created_at')
+        .select('current_weight, goal_weight, preferred_units, maintenance_calories, created_at')
         .eq('id', userId)
         .maybeSingle();
 
@@ -207,13 +207,14 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
         return;
       }
 
-      const rawStartingWeight = userData.starting_weight;
+      // Field names: users table stores current_weight (kg) and preferred_units ('metric'/'imperial')
+      const rawStartingWeight = userData.current_weight;
       const rawGoalWeight = userData.goal_weight;
       const parsedStartingWeight = parseFloat(rawStartingWeight);
       const parsedGoalWeight = parseFloat(rawGoalWeight);
 
-      console.log('[ProgressCard] parsedStartingWeight:', parsedStartingWeight);
-      console.log('[ProgressCard] parsedGoalWeight:', parsedGoalWeight);
+      console.log('[ProgressCard] parsedStartingWeight (current_weight kg):', parsedStartingWeight);
+      console.log('[ProgressCard] parsedGoalWeight (goal_weight kg):', parsedGoalWeight);
 
       if (!rawGoalWeight || isNaN(parsedGoalWeight) || parsedGoalWeight <= 0) {
         console.log('[ProgressCard] Goal weight is missing or invalid:', rawGoalWeight);
@@ -224,62 +225,51 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       if (!rawStartingWeight || isNaN(parsedStartingWeight) || parsedStartingWeight <= 0) {
         console.log('[ProgressCard] Starting weight is missing or invalid:', rawStartingWeight);
-        setError('Set your weight goal in Profile to see progress.');
+        setError('Set your starting weight in Profile to see progress.');
         setLoading(false);
         return;
       }
 
-      const rawWeightUnit = userData.weight_unit;
-      let normalizedWeightUnit = 'lbs';
+      // preferred_units is 'metric' or 'imperial' — weights in DB are always stored in kg
+      console.log('[ProgressCard] preferred_units:', userData.preferred_units, '— DB weights are always kg, converting to lbs for chart');
 
-      if (rawWeightUnit) {
-        const unitLower = rawWeightUnit.toLowerCase().trim();
-        if (['lb', 'lbs', 'pound', 'pounds'].includes(unitLower)) {
-          normalizedWeightUnit = 'lbs';
-        } else if (['kg', 'kgs', 'kilogram', 'kilograms'].includes(unitLower)) {
-          normalizedWeightUnit = 'kg';
-        }
-      }
-
-      let startWeightLbs: number;
-      let goalWeightLbs: number;
-
-      if (normalizedWeightUnit === 'kg') {
-        startWeightLbs = parsedStartingWeight * 2.20462;
-        goalWeightLbs = parsedGoalWeight * 2.20462;
-      } else {
-        startWeightLbs = parsedStartingWeight;
-        goalWeightLbs = parsedGoalWeight;
-      }
+      // Always convert from kg (DB storage) to lbs (chart display)
+      const startWeightLbs = parsedStartingWeight * 2.20462;
+      const goalWeightLbs = parsedGoalWeight * 2.20462;
 
       let startDate: Date;
 
       if (goalData && goalData.start_date) {
         startDate = new Date(goalData.start_date + 'T00:00:00');
+        console.log('[ProgressCard] Using goal start_date:', goalData.start_date);
       } else if (userData.created_at) {
         startDate = new Date(userData.created_at);
         startDate.setHours(0, 0, 0, 0);
+        console.log('[ProgressCard] No start_date on goal, falling back to user created_at:', startDate.toISOString());
       } else {
         startDate = new Date();
         startDate.setHours(0, 0, 0, 0);
+        console.log('[ProgressCard] No start_date or created_at, using today');
       }
 
       const rawLossRate = goalData?.loss_rate_lbs_per_week;
-      const weeklyLossLbs = parseFloat(rawLossRate) || 1.0;
+      // For maintain/gain goals loss_rate is null — use a default so the planned line spans 90 days
+      const weeklyLossLbs = parseFloat(rawLossRate) > 0 ? parseFloat(rawLossRate) : 1.0;
       const maintenanceCalories = userData.maintenance_calories || 2000;
       const dailyCalories = goalData?.daily_calories || maintenanceCalories || 2000;
 
       const hasValidData =
         !isNaN(startWeightLbs) && startWeightLbs > 0 &&
-        !isNaN(goalWeightLbs) && goalWeightLbs > 0 &&
-        !isNaN(weeklyLossLbs) && weeklyLossLbs > 0;
+        !isNaN(goalWeightLbs) && goalWeightLbs > 0;
 
       if (!hasValidData) {
-        console.log('[ProgressCard] Invalid weight or loss rate data after conversion');
+        console.log('[ProgressCard] Invalid weight data after kg→lbs conversion');
         setError('Set your weight goal in Profile to see progress.');
         setLoading(false);
         return;
       }
+
+      console.log('[ProgressCard] startWeightLbs:', startWeightLbs.toFixed(1), 'goalWeightLbs:', goalWeightLbs.toFixed(1), 'weeklyLossLbs:', weeklyLossLbs);
 
       setProfileData({
         startDate,
@@ -293,7 +283,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       console.log('[ProgressCard] Profile data loaded successfully');
 
       await loadCalorieLogs(userId, startDate);
-      await loadWeightCheckIns(userId, startDate, normalizedWeightUnit);
+      // check_ins.weight is always stored in kg — loadWeightCheckIns always converts kg→lbs
+      await loadWeightCheckIns(userId, startDate);
 
       setLoading(false);
     } catch (err: any) {
@@ -354,7 +345,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
     }
   };
 
-  const loadWeightCheckIns = async (uid: string, startDate: Date, weightUnit: string) => {
+  const loadWeightCheckIns = async (uid: string, startDate: Date) => {
     try {
       const today = new Date();
       const startDateStr = startDate.toISOString().split('T')[0];
@@ -401,18 +392,27 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
     const { startDate, startWeightLbs, goalWeightLbs, weeklyLossLbs } = profileData;
     const totalWeightChange = Math.abs(goalWeightLbs - startWeightLbs);
-    const totalWeeks = totalWeightChange / weeklyLossLbs;
-    const totalDays = Math.ceil(totalWeeks * 7);
+
+    // For maintain goals (or equal weights) use a 90-day window so the chart still renders
+    let totalDays: number;
+    if (totalWeightChange < 0.1) {
+      totalDays = 90;
+    } else {
+      const totalWeeks = totalWeightChange / Math.max(weeklyLossLbs, 0.1);
+      totalDays = Math.max(Math.ceil(totalWeeks * 7), 2); // at least 2 points to avoid division by zero
+    }
 
     const dataPoints: { date: Date; weightLbs: number }[] = [];
     for (let i = 0; i <= totalDays; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(currentDate.getDate() + i);
-      const weight = startWeightLbs + (goalWeightLbs - startWeightLbs) * (i / totalDays);
+      const weight = totalDays > 0
+        ? startWeightLbs + (goalWeightLbs - startWeightLbs) * (i / totalDays)
+        : startWeightLbs;
       dataPoints.push({ date: currentDate, weightLbs: weight });
     }
 
-    console.log('[ProgressCard] Generated', dataPoints.length, 'planned data points');
+    console.log('[ProgressCard] Generated', dataPoints.length, 'planned data points, totalDays:', totalDays);
     return dataPoints;
   }, [profileData]);
 
