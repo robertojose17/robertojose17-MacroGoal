@@ -639,7 +639,7 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsS
     
     // OPTIMIZATION: Use simple, known-good OFF search endpoint with minimal fields and limit
     // Only request the fields we actually need to reduce response size and parsing time
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=30&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,nutriments`;
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=50&sort_by=unique_scans_n&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,nutriments`;
     
     console.log(`[OpenFoodFacts] Search URL: ${url}`);
     

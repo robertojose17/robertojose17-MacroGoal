@@ -332,8 +332,8 @@ export default function FoodSearchScreen() {
         return;
       }
 
-      // OPTIMIZATION: Limit initial results to 30 for faster rendering
-      const limitedProducts = result.products.slice(0, 30);
+      // OPTIMIZATION: Limit initial results to 50 for faster rendering
+      const limitedProducts = result.products.slice(0, 50);
       console.log('[FoodSearch] Limited products to', limitedProducts.length, 'for faster rendering');
 
       // Transform products into display items
