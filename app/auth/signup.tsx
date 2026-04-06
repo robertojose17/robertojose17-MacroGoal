@@ -1,30 +1,47 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+  ImageBackground,
+  Image,
+  Dimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase/client';
-import { IconSymbol } from '@/components/IconSymbol';
 import * as Linking from 'expo-linking';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const BG_IMAGE = require('@/assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
+const LOGO_IMAGE = require('@/assets/images/icon.png');
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
   const scrollViewRef = useRef<ScrollView>(null);
   const confirmPasswordRef = useRef<View>(null);
 
   const handleSignUp = async () => {
-    console.log('[SignUp] Starting signup process...');
-    
+    console.log('[SignUp] Button pressed — starting signup process');
+
     if (!name || !email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -44,20 +61,16 @@ export default function SignUpScreen() {
 
     try {
       console.log('[SignUp] Step 1: Creating auth user...');
-      
-      // Create deep link URL for email verification redirect
+
       const redirectUrl = Linking.createURL('/auth/verify');
       console.log('[SignUp] Email verification redirect URL:', redirectUrl);
-      
-      // Step 1: Create auth user
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            name: name,
-          },
-          emailRedirectTo: redirectUrl, // Use deep link for email verification
+          data: { name },
+          emailRedirectTo: redirectUrl,
         },
       });
 
@@ -77,14 +90,10 @@ export default function SignUpScreen() {
 
       console.log('[SignUp] ✅ Auth user created:', authData.user.id);
 
-      // Check if email confirmation is required
       const emailConfirmationRequired = !authData.session;
-      
+
       if (emailConfirmationRequired) {
-        console.log('[SignUp] ⚠️ Email confirmation required - no session returned');
-        console.log('[SignUp] User will need to confirm email before logging in');
-        
-        // Show success message
+        console.log('[SignUp] ⚠️ Email confirmation required — no session returned');
         Alert.alert(
           '✅ Check Your Email',
           `We sent a confirmation email to ${email}.\n\nOpen the email on this device and tap the link to verify your account.\n\n⚠️ Check your junk/spam folder if you don't see it.`,
@@ -102,12 +111,9 @@ export default function SignUpScreen() {
         return;
       }
 
-      // If we have a session, continue with profile creation
       console.log('[SignUp] ✅ Session established immediately (email confirmation disabled)');
-
-      // Step 4: Create user profile using Edge Function (bypasses RLS)
       console.log('[SignUp] Step 2: Creating user profile via Edge Function...');
-      
+
       let profileCreated = false;
       let retryCount = 0;
       const maxRetries = 3;
@@ -115,19 +121,19 @@ export default function SignUpScreen() {
       while (!profileCreated && retryCount < maxRetries) {
         try {
           console.log(`[SignUp] Profile creation attempt ${retryCount + 1}/${maxRetries}`);
-          
-          // Try to create profile using Edge Function
-          const { data: edgeFunctionData, error: edgeFunctionError } = await supabase.functions.invoke('create-user-profile', {
-            body: { name },
-          });
+
+          const { data: edgeFunctionData, error: edgeFunctionError } =
+            await supabase.functions.invoke('create-user-profile', {
+              body: { name },
+            });
 
           if (edgeFunctionError) {
-            console.error(`[SignUp] Edge Function error (attempt ${retryCount + 1}):`, edgeFunctionError);
-            
-            // If Edge Function doesn't exist or fails, fall back to direct insert
+            console.error(
+              `[SignUp] Edge Function error (attempt ${retryCount + 1}):`,
+              edgeFunctionError
+            );
             console.log('[SignUp] Falling back to direct insert...');
-            
-            // Check if profile already exists
+
             const { data: existingUser } = await supabase
               .from('users')
               .select('id')
@@ -140,35 +146,31 @@ export default function SignUpScreen() {
               break;
             }
 
-            // Try direct insert
-            const { error: profileError } = await supabase
-              .from('users')
-              .insert({
-                id: authData.user.id,
-                email: authData.user.email,
-                name: name,
-                user_type: 'free',
-                onboarding_completed: false,
-              });
+            const { error: profileError } = await supabase.from('users').insert({
+              id: authData.user.id,
+              email: authData.user.email,
+              name,
+              user_type: 'free',
+              onboarding_completed: false,
+            });
 
             if (profileError) {
-              console.error(`[SignUp] Profile creation error (attempt ${retryCount + 1}):`, profileError);
-              console.error(`[SignUp] Error code: ${profileError.code}`);
-              console.error(`[SignUp] Error message: ${profileError.message}`);
-              
-              // If it's a duplicate key error, that's actually success
+              console.error(
+                `[SignUp] Profile creation error (attempt ${retryCount + 1}):`,
+                profileError
+              );
+
               if (profileError.code === '23505') {
                 console.log('[SignUp] ✅ Profile already exists (duplicate key)');
                 profileCreated = true;
                 break;
               }
-              
-              // Retry with exponential backoff
+
               retryCount++;
               if (retryCount < maxRetries) {
-                const waitTime = retryCount * 2000; // 2s, 4s, 6s
+                const waitTime = retryCount * 2000;
                 console.log(`[SignUp] Waiting ${waitTime}ms before retry...`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
+                await new Promise((resolve) => setTimeout(resolve, waitTime));
               }
             } else {
               console.log('[SignUp] ✅ Profile created successfully via direct insert');
@@ -179,28 +181,27 @@ export default function SignUpScreen() {
             profileCreated = true;
           }
         } catch (error) {
-          console.error(`[SignUp] Exception during profile creation (attempt ${retryCount + 1}):`, error);
+          console.error(
+            `[SignUp] Exception during profile creation (attempt ${retryCount + 1}):`,
+            error
+          );
           retryCount++;
           if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         }
       }
 
       if (!profileCreated) {
         console.error('[SignUp] ❌ Failed to create profile after all retries');
-        
-        // Don't sign out - let them try to continue
-        console.log('[SignUp] Allowing user to continue despite profile creation failure...');
-        
         Alert.alert(
           'Account Created',
-          'Your account was created successfully! Let\'s complete your profile setup.',
+          "Your account was created successfully! Let's complete your profile setup.",
           [
             {
               text: 'Continue',
               onPress: () => {
-                console.log('[SignUp] Navigating to onboarding...');
+                console.log('[SignUp] Navigating to onboarding after profile failure...');
                 router.replace('/onboarding/complete');
               },
             },
@@ -210,12 +211,10 @@ export default function SignUpScreen() {
         return;
       }
 
-      // Step 5: Success!
       console.log('[SignUp] ✅ Signup complete!');
-      
       Alert.alert(
         'Success!',
-        'Account created successfully! Let\'s set up your profile.',
+        "Account created successfully! Let's set up your profile.",
         [
           {
             text: 'Continue',
@@ -237,203 +236,256 @@ export default function SignUpScreen() {
   const handleConfirmPasswordFocus = () => {
     confirmPasswordRef.current?.measureLayout(
       scrollViewRef.current as any,
-      (_x, y) => {
+      (_x: number, y: number) => {
         scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
       },
       () => {}
     );
   };
 
+  const handleGoToLogin = () => {
+    console.log('[SignUp] Navigate to Log In tapped');
+    router.replace('/auth/login');
+  };
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-      >
-      <ScrollView
-        ref={scrollViewRef}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
+    <ImageBackground source={BG_IMAGE} style={styles.bg} resizeMode="cover">
+      {/* Dark overlay */}
+      <View style={styles.overlay} />
+
+      {/* Bottom gradient fade */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.85)']}
+        style={styles.bottomGradient}
+        pointerEvents="none"
+      />
+
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={isDark ? colors.textDark : colors.text}
-          />
-        </TouchableOpacity>
-
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Create Account
-          </Text>
-          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Sign up to start tracking your nutrition
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Name
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="Your first name"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              autoCapitalize="words"
-              autoCorrect={false}
-              value={name}
-              onChangeText={setName}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Email
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="your@email.com"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Password
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="At least 6 characters"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={password}
-              onChangeText={setPassword}
-            />
-          </View>
-
-          <View ref={confirmPasswordRef} style={styles.inputContainer}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Confirm Password
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="Re-enter your password"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              onFocus={handleConfirmPasswordFocus}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
-            onPress={handleSignUp}
-            disabled={loading}
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Sign Up</Text>
-            )}
-          </TouchableOpacity>
+            {/* Branding */}
+            <View style={styles.branding}>
+              <View style={styles.logoShadowWrapper}>
+                <Image source={LOGO_IMAGE} style={styles.logo} resizeMode="contain" />
+              </View>
+              <Text style={styles.brandTitle}>MacroGoal</Text>
+              <Text style={styles.brandSubtitle}>Transform your body. Start today.</Text>
+            </View>
 
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Already have an account?{' '}
-            </Text>
-            <TouchableOpacity onPress={() => router.replace('/auth/login')}>
-              <Text style={[styles.footerLink, { color: colors.primary }]}>
-                Log In
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            {/* Glassmorphism card */}
+            <View style={styles.cardWrapper}>
+              <BlurView intensity={20} tint="dark" style={styles.blurCard}>
+                <View style={styles.cardInner}>
+                  <Text style={styles.cardTitle}>Create Account</Text>
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Your first name"
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    value={name}
+                    onChangeText={setName}
+                  />
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Email address"
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Password (min. 6 characters)"
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+
+                  <View ref={confirmPasswordRef}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm password"
+                      placeholderTextColor="rgba(255,255,255,0.5)"
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      onFocus={handleConfirmPasswordFocus}
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.ctaButton, loading && styles.ctaButtonDisabled]}
+                    onPress={handleSignUp}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.ctaButtonText}>Get Started</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={handleGoToLogin} style={styles.secondaryWrapper}>
+                    <Text style={styles.secondaryText}>
+                      Already have an account?{' '}
+                      <Text style={styles.secondaryLink}>Log In</Text>
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </BlurView>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bg: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  bottomGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: SCREEN_HEIGHT * 0.65,
+  },
+  safeArea: {
     flex: 1,
   },
-  keyboardAvoidingView: {
+  flex: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: Platform.OS === 'android' ? spacing.xxl : spacing.md,
-    paddingBottom: spacing.xxl,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingBottom: 24,
   },
-  backButton: {
-    marginBottom: spacing.lg,
+  branding: {
+    alignItems: 'center',
+    marginBottom: 28,
   },
-  header: {
-    marginBottom: spacing.xl,
+  logoShadowWrapper: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    marginBottom: 12,
   },
-  title: {
-    ...typography.h1,
-    marginBottom: spacing.sm,
+  logo: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
   },
-  subtitle: {
-    ...typography.body,
+  brandTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#C9A84C',
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
-  form: {
-    gap: spacing.lg,
+  brandSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '400',
+    letterSpacing: 0.2,
   },
-  inputContainer: {
-    gap: spacing.sm,
+  cardWrapper: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
-  label: {
-    ...typography.bodyBold,
+  blurCard: {
+    borderRadius: 24,
+  },
+  cardInner: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    padding: 24,
+    borderRadius: 24,
+  },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   input: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     fontSize: 16,
-  },
-  button: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  buttonText: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+    marginBottom: 12,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  ctaButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 14,
+    height: 52,
     alignItems: 'center',
-    marginTop: spacing.md,
+    justifyContent: 'center',
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+    marginTop: 4,
+    marginBottom: 16,
   },
-  footerText: {
-    ...typography.body,
+  ctaButtonDisabled: {
+    opacity: 0.7,
   },
-  footerLink: {
-    ...typography.bodyBold,
+  ctaButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  secondaryWrapper: {
+    alignItems: 'center',
+  },
+  secondaryText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '400',
+  },
+  secondaryLink: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 });

@@ -1,25 +1,41 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+  ImageBackground,
+  Image,
+  Dimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase/client';
-import { IconSymbol } from '@/components/IconSymbol';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const BG_IMAGE = require('@/assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
+const LOGO_IMAGE = require('@/assets/images/icon.png');
 
 export default function LoginScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    console.log('[Login] Starting login process...');
-    
+    console.log('[Login] Button pressed — starting login process');
+
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -30,7 +46,7 @@ export default function LoginScreen() {
     try {
       console.log('[Login] Step 1: Signing in with password...');
       console.log('[Login] Email:', email);
-      
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
@@ -40,15 +56,16 @@ export default function LoginScreen() {
         console.error('[Login] Login error:', error);
         console.error('[Login] Error code:', error.status);
         console.error('[Login] Error message:', error.message);
-        
-        // Provide more helpful error messages
+
         let errorMessage = error.message;
         if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password. Please check your credentials and try again.\n\nIf you just signed up, make sure you confirmed your email first.';
+          errorMessage =
+            'Invalid email or password. Please check your credentials and try again.\n\nIf you just signed up, make sure you confirmed your email first.';
         } else if (error.message.includes('Email not confirmed')) {
-          errorMessage = 'Please check your email and click the confirmation link before logging in. Check your spam folder if you don\'t see it.';
+          errorMessage =
+            "Please check your email and click the confirmation link before logging in. Check your spam folder if you don't see it.";
         }
-        
+
         Alert.alert('Login Failed', errorMessage);
         setLoading(false);
         return;
@@ -62,10 +79,8 @@ export default function LoginScreen() {
       }
 
       console.log('[Login] ✅ User logged in:', data.user.id);
-      
-      // Step 2: Check if user has completed onboarding
       console.log('[Login] Step 2: Checking onboarding status...');
-      
+
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('onboarding_completed')
@@ -74,59 +89,47 @@ export default function LoginScreen() {
 
       if (userError) {
         console.error('[Login] User fetch error:', userError);
-        
-        // Try to create user record if it doesn't exist
         console.log('[Login] Attempting to create user record...');
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-            user_type: 'free',
-            onboarding_completed: false,
-          });
-        
+        const { error: insertError } = await supabase.from('users').insert({
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+          user_type: 'free',
+          onboarding_completed: false,
+        });
+
         if (insertError && insertError.code !== '23505') {
           console.error('[Login] ❌ Failed to create user record:', insertError);
         } else {
           console.log('[Login] ✅ User record created or already exists');
         }
-        
-        // Go to onboarding
+
         console.log('[Login] Redirecting to onboarding');
         router.replace('/onboarding/complete');
         return;
       }
 
-      // Handle missing user data
       if (!userData) {
         console.log('[Login] ⚠️ User not in database, creating record...');
-        
-        // Try to create user record
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-            user_type: 'free',
-            onboarding_completed: false,
-          });
-        
+        const { error: insertError } = await supabase.from('users').insert({
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+          user_type: 'free',
+          onboarding_completed: false,
+        });
+
         if (insertError && insertError.code !== '23505') {
           console.error('[Login] ❌ Failed to create user record:', insertError);
         } else {
           console.log('[Login] ✅ User record created');
         }
-        
-        // Go to onboarding
+
         console.log('[Login] Redirecting to onboarding');
         router.replace('/onboarding/complete');
         return;
       }
 
-      // Navigate based on onboarding status
       if (userData.onboarding_completed) {
         console.log('[Login] ✅ Onboarding complete, going to home');
         router.replace('/(tabs)/(home)/');
@@ -142,163 +145,254 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForgotPassword = () => {
+    console.log('[Login] Forgot password tapped');
+    if (!email) {
+      Alert.alert('Reset Password', 'Enter your email address above, then tap Forgot Password.');
+      return;
+    }
+    supabase.auth
+      .resetPasswordForEmail(email.trim().toLowerCase())
+      .then(({ error }) => {
+        if (error) {
+          Alert.alert('Error', error.message);
+        } else {
+          Alert.alert('Check Your Email', 'A password reset link has been sent to your email.');
+        }
+      });
+  };
+
+  const handleGoToSignUp = () => {
+    console.log('[Login] Navigate to Sign Up tapped');
+    router.replace('/auth/signup');
+  };
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-      >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
+    <ImageBackground source={BG_IMAGE} style={styles.bg} resizeMode="cover">
+      {/* Dark overlay */}
+      <View style={styles.overlay} />
+
+      {/* Bottom gradient fade */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.85)']}
+        style={styles.bottomGradient}
+        pointerEvents="none"
+      />
+
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={isDark ? colors.textDark : colors.text}
-          />
-        </TouchableOpacity>
-
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Welcome Back
-          </Text>
-          <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Log in to continue tracking
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Email
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="your@email.com"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-              Password
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.borderDark : colors.border, color: isDark ? colors.textDark : colors.text }]}
-              placeholder="Enter your password"
-              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={password}
-              onChangeText={setPassword}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
-            onPress={handleLogin}
-            disabled={loading}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Log In</Text>
-            )}
-          </TouchableOpacity>
+            {/* Branding */}
+            <View style={styles.branding}>
+              <View style={styles.logoShadowWrapper}>
+                <Image source={LOGO_IMAGE} style={styles.logo} resizeMode="contain" />
+              </View>
+              <Text style={styles.brandTitle}>MacroGoal</Text>
+              <Text style={styles.brandSubtitle}>Transform your body. Start today.</Text>
+            </View>
 
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Don&apos;t have an account?{' '}
-            </Text>
-            <TouchableOpacity onPress={() => router.replace('/auth/signup')}>
-              <Text style={[styles.footerLink, { color: colors.primary }]}>
-                Sign Up
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            {/* Glassmorphism card */}
+            <View style={styles.cardWrapper}>
+              <BlurView intensity={20} tint="dark" style={styles.blurCard}>
+                <View style={styles.cardInner}>
+                  <Text style={styles.cardTitle}>Welcome Back</Text>
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Email address"
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Password"
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+
+                  <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotWrapper}>
+                    <Text style={styles.forgotText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.ctaButton, loading && styles.ctaButtonDisabled]}
+                    onPress={handleLogin}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.ctaButtonText}>Log In</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={handleGoToSignUp} style={styles.secondaryWrapper}>
+                    <Text style={styles.secondaryText}>
+                      Don&apos;t have an account?{' '}
+                      <Text style={styles.secondaryLink}>Sign Up</Text>
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </BlurView>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bg: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  bottomGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: SCREEN_HEIGHT * 0.55,
+  },
+  safeArea: {
     flex: 1,
   },
-  keyboardAvoidingView: {
+  flex: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: Platform.OS === 'android' ? spacing.xxl : spacing.md,
-    paddingBottom: spacing.xxl,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingBottom: 24,
   },
-  backButton: {
-    marginBottom: spacing.lg,
+  branding: {
+    alignItems: 'center',
+    marginBottom: 32,
   },
-  header: {
-    marginBottom: spacing.xl,
+  logoShadowWrapper: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    marginBottom: 12,
   },
-  title: {
-    ...typography.h1,
-    marginBottom: spacing.sm,
+  logo: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
   },
-  subtitle: {
-    ...typography.body,
+  brandTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#C9A84C',
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
-  form: {
-    gap: spacing.lg,
+  brandSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '400',
+    letterSpacing: 0.2,
   },
-  inputContainer: {
-    gap: spacing.sm,
+  cardWrapper: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
-  label: {
-    ...typography.bodyBold,
+  blurCard: {
+    borderRadius: 24,
+  },
+  cardInner: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    padding: 24,
+    borderRadius: 24,
+  },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   input: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     fontSize: 16,
-  },
-  button: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  buttonText: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+    marginBottom: 12,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  forgotWrapper: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+    marginTop: -4,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '500',
+  },
+  ctaButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 14,
+    height: 52,
     alignItems: 'center',
-    marginTop: spacing.md,
+    justifyContent: 'center',
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+    marginBottom: 16,
   },
-  footerText: {
-    ...typography.body,
+  ctaButtonDisabled: {
+    opacity: 0.7,
   },
-  footerLink: {
-    ...typography.bodyBold,
+  ctaButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  secondaryWrapper: {
+    alignItems: 'center',
+  },
+  secondaryText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '400',
+  },
+  secondaryLink: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 });
