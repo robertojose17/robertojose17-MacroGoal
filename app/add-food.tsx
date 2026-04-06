@@ -385,7 +385,7 @@ export default function AddFoodScreen() {
       const encodedQuery = encodeURIComponent(query.trim());
       
       // Use the exact endpoint specified in requirements
-      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=20`;
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=100&sort_by=unique_scans_n&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,nutriments`;
       
       console.log('[AddFood] Fetching:', url);
       
