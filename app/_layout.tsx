@@ -41,7 +41,7 @@ if (Platform.OS !== 'web') {
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "index",
+  initialRouteName: "auth/signup",
 };
 
 export default function RootLayout() {
@@ -324,11 +324,11 @@ export default function RootLayout() {
       const inTabsGroup = segments[0] === '(tabs)';
       const inOnboarding = segments[0] === 'onboarding';
 
-      // No session → send to auth (only if not already there)
+      // No session → send to signup (only if not already there)
       if (!session) {
         if (!inAuthGroup) {
-          console.log('[Navigation] No session, redirecting to welcome');
-          router.replace('/auth/welcome');
+          console.log('[Navigation] No session, redirecting to signup');
+          router.replace('/auth/signup');
         } else {
           console.log('[Navigation] No session, already in auth group — no redirect needed');
         }
@@ -662,7 +662,6 @@ export default function RootLayout() {
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 
-                <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
                 <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
                 <Stack.Screen name="auth/login" options={{ headerShown: false }} />
                 <Stack.Screen name="auth/verify" options={{ headerShown: false }} />

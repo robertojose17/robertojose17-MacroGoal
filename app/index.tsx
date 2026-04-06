@@ -1,9 +1,10 @@
 
-// This screen is never actually rendered — _layout.tsx handles all auth-based
-// routing before isReady is true (returning null). Once isReady is true the
-// navigation effect in _layout.tsx redirects to the correct screen.
-// We export a blank component so Expo Router doesn't complain about a missing default export.
-import { View } from 'react-native';
+import { Redirect } from 'expo-router';
+
+// Immediately redirect to the signup screen.
+// _layout.tsx will override this with the correct destination once the
+// session is resolved (authenticated users go to tabs, unauthenticated
+// users stay on signup).
 export default function Index() {
-  return <View />;
+  return <Redirect href="/auth/signup" />;
 }
