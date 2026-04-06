@@ -12,7 +12,6 @@ import {
   Alert,
   ActivityIndicator,
   ImageBackground,
-  Image,
   Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -25,7 +24,7 @@ import * as Linking from 'expo-linking';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const BG_IMAGE = require('../../assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
-const LOGO_IMAGE = require('../../assets/images/icon.png');
+
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -274,10 +273,7 @@ export default function SignUpScreen() {
           >
             {/* Branding */}
             <View style={styles.branding}>
-              <View style={styles.logoShadowWrapper}>
-                <Image source={LOGO_IMAGE} style={styles.logo} resizeMode="contain" />
-              </View>
-              <Text style={styles.brandTitle}>MacroGoal</Text>
+              <Text style={styles.logoText}>MacroGoal</Text>
               <Text style={styles.brandSubtitle}>Transform your body. Start today.</Text>
             </View>
 
@@ -395,25 +391,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 28,
   },
-  logoShadowWrapper: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 10,
-    marginBottom: 12,
-  },
-  logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
-  },
-  brandTitle: {
-    fontSize: 32,
-    fontWeight: '700',
+  logoText: {
+    fontSize: 40,
+    fontWeight: '800',
     color: '#C9A84C',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     marginBottom: 6,
+    textAlign: 'center',
   },
   brandSubtitle: {
     fontSize: 15,
