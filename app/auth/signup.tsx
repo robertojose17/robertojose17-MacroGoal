@@ -24,8 +24,8 @@ import * as Linking from 'expo-linking';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const BG_IMAGE = require('@/assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
-const LOGO_IMAGE = require('@/assets/images/icon.png');
+const BG_IMAGE = require('../../assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
+const LOGO_IMAGE = require('../../assets/images/icon.png');
 
 export default function SignUpScreen() {
   const router = useRouter();
