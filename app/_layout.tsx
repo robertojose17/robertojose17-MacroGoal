@@ -84,12 +84,6 @@ export default function RootLayout() {
   const initializeApp = async () => {
     console.log('[App] ========== STARTUP INITIALIZATION ==========');
 
-    // Hard 3-second cap — app MUST become ready within 3 seconds no matter what
-    const timeout = new Promise<void>(resolve => setTimeout(() => {
-      console.log('[App] ⏱️ 3-second timeout reached — forcing app ready');
-      resolve();
-    }, 3000));
-
     const mainLogic = async () => {
       try {
         console.log('[App] Step 1: Initialize AdMob (non-blocking)');
@@ -106,16 +100,20 @@ export default function RootLayout() {
 
         console.log('[App] Step 3: Get current session');
 
-        // Wrap getSession in its own 2s timeout so a slow network never blocks startup
-        const sessionTimeout = new Promise<{ data: { session: null } }>(resolve =>
-          setTimeout(() => {
-            console.log('[App] ⏱️ getSession timed out — continuing without session');
-            resolve({ data: { session: null } });
-          }, 2000)
-        );
-        const { data } = await Promise.race([supabase.auth.getSession(), sessionTimeout]);
-        const currentSession = data?.session || null;
-        console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
+        // Restore the persisted session from AsyncStorage. This is synchronous
+        // from storage (no network call needed) so it resolves in milliseconds.
+        // We intentionally do NOT race this against a timeout — a timeout that
+        // resolves with session=null would incorrectly log the user out.
+        // The outer hard-timeout (useEffect above) still guarantees the splash
+        // screen hides within 2s even if this somehow hangs.
+        let currentSession = null;
+        try {
+          const { data } = await supabase.auth.getSession();
+          currentSession = data?.session || null;
+          console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
+        } catch (sessionError) {
+          console.warn('[App] ⚠️ getSession failed, continuing without session:', sessionError);
+        }
         setSession(currentSession);
 
         console.log('[App] Step 4: Initialize RevenueCat (non-blocking, native only)');
@@ -183,8 +181,18 @@ export default function RootLayout() {
           console.log('[App] Auth state changed:', event);
           console.log('[App] User ID:', session?.user?.id || 'none');
           console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          
-          setSession(session);
+
+          // TOKEN_REFRESHED means the session is still valid — the token was
+          // silently renewed by Supabase. We must NOT call setSession here
+          // because that would create a new object reference, re-trigger the
+          // navigation useEffect, and potentially redirect the user to signup
+          // if initialSessionResolved is in a transient state.
+          if (event === 'TOKEN_REFRESHED') {
+            console.log('[App] TOKEN_REFRESHED — session still valid, skipping setSession to avoid navigation re-run');
+            // Fall through to RevenueCat handling below without updating session state
+          } else {
+            setSession(session);
+          }
 
           // Update RevenueCat user ID when auth state changes (native only)
           if (Platform.OS !== 'web') {
@@ -283,7 +291,7 @@ export default function RootLayout() {
     };
 
     try {
-      await Promise.race([mainLogic(), timeout]);
+      await mainLogic();
     } finally {
       setIsReady(true);
       console.log('[App] ✅ setIsReady(true) called');
