@@ -313,9 +313,13 @@ export default function FoodSearchScreen() {
       logTiming('(d) Results transformed');
       console.log('[FoodSearch] ✅ Transformed', items.length, 'items for display');
 
+      // Filter out products with no nutrition data
+      const filteredItems = items.filter(item => item.hasNutrition);
+      console.log('[FoodSearch] 🔍 Filtered to', filteredItems.length, 'items with nutrition data (removed', items.length - filteredItems.length, 'without)');
+
       // RE-RANK by name relevance: exact match first, then starts-with, then compound names
       const q = query.toLowerCase().trim();
-      items.sort((a, b) => {
+      filteredItems.sort((a, b) => {
         const score = (item: SearchResultItem) => {
           const name = (item.product.product_name || item.product.generic_name || '').toLowerCase().trim();
           const words = name.split(/\s+/);
@@ -330,8 +334,8 @@ export default function FoodSearchScreen() {
         return score(b) - score(a);
       });
       // Show top 50 after re-ranking
-      const displayItems = items.slice(0, 50);
-      console.log('[FoodSearch] Re-ranked', items.length, 'items, displaying top', displayItems.length, 'for query:', q);
+      const displayItems = filteredItems.slice(0, 50);
+      console.log('[FoodSearch] Re-ranked', filteredItems.length, 'items, displaying top', displayItems.length, 'for query:', q);
 
       // OPTIMIZATION: Cache the results
       setCachedResults(query, displayItems);

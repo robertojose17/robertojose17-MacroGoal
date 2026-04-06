@@ -434,11 +434,20 @@ export default function AddFoodScreen() {
         setSearchError('No foods found. Try a different search term.');
         setSearchResults([]);
       } else {
-        console.log('[AddFood] Found', products.length, 'products, re-ranking by name relevance');
+        console.log('[AddFood] Found', products.length, 'products, filtering and re-ranking by name relevance');
+        // Filter out products with no nutrition data
+        const withNutrition = products.slice(0, 100).filter((item: OpenFoodFactsProduct) => {
+          const n = item.nutriments || {};
+          const calories = n['energy-kcal_100g'] || n['energy-kcal'] || 0;
+          const protein = n['proteins_100g'] || n['proteins'] || 0;
+          const carbs = n['carbohydrates_100g'] || n['carbohydrates'] || 0;
+          const fat = n['fat_100g'] || n['fat'] || 0;
+          return calories > 0 || protein > 0 || carbs > 0 || fat > 0;
+        });
+        console.log('[AddFood] 🔍 Filtered to', withNutrition.length, 'items with nutrition data (removed', Math.min(products.length, 100) - withNutrition.length, 'without)');
         // RE-RANK by name relevance: exact match first, then starts-with, then compound names
         const q = query.trim().toLowerCase();
-        const ranked = products.slice(0, 100);
-        ranked.sort((a: OpenFoodFactsProduct, b: OpenFoodFactsProduct) => {
+        withNutrition.sort((a: OpenFoodFactsProduct, b: OpenFoodFactsProduct) => {
           const score = (item: OpenFoodFactsProduct) => {
             const name = (item.product_name || item.generic_name || '').toLowerCase().trim();
             const words = name.split(/\s+/);
@@ -453,7 +462,7 @@ export default function AddFoodScreen() {
           return score(b) - score(a);
         });
         // Show top 50 after re-ranking
-        const displayProducts = ranked.slice(0, 50);
+        const displayProducts = withNutrition.slice(0, 50);
         console.log('[AddFood] Displaying top', displayProducts.length, 'results after re-ranking for query:', q);
         setSearchResults(displayProducts);
         setSearchError(null);
