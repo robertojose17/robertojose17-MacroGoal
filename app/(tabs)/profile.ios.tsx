@@ -875,15 +875,17 @@ export default function ProfileScreen() {
             });
           }}
         >
-          <Text style={[styles.feedbackRowLabel, { color: isDark ? colors.textDark : colors.text }]}>
-            Send Feedback
-          </Text>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="arrow-forward"
-            size={16}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
+          <View style={styles.feedbackRow}>
+            <Text style={[styles.feedbackRowLabel, { color: isDark ? colors.textDark : colors.text }]}>
+              Send Feedback
+            </Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={16}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
