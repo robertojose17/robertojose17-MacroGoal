@@ -46,11 +46,13 @@ const formatDateForStorage = (date: Date): string => {
 };
 
 const getServingDisplayText = (item: FoodItem): string => {
-  if (item.serving_description) {
-    return item.serving_description;
-  }
+  // grams is the actual total grams added (serving_amount * number_of_servings),
+  // so always prefer it over serving_description which stores only the per-serving value.
   if (item.grams) {
     return `${Math.round(item.grams)} g`;
+  }
+  if (item.serving_description) {
+    return item.serving_description;
   }
   const quantity = item.quantity || 1;
   const servingAmount = item.foods?.serving_amount || 100;
