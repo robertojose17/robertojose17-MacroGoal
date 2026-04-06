@@ -202,61 +202,6 @@ export default function FoodSearchScreen() {
     };
   }, [date, mealType]);
 
-  useEffect(() => {
-    logTiming('(a) Input changed');
-    console.log('[FoodSearch] Query changed:', searchQuery, 'length:', searchQuery.length);
-    
-    // Clear previous debounce timer
-    if (debounceTimerRef.current) {
-      console.log('[FoodSearch] Clearing previous debounce timer');
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-
-    const trimmedQuery = searchQuery.trim();
-
-    // OPTIMIZATION: If query is empty, immediately clear results (no request)
-    if (trimmedQuery.length === 0) {
-      console.log('[FoodSearch] Query empty, clearing results immediately');
-      setResults([]);
-      setErrorMessage(null);
-      setHasSearched(false);
-      setLoading(false);
-      timingRef.current = {};
-      return;
-    }
-
-    // OPTIMIZATION: Require at least 2 characters before searching
-    if (trimmedQuery.length < 2) {
-      console.log('[FoodSearch] Query too short (<2 chars), clearing results');
-      setResults([]);
-      setErrorMessage(null);
-      setHasSearched(false);
-      setLoading(false);
-      return;
-    }
-
-    // OPTIMIZATION: Check cache first for progressive typing
-    // If user types "chi" -> "chip", we can reuse cached "chi" results while fetching "chip"
-    const cachedResults = getCachedResults(trimmedQuery);
-    if (cachedResults) {
-      console.log('[FoodSearch] Using cached results immediately');
-      setResults(cachedResults);
-      setErrorMessage(null);
-      setHasSearched(true);
-      setLoading(false);
-      // Still trigger search in background to ensure fresh results
-    }
-
-    // OPTIMIZATION: Debounce search (350ms for optimal mobile performance)
-    console.log('[FoodSearch] Setting debounce timer (350ms) for:', trimmedQuery);
-    debounceTimerRef.current = setTimeout(() => {
-      logTiming('(b) Debounce triggered');
-      console.log('[FoodSearch] Debounce timer fired for:', trimmedQuery);
-      performSearch(trimmedQuery);
-    }, 350);
-  }, [searchQuery, logTiming, performSearch]);
-
   const performSearch = useCallback(async (query: string) => {
     logTiming('(c) Request start');
     console.log('[FoodSearch] ========== PERFORMING SEARCH ==========');
@@ -367,7 +312,25 @@ export default function FoodSearchScreen() {
 
       logTiming('(d) Results transformed');
       console.log('[FoodSearch] ✅ Transformed', items.length, 'items for display');
-      
+
+      // RELEVANCE RE-RANKING: Sort by how closely the product name matches the query
+      const q = query.toLowerCase().trim();
+      items.sort((a, b) => {
+        const scoreItem = (item: SearchResultItem) => {
+          const name = (item.product.product_name || item.product.generic_name || '').toLowerCase().trim();
+          let score = 0;
+          if (name === q) score += 100;
+          else if (name.startsWith(q + ' ') || name.startsWith(q + ',')) score += 70;
+          else if (name.split(' ')[0] === q) score += 50;
+          else if (name.includes(q)) score += 20;
+          if (name.length < 25) score += 10;
+          if (item.hasNutrition) score += 15;
+          return score;
+        };
+        return scoreItem(b) - scoreItem(a);
+      });
+      console.log('[FoodSearch] Re-ranked', items.length, 'items by relevance to query:', q);
+
       // OPTIMIZATION: Cache the results
       setCachedResults(query, items);
       
@@ -394,6 +357,61 @@ export default function FoodSearchScreen() {
       setLoading(false);
     }
   }, [logTiming]);
+
+  useEffect(() => {
+    logTiming('(a) Input changed');
+    console.log('[FoodSearch] Query changed:', searchQuery, 'length:', searchQuery.length);
+    
+    // Clear previous debounce timer
+    if (debounceTimerRef.current) {
+      console.log('[FoodSearch] Clearing previous debounce timer');
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const trimmedQuery = searchQuery.trim();
+
+    // OPTIMIZATION: If query is empty, immediately clear results (no request)
+    if (trimmedQuery.length === 0) {
+      console.log('[FoodSearch] Query empty, clearing results immediately');
+      setResults([]);
+      setErrorMessage(null);
+      setHasSearched(false);
+      setLoading(false);
+      timingRef.current = {};
+      return;
+    }
+
+    // OPTIMIZATION: Require at least 2 characters before searching
+    if (trimmedQuery.length < 2) {
+      console.log('[FoodSearch] Query too short (<2 chars), clearing results');
+      setResults([]);
+      setErrorMessage(null);
+      setHasSearched(false);
+      setLoading(false);
+      return;
+    }
+
+    // OPTIMIZATION: Check cache first for progressive typing
+    // If user types "chi" -> "chip", we can reuse cached "chi" results while fetching "chip"
+    const cachedResults = getCachedResults(trimmedQuery);
+    if (cachedResults) {
+      console.log('[FoodSearch] Using cached results immediately');
+      setResults(cachedResults);
+      setErrorMessage(null);
+      setHasSearched(true);
+      setLoading(false);
+      // Still trigger search in background to ensure fresh results
+    }
+
+    // OPTIMIZATION: Debounce search (350ms for optimal mobile performance)
+    console.log('[FoodSearch] Setting debounce timer (350ms) for:', trimmedQuery);
+    debounceTimerRef.current = setTimeout(() => {
+      logTiming('(b) Debounce triggered');
+      console.log('[FoodSearch] Debounce timer fired for:', trimmedQuery);
+      performSearch(trimmedQuery);
+    }, 350);
+  }, [searchQuery, logTiming, performSearch]);
 
   const handleRetry = useCallback(() => {
     console.log('[FoodSearch] Retry button pressed');
