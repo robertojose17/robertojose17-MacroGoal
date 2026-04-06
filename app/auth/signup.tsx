@@ -12,7 +12,6 @@ import {
   Alert,
   ActivityIndicator,
   ImageBackground,
-  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,8 +19,6 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase/client';
 import * as Linking from 'expo-linking';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const BG_IMAGE = require('../../assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
 
@@ -249,13 +246,11 @@ export default function SignUpScreen() {
 
   return (
     <ImageBackground source={BG_IMAGE} style={styles.bg} resizeMode="cover">
-      {/* Dark overlay */}
-      <View style={styles.overlay} />
-
-      {/* Bottom gradient fade */}
+      {/* Gradient overlay: transparent at top, solid black at bottom */}
       <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.85)']}
-        style={styles.bottomGradient}
+        colors={['transparent', 'transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.95)', '#000000']}
+        locations={[0, 0.35, 0.55, 0.75, 1]}
+        style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
 
@@ -271,12 +266,6 @@ export default function SignUpScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Branding */}
-            <View style={styles.branding}>
-              <Text style={styles.logoText}>MacroGoal</Text>
-              <Text style={styles.brandSubtitle}>Transform your body. Start today.</Text>
-            </View>
-
             {/* Glassmorphism card */}
             <View style={styles.cardWrapper}>
               <BlurView intensity={20} tint="dark" style={styles.blurCard}>
@@ -364,17 +353,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  bottomGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: SCREEN_HEIGHT * 0.65,
-  },
   safeArea: {
     flex: 1,
   },
@@ -386,24 +364,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingHorizontal: 20,
     paddingBottom: 24,
-  },
-  branding: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  logoText: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: '#C9A84C',
-    letterSpacing: 1,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  brandSubtitle: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '400',
-    letterSpacing: 0.2,
   },
   cardWrapper: {
     borderRadius: 24,
