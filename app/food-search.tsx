@@ -253,6 +253,14 @@ export default function FoodSearchScreen() {
       }
 
       // Check for errors
+      if (result.status === 503) {
+        console.log('[FoodSearch] 503 status after retries');
+        setResults([]);
+        setErrorMessage('The food database is temporarily busy. Please try again in a moment.');
+        setLoading(false);
+        return;
+      }
+
       if (result.status !== 200 && result.status !== 0) {
         console.log('[FoodSearch] Non-200 status returned:', result.status);
         setResults([]);

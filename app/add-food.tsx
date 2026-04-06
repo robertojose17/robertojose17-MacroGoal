@@ -406,7 +406,10 @@ export default function AddFoodScreen() {
       
       if (!response.ok) {
         console.error('[AddFood] HTTP error:', response.status);
-        setSearchError('Network error. Please check your connection and try again.');
+        const msg = response.status === 503
+          ? 'The food database is temporarily busy. Please try again in a moment.'
+          : 'Network error. Please check your connection and try again.';
+        setSearchError(msg);
         setSearchResults([]);
         setIsSearching(false);
         return;

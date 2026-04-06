@@ -630,78 +630,84 @@ async function fetchWithTimeout(
  * - Safe response parsing
  */
 export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsSearchResult> {
-  try {
-    console.log(`[OpenFoodFacts] ========== TEXT SEARCH ==========`);
-    console.log(`[OpenFoodFacts] Query: "${query}"`);
-    
-    // URL-encode the query
-    const encodedQuery = encodeURIComponent(query);
-    
-    // OPTIMIZATION: Use simple, known-good OFF search endpoint with minimal fields and limit
-    // Only request the fields we actually need to reduce response size and parsing time
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=100&sort_by=unique_scans_n&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,nutriments`;
-    
-    console.log(`[OpenFoodFacts] Search URL: ${url}`);
-    
-    const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
-    
-    console.log(`[OpenFoodFacts] Response status: ${response.status}`);
-    
-    if (!response.ok) {
-      console.log(`[OpenFoodFacts] ❌ Search failed (status: ${response.status})`);
-      return {
-        products: [],
-        count: 0,
-        page: 1,
-        status: response.status,
-      };
-    }
+  console.log(`[OpenFoodFacts] ========== TEXT SEARCH ==========`);
+  console.log(`[OpenFoodFacts] Query: "${query}"`);
 
-    const data = await response.json();
-    
-    console.log(`[OpenFoodFacts] Response data keys:`, Object.keys(data || {}));
-    
-    // Safe response parsing
-    if (!data || !data.products) {
-      console.log(`[OpenFoodFacts] ❌ No products field in response`);
-      return {
-        products: [],
-        count: 0,
-        page: 1,
-        status: response.status,
-      };
+  // URL-encode the query
+  const encodedQuery = encodeURIComponent(query);
+
+  // OPTIMIZATION: Use simple, known-good OFF search endpoint with minimal fields and limit
+  // Only request the fields we actually need to reduce response size and parsing time
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&search_simple=1&action=process&json=1&page_size=100&sort_by=unique_scans_n&fields=code,product_name,generic_name,brands,serving_size,serving_quantity,nutriments`;
+
+  console.log(`[OpenFoodFacts] Search URL: ${url}`);
+
+  // Retry logic: up to 3 attempts for 503/network errors
+  let lastResult: OpenFoodFactsSearchResult = { products: [], count: 0, page: 1, status: 0 };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`[OpenFoodFacts] Attempt ${attempt}/3`);
+      const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
+
+      console.log(`[OpenFoodFacts] Response status: ${response.status}`);
+
+      if (response.ok) {
+        const data = await response.json();
+
+        console.log(`[OpenFoodFacts] Response data keys:`, Object.keys(data || {}));
+
+        // Safe response parsing
+        if (!data || !data.products) {
+          console.log(`[OpenFoodFacts] ❌ No products field in response`);
+          return { products: [], count: 0, page: 1, status: response.status };
+        }
+
+        if (!Array.isArray(data.products)) {
+          console.log(`[OpenFoodFacts] ❌ products field is not an array`);
+          return { products: [], count: 0, page: 1, status: response.status };
+        }
+
+        console.log(`[OpenFoodFacts] ✅ Search returned ${data.products.length} products`);
+        return {
+          products: data.products,
+          count: data.count || data.products.length,
+          page: data.page || 1,
+          status: response.status,
+        };
+      }
+
+      // 503: retry with exponential backoff
+      if (response.status === 503 && attempt < 3) {
+        const delay = attempt * 500;
+        console.log(`[OpenFoodFacts] ⚠️ 503 received, retrying in ${delay}ms (attempt ${attempt}/3)`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        lastResult = { products: [], count: 0, page: 1, status: 503 };
+        continue;
+      }
+
+      // Other non-ok status — return empty immediately
+      console.log(`[OpenFoodFacts] ❌ Search failed (status: ${response.status})`);
+      return { products: [], count: 0, page: 1, status: response.status };
+    } catch (error) {
+      console.error(`[OpenFoodFacts] ❌ Network error on attempt ${attempt}:`, error);
+      if (error instanceof Error) {
+        console.error('[OpenFoodFacts] Error message:', error.message);
+      }
+      if (attempt < 3) {
+        const delay = attempt * 500;
+        console.log(`[OpenFoodFacts] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      // Final attempt failed — return network error result
+      return { products: [], count: 0, page: 1, status: 0 };
     }
-    
-    if (!Array.isArray(data.products)) {
-      console.log(`[OpenFoodFacts] ❌ products field is not an array`);
-      return {
-        products: [],
-        count: 0,
-        page: 1,
-        status: response.status,
-      };
-    }
-    
-    console.log(`[OpenFoodFacts] ✅ Search returned ${data.products.length} products`);
-    return {
-      products: data.products,
-      count: data.count || data.products.length,
-      page: data.page || 1,
-      status: response.status,
-    };
-  } catch (error) {
-    console.error('[OpenFoodFacts] ❌ Error searching:', error);
-    if (error instanceof Error) {
-      console.error('[OpenFoodFacts] Error message:', error.message);
-    }
-    // NEVER throw - always return result object on failure
-    return {
-      products: [],
-      count: 0,
-      page: 1,
-      status: 0, // 0 indicates network error
-    };
   }
+
+  // All retries exhausted (only reached after 3x 503)
+  console.log('[OpenFoodFacts] ❌ All 3 attempts failed (503)');
+  return lastResult;
 }
 
 /**
