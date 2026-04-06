@@ -434,8 +434,28 @@ export default function AddFoodScreen() {
         setSearchError('No foods found. Try a different search term.');
         setSearchResults([]);
       } else {
-        console.log('[AddFood] Found', products.length, 'products');
-        setSearchResults(products);
+        console.log('[AddFood] Found', products.length, 'products, re-ranking by name relevance');
+        // RE-RANK by name relevance: exact match first, then starts-with, then compound names
+        const q = query.trim().toLowerCase();
+        const ranked = products.slice(0, 100);
+        ranked.sort((a: OpenFoodFactsProduct, b: OpenFoodFactsProduct) => {
+          const score = (item: OpenFoodFactsProduct) => {
+            const name = (item.product_name || item.generic_name || '').toLowerCase().trim();
+            const words = name.split(/\s+/);
+            if (name === q) return 1000;                          // exact match: "banana"
+            if (words[0] === q && words.length === 1) return 900; // single word exact
+            if (words[0] === q && words.length === 2) return 800; // "banana X" (two words, starts with query)
+            if (words[0] === q) return 700;                       // "banana X Y Z..." (starts with query)
+            if (name.startsWith(q)) return 600;                   // starts with query string
+            if (name.includes(q)) return 400;                     // contains query anywhere
+            return 0;
+          };
+          return score(b) - score(a);
+        });
+        // Show top 50 after re-ranking
+        const displayProducts = ranked.slice(0, 50);
+        console.log('[AddFood] Displaying top', displayProducts.length, 'results after re-ranking for query:', q);
+        setSearchResults(displayProducts);
         setSearchError(null);
       }
     } catch (error) {

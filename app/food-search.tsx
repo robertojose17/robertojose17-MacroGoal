@@ -313,28 +313,30 @@ export default function FoodSearchScreen() {
       logTiming('(d) Results transformed');
       console.log('[FoodSearch] ✅ Transformed', items.length, 'items for display');
 
-      // RELEVANCE RE-RANKING: Sort by how closely the product name matches the query
+      // RE-RANK by name relevance: exact match first, then starts-with, then compound names
       const q = query.toLowerCase().trim();
       items.sort((a, b) => {
-        const scoreItem = (item: SearchResultItem) => {
+        const score = (item: SearchResultItem) => {
           const name = (item.product.product_name || item.product.generic_name || '').toLowerCase().trim();
-          let score = 0;
-          if (name === q) score += 100;
-          else if (name.startsWith(q + ' ') || name.startsWith(q + ',')) score += 70;
-          else if (name.split(' ')[0] === q) score += 50;
-          else if (name.includes(q)) score += 20;
-          if (name.length < 25) score += 10;
-          if (item.hasNutrition) score += 15;
-          return score;
+          const words = name.split(/\s+/);
+          if (name === q) return 1000;                          // exact match: "banana"
+          if (words[0] === q && words.length === 1) return 900; // single word exact
+          if (words[0] === q && words.length === 2) return 800; // "banana X" (two words, starts with query)
+          if (words[0] === q) return 700;                       // "banana X Y Z..." (starts with query)
+          if (name.startsWith(q)) return 600;                   // starts with query string
+          if (name.includes(q)) return 400;                     // contains query anywhere
+          return 0;
         };
-        return scoreItem(b) - scoreItem(a);
+        return score(b) - score(a);
       });
-      console.log('[FoodSearch] Re-ranked', items.length, 'items by relevance to query:', q);
+      // Show top 50 after re-ranking
+      const displayItems = items.slice(0, 50);
+      console.log('[FoodSearch] Re-ranked', items.length, 'items, displaying top', displayItems.length, 'for query:', q);
 
       // OPTIMIZATION: Cache the results
-      setCachedResults(query, items);
+      setCachedResults(query, displayItems);
       
-      setResults(items);
+      setResults(displayItems);
       setLoading(false);
       logTiming('(e) Results setState complete');
     } catch (error) {
