@@ -8,6 +8,9 @@ import {
   ActivityIndicator,
   Animated,
   ScrollView,
+  TouchableOpacity,
+  Modal,
+  Pressable,
 } from 'react-native';
 import Svg, { Line, Path, Circle, Text as SvgText, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -38,66 +41,179 @@ interface WeightCheckIn {
   weightLbs: number;
 }
 
+// ─── Stat tooltip modal ───────────────────────────────────────────────────────
+interface StatTooltipModalProps {
+  visible: boolean;
+  title: string;
+  explanation: string;
+  isDark: boolean;
+  onClose: () => void;
+}
+
+function StatTooltipModal({ visible, title, explanation, isDark, onClose }: StatTooltipModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 32,
+        }}
+        onPress={onClose}
+      >
+        <Pressable
+          style={{
+            backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+            borderRadius: 20,
+            padding: 24,
+            width: '100%',
+            maxWidth: 340,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.25,
+            shadowRadius: 20,
+            elevation: 10,
+          }}
+          onPress={() => {}}
+        >
+          {/* Header row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                color: isDark ? '#888' : '#999',
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+              }}
+            >
+              {title}
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 14, color: isDark ? '#AAA' : '#666', lineHeight: 16 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <Text
+            style={{
+              fontSize: 15,
+              color: isDark ? '#E5E5EA' : '#1C1C1E',
+              lineHeight: 22,
+              fontWeight: '400',
+            }}
+          >
+            {explanation}
+          </Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ─── Premium stat card for Stats view ────────────────────────────────────────
 interface PremiumStatCardProps {
   title: string;
   value: string;
   subtitle: string;
+  explanation: string;
   accent?: string;
   isDark: boolean;
 }
 
-function PremiumStatCard({ title, value, subtitle, accent, isDark }: PremiumStatCardProps) {
+function PremiumStatCard({ title, value, subtitle, explanation, accent, isDark }: PremiumStatCardProps) {
+  const [tooltipVisible, setTooltipVisible] = useState(false);
   const valueColor = accent || (isDark ? '#FFFFFF' : '#111111');
+
+  const handlePress = () => {
+    console.log('[ProgressCard] Stat card tapped:', title);
+    setTooltipVisible(true);
+  };
+
+  const handleClose = () => {
+    console.log('[ProgressCard] Stat tooltip dismissed:', title);
+    setTooltipVisible(false);
+  };
+
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-        borderRadius: 16,
-        padding: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.4 : 0.08,
-        shadowRadius: 8,
-        elevation: 3,
-        borderWidth: isDark ? 0 : 1,
-        borderColor: '#F0F0F0',
-      }}
-    >
-      <Text
+    <>
+      <TouchableOpacity
+        activeOpacity={0.75}
+        onPress={handlePress}
         style={{
-          fontSize: 10,
-          fontWeight: '600',
-          color: isDark ? '#666' : '#999',
-          letterSpacing: 0.8,
-          textTransform: 'uppercase',
-          marginBottom: 8,
+          flex: 1,
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+          borderRadius: 16,
+          padding: 16,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: isDark ? 0.4 : 0.08,
+          shadowRadius: 8,
+          elevation: 3,
+          borderWidth: isDark ? 0 : 1,
+          borderColor: '#F0F0F0',
         }}
       >
-        {title}
-      </Text>
-      <Text
-        style={{
-          fontSize: 14,
-          fontWeight: '600',
-          color: valueColor,
-          lineHeight: 20,
-        }}
-      >
-        {value}
-      </Text>
-      <Text
-        style={{
-          fontSize: 12,
-          color: isDark ? '#888' : '#999',
-          marginTop: 4,
-          lineHeight: 16,
-        }}
-      >
-        {subtitle}
-      </Text>
-    </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: '600',
+              color: isDark ? '#666' : '#999',
+              letterSpacing: 0.8,
+              textTransform: 'uppercase',
+            }}
+          >
+            {title}
+          </Text>
+          <Text style={{ fontSize: 12, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
+        </View>
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: '600',
+            color: valueColor,
+            lineHeight: 20,
+          }}
+        >
+          {value}
+        </Text>
+        <Text
+          style={{
+            fontSize: 12,
+            color: isDark ? '#888' : '#999',
+            marginTop: 4,
+            lineHeight: 16,
+          }}
+        >
+          {subtitle}
+        </Text>
+      </TouchableOpacity>
+
+      <StatTooltipModal
+        visible={tooltipVisible}
+        title={title}
+        explanation={explanation}
+        isDark={isDark}
+        onClose={handleClose}
+      />
+    </>
   );
 }
 
@@ -951,6 +1067,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                 subtitle={card1Subtitle}
                 accent={card1Accent}
                 isDark={isDark}
+                explanation="The total weight you have lost (or gained) since your starting weight. A downward arrow means you are losing weight; an upward arrow means you have gained since the start."
               />
               <PremiumStatCard
                 title="MOMENTUM"
@@ -958,6 +1075,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                 subtitle={card2Subtitle}
                 accent={isDark ? '#FFFFFF' : '#111111'}
                 isDark={isDark}
+                explanation="Your current rate of weight change based on the last 14 days of logged check-ins, expressed in pounds per week. The subtitle shows how closely your calorie intake has matched your daily goal."
               />
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -967,6 +1085,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                 subtitle={card3Subtitle}
                 accent={card3Accent}
                 isDark={isDark}
+                explanation="How many days ahead of or behind your original plan you are, calculated from your cumulative calorie surplus or deficit. Being ahead means your eating habits are putting you on track to reach your goal sooner."
               />
               <PremiumStatCard
                 title="TARGET"
@@ -974,6 +1093,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
                 subtitle={card4Subtitle}
                 accent={isDark ? '#FFFFFF' : '#111111'}
                 isDark={isDark}
+                explanation="Your starting weight versus your current weight, and the projected date you will reach your goal weight based on your recent calorie tracking and pace."
               />
             </View>
           </View>
