@@ -1138,7 +1138,6 @@ export default function ProfileScreen() {
                   mode="date"
                   display="spinner"
                   onChange={handleStartDateChange}
-                  maximumDate={new Date()}
                   textColor={isDark ? colors.textDark : colors.text}
                 />
               </TouchableOpacity>
@@ -1150,7 +1149,6 @@ export default function ProfileScreen() {
             mode="date"
             display="default"
             onChange={handleStartDateChange}
-            maximumDate={new Date()}
           />
         )
       )}
