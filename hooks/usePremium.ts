@@ -62,8 +62,8 @@ export function usePremium(): UsePremiumReturn {
   // Track in-flight check to avoid concurrent duplicate calls
   const checkInProgress = useRef(false);
 
-  const checkPremiumStatus = useCallback(async () => {
-    if (checkInProgress.current) {
+  const checkPremiumStatus = useCallback(async (force = false) => {
+    if (!force && checkInProgress.current) {
       console.log('[usePremium] Check already in progress, skipping duplicate call');
       return;
     }
@@ -118,7 +118,11 @@ export function usePremium(): UsePremiumReturn {
                 console.log('[usePremium] ✅ RevenueCat user identified from hook:', user.id);
                 console.log('[usePremium] Active entitlements after login:', Object.keys(identifiedInfo.entitlements.active));
 
-                const premiumEntitlementAfterLogin = identifiedInfo.entitlements.active['Macrogoal Pro'];
+                const premiumEntitlementAfterLogin =
+                  identifiedInfo.entitlements.active['pro'] ||
+                  identifiedInfo.entitlements.active['Macrogoal Pro'] ||
+                  identifiedInfo.entitlements.active['macrogoal_pro'] ||
+                  identifiedInfo.entitlements.active['premium'];
                 const hasActiveAfterLogin = premiumEntitlementAfterLogin?.isActive || false;
 
                 setCustomerInfo(identifiedInfo);
@@ -135,12 +139,17 @@ export function usePremium(): UsePremiumReturn {
               }
             }
 
-            // Check for Macrogoal Pro entitlement (configured in RevenueCat dashboard)
-            const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
+            // Check for premium entitlement — try both possible keys used in the RevenueCat dashboard
+            const premiumEntitlement =
+              info.entitlements.active['pro'] ||
+              info.entitlements.active['Macrogoal Pro'] ||
+              info.entitlements.active['macrogoal_pro'] ||
+              info.entitlements.active['premium'];
             const hasActiveEntitlement = premiumEntitlement?.isActive || false;
 
             console.log('[usePremium] Premium Entitlement Details:');
             console.log('[usePremium] - Is Active:', hasActiveEntitlement);
+            console.log('[usePremium] - Matched entitlement key:', premiumEntitlement ? 'found' : 'none (checked: pro, Macrogoal Pro, macrogoal_pro, premium)');
             console.log('[usePremium] - Product Identifier:', premiumEntitlement?.productIdentifier);
             console.log('[usePremium] - Will Renew:', premiumEntitlement?.willRenew);
             console.log('[usePremium] - Period Type:', premiumEntitlement?.periodType);
@@ -196,8 +205,8 @@ export function usePremium(): UsePremiumReturn {
   }, []);
 
   const refreshPremiumStatus = useCallback(async () => {
-    console.log('[usePremium] 🔄 Manually refreshing premium status');
-    await checkPremiumStatus();
+    console.log('[usePremium] 🔄 Manually refreshing premium status (forced)');
+    await checkPremiumStatus(true);
   }, [checkPremiumStatus]);
 
   useEffect(() => {
@@ -214,7 +223,11 @@ export function usePremium(): UsePremiumReturn {
         console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
 
         setCustomerInfo(info);
-        const premiumEntitlement = info.entitlements.active['Macrogoal Pro'];
+        const premiumEntitlement =
+          info.entitlements.active['pro'] ||
+          info.entitlements.active['Macrogoal Pro'] ||
+          info.entitlements.active['macrogoal_pro'] ||
+          info.entitlements.active['premium'];
         const hasActiveEntitlement = premiumEntitlement?.isActive || false;
 
         console.log('[usePremium] - Premium Status:', hasActiveEntitlement);
