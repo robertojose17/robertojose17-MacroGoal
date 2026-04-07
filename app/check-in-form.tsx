@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +20,10 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
+import * as ImagePicker from 'expo-image-picker';
+import { toLocalDateString } from '@/utils/dateUtils';
+
+const PROGRESS_PHOTOS_URL = `${supabase.supabaseUrl}/functions/v1/progress-photos`;
 
 type CheckInType = 'weight' | 'steps' | 'gym';
 
@@ -52,6 +57,9 @@ export default function CheckInFormScreen() {
   
   // Common
   const [notes, setNotes] = useState('');
+
+  // Photo (weight check-in only)
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   const loadCheckInData = useCallback(async (userWithPrefs: any) => {
     if (!checkInId) return;
@@ -200,6 +208,128 @@ export default function CheckInFormScreen() {
     }
   };
 
+  const handlePickPhoto = useCallback(() => {
+    console.log('[CheckInForm] Photo picker action sheet opened');
+    Alert.alert(
+      'Add Progress Photo',
+      'Choose a source',
+      [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            console.log('[CheckInForm] Launching camera for progress photo');
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission Required', 'Camera access is needed to take a photo.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: 'images',
+              quality: 0.8,
+              allowsEditing: true,
+              aspect: [3, 4],
+            });
+            if (!result.canceled && result.assets[0]) {
+              console.log('[CheckInForm] Camera photo selected:', result.assets[0].uri);
+              setSelectedPhoto(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: 'Choose from Library',
+          onPress: async () => {
+            console.log('[CheckInForm] Launching image library for progress photo');
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission Required', 'Photo library access is needed to select a photo.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: 'images',
+              quality: 0.8,
+              allowsEditing: true,
+              aspect: [3, 4],
+            });
+            if (!result.canceled && result.assets[0]) {
+              console.log('[CheckInForm] Library photo selected:', result.assets[0].uri);
+              setSelectedPhoto(result.assets[0].uri);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, []);
+
+  const uploadProgressPhoto = async (
+    localUri: string,
+    dateString: string,
+    savedCheckInId: string,
+  ): Promise<void> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('[CheckInForm] No session for photo upload');
+        return;
+      }
+      const authHeader = { Authorization: `Bearer ${session.access_token}` };
+
+      // Step 1: Get upload URL
+      const filename = `photo_${Date.now()}.jpg`;
+      console.log('[CheckInForm] 📸 Requesting upload URL for:', filename);
+      const urlRes = await fetch(`${PROGRESS_PHOTOS_URL}/upload-url`, {
+        method: 'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename,
+          content_type: 'image/jpeg',
+          date: dateString,
+          check_in_id: savedCheckInId,
+        }),
+      });
+      if (!urlRes.ok) {
+        const errText = await urlRes.text();
+        throw new Error(`Upload URL request failed (${urlRes.status}): ${errText}`);
+      }
+      const { upload_url, storage_path } = await urlRes.json();
+      console.log('[CheckInForm] 📸 Got upload URL, storage_path:', storage_path);
+
+      // Step 2: Upload binary to storage
+      console.log('[CheckInForm] 📸 Uploading image binary to storage...');
+      const fileResponse = await fetch(localUri);
+      const blob = await fileResponse.blob();
+      const putRes = await fetch(upload_url, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+      if (!putRes.ok) {
+        throw new Error(`Storage PUT failed (${putRes.status})`);
+      }
+      console.log('[CheckInForm] 📸 Image uploaded to storage successfully');
+
+      // Step 3: Save photo record
+      console.log('[CheckInForm] 📸 Saving photo record...');
+      const saveRes = await fetch(PROGRESS_PHOTOS_URL, {
+        method: 'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storage_path,
+          date: dateString,
+          check_in_id: savedCheckInId,
+        }),
+      });
+      if (!saveRes.ok) {
+        const errText = await saveRes.text();
+        throw new Error(`Photo record save failed (${saveRes.status}): ${errText}`);
+      }
+      console.log('[CheckInForm] ✅ Progress photo saved successfully');
+    } catch (err) {
+      console.error('[CheckInForm] ❌ Photo upload error (non-blocking):', err);
+      throw err;
+    }
+  };
+
   const handleSave = async () => {
     console.log('[CheckInForm] Save button pressed — type:', checkInType, 'isEditing:', isEditing);
     try {
@@ -224,11 +354,7 @@ export default function CheckInFormScreen() {
       }
 
       // Convert date to YYYY-MM-DD format in LOCAL timezone
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const dateString = `${year}-${month}-${day}`;
-      
+      const dateString = toLocalDateString(date);
       console.log('[CheckInForm] 📅 Saving date:', dateString, '(from', date.toLocaleDateString(), ')');
 
       // Build check-in data based on type
@@ -254,6 +380,8 @@ export default function CheckInFormScreen() {
 
       console.log('[CheckInForm] 💾 Saving check-in data:', checkInData);
 
+      let savedCheckInId: string | undefined = isEditing ? checkInId : undefined;
+
       if (isEditing) {
         // Update existing check-in
         const { error } = await supabase
@@ -268,18 +396,13 @@ export default function CheckInFormScreen() {
         }
 
         console.log('[CheckInForm] ✅ Check-in updated successfully');
-
-        // Mirror update to tracker_entries so Recent Entries stays in sync
         await syncToTrackerEntries(authUser.id, checkInType, dateString, checkInData, notes);
-
-        Alert.alert('Success', 'Check-in updated successfully', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
       } else {
-        // Create new check-in
-        const { error } = await supabase
+        // Create new check-in — use returning to get the new ID
+        const { data: insertedRows, error } = await supabase
           .from('check_ins')
-          .insert(checkInData);
+          .insert(checkInData)
+          .select('id');
 
         if (error) {
           console.error('[CheckInForm] Error creating check-in:', error);
@@ -287,15 +410,29 @@ export default function CheckInFormScreen() {
           return;
         }
 
-        console.log('[CheckInForm] ✅ Check-in created successfully');
-
-        // Mirror to tracker_entries so Recent Entries stays in sync
+        savedCheckInId = insertedRows?.[0]?.id;
+        console.log('[CheckInForm] ✅ Check-in created successfully, id:', savedCheckInId);
         await syncToTrackerEntries(authUser.id, checkInType, dateString, checkInData, notes);
-
-        Alert.alert('Success', 'Check-in saved successfully', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
       }
+
+      // Upload photo if one was selected (weight check-ins only, non-blocking)
+      if (checkInType === 'weight' && selectedPhoto && savedCheckInId) {
+        console.log('[CheckInForm] 📸 Starting photo upload for check-in:', savedCheckInId);
+        try {
+          await uploadProgressPhoto(selectedPhoto, dateString, savedCheckInId);
+        } catch {
+          Alert.alert(
+            'Photo Upload Failed',
+            'Your check-in was saved, but the photo could not be uploaded. You can try again later.',
+          );
+        }
+      }
+
+      Alert.alert(
+        'Success',
+        isEditing ? 'Check-in updated successfully' : 'Check-in saved successfully',
+        [{ text: 'OK', onPress: () => router.back() }],
+      );
     } catch (error) {
       console.error('[CheckInForm] Error in handleSave:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -485,6 +622,57 @@ export default function CheckInFormScreen() {
           </View>
         )}
 
+        {/* Progress Photo (weight check-in only) */}
+        {checkInType === 'weight' && (
+          <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
+              Progress Photo (Optional)
+            </Text>
+            {selectedPhoto ? (
+              <View style={styles.photoPreviewContainer}>
+                <Image source={{ uri: selectedPhoto }} style={styles.photoPreview} resizeMode="cover" />
+                <TouchableOpacity
+                  style={styles.removePhotoButton}
+                  onPress={() => {
+                    console.log('[CheckInForm] Progress photo removed');
+                    setSelectedPhoto(null);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
+                    size={28}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.photoPickerArea,
+                  {
+                    borderColor: isDark ? colors.borderDark : colors.border,
+                    backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                  },
+                ]}
+                onPress={handlePickPhoto}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="camera"
+                  android_material_icon_name="camera_alt"
+                  size={32}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+                <Text style={[styles.photoPickerText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  Add Photo
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Notes */}
         <View style={[styles.card, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
           <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>Notes (Optional)</Text>
@@ -654,5 +842,34 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  photoPickerArea: {
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderRadius: borderRadius.md,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  photoPickerText: {
+    ...typography.bodyBold,
+  },
+  photoPreviewContainer: {
+    position: 'relative',
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+  },
+  photoPreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: borderRadius.md,
+  },
+  removePhotoButton: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: borderRadius.full,
   },
 });

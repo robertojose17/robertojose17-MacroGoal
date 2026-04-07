@@ -21,6 +21,7 @@ import MacroBar from '@/components/MacroBar';
 import ProgressCircle from '@/components/ProgressCircle';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
+import PhotoProgressCard from '@/components/PhotoProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/lib/supabase/client';
@@ -914,6 +915,9 @@ export default function DashboardScreen() {
 
         {/* Progress Card */}
         {user && <ProgressCard userId={user.id} isDark={isDark} />}
+
+        {/* Photo Progress Card */}
+        {user && <PhotoProgressCard userId={user.id} isDark={isDark} />}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
