@@ -6,6 +6,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { supabase } from '@/lib/supabase/client';
@@ -98,6 +100,92 @@ function buildInsight(
   return 'Stay consistent with logging and hitting your macro targets.';
 }
 
+// ─── Stat tooltip modal ───────────────────────────────────────────────────────
+
+interface StatTooltipModalProps {
+  visible: boolean;
+  title: string;
+  explanation: string;
+  isDark: boolean;
+  onClose: () => void;
+}
+
+function StatTooltipModal({ visible, title, explanation, isDark, onClose }: StatTooltipModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 32,
+        }}
+        onPress={onClose}
+      >
+        <Pressable
+          style={{
+            backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+            borderRadius: 20,
+            padding: 24,
+            width: '100%',
+            maxWidth: 340,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.25,
+            shadowRadius: 20,
+            elevation: 10,
+          }}
+          onPress={() => {}}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                color: isDark ? '#888' : '#999',
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+              }}
+            >
+              {title}
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 14, color: isDark ? '#AAA' : '#666', lineHeight: 16 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <Text
+            style={{
+              fontSize: 15,
+              color: isDark ? '#E5E5EA' : '#1C1C1E',
+              lineHeight: 22,
+              fontWeight: '400',
+            }}
+          >
+            {explanation}
+          </Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ConsistencyScore({ userId, isDark }: ConsistencyScoreProps) {
@@ -105,6 +193,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const [scoreData, setScoreData] = useState<ScoreBreakdown | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
+  const [tooltipKey, setTooltipKey] = useState<string | null>(null);
 
   const [journeyStartDate, setJourneyStartDate] = useState<string | null>(null);
   const [rangeStartDate, setRangeStartDate] = useState<string | null>(null);
@@ -375,8 +464,53 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const calAccText = `${scoreData.avgCalorieAccuracy}%`;
   const protAccText = `${scoreData.avgProteinAccuracy}%`;
 
+  const handleInfoPress = (key: string) => {
+    console.log('[ConsistencyScore] Info button tapped:', key);
+    setTooltipKey(key);
+  };
+
+  const handleTooltipClose = () => {
+    console.log('[ConsistencyScore] Tooltip dismissed:', tooltipKey);
+    setTooltipKey(null);
+  };
+
+  const tooltips: Record<string, { title: string; explanation: string }> = {
+    score: {
+      title: 'Consistency Score',
+      explanation: 'A 0–100 score that measures how consistently you are hitting your daily nutrition targets. Each day earns up to 100 points: 50 for logging any food, up to 30 for calorie accuracy, and up to 20 for protein accuracy. Your final score is the average across all days in the selected range.',
+    },
+    today: {
+      title: 'Today',
+      explanation: 'Whether you have logged any food today. Logging at least one meal earns you the base 50 tracking points for the day, which is the single biggest driver of your Consistency Score.',
+    },
+    consistency: {
+      title: 'Consistency — Days Tracked',
+      explanation: 'The number of days in the selected range where you logged at least one meal. Missing days score zero and pull your overall Consistency Score down the most, so daily logging is the highest-impact habit to build.',
+    },
+    calories: {
+      title: 'Calories on Target',
+      explanation: 'How many days your total calorie intake landed within 5% of your daily calorie goal (95–105%). Hitting this window earns the full 30 calorie points for that day. Days further from your target earn fewer points on a sliding scale.',
+    },
+    protein: {
+      title: 'Protein on Target',
+      explanation: 'How many days your total protein intake landed within 5% of your daily protein goal (95–105%). Hitting this window earns the full 20 protein points for that day. Protein accuracy is weighted second after calorie accuracy in the scoring formula.',
+    },
+  };
+
+  const activeTooltip = tooltipKey ? tooltips[tooltipKey] : null;
+
   return (
     <React.Fragment>
+      {activeTooltip && (
+        <StatTooltipModal
+          visible={!!tooltipKey}
+          title={activeTooltip.title}
+          explanation={activeTooltip.explanation}
+          isDark={isDark}
+          onClose={handleTooltipClose}
+        />
+      )}
+
       <View
         style={[
           styles.card,
@@ -398,9 +532,17 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
             </Text>
           </View>
           <View style={styles.titleContainer}>
-            <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              Consistency Score
-            </Text>
+            <View style={styles.titleRow}>
+              <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Consistency Score
+              </Text>
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); handleInfoPress('score'); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ fontSize: 14, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={[styles.subtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
               {scoreData.insight}
             </Text>
@@ -419,47 +561,75 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
             {/* Stats grid */}
             <View style={styles.statsGrid}>
-              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text, fontSize: 13 }]}>
-                  No tracking yet
-                </Text>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => handleInfoPress('today')}
+                style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+              >
+                <View style={styles.statCellHeader}>
+                  <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text, fontSize: 13 }]}>
+                    No tracking yet
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
+                </View>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Today
                 </Text>
-              </View>
-              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
-                  {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
-                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => handleInfoPress('consistency')}
+                style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+              >
+                <View style={styles.statCellHeader}>
+                  <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text }]}>
+                    {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
+                </View>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Consistency
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   days completed
                 </Text>
-              </View>
-              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <Text style={[styles.statValue, { color: colors.calories }]}>
-                  {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
-                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => handleInfoPress('calories')}
+                style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+              >
+                <View style={styles.statCellHeader}>
+                  <Text style={[styles.statValue, { color: colors.calories }]}>
+                    {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
+                </View>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Calories
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   on target
                 </Text>
-              </View>
-              <View style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
-                <Text style={[styles.statValue, { color: colors.protein }]}>
-                  {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
-                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => handleInfoPress('protein')}
+                style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
+              >
+                <View style={styles.statCellHeader}>
+                  <Text style={[styles.statValue, { color: colors.protein }]}>
+                    {`${scoreData.trackedDays} / ${scoreData.totalDays} days`}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
+                </View>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   Protein
                 </Text>
                 <Text style={[styles.statLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
                   on target
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Date Range Control */}
@@ -559,6 +729,19 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  statCellHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 2,
   },
   cardTitle: {
     ...typography.h3,
