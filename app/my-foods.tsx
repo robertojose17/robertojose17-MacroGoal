@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 interface MyFood {
   id: string;
@@ -30,7 +31,7 @@ export default function MyFoodsScreen() {
   const isDark = colorScheme === 'dark';
 
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const context = params.context as string | undefined;
   const returnTo = params.returnTo as string | undefined;
 

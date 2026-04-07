@@ -10,6 +10,7 @@ import {
   Pressable,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { toLocalDateString } from '@/utils/dateUtils';
 import { supabase } from '@/lib/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
@@ -237,18 +238,18 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
         startDate = userData.created_at.split('T')[0];
         console.log('[ConsistencyScore] Using user created_at:', startDate);
       } else {
-        startDate = new Date().toISOString().split('T')[0];
+        startDate = toLocalDateString();
         console.log('[ConsistencyScore] Falling back to today:', startDate);
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       setJourneyStartDate(startDate);
       setRangeStartDate(startDate);
       setRangeEndDate(today);
       console.log('[ConsistencyScore] Range initialized:', startDate, '→', today);
     } catch (error) {
       console.error('[ConsistencyScore] Error loading journey start date:', error);
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       setJourneyStartDate(today);
       setRangeStartDate(today);
       setRangeEndDate(today);
@@ -322,7 +323,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       const cur = new Date(rangeStartDate + 'T00:00:00');
       const end = new Date(rangeEndDate + 'T00:00:00');
       while (cur <= end) {
-        allDates.push(cur.toISOString().split('T')[0]);
+        allDates.push(toLocalDateString(cur));
         cur.setDate(cur.getDate() + 1);
       }
 
@@ -386,8 +387,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   }, [userId, rangeStartDate, rangeEndDate]);
 
   const handleDateRangeSelect = (startDate: Date, endDate: Date) => {
-    const startStr = startDate.toISOString().split('T')[0];
-    const endStr = endDate.toISOString().split('T')[0];
+    const startStr = toLocalDateString(startDate);
+    const endStr = toLocalDateString(endDate);
     console.log('[ConsistencyScore] Date range changed:', startStr, '→', endStr);
     setRangeStartDate(startStr);
     setRangeEndDate(endStr);
@@ -395,7 +396,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
   const handleResetToJourneyStart = () => {
     if (journeyStartDate) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       console.log('[ConsistencyScore] Reset to journey start:', journeyStartDate, '→', today);
       setRangeStartDate(journeyStartDate);
       setRangeEndDate(today);
@@ -417,7 +418,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     if (!rangeStartDate || !rangeEndDate) return 'Loading...';
     const isDefault =
       rangeStartDate === journeyStartDate &&
-      rangeEndDate === new Date().toISOString().split('T')[0];
+      rangeEndDate === toLocalDateString();
     const start = new Date(rangeStartDate + 'T00:00:00').toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -434,7 +435,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
 
   const isCustomRange = () => {
     if (!rangeStartDate || !rangeEndDate || !journeyStartDate) return false;
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateString();
     return rangeStartDate !== journeyStartDate || rangeEndDate !== today;
   };
 

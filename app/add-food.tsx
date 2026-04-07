@@ -13,6 +13,7 @@ import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/ut
 import { supabase } from '@/lib/supabase/client';
 import { Food } from '@/types';
 import { addToDraft } from '@/utils/myMealsDraft';
+import { toLocalDateString } from '@/utils/dateUtils';
 import QuickAddHome from '@/components/QuickAddHome';
 import { usePremium } from '@/hooks/usePremium';
 
@@ -60,7 +61,7 @@ export default function AddFoodScreen() {
   const isDark = colorScheme === 'dark';
   const { isPremium } = usePremium();
 
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   
   const [activeTab, setActiveTab] = useState<TabType>('all');
   

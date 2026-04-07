@@ -7,6 +7,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 /**
  * BARCODE SCANNER SCREEN
@@ -28,7 +29,7 @@ export default function BarcodeScannerScreen() {
   const mode = (params.mode as string) || 'diary';
   const context = (params.context as string) || undefined;
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 

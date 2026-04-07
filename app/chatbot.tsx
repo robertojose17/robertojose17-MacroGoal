@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { toLocalDateString } from '@/utils/dateUtils';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -76,7 +77,7 @@ export default function ChatbotScreen() {
   // CRITICAL: Extract context from params
   const context = (params.context as string) || undefined;
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const returnTo = (params.returnTo as string) || undefined;
 
   console.log('[Chatbot] ========== SCREEN LOADED ==========');

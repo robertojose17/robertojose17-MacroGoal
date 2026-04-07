@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 // CRITICAL: Timeout constant
 const LOOKUP_TIMEOUT_MS = 10000; // 10 seconds
@@ -27,7 +28,7 @@ export default function BarcodeLookupScreen() {
 
   const barcode = (params.barcode as string) || '';
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const mode = (params.mode as string) || 'diary';
   const context = (params.context as string) || undefined;
   const returnTo = (params.returnTo as string) || undefined;

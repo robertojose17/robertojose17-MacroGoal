@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { searchOpenFoodFacts, OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 interface SearchResultItem {
   product: OpenFoodFactsProduct;
@@ -142,7 +143,7 @@ export default function FoodSearchScreen() {
   const isDark = colorScheme === 'dark';
 
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const mode = params.mode as string;
   const context = params.context as string;
   const returnTo = params.returnTo as string;

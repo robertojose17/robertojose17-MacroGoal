@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS } from '@/lib/supabase/client';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 interface SavedMealItem {
   id: string;
@@ -44,7 +45,7 @@ export default function MyMealsDetailsScreen() {
 
   const mealId = params.mealId as string;
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const returnTo = (params.returnTo as string) || undefined;
 
   const [savedMeal, setSavedMeal] = useState<SavedMeal | null>(null);

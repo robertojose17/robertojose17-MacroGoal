@@ -11,6 +11,7 @@ import {
 import { Calendar, DateData } from 'react-native-calendars';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 interface CalendarDatePickerProps {
   visible: boolean;

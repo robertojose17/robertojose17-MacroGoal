@@ -25,6 +25,7 @@ import ConsistencyScore from '@/components/ConsistencyScore';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/lib/supabase/client';
 import * as Sharing from 'expo-sharing';
+import { toLocalDateString } from '@/utils/dateUtils';
 import ViewShot from 'react-native-view-shot';
 
 type TimeRange = 'today' | '7days' | '30days' | 'custom';
@@ -132,12 +133,12 @@ export default function DashboardScreen() {
     if (sortedDates.length === 0) return 0;
 
     let currentStreak = 1;
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateString();
     
     const lastDate = sortedDates[sortedDates.length - 1];
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayStr = toLocalDateString(yesterday);
     
     if (lastDate !== today && lastDate !== yesterdayStr) {
       return 0;
@@ -193,8 +194,8 @@ export default function DashboardScreen() {
         startDate.setHours(0, 0, 0, 0);
       }
 
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
+      const startDateStr = toLocalDateString(startDate);
+      const endDateStr = toLocalDateString(endDate);
 
       console.log('[Dashboard] Loading nutrition trends from', startDateStr, 'to', endDateStr);
       console.log('[Dashboard] Start date object:', startDate.toISOString());
@@ -305,7 +306,7 @@ export default function DashboardScreen() {
         });
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       const { data: checkInsData } = await supabase
         .from('check_ins')
         .select('*')
@@ -463,11 +464,11 @@ export default function DashboardScreen() {
         carbs_g: 200,
         fats_g: 65,
         fiber_g: 30,
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: toLocalDateString(),
       };
 
       // Get today's nutrition data
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -505,7 +506,7 @@ export default function DashboardScreen() {
       // Calculate streak (last 7 days for demo)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-      const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
+      const startDateStr = toLocalDateString(sevenDaysAgo);
 
       const { data: allMeals } = await supabase
         .from('meals')

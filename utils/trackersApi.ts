@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 export interface Tracker {
   id: string;
@@ -321,7 +322,7 @@ export async function getStats(trackerId: string): Promise<TrackerStats> {
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+  const thirtyDaysAgoStr = toLocalDateString(thirtyDaysAgo);
 
   const [entriesResult, trackerResult] = await Promise.all([
     supabase
@@ -352,10 +353,10 @@ export async function getStats(trackerId: string): Promise<TrackerStats> {
 
   // Calculate streak
   let streak = 0;
-  const today = now.toISOString().split('T')[0];
+  const today = toLocalDateString(now);
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const yesterdayStr = toLocalDateString(yesterday);
 
   let checkDate: Date | null = entryDates.has(today)
     ? new Date(now)
@@ -366,7 +367,7 @@ export async function getStats(trackerId: string): Promise<TrackerStats> {
   if (checkDate) {
     let keepGoing = true;
     while (keepGoing) {
-      const dateStr = checkDate.toISOString().split('T')[0];
+      const dateStr = toLocalDateString(checkDate);
       if (entryDates.has(dateStr)) {
         streak++;
         checkDate.setDate(checkDate.getDate() - 1);
@@ -393,9 +394,9 @@ export async function getStats(trackerId: string): Promise<TrackerStats> {
   const lastSunday = new Date(thisMonday);
   lastSunday.setDate(thisMonday.getDate() - 1);
 
-  const thisMondayStr = thisMonday.toISOString().split('T')[0];
-  const lastMondayStr = lastMonday.toISOString().split('T')[0];
-  const lastSundayStr = lastSunday.toISOString().split('T')[0];
+  const thisMondayStr = toLocalDateString(thisMonday);
+  const lastMondayStr = toLocalDateString(lastMonday);
+  const lastSundayStr = toLocalDateString(lastSunday);
 
   const thisWeekCount = entries.filter((e: { date: string }) => e.date >= thisMondayStr).length;
   const lastWeekCount = entries.filter((e: { date: string }) => e.date >= lastMondayStr && e.date <= lastSundayStr).length;

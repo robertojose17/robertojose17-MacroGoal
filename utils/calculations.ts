@@ -229,12 +229,14 @@ export function formatGrams(value: number | string | undefined | null): string {
   return String(Math.round(num));
 }
 
+import { toLocalDateString } from '@/utils/dateUtils';
+
 export function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return toLocalDateString(date);
 }
 
 export function getTodayString(): string {
-  return formatDate(new Date());
+  return toLocalDateString();
 }
 
 /**

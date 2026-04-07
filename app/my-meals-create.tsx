@@ -9,6 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS, initializeDatabase } from '@/lib/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { loadDraft, saveDraft, clearDraft, DraftItem } from '@/utils/myMealsDraft';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 export default function MyMealsCreateScreen() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function MyMealsCreateScreen() {
   const isDark = colorScheme === 'dark';
 
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const returnTo = (params.returnTo as string) || undefined;
 
   const [mealName, setMealName] = useState('');

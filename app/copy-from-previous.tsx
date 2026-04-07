@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 

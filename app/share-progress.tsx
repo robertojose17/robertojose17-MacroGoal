@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase/client';
 import { TouchableOpacity } from 'react-native-gesture-handler';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 interface CardData {
   consistencyScore: number;
@@ -68,7 +69,7 @@ export default function ShareProgressScreen() {
    */
   const calculateConsistencyScore = useCallback(async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       
       // Get all meals in the date range
       const { data: allMeals } = await supabase
@@ -117,7 +118,7 @@ export default function ShareProgressScreen() {
       const currentDate = new Date(start);
 
       while (currentDate <= end) {
-        const dateStr = currentDate.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(currentDate);
         allDatesInRange.push(dateStr);
         currentDate.setDate(currentDate.getDate() + 1);
       }
@@ -291,7 +292,7 @@ export default function ShareProgressScreen() {
    */
   const calculateDayStreak = async (userId: string, startDate: string): Promise<number> => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       
       // Get all meals from start date to today
       const { data: allMeals } = await supabase
@@ -322,7 +323,7 @@ export default function ShareProgressScreen() {
       const maxIterations = 1000; // Safety limit to prevent infinite loop
       
       while (streak < maxIterations) {
-        const dateStr = currentDate.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(currentDate);
         
         // Safety check: don't go before start date
         if (dateStr < startDate) {
@@ -399,7 +400,7 @@ export default function ShareProgressScreen() {
         carbs_g: 200,
         fats_g: 65,
         fiber_g: 30,
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: toLocalDateString(),
       };
 
       // Determine journey start date
@@ -409,7 +410,7 @@ export default function ShareProgressScreen() {
       } else if (userData?.created_at) {
         startDate = userData.created_at.split('T')[0];
       } else {
-        startDate = new Date().toISOString().split('T')[0];
+        startDate = toLocalDateString();
       }
 
       console.log('[ShareProgress] Journey start date:', startDate);

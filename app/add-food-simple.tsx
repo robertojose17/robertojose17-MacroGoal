@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 import { addToDraft } from '@/utils/myMealsDraft';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 export default function AddFoodSimpleScreen() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function AddFoodSimpleScreen() {
 
   const mode = (params.mode as string) || 'diary';
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
 

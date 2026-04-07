@@ -17,6 +17,7 @@ import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { colors, spacing, borderRadius } from '@/styles/commonStyles';
 import { listTrackers, listEntries, logEntry, updateEntry, Tracker, TrackerEntry } from '@/utils/trackersApi';
+import { toLocalDateString } from '@/utils/dateUtils';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 
 // ─── AnimatedPressable ────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ function AnimatedPressable({
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateString();
 }
 
 export default function LogEntryScreen() {
@@ -189,8 +190,8 @@ export default function LogEntryScreen() {
               visible={showDatePicker}
               onClose={() => setShowDatePicker(false)}
               onSelectDate={(d: Date) => {
-                console.log('[LogEntry] Date changed:', d.toISOString().split('T')[0]);
-                setDate(d.toISOString().split('T')[0]);
+                console.log('[LogEntry] Date changed:', toLocalDateString(d));
+                setDate(toLocalDateString(d));
                 setShowDatePicker(false);
               }}
               initialDate={new Date(date)}

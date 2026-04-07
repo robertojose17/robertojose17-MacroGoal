@@ -2,6 +2,7 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import FoodDetailsLayout from '@/components/FoodDetailsLayout';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 export default function FoodDetailsScreen() {
   const params = useLocalSearchParams();
@@ -9,7 +10,7 @@ export default function FoodDetailsScreen() {
   const layoutMode = (params.mode as string) === 'edit' ? 'edit' : 'view';
   const context = (params.context as string) || undefined;
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const offDataString = params.offData as string;
   const returnTo = (params.returnTo as string) || undefined;
   const itemId = (params.itemId as string) || undefined;

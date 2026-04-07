@@ -7,6 +7,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 export default function MyFoodsCreateScreen() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function MyFoodsCreateScreen() {
   const isDark = colorScheme === 'dark';
 
   const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || new Date().toISOString().split('T')[0];
+  const date = (params.date as string) || toLocalDateString();
   const context = params.context as string | undefined;
   const returnTo = params.returnTo as string | undefined;
 

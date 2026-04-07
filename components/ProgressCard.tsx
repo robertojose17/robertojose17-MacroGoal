@@ -16,6 +16,7 @@ import Svg, { Line, Path, Circle, Text as SvgText, Rect, Defs, LinearGradient, S
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 interface ProgressCardProps {
   userId: string;
