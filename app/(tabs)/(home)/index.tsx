@@ -37,6 +37,9 @@ interface MealData {
   label: string;
   items: FoodItem[];
   totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFats: number;
 }
 
 const formatDateForStorage = (date: Date): string => {
@@ -73,10 +76,10 @@ export default function HomeScreen() {
   
   const [goal, setGoal] = useState<any>(null);
   const [meals, setMeals] = useState<MealData[]>([
-    { type: 'breakfast', label: 'Breakfast', items: [], totalCalories: 0 },
-    { type: 'lunch', label: 'Lunch', items: [], totalCalories: 0 },
-    { type: 'dinner', label: 'Dinner', items: [], totalCalories: 0 },
-    { type: 'snack', label: 'Snacks', items: [], totalCalories: 0 },
+    { type: 'breakfast', label: 'Breakfast', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
+    { type: 'lunch', label: 'Lunch', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
+    { type: 'dinner', label: 'Dinner', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
+    { type: 'snack', label: 'Snacks', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
   ]);
   const [totalCalories, setTotalCalories] = useState(0);
   const [totalMacros, setTotalMacros] = useState({ protein: 0, carbs: 0, fats: 0, fiber: 0 });
@@ -207,31 +210,24 @@ export default function HomeScreen() {
           });
         }
 
+        const buildMeal = (type: MealType, label: string): MealData => {
+          const items = [...mealsByType[type]];
+          return {
+            type,
+            label,
+            items,
+            totalCalories: items.reduce((sum, item) => sum + (item.calories || 0), 0),
+            totalProtein: items.reduce((sum, item) => sum + (item.protein || 0), 0),
+            totalCarbs: items.reduce((sum, item) => sum + (item.carbs || 0), 0),
+            totalFats: items.reduce((sum, item) => sum + (item.fats || 0), 0),
+          };
+        };
+
         const updatedMeals: MealData[] = [
-          { 
-            type: 'breakfast', 
-            label: 'Breakfast', 
-            items: [...mealsByType.breakfast],
-            totalCalories: mealsByType.breakfast.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-          { 
-            type: 'lunch', 
-            label: 'Lunch', 
-            items: [...mealsByType.lunch],
-            totalCalories: mealsByType.lunch.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-          { 
-            type: 'dinner', 
-            label: 'Dinner', 
-            items: [...mealsByType.dinner],
-            totalCalories: mealsByType.dinner.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
-          { 
-            type: 'snack', 
-            label: 'Snacks', 
-            items: [...mealsByType.snack],
-            totalCalories: mealsByType.snack.reduce((sum, item) => sum + (item.calories || 0), 0)
-          },
+          buildMeal('breakfast', 'Breakfast'),
+          buildMeal('lunch', 'Lunch'),
+          buildMeal('dinner', 'Dinner'),
+          buildMeal('snack', 'Snacks'),
         ];
 
         setMeals(updatedMeals);
@@ -308,7 +304,10 @@ export default function HomeScreen() {
           return {
             ...meal,
             items: filteredItems,
-            totalCalories: filteredItems.reduce((sum, i) => sum + (i.calories || 0), 0)
+            totalCalories: filteredItems.reduce((sum, i) => sum + (i.calories || 0), 0),
+            totalProtein: filteredItems.reduce((sum, i) => sum + (i.protein || 0), 0),
+            totalCarbs: filteredItems.reduce((sum, i) => sum + (i.carbs || 0), 0),
+            totalFats: filteredItems.reduce((sum, i) => sum + (i.fats || 0), 0),
           };
         });
         
@@ -567,13 +566,37 @@ export default function HomeScreen() {
                 style={[styles.mealCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
               >
                 <View style={styles.mealHeader}>
-                  <View>
+                  <View style={styles.mealHeaderLeft}>
                     <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
                       {meal.label}
                     </Text>
-                    <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      {Math.round(meal.totalCalories)} kcal
-                    </Text>
+                    <View style={styles.mealMacroRow}>
+                      <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {Math.round(meal.totalCalories)} kcal
+                      </Text>
+                      {meal.totalCalories > 0 && (
+                        <>
+                          <Text style={[styles.mealMacroDot, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                            {'  ·  '}
+                          </Text>
+                          <Text style={[styles.mealMacroValue, { color: colors.protein }]}>
+                            {Math.round(meal.totalProtein)}P
+                          </Text>
+                          <Text style={[styles.mealMacroDot, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                            {'  '}
+                          </Text>
+                          <Text style={[styles.mealMacroValue, { color: colors.carbs }]}>
+                            {Math.round(meal.totalCarbs)}C
+                          </Text>
+                          <Text style={[styles.mealMacroDot, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                            {'  '}
+                          </Text>
+                          <Text style={[styles.mealMacroValue, { color: colors.fats }]}>
+                            {Math.round(meal.totalFats)}F
+                          </Text>
+                        </>
+                      )}
+                    </View>
                   </View>
                   <TouchableOpacity
                     style={styles.addMealButton}
@@ -776,12 +799,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
+  mealHeaderLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  mealMacroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    marginTop: 2,
+  },
+  mealMacroDot: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  mealMacroValue: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
   mealTitle: {
     ...typography.h3,
   },
   mealCalories: {
     ...typography.caption,
-    marginTop: 2,
   },
   addMealButton: {
     padding: spacing.xs,
