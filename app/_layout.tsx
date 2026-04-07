@@ -1,5 +1,4 @@
 
-import "react-native-reanimated";
 import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router, useSegments, useRootNavigationState } from "expo-router";

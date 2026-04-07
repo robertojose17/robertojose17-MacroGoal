@@ -48,7 +48,8 @@ export default function ProgressCircle({
       duration: 900,
       easing: Easing.out(Easing.cubic),
     });
-  }, [clampedProgress]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clampedProgress, current, target, animatedProgress]);
 
   const animatedProps = useAnimatedProps(() => {
     const filled = animatedProgress.value * circumference;

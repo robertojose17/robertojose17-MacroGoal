@@ -1,5 +1,6 @@
 
 import { Sex, GoalType, ActivityLevel, MacroPreference, OnboardingData } from '@/types';
+import { toLocalDateString } from '@/utils/dateUtils';
 
 export function calculateAge(dob: string): number {
   const birthDate = new Date(dob);
@@ -228,8 +229,6 @@ export function formatGrams(value: number | string | undefined | null): string {
   if (isNaN(num)) return '0';
   return String(Math.round(num));
 }
-
-import { toLocalDateString } from '@/utils/dateUtils';
 
 export function formatDate(date: Date): string {
   return toLocalDateString(date);
