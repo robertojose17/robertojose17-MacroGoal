@@ -30,6 +30,7 @@ interface ScoreBreakdown {
   avgCalorieAccuracy: number;
   avgProteinAccuracy: number;
   insight: string;
+  trackedToday: boolean;
 }
 
 // ─── Scoring helpers ──────────────────────────────────────────────────────────
@@ -373,12 +374,16 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       const label = getLabel(score);
       const insight = buildInsight(label, trackedDays, totalDays, avgCalorieAccuracy, avgProteinAccuracy);
 
+      const today = toLocalDateString();
+      const trackedToday = dailyData[today]?.hasMeals === true;
+
       console.log('[ConsistencyScore] Final score:', score, '| Label:', label);
       console.log('[ConsistencyScore] Tracked days:', trackedDays, '/', totalDays);
       console.log('[ConsistencyScore] Avg calorie accuracy:', avgCalorieAccuracy, '%');
       console.log('[ConsistencyScore] Avg protein accuracy:', avgProteinAccuracy, '%');
+      console.log('[ConsistencyScore] Tracked today:', trackedToday);
 
-      setScoreData({ score, label, totalDays, trackedDays, avgCalorieAccuracy, avgProteinAccuracy, insight });
+      setScoreData({ score, label, totalDays, trackedDays, avgCalorieAccuracy, avgProteinAccuracy, insight, trackedToday });
       setLoading(false);
     } catch (error) {
       console.error('[ConsistencyScore] Error calculating score:', error);
@@ -464,6 +469,10 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   const trackedText = `${scoreData.trackedDays} / ${scoreData.totalDays} days tracked`;
   const calAccText = `${scoreData.avgCalorieAccuracy}%`;
   const protAccText = `${scoreData.avgProteinAccuracy}%`;
+  const todayStatusText = scoreData.trackedToday ? '✓ Logged' : 'No tracking yet';
+  const todayStatusColor = scoreData.trackedToday
+    ? colors.success
+    : (isDark ? colors.textSecondaryDark : colors.textSecondary);
 
   const handleInfoPress = (key: string) => {
     console.log('[ConsistencyScore] Info button tapped:', key);
@@ -568,8 +577,8 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
                 style={[styles.statCell, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
               >
                 <View style={styles.statCellHeader}>
-                  <Text style={[styles.statValue, { color: isDark ? colors.textDark : colors.text, fontSize: 13 }]}>
-                    No tracking yet
+                  <Text style={[styles.statValue, { color: todayStatusColor, fontSize: 13 }]}>
+                    {todayStatusText}
                   </Text>
                   <Text style={{ fontSize: 12, color: isDark ? '#555' : '#C0C0C0' }}>ⓘ</Text>
                 </View>
