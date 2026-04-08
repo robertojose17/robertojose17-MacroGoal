@@ -59,7 +59,6 @@
           "photosPermission": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
         }
       ],
-      
       "@bacons/apple-targets",
       "expo-secure-store"
     ],
