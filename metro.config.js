@@ -5,7 +5,26 @@ const fs = require('fs');
 
 const config = getDefaultConfig(__dirname);
 
-config.resolver.unstable_enablePackageExports = true;
+// MUST be false — true breaks package.exports resolution for many Expo packages
+// and causes silent blank-screen crashes on iOS cold start.
+config.resolver.unstable_enablePackageExports = false;
+
+// Wire all native-only packages to their stubs so Metro never tries to bundle
+// the real native modules (which are not linked in Expo Go / preview builds).
+config.resolver.extraNodeModules = {
+  'react-native-purchases':          path.resolve(__dirname, 'stubs/react-native-purchases.js'),
+  'react-native-google-mobile-ads':  path.resolve(__dirname, 'stubs/react-native-google-mobile-ads.js'),
+  'react-native-view-shot':          path.resolve(__dirname, 'stubs/react-native-view-shot.js'),
+  'react-native-webview':            path.resolve(__dirname, 'stubs/react-native-webview.js'),
+  'react-native-maps':               path.resolve(__dirname, 'stubs/react-native-maps.js'),
+  'react-native-css-interop':        path.resolve(__dirname, 'stubs/react-native-css-interop.js'),
+  'react-native-worklets-core':      path.resolve(__dirname, 'stubs/react-native-worklets.js'),
+  'react-native-reanimated':         path.resolve(__dirname, 'stubs/react-native-reanimated.js'),
+  'react-native-gesture-handler':    path.resolve(__dirname, 'stubs/react-native-gesture-handler.js'),
+  'react-native-edge-to-edge':       path.resolve(__dirname, 'stubs/react-native-edge-to-edge.js'),
+  'react-native-svg':                path.resolve(__dirname, 'stubs/react-native-svg.js'),
+  'react-native-calendars':          path.resolve(__dirname, 'stubs/react-native-calendars.js'),
+};
 
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
