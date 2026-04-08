@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useColorScheme, Alert, AppState, AppStateStatus, Platform, View } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus, Platform, View, ActivityIndicator } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
 import {
@@ -127,13 +127,14 @@ export default function RootLayout() {
       }
     });
 
-    // Hard 8s fallback — if INITIAL_SESSION never fires, show the app anyway
+    // Hard 4s fallback — if INITIAL_SESSION never fires (e.g. no network on cold
+    // start), show the app anyway so the user never sees a blank screen for long.
     const hardTimeout = setTimeout(() => {
       if (!mounted) return;
-      console.warn('[App] Hard 8s timeout — forcing ready without session');
+      console.warn('[App] Hard 4s timeout — forcing ready without session');
       setIsReady(true);
       SplashScreen.hideAsync().catch(() => {});
-    }, 8000);
+    }, 4000);
 
     return () => {
       mounted = false;
@@ -413,8 +414,13 @@ export default function RootLayout() {
 
   // Only block on isReady (auth + session resolved). Font loading is non-blocking
   // — the app renders fine with system fonts while custom fonts finish loading.
+  // Return a visible loading indicator (not null) so the screen is never blank white.
   if (!isReady) {
-    return null;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }}>
+        <ActivityIndicator size="large" color="#0f4c81" />
+      </View>
+    );
   }
 
   const CustomDefaultTheme: Theme = {
