@@ -253,12 +253,6 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
     return (
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
         <View style={styles.cardHeader}>
-          <IconSymbol
-            ios_icon_name="camera.fill"
-            android_material_icon_name="photo_camera"
-            size={20}
-            color={colors.primary}
-          />
           <Text style={[styles.cardTitle, { color: textColor }]}>
             Photo Progress
           </Text>
@@ -299,12 +293,6 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
     <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
       {/* Header */}
       <View style={styles.cardHeader}>
-        <IconSymbol
-          ios_icon_name="camera.fill"
-          android_material_icon_name="photo_camera"
-          size={20}
-          color={colors.primary}
-        />
         <Text style={[styles.cardTitle, { color: textColor }]}>
           Photo Progress
         </Text>
@@ -341,16 +329,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
             />
           </View>
 
-          <View style={styles.arrowContainer}>
-            <IconSymbol
-              ios_icon_name="arrow.right"
-              android_material_icon_name="arrow_forward"
-              size={20}
-              color={subtextColor}
-            />
-          </View>
-
-          <View
+            <View
             style={[
               styles.photoWrapper,
               styles.placeholderWrapper,
@@ -383,15 +362,6 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
               label={beforeDateLabel}
               isDark={isDark}
               onPress={handleBeforePillPress}
-            />
-          </View>
-
-          <View style={styles.arrowContainer}>
-            <IconSymbol
-              ios_icon_name="arrow.right"
-              android_material_icon_name="arrow_forward"
-              size={20}
-              color={colors.primary}
             />
           </View>
 
