@@ -373,8 +373,6 @@ export default function HomeScreen() {
     );
   }
 
-  const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
-
   const leftArrowDisabled = false;
   const rightArrowDisabled = isTodayOrFuture();
 

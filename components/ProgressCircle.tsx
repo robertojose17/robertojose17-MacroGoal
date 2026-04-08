@@ -32,23 +32,34 @@ export default function ProgressCircle({
   const rawProgress = target > 0 ? current / target : 0;
   const clampedProgress = Math.min(rawProgress, 1);
 
+  // Always start from 0 so the animation plays from empty each time values change
   const animatedValue = useRef(new Animated.Value(0)).current;
   const [dashOffset, setDashOffset] = React.useState(circumference);
 
   useEffect(() => {
     console.log('[ProgressCircle] animating to progress:', clampedProgress, 'current:', current, 'target:', target);
+
+    // Reset to 0 before animating so the arc always sweeps from the start
+    animatedValue.setValue(0);
+
     const listener = animatedValue.addListener(({ value }) => {
       setDashOffset(circumference - value * circumference);
     });
+
     Animated.timing(animatedValue, {
       toValue: clampedProgress,
       duration: 900,
       useNativeDriver: false,
     }).start();
+
     return () => {
       animatedValue.removeListener(listener);
     };
-  }, [clampedProgress, current, target]);
+    // circumference is derived from size/strokeWidth (props) — include it so the
+    // effect re-runs if the circle is resized.
+    // animatedValue is a stable ref.current — safe to omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clampedProgress, current, target, circumference]);
 
   const remaining = target - current;
   const remainingRounded = Math.round(remaining);
@@ -107,12 +118,22 @@ export default function ProgressCircle({
             {label}
           </Text>
         )}
-        <Text style={[styles.target, { color: labelColor }]}>
-          {currentRounded}
-          <Text style={[styles.target, { color: labelColor }]}>{' / '}</Text>
-          {targetRounded}
-          {unit}
-        </Text>
+        <View style={styles.targetRow}>
+          <Text style={[styles.target, { color: labelColor }]}>
+            {currentRounded}
+          </Text>
+          <Text style={[styles.target, { color: labelColor }]}>
+            {' / '}
+          </Text>
+          <Text style={[styles.target, { color: labelColor }]}>
+            {targetRounded}
+          </Text>
+          {unit ? (
+            <Text style={[styles.target, { color: labelColor }]}>
+              {unit}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -139,5 +160,9 @@ const styles = StyleSheet.create({
   target: {
     fontSize: 11,
     fontWeight: '400',
+  },
+  targetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

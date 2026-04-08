@@ -83,7 +83,7 @@ export default function DashboardScreen() {
   // Share-related state
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
   const [shareCardData, setShareCardData] = useState<any>(null);
-  const shareCardRef = useRef<ViewShot>(null);
+  const shareCardRef = useRef<any>(null);
 
   const loadTodaySummary = useCallback(async (userId: string, date: string) => {
     try {
@@ -707,6 +707,9 @@ export default function DashboardScreen() {
   const nutritionCaloriesEaten = nutritionStats?.avgCalories || 0;
   const nutritionCaloriesRemaining = caloriesGoal - nutritionCaloriesEaten;
 
+  // Pre-compute average text to avoid calling the function twice in JSX
+  const averageText = getAverageText();
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -902,13 +905,13 @@ export default function DashboardScreen() {
               </View>
 
               {/* Average Text - Replaces "kcal remaining" */}
-              {getAverageText() && (
+              {averageText ? (
                 <View style={styles.averageTextContainer}>
                   <Text style={[styles.averageText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    {getAverageText()}
+                    {averageText}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </React.Fragment>
           ) : (
             <Text style={[styles.noDataText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
