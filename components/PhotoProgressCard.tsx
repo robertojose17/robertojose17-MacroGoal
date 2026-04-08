@@ -7,7 +7,11 @@ import {
   Image,
   ActivityIndicator,
   TouchableOpacity,
+  Modal,
+  FlatList,
+  Pressable,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -27,15 +31,157 @@ interface PhotoProgressCardProps {
   isDark: boolean;
 }
 
+type SlotKey = 'before' | 'after';
+
 const PHOTOS_ENDPOINT = `${SUPABASE_PROJECT_URL}/functions/v1/check-in-photos`;
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatDate(isoString: string): string {
+  const d = new Date(isoString);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+function formatDateShort(isoString: string): string {
+  const d = new Date(isoString);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+// ─── Date Picker Modal ────────────────────────────────────────────────────────
+
+interface DatePickerModalProps {
+  visible: boolean;
+  photos: CheckInPhoto[];
+  selectedId: string | null;
+  isDark: boolean;
+  onSelect: (photo: CheckInPhoto) => void;
+  onClose: () => void;
+}
+
+function DatePickerModal({ visible, photos, selectedId, isDark, onSelect, onClose }: DatePickerModalProps) {
+  const overlayBg = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.45)';
+  const sheetBg = isDark ? '#1E2035' : '#FFFFFF';
+  const titleColor = isDark ? colors.textDark : colors.text;
+  const itemBg = isDark ? '#252740' : '#F7F8FC';
+  const itemBgSelected = colors.primary;
+  const itemTextColor = isDark ? colors.textDark : colors.text;
+  const separatorColor = isDark ? colors.borderDark : colors.border;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={[styles.modalOverlay, { backgroundColor: overlayBg }]} onPress={onClose}>
+        <Pressable style={[styles.modalSheet, { backgroundColor: sheetBg }]} onPress={() => {}}>
+          <View style={[styles.modalHandle, { backgroundColor: separatorColor }]} />
+          <Text style={[styles.modalTitle, { color: titleColor }]}>Select a Date</Text>
+          <View style={[styles.modalDivider, { backgroundColor: separatorColor }]} />
+          <FlatList
+            data={photos}
+            keyExtractor={(item) => item.id}
+            style={styles.modalList}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => (
+              <View style={[styles.itemSeparator, { backgroundColor: separatorColor }]} />
+            )}
+            renderItem={({ item }) => {
+              const isSelected = item.id === selectedId;
+              const dateText = formatDate(item.created_at);
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.dateItem,
+                    { backgroundColor: isSelected ? itemBgSelected : itemBg },
+                  ]}
+                  onPress={() => {
+                    console.log('[PhotoProgressCard] Date selected:', dateText, 'id:', item.id);
+                    onSelect(item);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.dateItemText,
+                      { color: isSelected ? '#FFFFFF' : itemTextColor },
+                    ]}
+                  >
+                    {dateText}
+                  </Text>
+                  {isSelected && (
+                    <IconSymbol
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+          />
+          <TouchableOpacity
+            style={[styles.modalCancelBtn, { borderTopColor: separatorColor }]}
+            onPress={() => {
+              console.log('[PhotoProgressCard] Date picker dismissed');
+              onClose();
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.modalCancelText, { color: colors.primary }]}>Cancel</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Tappable Date Pill ───────────────────────────────────────────────────────
+
+interface DatePillProps {
+  label: string;
+  isDark: boolean;
+  onPress: () => void;
+}
+
+function DatePill({ label, isDark, onPress }: DatePillProps) {
+  const pillBg = isDark ? 'rgba(91,154,168,0.18)' : 'rgba(91,154,168,0.12)';
+  return (
+    <TouchableOpacity
+      style={[styles.datePill, { backgroundColor: pillBg }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.datePillText, { color: colors.primary }]}>{label}</Text>
+      <IconSymbol
+        ios_icon_name="chevron.down"
+        android_material_icon_name="expand_more"
+        size={11}
+        color={colors.primary}
+      />
+    </TouchableOpacity>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
   const [photos, setPhotos] = useState<CheckInPhoto[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Selected photo IDs for each slot
+  const [beforeId, setBeforeId] = useState<string | null>(null);
+  const [afterId, setAfterId] = useState<string | null>(null);
+
+  // Which picker is open
+  const [openPicker, setOpenPicker] = useState<SlotKey | null>(null);
+
   const loadPhotos = useCallback(async () => {
     try {
-      console.log('[PhotoProgressCard] Fetching recent photos for user:', userId);
+      console.log('[PhotoProgressCard] Fetching all photos for user:', userId);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.log('[PhotoProgressCard] No session, skipping photo fetch');
@@ -43,7 +189,8 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
         return;
       }
 
-      const response = await fetch(`${PHOTOS_ENDPOINT}?limit=2`, {
+      // Fetch all photos (no limit) so the user can pick any date
+      const response = await fetch(`${PHOTOS_ENDPOINT}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -57,8 +204,21 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
       }
 
       const data = await response.json();
-      console.log('[PhotoProgressCard] Photos loaded:', data.photos?.length ?? 0);
-      setPhotos(data.photos ?? []);
+      const fetched: CheckInPhoto[] = data.photos ?? [];
+      console.log('[PhotoProgressCard] Photos loaded:', fetched.length);
+
+      // Sort oldest → newest
+      const sorted = [...fetched].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      setPhotos(sorted);
+
+      // Default: before = oldest, after = newest
+      if (sorted.length >= 1) {
+        setBeforeId(sorted[0].id);
+        setAfterId(sorted[sorted.length - 1].id);
+      }
     } catch (err) {
       console.error('[PhotoProgressCard] Error loading photos:', err);
     } finally {
@@ -78,13 +238,17 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
   const cardWidth = Dimensions.get('window').width - spacing.md * 2;
   const photoSize = Math.floor((cardWidth - spacing.lg * 2 - spacing.md * 2 - 32) / 2);
 
-  const formatDate = (isoString: string) => {
-    const d = new Date(isoString);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[d.getMonth()]} ${d.getDate()}`;
-  };
+  // ── Derived values ──────────────────────────────────────────────────────────
+  const beforePhoto = photos.find((p) => p.id === beforeId) ?? null;
+  const afterPhoto = photos.find((p) => p.id === afterId) ?? null;
 
+  const beforeDateLabel = beforePhoto ? formatDateShort(beforePhoto.created_at) : '';
+  const afterDateLabel = afterPhoto ? formatDateShort(afterPhoto.created_at) : '';
+
+  const emptyState = photos.length === 0;
+  const singlePhoto = photos.length === 1;
+
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -106,15 +270,31 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
     );
   }
 
-  const olderPhoto = photos.length >= 2 ? photos[1] : null;
-  const newerPhoto = photos.length >= 1 ? photos[0] : null;
+  // ── Handlers ────────────────────────────────────────────────────────────────
+  const handleBeforePillPress = () => {
+    console.log('[PhotoProgressCard] Before date pill tapped');
+    setOpenPicker('before');
+  };
 
-  const emptyState = photos.length === 0;
-  const singlePhoto = photos.length === 1;
+  const handleAfterPillPress = () => {
+    console.log('[PhotoProgressCard] After date pill tapped');
+    setOpenPicker('after');
+  };
 
-  const olderDateLabel = olderPhoto ? formatDate(olderPhoto.created_at) : '';
-  const newerDateLabel = newerPhoto ? formatDate(newerPhoto.created_at) : '';
+  const handleSelectDate = (photo: CheckInPhoto) => {
+    if (openPicker === 'before') {
+      setBeforeId(photo.id);
+    } else if (openPicker === 'after') {
+      setAfterId(photo.id);
+    }
+    setOpenPicker(null);
+  };
 
+  const handleClosePicker = () => {
+    setOpenPicker(null);
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
       {/* Header */}
@@ -146,17 +326,19 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
       )}
 
       {/* Single photo */}
-      {singlePhoto && newerPhoto && (
+      {singlePhoto && afterPhoto && (
         <View style={styles.photosRow}>
           <View style={styles.photoWrapper}>
             <Image
-              source={{ uri: newerPhoto.photo_url }}
+              source={{ uri: afterPhoto.photo_url }}
               style={[styles.photo, { width: photoSize, height: photoSize }]}
               resizeMode="cover"
             />
-            <Text style={[styles.dateLabel, { color: subtextColor }]}>
-              {newerDateLabel}
-            </Text>
+            <DatePill
+              label={afterDateLabel}
+              isDark={isDark}
+              onPress={handleAfterPillPress}
+            />
           </View>
 
           <View style={styles.arrowContainer}>
@@ -168,7 +350,13 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
             />
           </View>
 
-          <View style={[styles.photoWrapper, styles.placeholderWrapper, { width: photoSize, height: photoSize, borderColor: isDark ? colors.borderDark : colors.border }]}>
+          <View
+            style={[
+              styles.photoWrapper,
+              styles.placeholderWrapper,
+              { width: photoSize, height: photoSize, borderColor: isDark ? colors.borderDark : colors.border },
+            ]}
+          >
             <IconSymbol
               ios_icon_name="camera"
               android_material_icon_name="photo_camera"
@@ -182,18 +370,20 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
         </View>
       )}
 
-      {/* Two photos */}
-      {!emptyState && !singlePhoto && olderPhoto && newerPhoto && (
+      {/* Two or more photos */}
+      {!emptyState && !singlePhoto && beforePhoto && afterPhoto && (
         <View style={styles.photosRow}>
           <View style={styles.photoWrapper}>
             <Image
-              source={{ uri: olderPhoto.photo_url }}
+              source={{ uri: beforePhoto.photo_url }}
               style={[styles.photo, { width: photoSize, height: photoSize }]}
               resizeMode="cover"
             />
-            <Text style={[styles.dateLabel, { color: subtextColor }]}>
-              {olderDateLabel}
-            </Text>
+            <DatePill
+              label={beforeDateLabel}
+              isDark={isDark}
+              onPress={handleBeforePillPress}
+            />
           </View>
 
           <View style={styles.arrowContainer}>
@@ -207,36 +397,34 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
 
           <View style={styles.photoWrapper}>
             <Image
-              source={{ uri: newerPhoto.photo_url }}
+              source={{ uri: afterPhoto.photo_url }}
               style={[styles.photo, { width: photoSize, height: photoSize }]}
               resizeMode="cover"
             />
-            <Text style={[styles.dateLabel, { color: subtextColor }]}>
-              {newerDateLabel}
-            </Text>
+            <DatePill
+              label={afterDateLabel}
+              isDark={isDark}
+              onPress={handleAfterPillPress}
+            />
           </View>
         </View>
       )}
 
-      {/* Refresh button */}
-      <TouchableOpacity
-        style={styles.refreshRow}
-        onPress={() => {
-          console.log('[PhotoProgressCard] Refresh tapped');
-          setLoading(true);
-          loadPhotos();
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.refreshText, { color: colors.primary }]}>
-          Refresh
-        </Text>
-      </TouchableOpacity>
+      {/* Date picker modal */}
+      <DatePickerModal
+        visible={openPicker !== null}
+        photos={photos}
+        selectedId={openPicker === 'before' ? beforeId : afterId}
+        isDark={isDark}
+        onSelect={handleSelectDate}
+        onClose={handleClosePicker}
+      />
     </View>
   );
 }
 
-// Error boundary wrapper so a crash inside the card never takes down the whole screen
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+
 interface ErrorBoundaryState { hasError: boolean }
 class PhotoProgressCardErrorBoundary extends React.Component<
   PhotoProgressCardProps,
@@ -257,13 +445,15 @@ class PhotoProgressCardErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
-      return null; // Silently hide the card on error
+      return null;
     }
     return <PhotoProgressCardInner {...this.props} />;
   }
 }
 
 export default PhotoProgressCardErrorBoundary;
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   card: {
@@ -309,11 +499,6 @@ const styles = StyleSheet.create({
   photo: {
     borderRadius: borderRadius.md,
   },
-  dateLabel: {
-    ...typography.small,
-    fontWeight: '500',
-    marginTop: spacing.xs,
-  },
   arrowContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -332,12 +517,79 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  refreshRow: {
+  // Date pill
+  datePill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.md,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    marginTop: spacing.xs,
   },
-  refreshText: {
-    fontSize: 13,
+  datePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 34 : spacing.lg,
+    maxHeight: '60%',
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
+  modalTitle: {
+    ...typography.bodyBold,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  modalDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  modalList: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  itemSeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.sm,
+  },
+  dateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    marginVertical: 2,
+  },
+  dateItemText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  modalCancelBtn: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });
