@@ -4,8 +4,7 @@ import { useFonts } from "expo-font";
 import { Stack, router, useSegments, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert, AppState, AppStateStatus, Platform } from "react-native";
+import { useColorScheme, Alert, AppState, AppStateStatus, Platform, View } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
 import {
@@ -658,7 +657,7 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
@@ -813,7 +812,7 @@ export default function RootLayout() {
             </AdBannerProvider>
           </WidgetProvider>
         </ThemeProvider>
-      </GestureHandlerRootView>
+      </View>
     </ErrorBoundary>
   );
 }
