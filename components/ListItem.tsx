@@ -1,7 +1,7 @@
 import React from "react";
 import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, useColorScheme, View, Text } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, {
   configureReanimatedLogger,
   FadeIn,
@@ -37,7 +37,7 @@ export default function ListItem({ listId }: { listId: string }) {
         }}
       >
         <Reanimated.View style={[styleAnimation, styles.rightAction]}>
-          <IconSymbol name="trash.fill" size={24} color="white" />
+          <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color="white" />
         </Reanimated.View>
       </Pressable>
     );

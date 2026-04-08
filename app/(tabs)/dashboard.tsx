@@ -27,7 +27,11 @@ import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/lib/supabase/client';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
-import ViewShot from 'react-native-view-shot';
+// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
+let ViewShot: any = null;
+if (Platform.OS !== 'web') {
+  try { ViewShot = require('react-native-view-shot').default; } catch {}
+}
 
 type TimeRange = 'today' | '7days' | '30days' | 'custom';
 

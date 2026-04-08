@@ -21,20 +21,18 @@ import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import Purchases, { LOG_LEVEL } from "react-native-purchases";
 import Constants from "expo-constants";
 
-// Initialize AdMob — must be called once before any BannerAd renders
-// Guard with Platform.OS check so Metro never attempts to bundle the
-// native-only module on web (try/catch is runtime-only; Metro resolves at build time).
-let mobileAds: any = null;
-if (Platform.OS !== 'web') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mobileAds = require('react-native-google-mobile-ads').default;
-  } catch {
-    // Package not available in this environment (e.g. Expo Go)
-  }
+import Purchases, { LOG_LEVEL } from '@/utils/purchases';
+import mobileAds from '@/utils/mobileAds';
+
+// Wrap in functions so call-sites don't need to change
+function loadPurchases(): { Purchases: any; LOG_LEVEL: any } {
+  return { Purchases, LOG_LEVEL };
+}
+
+function loadMobileAds(): any {
+  return mobileAds;
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -86,7 +84,8 @@ export default function RootLayout() {
     const mainLogic = async () => {
       try {
         console.log('[App] Step 1: Initialize AdMob (non-blocking)');
-        if (mobileAds && Platform.OS !== 'web') {
+        const mobileAds = loadMobileAds();
+        if (mobileAds) {
           mobileAds.initialize()
             .then(() => console.log('[App] ✅ AdMob initialized'))
             .catch((err: unknown) => console.warn('[App] ⚠️ AdMob init failed (non-blocking):', err));
@@ -117,7 +116,8 @@ export default function RootLayout() {
 
         console.log('[App] Step 4: Initialize RevenueCat (non-blocking, native only)');
         // RevenueCat init is fully non-blocking — never delays app startup
-        if (Platform.OS !== 'web') {
+        const { Purchases, LOG_LEVEL } = loadPurchases();
+        if (Purchases) {
           (async () => {
             try {
               const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
@@ -194,12 +194,13 @@ export default function RootLayout() {
           }
 
           // Update RevenueCat user ID when auth state changes (native only)
-          if (Platform.OS !== 'web') {
+          const { Purchases: rcPurchases } = loadPurchases();
+          if (rcPurchases) {
             if (event === 'SIGNED_IN' && session?.user?.id) {
               // User logged in - identify them with RevenueCat
               try {
                 console.log('[App] 🔐 User signed in, identifying with RevenueCat:', session.user.id);
-                const { customerInfo } = await Purchases.logIn(session.user.id);
+                const { customerInfo } = await rcPurchases.logIn(session.user.id);
                 console.log('[App] ✅ RevenueCat user identified:', session.user.id);
                 console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
                 console.log('[App] Original App User ID:', customerInfo.originalAppUserId);
@@ -216,18 +217,18 @@ export default function RootLayout() {
                   .maybeSingle();
 
                 if (userEmail) {
-                  await Purchases.setEmail(userEmail);
+                  await rcPurchases.setEmail(userEmail);
                   console.log('[App] ✅ Email set in RevenueCat:', userEmail);
                 }
 
                 // Set display name (use email username as display name if no name available)
                 const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                await Purchases.setDisplayName(displayName);
+                await rcPurchases.setDisplayName(displayName);
                 console.log('[App] ✅ Display name set in RevenueCat:', displayName);
                 
                 // CRITICAL: Force a customer info refresh to ensure we have the latest data
                 console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
-                const refreshedInfo = await Purchases.getCustomerInfo();
+                const refreshedInfo = await rcPurchases.getCustomerInfo();
                 console.log('[App] ✅ Customer info refreshed');
                 console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
               } catch (error) {
@@ -237,7 +238,7 @@ export default function RootLayout() {
               // User logged out - reset RevenueCat to anonymous
               try {
                 console.log('[App] 🚪 User signed out, resetting RevenueCat to anonymous');
-                const { customerInfo } = await Purchases.logOut();
+                const { customerInfo } = await rcPurchases.logOut();
                 console.log('[App] ✅ RevenueCat user logged out (now anonymous)');
                 console.log('[App] New anonymous ID:', customerInfo.originalAppUserId);
               } catch (error) {
@@ -247,7 +248,7 @@ export default function RootLayout() {
               // Token refreshed - ensure user is still identified
               try {
                 console.log('[App] 🔄 Token refreshed, verifying RevenueCat user ID');
-                const currentInfo = await Purchases.getCustomerInfo();
+                const currentInfo = await rcPurchases.getCustomerInfo();
                 
                 // Check if the current RevenueCat user matches the session user
                 if (currentInfo.originalAppUserId !== session.user.id) {
@@ -255,7 +256,7 @@ export default function RootLayout() {
                   console.log('[App] Expected:', session.user.id);
                   console.log('[App] Current:', currentInfo.originalAppUserId);
                   
-                  const { customerInfo } = await Purchases.logIn(session.user.id);
+                  const { customerInfo } = await rcPurchases.logIn(session.user.id);
                   console.log('[App] ✅ RevenueCat user re-identified:', session.user.id);
                   console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
                   
@@ -268,10 +269,10 @@ export default function RootLayout() {
                     .maybeSingle();
 
                   if (userEmail) {
-                    await Purchases.setEmail(userEmail);
+                    await rcPurchases.setEmail(userEmail);
                   }
                   const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                  await Purchases.setDisplayName(displayName);
+                  await rcPurchases.setDisplayName(displayName);
                   console.log('[App] ✅ User attributes re-set');
                 } else {
                   console.log('[App] ✅ RevenueCat user ID matches session');

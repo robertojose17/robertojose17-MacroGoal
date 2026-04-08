@@ -5,9 +5,17 @@ import {
   Text,
   StyleSheet,
   Image,
+  Platform,
 } from 'react-native';
-import ViewShot from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
+
+// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
+let ViewShot: any = null;
+if (Platform.OS !== 'web') {
+  try { ViewShot = require('react-native-view-shot').default; } catch {}
+}
+// Fallback wrapper when ViewShot is unavailable (Expo Go / web)
+const CaptureWrapper: any = ViewShot || View;
 
 interface ShareableProgressCardProps {
   consistencyScore: number;
@@ -47,7 +55,7 @@ export default function ShareableProgressCard({
   console.log('[ShareableProgressCard] Day Streak:', safeDayStreak);
 
   return (
-    <ViewShot
+    <CaptureWrapper
       ref={viewShotRef}
       options={{
         format: 'png',
@@ -99,7 +107,7 @@ export default function ShareableProgressCard({
           <Text style={styles.footerTagline}>Built with Macro Goal</Text>
         </View>
       </LinearGradient>
-    </ViewShot>
+    </CaptureWrapper>
   );
 }
 

@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, View, Text } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useTheme } from "@react-navigation/native";
 import { ModalDemo } from "./homeData";
-import { GlassView } from "expo-glass-effect";
 
 interface DemoCardProps {
   item: ModalDemo;
@@ -14,12 +13,11 @@ export function DemoCard({ item }: DemoCardProps) {
   const theme = useTheme();
 
   return (
-    <GlassView
+    <View
       style={[
         styles.demoCard,
         { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
       ]}
-      glassEffectStyle="regular"
     >
       <View style={[styles.demoIcon, { backgroundColor: item.color }]}>
         <IconSymbol ios_icon_name="square.grid.3x3" android_material_icon_name="apps" color={theme.dark ? '#111111' : '#FFFFFF'} size={24} />
@@ -46,7 +44,7 @@ export function DemoCard({ item }: DemoCardProps) {
           </View>
         </Pressable>
       </Link>
-    </GlassView>
+    </View>
   );
 }
 

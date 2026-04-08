@@ -1,8 +1,8 @@
 
 import { User, Goal, Food, Meal, MealItem, DailySummary, WeightLog } from '@/types';
-import { getTodayString } from '@/utils/calculations';
+import { toLocalDateString } from '@/utils/dateUtils';
 
-const today = getTodayString();
+const today = toLocalDateString();
 const userId = 'user-1';
 
 export const mockUser: User = {

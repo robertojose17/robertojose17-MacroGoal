@@ -17,9 +17,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/lib/supabase/client';
 import { TouchableOpacity } from 'react-native-gesture-handler';
-import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
+
+// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
+let ViewShot: any = null;
+if (Platform.OS !== 'web') {
+  try { ViewShot = require('react-native-view-shot').default; } catch {}
+}
 
 interface CardData {
   consistencyScore: number;

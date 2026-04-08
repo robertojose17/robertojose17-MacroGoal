@@ -101,13 +101,15 @@ function TabLayoutInner() {
 }
 
 export default function TabLayout() {
-  const { isPremium } = usePremium();
-  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium:', isPremium);
+  const { isPremium, loading } = usePremium();
+  // While premium status is loading, treat as non-premium so no async hang blocks render.
+  const effectivePremium = loading ? false : isPremium;
+  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium:', effectivePremium, 'loading:', loading);
   return (
-    <AdBannerProvider isPremium={isPremium}>
+    <AdBannerProvider isPremium={effectivePremium}>
       <View style={{ flex: 1 }}>
         <TabLayoutInner />
-        <AdBannerFooter isPremium={isPremium} />
+        <AdBannerFooter isPremium={effectivePremium} />
       </View>
     </AdBannerProvider>
   );

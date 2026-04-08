@@ -1,6 +1,10 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, View, ViewStyle, ActivityIndicator } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { StyleSheet, View, ViewStyle, ActivityIndicator, Platform } from 'react-native';
+// react-native-webview requires a native build — lazy require so Expo Go doesn't hang
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  try { WebView = require('react-native-webview').WebView; } catch {}
+}
 
 export interface MapMarker {
     id: string;

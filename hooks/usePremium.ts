@@ -2,7 +2,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase/client';
-import Purchases, { CustomerInfo } from 'react-native-purchases';
+import Purchases, { isPurchasesAvailable } from '@/utils/purchases';
+
+function loadPurchases(): any {
+  return isPurchasesAvailable ? Purchases : null;
+}
+// Use `any` for CustomerInfo so we don't import the type from the native module
+type CustomerInfo = any;
 
 interface UsePremiumReturn {
   isPremium: boolean;
@@ -69,6 +75,8 @@ export function usePremium(): UsePremiumReturn {
     }
     checkInProgress.current = true;
 
+    const Purchases = loadPurchases();
+
     try {
       console.log('[usePremium] ========== CHECKING PREMIUM STATUS ==========');
       setLoading(true);
@@ -89,7 +97,7 @@ export function usePremium(): UsePremiumReturn {
       // We retry once with a short delay to handle the case where RevenueCat
       // was just initialized (e.g. right after a SIGNED_IN event) and the SDK
       // hasn't fully identified the user yet.
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== 'web' && Purchases) {
         for (let attempt = 1; attempt <= 2; attempt++) {
           try {
             console.log(`[usePremium] 🔍 Checking RevenueCat entitlements (attempt ${attempt})...`);
@@ -213,9 +221,11 @@ export function usePremium(): UsePremiumReturn {
     console.log('[usePremium] Hook mounted, starting initial check');
     checkPremiumStatus();
 
+    const Purchases = loadPurchases();
+
     // Set up RevenueCat listener for real-time updates (native only).
     // This fires when a purchase completes or when RevenueCat pushes an update.
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web' && Purchases) {
       console.log('[usePremium] Setting up RevenueCat customer info listener');
       Purchases.addCustomerInfoUpdateListener((info) => {
         console.log('[usePremium] 🔔 RevenueCat customer info updated via listener');

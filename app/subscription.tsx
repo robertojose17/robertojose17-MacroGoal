@@ -17,13 +17,17 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
-import Purchases, { 
-  PurchasesPackage, 
-  PurchasesOffering,
-  CustomerInfo,
-  LOG_LEVEL 
-} from 'react-native-purchases';
 import Constants from 'expo-constants';
+import Purchases, { LOG_LEVEL, isPurchasesAvailable } from '@/utils/purchases';
+
+function loadPurchases(): { Purchases: any; LOG_LEVEL: any } {
+  if (!isPurchasesAvailable) return { Purchases: null, LOG_LEVEL: null };
+  return { Purchases, LOG_LEVEL };
+}
+// Type aliases so we don't import from the native module
+type PurchasesPackage = any;
+type PurchasesOffering = any;
+type CustomerInfo = any;
 
 // Premium features list
 const PREMIUM_FEATURES = [
@@ -63,6 +67,8 @@ export default function SubscriptionScreen() {
       setLoading(false);
       return;
     }
+
+    const { Purchases, LOG_LEVEL } = loadPurchases();
 
     try {
       console.log('[Subscription] ========== INITIALIZING REVENUECAT ==========');
@@ -261,6 +267,8 @@ export default function SubscriptionScreen() {
       return;
     }
 
+    const { Purchases } = loadPurchases();
+
     try {
       console.log('[Subscription] ========== STARTING PURCHASE ==========');
       console.log('[Subscription] Package:', {
@@ -342,6 +350,8 @@ export default function SubscriptionScreen() {
       );
       return;
     }
+
+    const { Purchases } = loadPurchases();
 
     try {
       console.log('[Subscription] ========== RESTORING PURCHASES ==========');

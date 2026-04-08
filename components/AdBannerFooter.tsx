@@ -42,33 +42,12 @@
 import React, { useState } from 'react';
 import { View, useColorScheme, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BannerAd, BannerAdSize, TestIds, isBannerAdAvailable } from '@/utils/bannerAd';
 
-export const AD_BANNER_HEIGHT = 60;
+export { AD_BANNER_HEIGHT } from '@/constants/adBanner';
 
 // Production Ad Unit ID (also used as test ID per user config):
 const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-5592015069000241/7688730087';
-
-// react-native-google-mobile-ads requires a native build.
-// Platform.OS guard is required — Metro resolves requires at build time so
-// a try/catch alone does NOT prevent the native-only module from being
-// bundled on web, causing a hard build error.
-let BannerAd: any = null;
-let BannerAdSize: any = null;
-let TestIds: any = null;
-
-if (Platform.OS !== 'web') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ads = require('react-native-google-mobile-ads');
-    BannerAd = ads.BannerAd;
-    BannerAdSize = ads.BannerAdSize;
-    TestIds = ads.TestIds;
-  } catch {
-    // react-native-google-mobile-ads not installed — ads will not render.
-    // Run: npx expo install react-native-google-mobile-ads
-    // Then rebuild the native app.
-  }
-}
 
 interface AdBannerFooterProps {
   isPremium: boolean;
@@ -80,7 +59,7 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
   const [adLoaded, setAdLoaded] = useState(false);
 
   // Only render on iOS, only for free users, only if package is available
-  if (isPremium || Platform.OS !== 'ios' || !BannerAd) return null;
+  if (isPremium || Platform.OS !== 'ios' || !isBannerAdAvailable) return null;
 
   const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
@@ -125,6 +104,6 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
 
 export function useAdBannerHeight(isPremium: boolean): number {
   const insets = useSafeAreaInsets();
-  if (isPremium || Platform.OS !== 'ios' || !BannerAd) return 0;
+  if (isPremium || Platform.OS !== 'ios' || !isBannerAdAvailable) return 0;
   return AD_BANNER_HEIGHT + insets.bottom;
 }
