@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, router, useSegments, useRootNavigationState } from "expo-router";
+import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { useColorScheme, Alert, AppState, AppStateStatus, Platform, View } from "react-native";
@@ -36,16 +36,11 @@ function loadMobileAds(): any {
 
 SplashScreen.preventAutoHideAsync();
 
-export const unstable_settings = {
-  initialRouteName: "auth/signup",
-};
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
   const segments = useSegments();
-  const navigationState = useRootNavigationState();
-  
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
@@ -59,12 +54,12 @@ export default function RootLayout() {
   // HARD TIMEOUT — guarantees the app shows within 2 seconds no matter what.
   // This runs independently of all other logic and is the first effect registered.
   useEffect(() => {
-    console.log('[App] Hard timeout armed (2s)');
+    console.log('[App] Hard timeout armed (5s)');
     const hardTimeout = setTimeout(() => {
-      console.log('[App] ⏱️ Hard 2s timeout fired — forcing isReady=true');
+      console.log('[App] ⏱️ Hard 5s timeout fired — forcing isReady=true');
       setIsReady(true);
       SplashScreen.hideAsync().catch(() => {});
-    }, 2000);
+    }, 5000);
     return () => clearTimeout(hardTimeout);
   }, []);
 
@@ -317,7 +312,7 @@ export default function RootLayout() {
   // - Uses segment checks so we never navigate when the user is already in the
   //   correct place — this prevents the double-navigation that caused the double-login.
   useEffect(() => {
-    if (!isReady || !navigationState?.key) {
+    if (!isReady) {
       return;
     }
 
@@ -408,7 +403,7 @@ export default function RootLayout() {
   // Intentionally omit `segments` from deps — we only want to re-run when the
   // session itself changes (sign-in / sign-out), not on every route transition.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, session, navigationState?.key]);
+  }, [isReady, session]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
@@ -672,6 +667,7 @@ export default function RootLayout() {
                 <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
                 <Stack.Screen name="auth/login" options={{ headerShown: false }} />
                 <Stack.Screen name="auth/verify" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
                 
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 
