@@ -1,17 +1,9 @@
 
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import Animated, {
-  useSharedValue,
-  useAnimatedProps,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface ProgressCircleProps {
   current: number;
@@ -40,23 +32,23 @@ export default function ProgressCircle({
   const rawProgress = target > 0 ? current / target : 0;
   const clampedProgress = Math.min(rawProgress, 1);
 
-  const animatedProgress = useSharedValue(0);
+  const animatedValue = useRef(new Animated.Value(0)).current;
+  const [dashOffset, setDashOffset] = React.useState(circumference);
 
   useEffect(() => {
-    console.log('[ProgressCircle] mount — animating to progress:', clampedProgress, 'current:', current, 'target:', target);
-    animatedProgress.value = withTiming(clampedProgress, {
-      duration: 900,
-      easing: Easing.out(Easing.cubic),
+    console.log('[ProgressCircle] animating to progress:', clampedProgress, 'current:', current, 'target:', target);
+    const listener = animatedValue.addListener(({ value }) => {
+      setDashOffset(circumference - value * circumference);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clampedProgress, current, target, animatedProgress]);
-
-  const animatedProps = useAnimatedProps(() => {
-    const filled = animatedProgress.value * circumference;
-    return {
-      strokeDashoffset: circumference - filled,
+    Animated.timing(animatedValue, {
+      toValue: clampedProgress,
+      duration: 900,
+      useNativeDriver: false,
+    }).start();
+    return () => {
+      animatedValue.removeListener(listener);
     };
-  });
+  }, [clampedProgress, current, target]);
 
   const remaining = target - current;
   const remainingRounded = Math.round(remaining);
@@ -70,21 +62,18 @@ export default function ProgressCircle({
   const trackColor = isDark ? colors.borderDark : colors.border;
   const labelColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
 
-  // SVG coordinate center
   const cx = size / 2;
   const cy = size / 2;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
-      {/* SVG ring */}
       <Svg
         width={size}
         height={size}
         style={StyleSheet.absoluteFill}
-        // Rotate so arc starts from the top (12 o'clock)
         viewBox={`0 0 ${size} ${size}`}
       >
-        {/* Track (background ring) */}
+        {/* Track ring */}
         <Circle
           cx={cx}
           cy={cy}
@@ -94,8 +83,8 @@ export default function ProgressCircle({
           fill="none"
           strokeLinecap="round"
         />
-        {/* Progress arc — rotated -90° around center so it starts at top */}
-        <AnimatedCircle
+        {/* Progress arc */}
+        <Circle
           cx={cx}
           cy={cy}
           r={radius}
@@ -104,13 +93,11 @@ export default function ProgressCircle({
           fill="none"
           strokeLinecap="round"
           strokeDasharray={circumference}
-          animatedProps={animatedProps}
-          // Rotate -90deg around the circle center so progress starts at 12 o'clock
+          strokeDashoffset={dashOffset}
           transform={`rotate(-90, ${cx}, ${cy})`}
         />
       </Svg>
 
-      {/* Center text */}
       <View style={styles.textContainer}>
         <Text style={[styles.value, { color: valueColor }]}>
           {remainingRounded}
