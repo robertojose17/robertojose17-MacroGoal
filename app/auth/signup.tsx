@@ -190,37 +190,14 @@ export default function SignUpScreen() {
 
       if (!profileCreated) {
         console.error('[SignUp] ❌ Failed to create profile after all retries');
-        Alert.alert(
-          'Account Created',
-          "Your account was created successfully! Let's complete your profile setup.",
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                console.log('[SignUp] Navigating to onboarding after profile failure...');
-                router.replace('/onboarding/complete');
-              },
-            },
-          ]
-        );
+        // Profile creation failed but auth succeeded — _layout.tsx will route
+        // to onboarding since onboarding_completed will be false/missing.
+        console.log('[SignUp] Auth state change will handle navigation via _layout.tsx');
         setLoading(false);
         return;
       }
 
-      console.log('[SignUp] ✅ Signup complete!');
-      Alert.alert(
-        'Success!',
-        "Account created successfully! Let's set up your profile.",
-        [
-          {
-            text: 'Continue',
-            onPress: () => {
-              console.log('[SignUp] Navigating to onboarding...');
-              router.replace('/onboarding/complete');
-            },
-          },
-        ]
-      );
+      console.log('[SignUp] ✅ Signup complete — auth state change will handle navigation via _layout.tsx');
     } catch (error: any) {
       console.error('[SignUp] Unexpected error:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred during sign up');

@@ -86,13 +86,22 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      setError(null);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('[Home iOS] Error getting user:', userError);
+        setError('Failed to authenticate. Please try logging in again.');
+        setLoading(false);
+        return;
+      }
       if (!user) {
         console.log('[Home iOS] No user found');
+        setError('No user session found. Please log in.');
         setLoading(false);
         return;
       }
@@ -211,8 +220,9 @@ export default function HomeScreen() {
         setTotalCalories(totalCals);
         setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
       }
-    } catch (error) {
-      console.error('[Home iOS] Error in loadData:', error);
+    } catch (err: any) {
+      console.error('[Home iOS] Error in loadData:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -368,6 +378,30 @@ export default function HomeScreen() {
           <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
             Loading...
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={48}
+            color={colors.error}
+          />
+          <Text style={[styles.errorText, { color: isDark ? colors.textDark : colors.text }]}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            onPress={loadData}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -635,6 +669,28 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  errorText: {
+    ...typography.body,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  retryButton: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.md,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
   },
   stickyHeader: {
     flexDirection: 'row',

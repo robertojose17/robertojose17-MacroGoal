@@ -1,6 +1,6 @@
 
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -30,36 +30,8 @@ export default function ProgressCircle({
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const rawProgress = target > 0 ? current / target : 0;
-  const clampedProgress = Math.min(rawProgress, 1);
-
-  // Always start from 0 so the animation plays from empty each time values change
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const [dashOffset, setDashOffset] = React.useState(circumference);
-
-  useEffect(() => {
-    console.log('[ProgressCircle] animating to progress:', clampedProgress, 'current:', current, 'target:', target);
-
-    // Reset to 0 before animating so the arc always sweeps from the start
-    animatedValue.setValue(0);
-
-    const listener = animatedValue.addListener(({ value }) => {
-      setDashOffset(circumference - value * circumference);
-    });
-
-    Animated.timing(animatedValue, {
-      toValue: clampedProgress,
-      duration: 900,
-      useNativeDriver: false,
-    }).start();
-
-    return () => {
-      animatedValue.removeListener(listener);
-    };
-    // circumference is derived from size/strokeWidth (props) — include it so the
-    // effect re-runs if the circle is resized.
-    // animatedValue is a stable ref.current — safe to omit from deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clampedProgress, current, target, circumference]);
+  const clampedProgress = Math.min(Math.max(rawProgress, 0), 1);
+  const dashOffset = circumference - clampedProgress * circumference;
 
   const remaining = target - current;
   const remainingRounded = Math.round(remaining);
@@ -84,7 +56,6 @@ export default function ProgressCircle({
         style={StyleSheet.absoluteFill}
         viewBox={`0 0 ${size} ${size}`}
       >
-        {/* Track ring */}
         <Circle
           cx={cx}
           cy={cy}
@@ -94,7 +65,6 @@ export default function ProgressCircle({
           fill="none"
           strokeLinecap="round"
         />
-        {/* Progress arc */}
         <Circle
           cx={cx}
           cy={cy}
@@ -113,11 +83,11 @@ export default function ProgressCircle({
         <Text style={[styles.value, { color: valueColor }]}>
           {remainingRounded}
         </Text>
-        {label && (
+        {label ? (
           <Text style={[styles.label, { color: labelColor }]}>
             {label}
           </Text>
-        )}
+        ) : null}
         <View style={styles.targetRow}>
           <Text style={[styles.target, { color: labelColor }]}>
             {currentRounded}

@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, Component } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import MacroBar from '@/components/MacroBar';
 import ProgressCircle from '@/components/ProgressCircle';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 import ProgressCard from '@/components/ProgressCard';
@@ -27,10 +26,28 @@ import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { supabase } from '@/lib/supabase/client';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
+
 // react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
 let ViewShot: any = null;
 if (Platform.OS !== 'web') {
-  try { ViewShot = require('react-native-view-shot').default; } catch {}
+  try { ViewShot = require('react-native-view-shot').default; } catch {} // eslint-disable-line @typescript-eslint/no-require-imports
+}
+
+// ─── Local error boundary so a crashing card doesn't blank the whole screen ───
+interface CardErrorBoundaryState { hasError: boolean; }
+class CardErrorBoundary extends Component<{ children: React.ReactNode; label?: string }, CardErrorBoundaryState> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any) {
+    console.error('[Dashboard] CardErrorBoundary caught error in', this.props.label, ':', error);
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
 }
 
 type TimeRange = 'today' | '7days' | '30days' | 'custom';
@@ -710,6 +727,13 @@ export default function DashboardScreen() {
   // Pre-compute average text to avoid calling the function twice in JSX
   const averageText = getAverageText();
 
+  // Pre-compute CalendarDateRangePicker props to avoid IIFE in JSX
+  const calendarDefaultStart = new Date();
+  calendarDefaultStart.setDate(calendarDefaultStart.getDate() - 7);
+  const calendarInitialStart = nutritionCustomRange?.startDate ?? calendarDefaultStart;
+  const calendarInitialEnd = nutritionCustomRange?.endDate ?? new Date();
+  const calendarMaxDate = new Date();
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}
@@ -744,7 +768,11 @@ export default function DashboardScreen() {
         </View>
 
         {/* Consistency Score - NEW COMPONENT AT THE TOP */}
-        {user && <ConsistencyScore userId={user.id} isDark={isDark} />}
+        {user && (
+          <CardErrorBoundary label="ConsistencyScore">
+            <ConsistencyScore userId={user.id} isDark={isDark} />
+          </CardErrorBoundary>
+        )}
 
         {/* Nutrition Trends Card - WITH DROPDOWN IN HEADER */}
         <View style={[
@@ -921,10 +949,18 @@ export default function DashboardScreen() {
         </View>
 
         {/* Progress Card */}
-        {user && <ProgressCard userId={user.id} isDark={isDark} />}
+        {user && (
+          <CardErrorBoundary label="ProgressCard">
+            <ProgressCard userId={user.id} isDark={isDark} />
+          </CardErrorBoundary>
+        )}
 
         {/* Photo Progress Card */}
-        {user && <PhotoProgressCard userId={user.id} isDark={isDark} />}
+        {user && (
+          <CardErrorBoundary label="PhotoProgressCard">
+            <PhotoProgressCard userId={user.id} isDark={isDark} />
+          </CardErrorBoundary>
+        )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -1138,13 +1174,9 @@ export default function DashboardScreen() {
         visible={showCalendarPicker}
         onClose={handleCalendarClose}
         onSelectRange={handleDateRangeSelect}
-        initialStartDate={nutritionCustomRange?.startDate || (() => {
-          const date = new Date();
-          date.setDate(date.getDate() - 7);
-          return date;
-        })()}
-        initialEndDate={nutritionCustomRange?.endDate || new Date()}
-        maxDate={new Date()}
+        initialStartDate={calendarInitialStart}
+        initialEndDate={calendarInitialEnd}
+        maxDate={calendarMaxDate}
         title="Select Date Range"
       />
     </SafeAreaView>

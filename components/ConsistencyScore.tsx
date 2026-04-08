@@ -204,6 +204,9 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
   useEffect(() => {
     if (userId) {
       loadJourneyStartDate();
+    } else {
+      // No userId — nothing to load, stop the spinner
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);

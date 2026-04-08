@@ -289,14 +289,23 @@ export default function HomeScreen() {
       }
       
       console.log('[Home] Step 1: Remove from UI state immediately');
-      
-      let deletedItem: FoodItem | null = null;
-      
+
+      // Find the item synchronously before mutating state so we can update totals
+      let deletedCalories = 0;
+      let deletedProtein = 0;
+      let deletedCarbs = 0;
+      let deletedFats = 0;
+      let deletedFiber = 0;
+
       setMeals(prevMeals => {
         const newMeals = prevMeals.map(meal => {
           const itemToDelete = meal.items.find(i => i.id === itemId);
           if (itemToDelete) {
-            deletedItem = itemToDelete;
+            deletedCalories = itemToDelete.calories || 0;
+            deletedProtein = itemToDelete.protein || 0;
+            deletedCarbs = itemToDelete.carbs || 0;
+            deletedFats = itemToDelete.fats || 0;
+            deletedFiber = itemToDelete.fiber || 0;
           }
           
           const filteredItems = meal.items.filter(i => i.id !== itemId);
@@ -314,16 +323,14 @@ export default function HomeScreen() {
         console.log('[Home] ✅ UI state updated - item removed from list');
         return newMeals;
       });
-      
-      if (deletedItem) {
-        setTotalCalories(prev => prev - (deletedItem.calories || 0));
-        setTotalMacros(prev => ({
-          protein: prev.protein - (deletedItem.protein || 0),
-          carbs: prev.carbs - (deletedItem.carbs || 0),
-          fats: prev.fats - (deletedItem.fats || 0),
-          fiber: prev.fiber - (deletedItem.fiber || 0),
-        }));
-      }
+
+      setTotalCalories(prev => prev - deletedCalories);
+      setTotalMacros(prev => ({
+        protein: prev.protein - deletedProtein,
+        carbs: prev.carbs - deletedCarbs,
+        fats: prev.fats - deletedFats,
+        fiber: prev.fiber - deletedFiber,
+      }));
       
       console.log('[Home] Step 2: Delete from database');
       

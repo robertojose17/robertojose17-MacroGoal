@@ -75,64 +75,7 @@ export default function LoginScreen() {
       }
 
       console.log('[Login] ✅ User logged in:', data.user.id);
-      console.log('[Login] Step 2: Checking onboarding status...');
-
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('onboarding_completed')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      if (userError) {
-        console.error('[Login] User fetch error:', userError);
-        console.log('[Login] Attempting to create user record...');
-        const { error: insertError } = await supabase.from('users').insert({
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-          user_type: 'free',
-          onboarding_completed: false,
-        });
-
-        if (insertError && insertError.code !== '23505') {
-          console.error('[Login] ❌ Failed to create user record:', insertError);
-        } else {
-          console.log('[Login] ✅ User record created or already exists');
-        }
-
-        console.log('[Login] Redirecting to onboarding');
-        router.replace('/onboarding/complete');
-        return;
-      }
-
-      if (!userData) {
-        console.log('[Login] ⚠️ User not in database, creating record...');
-        const { error: insertError } = await supabase.from('users').insert({
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-          user_type: 'free',
-          onboarding_completed: false,
-        });
-
-        if (insertError && insertError.code !== '23505') {
-          console.error('[Login] ❌ Failed to create user record:', insertError);
-        } else {
-          console.log('[Login] ✅ User record created');
-        }
-
-        console.log('[Login] Redirecting to onboarding');
-        router.replace('/onboarding/complete');
-        return;
-      }
-
-      if (userData.onboarding_completed) {
-        console.log('[Login] ✅ Onboarding complete, going to home');
-        router.replace('/(tabs)/(home)/');
-      } else {
-        console.log('[Login] ⚠️ Onboarding not complete, going to onboarding');
-        router.replace('/onboarding/complete');
-      }
+      console.log('[Login] Auth state change will handle navigation via _layout.tsx');
     } catch (error: any) {
       console.error('[Login] Unexpected error:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred during login');
