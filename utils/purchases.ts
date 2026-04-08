@@ -1,29 +1,50 @@
+// Web / fallback stub — no native purchases on web.
+// ZERO imports from native packages.
+
 const Purchases = {
-  configure: (_options: any) => {},
-  setLogLevel: (_level: any) => {},
-  getCustomerInfo: async () => ({
+  configure: (_options: unknown): void => {},
+  setLogLevel: (_level: unknown): void => {},
+  getCustomerInfo: async (): Promise<{
+    entitlements: { active: Record<string, unknown>; all: Record<string, unknown> };
+    originalAppUserId: string;
+  }> => ({
     entitlements: { active: {}, all: {} },
     originalAppUserId: '$RCAnonymousID:stub',
   }),
-  logIn: async (_userId: string) => ({
+  logIn: async (_userId: string): Promise<{
+    customerInfo: {
+      entitlements: { active: Record<string, unknown>; all: Record<string, unknown> };
+      originalAppUserId: string;
+    };
+  }> => ({
     customerInfo: {
       entitlements: { active: {}, all: {} },
       originalAppUserId: '$RCAnonymousID:stub',
     },
   }),
-  logOut: async () => ({
+  logOut: async (): Promise<{
+    customerInfo: {
+      entitlements: { active: Record<string, unknown>; all: Record<string, unknown> };
+      originalAppUserId: string;
+    };
+  }> => ({
     customerInfo: {
       entitlements: { active: {}, all: {} },
       originalAppUserId: '$RCAnonymousID:stub',
     },
   }),
-  purchasePackage: async (_pkg: any) => ({}),
-  restorePurchases: async () => ({ entitlements: { active: {} } }),
-  addCustomerInfoUpdateListener: (_listener: any) => {},
-  removeCustomerInfoUpdateListener: (_listener: any) => {},
-  setEmail: async (_email: string) => {},
-  setDisplayName: async (_name: string) => {},
-  getOfferings: async () => ({ current: null, all: {} }),
+  purchasePackage: async (_pkg: unknown): Promise<Record<string, never>> => ({}),
+  restorePurchases: async (): Promise<{ entitlements: { active: Record<string, unknown> } }> => ({
+    entitlements: { active: {} },
+  }),
+  addCustomerInfoUpdateListener: (_listener: unknown): void => {},
+  removeCustomerInfoUpdateListener: (_listener: unknown): void => {},
+  setEmail: async (_email: string): Promise<void> => {},
+  setDisplayName: async (_name: string): Promise<void> => {},
+  getOfferings: async (): Promise<{ current: null; all: Record<string, unknown> }> => ({
+    current: null,
+    all: {},
+  }),
 };
 
 export default Purchases;
@@ -34,6 +55,6 @@ export const LOG_LEVEL = {
   INFO: 'INFO',
   WARN: 'WARN',
   ERROR: 'ERROR',
-};
+} as const;
 
 export const isPurchasesAvailable = false;

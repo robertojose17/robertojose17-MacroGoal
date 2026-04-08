@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 import { toLocalDateString } from '@/utils/dateUtils';
@@ -380,8 +380,7 @@ export default function CheckInFormScreen() {
       throw new Error('No session available for photo upload');
     }
 
-    const supabaseUrl = supabase.supabaseUrl;
-    const baseUrl = `${supabaseUrl}/functions/v1/check-in-photos`;
+    const baseUrl = `${SUPABASE_PROJECT_URL}/functions/v1/check-in-photos`;
 
     // Step 1: Get signed upload URL
     console.log('[CheckInForm] Requesting upload URL from edge function');

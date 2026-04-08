@@ -1,0 +1,28 @@
+'use strict';
+const { Animated, View, Text, ScrollView, FlatList, Image } = require('react-native');
+module.exports = {
+  default: {},
+  useSharedValue: function(v) { return { value: v }; },
+  useAnimatedStyle: function(fn) { return {}; },
+  withTiming: function(v) { return v; },
+  withSpring: function(v) { return v; },
+  withDelay: function(d, v) { return v; },
+  withSequence: function() { var args = Array.prototype.slice.call(arguments); return args[args.length - 1]; },
+  withRepeat: function(v) { return v; },
+  interpolate: function(v, input, output) { return output[0]; },
+  Extrapolation: { CLAMP: 'clamp', EXTEND: 'extend', IDENTITY: 'identity' },
+  runOnJS: function(fn) { return fn; },
+  runOnUI: function(fn) { return fn; },
+  useAnimatedScrollHandler: function() { return {}; },
+  useAnimatedRef: function() { return { current: null }; },
+  useAnimatedGestureHandler: function() { return {}; },
+  useDerivedValue: function(fn) { return { value: fn() }; },
+  useAnimatedReaction: function() {},
+  cancelAnimation: function() {},
+  Animated: Animated,
+  View: View,
+  Text: Text,
+  ScrollView: ScrollView,
+  FlatList: FlatList,
+  Image: Image,
+};

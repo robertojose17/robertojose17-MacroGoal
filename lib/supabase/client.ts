@@ -2,7 +2,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js';
-import * as Linking from 'expo-linking';
 
 // CRITICAL: Use safe defaults for environment variables
 const SUPABASE_URL = "https://esgptfiofoaeguslgvcq.supabase.co";
@@ -24,6 +23,8 @@ console.log('[Supabase] Project ID:', SUPABASE_URL.split('//')[1]?.split('.')[0]
 
 // Import the supabase client like this:
 // import { supabase } from "@/lib/supabase/client";
+
+export const SUPABASE_PROJECT_URL = SUPABASE_URL;
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -74,7 +75,7 @@ export async function initializeDatabase() {
         return false;
       }
     } else {
-      console.log('[Supabase] ✅ saved_meals table exists');
+      console.log('[Supabase] ✅ saved_meals table exists, rows checked:', testMeals?.length ?? 0);
     }
     
     // Test if saved_meal_items table exists
@@ -99,7 +100,7 @@ export async function initializeDatabase() {
         return false;
       }
     } else {
-      console.log('[Supabase] ✅ saved_meal_items table exists');
+      console.log('[Supabase] ✅ saved_meal_items table exists, rows checked:', testItems?.length ?? 0);
     }
     
     console.log('[Supabase] ========================================');

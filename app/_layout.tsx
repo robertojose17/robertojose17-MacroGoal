@@ -3,7 +3,6 @@ import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { SystemBars } from "react-native-edge-to-edge";
 import { useColorScheme, Alert, AppState, AppStateStatus, Platform, View } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Linking from "expo-linking";
@@ -47,71 +46,38 @@ export default function RootLayout() {
   
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
-  // Track whether we've resolved the initial session so we don't navigate
-  // on every auth-state-change event (e.g. TOKEN_REFRESHED).
-  const [initialSessionResolved, setInitialSessionResolved] = useState(false);
+  const hasNavigatedRef = React.useRef(false);
 
-  // HARD TIMEOUT — guarantees the app shows within 2 seconds no matter what.
-  // This runs independently of all other logic and is the first effect registered.
+  // Set up auth listener FIRST — INITIAL_SESSION fires with the authoritative
+  // session state on app start, avoiding the AsyncStorage race on iOS cold start.
   useEffect(() => {
-    console.log('[App] Hard timeout armed (5s)');
-    const hardTimeout = setTimeout(() => {
-      console.log('[App] ⏱️ Hard 5s timeout fired — forcing isReady=true');
-      setIsReady(true);
-      SplashScreen.hideAsync().catch(() => {});
-    }, 5000);
-    return () => clearTimeout(hardTimeout);
-  }, []);
+    let mounted = true;
 
-  // Initialize app and auth — runs immediately on mount, does NOT wait for
-  // fonts. Font loading is non-blocking; the 8-second hard timeout ensures
-  // the app always becomes ready even if fonts or any other async step hangs.
-  useEffect(() => {
-    console.log('[App] Mount — starting initialization (fonts may still be loading)');
-    initializeApp();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mounted) return;
 
-  const initializeApp = async () => {
-    console.log('[App] ========== STARTUP INITIALIZATION ==========');
+      console.log('[App] Auth event:', event, 'User:', newSession?.user?.id || 'none');
 
-    const mainLogic = async () => {
-      try {
-        console.log('[App] Step 1: Initialize AdMob (non-blocking)');
-        const mobileAds = loadMobileAds();
-        if (mobileAds) {
-          mobileAds.initialize()
-            .then(() => console.log('[App] ✅ AdMob initialized'))
-            .catch((err: unknown) => console.warn('[App] ⚠️ AdMob init failed (non-blocking):', err));
+      if (event === 'INITIAL_SESSION') {
+        // Authoritative session state on app start
+        setSession(newSession);
+        setIsReady(true);
+        SplashScreen.hideAsync().catch(() => {});
+
+        // Non-blocking: food database
+        initializeFoodDatabase().catch(e => console.warn('[App] Food DB init failed:', e));
+
+        // Non-blocking: AdMob
+        const mobileAdsInstance = loadMobileAds();
+        if (mobileAdsInstance) {
+          mobileAdsInstance.initialize()
+            .then(() => console.log('[App] AdMob initialized'))
+            .catch((err: unknown) => console.warn('[App] AdMob init failed (non-blocking):', err));
         }
 
-        console.log('[App] Step 2: Initialize food database (non-blocking)');
-        initializeFoodDatabase()
-          .then(() => console.log('[App] ✅ Food database initialized'))
-          .catch(error => console.error('[App] ⚠️ Food database init failed (non-blocking):', error));
-
-        console.log('[App] Step 3: Get current session');
-
-        // Restore the persisted session from AsyncStorage. This is synchronous
-        // from storage (no network call needed) so it resolves in milliseconds.
-        // We intentionally do NOT race this against a timeout — a timeout that
-        // resolves with session=null would incorrectly log the user out.
-        // The outer hard-timeout (useEffect above) still guarantees the splash
-        // screen hides within 2s even if this somehow hangs.
-        let currentSession = null;
-        try {
-          const { data } = await supabase.auth.getSession();
-          currentSession = data?.session || null;
-          console.log('[App] ✅ Session retrieved:', currentSession?.user?.id || 'none');
-        } catch (sessionError) {
-          console.warn('[App] ⚠️ getSession failed, continuing without session:', sessionError);
-        }
-        setSession(currentSession);
-
-        console.log('[App] Step 4: Initialize RevenueCat (non-blocking, native only)');
-        // RevenueCat init is fully non-blocking — never delays app startup
-        const { Purchases, LOG_LEVEL } = loadPurchases();
-        if (Purchases) {
+        // Non-blocking: RevenueCat (native only)
+        const { Purchases: rc, LOG_LEVEL: ll } = loadPurchases();
+        if (rc) {
           (async () => {
             try {
               const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
@@ -119,291 +85,117 @@ export default function RootLayout() {
                 ios: revenueCatConfig?.iosApiKey,
                 android: revenueCatConfig?.androidApiKey,
               });
-
               if (apiKey && !apiKey.includes('YOUR')) {
-                console.log('[App] Configuring RevenueCat with anonymous user (will identify on login)');
-                await Purchases.configure({ apiKey });
-
-                if (__DEV__) {
-                  await Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+                await rc.configure({ apiKey });
+                if (__DEV__) await rc.setLogLevel(ll.DEBUG);
+                if (newSession?.user?.id) {
+                  const { customerInfo } = await rc.logIn(newSession.user.id);
+                  console.log('[App] RevenueCat user identified:', newSession.user.id);
+                  console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
+                  if (newSession.user.email) await rc.setEmail(newSession.user.email);
                 }
-                console.log('[App] ✅ RevenueCat initialized (anonymous)');
-
-                if (currentSession?.user?.id) {
-                  console.log('[App] Current session found, identifying user with RevenueCat');
-                  try {
-                    const { customerInfo } = await Purchases.logIn(currentSession.user.id);
-                    console.log('[App] ✅ User identified with RevenueCat:', currentSession.user.id);
-                    console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-
-                    const userEmail = currentSession.user.email;
-                    const { data: userData } = await supabase
-                      .from('users')
-                      .select('email')
-                      .eq('id', currentSession.user.id)
-                      .maybeSingle();
-
-                    if (userEmail) {
-                      await Purchases.setEmail(userEmail);
-                      console.log('[App] ✅ Email set in RevenueCat:', userEmail);
-                    }
-                    const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                    await Purchases.setDisplayName(displayName);
-                    console.log('[App] ✅ Display name set in RevenueCat:', displayName);
-
-                    const refreshedInfo = await Purchases.getCustomerInfo();
-                    console.log('[App] ✅ Customer info refreshed, active entitlements:', Object.keys(refreshedInfo.entitlements.active));
-                  } catch (loginError) {
-                    console.error('[App] ⚠️ Failed to identify user with RevenueCat:', loginError);
-                  }
-                }
-              } else {
-                console.log('[App] ⚠️ RevenueCat API keys not configured - skipping initialization');
               }
-            } catch (revenueCatError) {
-              console.error('[App] ⚠️ RevenueCat initialization failed (non-blocking):', revenueCatError);
+            } catch (e) {
+              console.warn('[App] RevenueCat init failed (non-blocking):', e);
             }
           })();
         }
-
-        console.log('[App] Step 5: Setup auth listener');
-
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('[App] Auth state changed:', event);
-          console.log('[App] User ID:', session?.user?.id || 'none');
-          console.log('[App] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-          // TOKEN_REFRESHED means the session is still valid — the token was
-          // silently renewed by Supabase. We must NOT call setSession here
-          // because that would create a new object reference, re-trigger the
-          // navigation useEffect, and potentially redirect the user to signup
-          // if initialSessionResolved is in a transient state.
-          if (event === 'TOKEN_REFRESHED') {
-            console.log('[App] TOKEN_REFRESHED — session still valid, skipping setSession to avoid navigation re-run');
-            // Fall through to RevenueCat handling below without updating session state
-          } else {
-            setSession(session);
-          }
-
-          // Update RevenueCat user ID when auth state changes (native only)
-          const { Purchases: rcPurchases } = loadPurchases();
-          if (rcPurchases) {
-            if (event === 'SIGNED_IN' && session?.user?.id) {
-              // User logged in - identify them with RevenueCat
-              try {
-                console.log('[App] 🔐 User signed in, identifying with RevenueCat:', session.user.id);
-                const { customerInfo } = await rcPurchases.logIn(session.user.id);
-                console.log('[App] ✅ RevenueCat user identified:', session.user.id);
-                console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-                console.log('[App] Original App User ID:', customerInfo.originalAppUserId);
-                
-                // CRITICAL: Set user attributes (email and display name) for RevenueCat dashboard
-                console.log('[App] 📝 Setting user attributes for RevenueCat dashboard...');
-                const userEmail = session.user.email;
-                
-                // Get user's name from the users table
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('email')
-                  .eq('id', session.user.id)
-                  .maybeSingle();
-
-                if (userEmail) {
-                  await rcPurchases.setEmail(userEmail);
-                  console.log('[App] ✅ Email set in RevenueCat:', userEmail);
-                }
-
-                // Set display name (use email username as display name if no name available)
-                const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                await rcPurchases.setDisplayName(displayName);
-                console.log('[App] ✅ Display name set in RevenueCat:', displayName);
-                
-                // CRITICAL: Force a customer info refresh to ensure we have the latest data
-                console.log('[App] 🔄 Refreshing customer info to get latest subscription status...');
-                const refreshedInfo = await rcPurchases.getCustomerInfo();
-                console.log('[App] ✅ Customer info refreshed');
-                console.log('[App] Active entitlements after refresh:', Object.keys(refreshedInfo.entitlements.active));
-              } catch (error) {
-                console.error('[App] ❌ Failed to identify user with RevenueCat:', error);
-              }
-            } else if (event === 'SIGNED_OUT') {
-              // User logged out - reset RevenueCat to anonymous
-              try {
-                console.log('[App] 🚪 User signed out, resetting RevenueCat to anonymous');
-                const { customerInfo } = await rcPurchases.logOut();
-                console.log('[App] ✅ RevenueCat user logged out (now anonymous)');
-                console.log('[App] New anonymous ID:', customerInfo.originalAppUserId);
-              } catch (error) {
-                console.error('[App] ⚠️ Failed to log out RevenueCat user:', error);
-              }
-            } else if (event === 'TOKEN_REFRESHED' && session?.user?.id) {
-              // Token refreshed - ensure user is still identified
-              try {
-                console.log('[App] 🔄 Token refreshed, verifying RevenueCat user ID');
-                const currentInfo = await rcPurchases.getCustomerInfo();
-                
-                // Check if the current RevenueCat user matches the session user
-                if (currentInfo.originalAppUserId !== session.user.id) {
-                  console.log('[App] ⚠️ RevenueCat user ID mismatch, re-identifying');
-                  console.log('[App] Expected:', session.user.id);
-                  console.log('[App] Current:', currentInfo.originalAppUserId);
-                  
-                  const { customerInfo } = await rcPurchases.logIn(session.user.id);
-                  console.log('[App] ✅ RevenueCat user re-identified:', session.user.id);
-                  console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-                  
-                  // Re-set user attributes
-                  const userEmail = session.user.email;
-                  const { data: userData } = await supabase
-                    .from('users')
-                    .select('email')
-                    .eq('id', session.user.id)
-                    .maybeSingle();
-
-                  if (userEmail) {
-                    await rcPurchases.setEmail(userEmail);
-                  }
-                  const displayName = userData?.email || userEmail?.split('@')[0] || 'User';
-                  await rcPurchases.setDisplayName(displayName);
-                  console.log('[App] ✅ User attributes re-set');
-                } else {
-                  console.log('[App] ✅ RevenueCat user ID matches session');
-                }
-              } catch (error) {
-                console.error('[App] ⚠️ Failed to verify RevenueCat user ID:', error);
-              }
-            }
-          }
-        });
-
-        console.log('[App] ✅ Initialization complete');
-      } catch (error) {
-        console.error('[App] ❌ CRITICAL: Initialization failed:', error);
+        return;
       }
-    };
 
-    try {
-      await mainLogic();
-    } finally {
-      setIsReady(true);
-      console.log('[App] ✅ setIsReady(true) called');
-
-      // Hide splash screen
-      setTimeout(async () => {
-        try {
-          await SplashScreen.hideAsync();
-          console.log('[App] ✅ Splash screen hidden');
-        } catch (e) {
-          console.error('[App] Error hiding splash:', e);
+      if (event === 'SIGNED_IN') {
+        setSession(newSession);
+        hasNavigatedRef.current = false; // Allow re-navigation on sign in
+        const { Purchases: rc } = loadPurchases();
+        if (rc && newSession?.user?.id) {
+          rc.logIn(newSession.user.id).catch((e: unknown) => console.warn('[App] RC logIn failed:', e));
         }
-      }, 300);
-    }
-  };
+        return;
+      }
 
-  // Handle navigation based on auth state.
-  //
-  // Design principles:
-  // - Only runs after isReady (session resolved from storage) AND navigation is mounted.
-  // - Only reacts to SIGNED_IN / SIGNED_OUT events (not TOKEN_REFRESHED) by gating
-  //   on initialSessionResolved: the first run sets the destination, subsequent runs
-  //   only fire when the user actually signs in or out.
-  // - Uses segment checks so we never navigate when the user is already in the
-  //   correct place — this prevents the double-navigation that caused the double-login.
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        hasNavigatedRef.current = false;
+        const { Purchases: rc } = loadPurchases();
+        if (rc) rc.logOut().catch(() => {});
+        return;
+      }
+
+      if (event === 'TOKEN_REFRESHED') {
+        // Silently refresh — don't update session state to avoid re-triggering navigation
+        return;
+      }
+    });
+
+    // Hard 8s fallback — if INITIAL_SESSION never fires, show the app anyway
+    const hardTimeout = setTimeout(() => {
+      if (!mounted) return;
+      console.warn('[App] Hard 8s timeout — forcing ready without session');
+      setIsReady(true);
+      SplashScreen.hideAsync().catch(() => {});
+    }, 8000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(hardTimeout);
+      subscription.unsubscribe();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
-    if (!isReady) {
-      return;
-    }
+    if (!isReady) return;
+    if (segments.length === 0) return; // Router not mounted yet
+    if (hasNavigatedRef.current) return; // Already navigated
 
-    const handleNavigation = async () => {
-      console.log('[Navigation] ========== CHECKING AUTH STATE ==========');
-      console.log('[Navigation] Current segments:', segments);
-      console.log('[Navigation] Session:', session?.user?.id || 'none');
-      console.log('[Navigation] initialSessionResolved:', initialSessionResolved);
+    const inAuthGroup = segments[0] === 'auth';
+    const inTabsGroup = segments[0] === '(tabs)';
+    const inOnboarding = segments[0] === 'onboarding';
 
-      const inAuthGroup = segments[0] === 'auth';
-      const inTabsGroup = segments[0] === '(tabs)';
-      const inOnboarding = segments[0] === 'onboarding';
-
-      // No session → send to signup (only if not already there)
+    const navigate = async () => {
       if (!session) {
         if (!inAuthGroup) {
-          console.log('[Navigation] No session, redirecting to signup');
+          console.log('[Navigation] No session → signup');
           router.replace('/auth/signup');
-        } else {
-          console.log('[Navigation] No session, already in auth group — no redirect needed');
+          hasNavigatedRef.current = true;
         }
-        setInitialSessionResolved(true);
         return;
       }
 
-      // We have a session. If this is a subsequent effect run triggered by
-      // TOKEN_REFRESHED or a segment change while already on the right screen,
-      // skip the DB check to avoid redundant navigations.
-      if (initialSessionResolved && (inTabsGroup || inOnboarding)) {
-        console.log('[Navigation] Session present, already on correct screen — skipping');
+      if (inTabsGroup || inOnboarding) {
+        hasNavigatedRef.current = true;
         return;
       }
 
-      // Session present — check onboarding status and route accordingly
-      console.log('[Navigation] Session found, checking onboarding...');
-
+      // Check onboarding with timeout
       try {
-        // Hard 3s timeout on the DB query — if it hangs, fall through to home
-        const dbTimeout = new Promise<{ data: null; error: Error }>(resolve =>
-          setTimeout(() => {
-            console.log('[Navigation] ⏱️ Onboarding DB query timed out — defaulting to home');
-            resolve({ data: null, error: new Error('timeout') });
-          }, 3000)
-        );
-
-        const { data: userData, error } = await Promise.race([
-          supabase
-            .from('users')
-            .select('onboarding_completed')
-            .eq('id', session.user.id)
-            .maybeSingle(),
-          dbTimeout,
+        const result = await Promise.race([
+          supabase.from('users').select('onboarding_completed').eq('id', session.user.id).maybeSingle(),
+          new Promise<{ data: null; error: Error }>(resolve =>
+            setTimeout(() => resolve({ data: null, error: new Error('timeout') }), 3000)
+          ),
         ]);
 
-        if (error || !userData) {
-          console.log('[Navigation] User data not found or timed out, redirecting to onboarding');
-          if (!inOnboarding) {
-            router.replace('/onboarding/complete');
-          }
-          setInitialSessionResolved(true);
-          return;
-        }
-
-        if (userData.onboarding_completed) {
-          console.log('[Navigation] Onboarding complete, redirecting to home');
-          if (!inTabsGroup) {
-            router.replace('/(tabs)/(home)/');
-          }
-        } else {
-          console.log('[Navigation] Onboarding incomplete, redirecting to onboarding');
-          if (!inOnboarding) {
-            router.replace('/onboarding/complete');
-          }
-        }
-      } catch (err) {
-        console.error('[Navigation] Error checking onboarding:', err);
-        // On any unexpected error, send to home rather than leaving user stuck
-        if (!inTabsGroup) {
+        if (!result.data || result.error) {
+          console.log('[Navigation] No user data → onboarding');
+          router.replace('/onboarding/complete');
+        } else if (result.data.onboarding_completed) {
+          console.log('[Navigation] Onboarding done → home');
           router.replace('/(tabs)/(home)/');
+        } else {
+          console.log('[Navigation] Onboarding incomplete → onboarding');
+          router.replace('/onboarding/complete');
         }
+      } catch (e) {
+        console.error('[Navigation] Error:', e);
+        router.replace('/(tabs)/(home)/');
       }
-
-      setInitialSessionResolved(true);
-      console.log('[Navigation] ========== NAVIGATION CHECK COMPLETE ==========');
+      hasNavigatedRef.current = true;
     };
 
-    handleNavigation();
-  // Intentionally omit `segments` from deps — we only want to re-run when the
-  // session itself changes (sign-in / sign-out), not on every route transition.
+    navigate();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, session]);
+  }, [isReady, session, segments]);
 
   // Handle deep links for Stripe checkout success/cancel
   useEffect(() => {
@@ -804,7 +596,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <SystemBars style="dark" />
             </AdBannerProvider>
           </WidgetProvider>
         </ThemeProvider>

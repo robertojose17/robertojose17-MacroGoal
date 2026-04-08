@@ -1,6 +1,6 @@
 import React from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AD_BANNER_HEIGHT } from '@/constants/adBanner';
 import { isAdsAvailable } from '@/utils/mobileAds';
 
@@ -23,6 +23,8 @@ export function AdBannerProvider({
   isPremium: boolean;
   children: React.ReactNode;
 }) {
+  // useSafeAreaInsets is safe here — SafeAreaProvider is always an ancestor
+  // (mounted in app/_layout.tsx via expo-router's built-in SafeAreaProvider).
   const insets = useSafeAreaInsets();
   const shouldShowAd = !isPremium && Platform.OS === 'ios' && adsAvailable;
   const adBannerHeight = shouldShowAd ? AD_BANNER_HEIGHT + insets.bottom : 0;

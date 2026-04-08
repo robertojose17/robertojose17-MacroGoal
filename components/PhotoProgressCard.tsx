@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
 
 interface CheckInPhoto {
   id: string;
@@ -27,10 +27,9 @@ interface PhotoProgressCardProps {
   isDark: boolean;
 }
 
-const SUPABASE_URL = supabase.supabaseUrl;
-const PHOTOS_ENDPOINT = `${SUPABASE_URL}/functions/v1/check-in-photos`;
+const PHOTOS_ENDPOINT = `${SUPABASE_PROJECT_URL}/functions/v1/check-in-photos`;
 
-export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardProps) {
+function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
   const [photos, setPhotos] = useState<CheckInPhoto[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -237,13 +236,41 @@ export default function PhotoProgressCard({ userId, isDark }: PhotoProgressCardP
   );
 }
 
+// Error boundary wrapper so a crash inside the card never takes down the whole screen
+interface ErrorBoundaryState { hasError: boolean }
+class PhotoProgressCardErrorBoundary extends React.Component<
+  PhotoProgressCardProps,
+  ErrorBoundaryState
+> {
+  constructor(props: PhotoProgressCardProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[PhotoProgressCard] Caught render error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null; // Silently hide the card on error
+    }
+    return <PhotoProgressCardInner {...this.props} />;
+  }
+}
+
+export default PhotoProgressCardErrorBoundary;
+
 const styles = StyleSheet.create({
   card: {
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
     borderWidth: 1,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
   cardHeader: {
