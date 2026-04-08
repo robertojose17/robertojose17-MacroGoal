@@ -1,4 +1,9 @@
+'use strict';
+var React = require('react');
+
+function SystemBars() { return null; }
+
 module.exports = {
-  SystemBars: () => null,
-  default: { SystemBars: () => null },
+  default: { SystemBars: SystemBars },
+  SystemBars: SystemBars,
 };

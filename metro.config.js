@@ -11,10 +11,30 @@ const config = getDefaultConfig(__dirname);
 // the correct platform-specific entry points. Leaving this false (the default).
 // config.resolver.unstable_enablePackageExports = false;
 
+// ─── Stub out native packages that are not linked in the preview build ────────
+// These packages are listed in package.json (so TypeScript can resolve their
+// types) but their native modules are NOT compiled into the app binary.
+// Without these mappings Metro would bundle the real package and the app would
+// crash at runtime with "Native module not found" or a silent blank screen.
+const STUB_DIR = path.join(__dirname, 'stubs');
+config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  'react-native-reanimated':        path.join(STUB_DIR, 'react-native-reanimated.js'),
+  'react-native-gesture-handler':   path.join(STUB_DIR, 'react-native-gesture-handler.js'),
+  'react-native-purchases':         path.join(STUB_DIR, 'react-native-purchases.js'),
+  'react-native-google-mobile-ads': path.join(STUB_DIR, 'react-native-google-mobile-ads.js'),
+  'react-native-maps':              path.join(STUB_DIR, 'react-native-maps.js'),
+  'react-native-view-shot':         path.join(STUB_DIR, 'react-native-view-shot.js'),
+  'react-native-webview':           path.join(STUB_DIR, 'react-native-webview.js'),
+  'react-native-css-interop':       path.join(STUB_DIR, 'react-native-css-interop.js'),
+  'react-native-edge-to-edge':      path.join(STUB_DIR, 'react-native-edge-to-edge.js'),
+  'react-native-worklets-core':     path.join(STUB_DIR, 'react-native-worklets.js'),
+};
+
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
-    new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
-  ];
+  new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
+];
 
 // Custom server middleware to receive console.log messages from the app
 const LOG_FILE_PATH = path.join(__dirname, '.natively', 'app_console.log');

@@ -1,10 +1,14 @@
 
 import React, { useEffect, useState } from "react";
-import { useFonts } from "expo-font";
-import { Stack, router, useSegments } from "expo-router";
+import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useColorScheme, Alert, AppState, AppStateStatus, Platform, View, ActivityIndicator } from "react-native";
-import { useNetworkState } from "expo-network";
+import {
+  Alert,
+  AppState,
+  AppStateStatus,
+  Platform,
+} from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import {
   DarkTheme,
@@ -21,10 +25,9 @@ import type { Session } from "@supabase/supabase-js";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Constants from "expo-constants";
 
-import Purchases, { LOG_LEVEL } from '@/utils/purchases';
-import mobileAds from '@/utils/mobileAds';
+import Purchases, { LOG_LEVEL } from "@/utils/purchases";
+import mobileAds from "@/utils/mobileAds";
 
-// Wrap in functions so call-sites don't need to change
 function loadPurchases(): { Purchases: any; LOG_LEVEL: any } {
   return { Purchases, LOG_LEVEL };
 }
@@ -33,186 +36,225 @@ function loadMobileAds(): any {
   return mobileAds;
 }
 
-SplashScreen.preventAutoHideAsync();
-
+// Prevent auto-hide — we will call hideAsync() immediately on mount.
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch {
+  // Already hidden or not available — ignore
+}
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const networkState = useNetworkState();
-  const segments = useSegments();
-  const [loaded] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-  });
-  
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const hasNavigatedRef = React.useRef(false);
 
-  // Set up auth listener FIRST — INITIAL_SESSION fires with the authoritative
-  // session state on app start, avoiding the AsyncStorage race on iOS cold start.
+  // ─── Issue 1 fix: hide splash immediately on mount, no waiting ───────────
+  useEffect(() => {
+    console.log("[SplashScreen] Hiding splash screen immediately on mount");
+    SplashScreen.hideAsync().catch((e) =>
+      console.warn("[SplashScreen] hideAsync error (non-fatal):", e)
+    );
+  }, []);
+
+  // ─── Auth init ────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!mounted) return;
+    const runPostInitSideEffects = (resolvedSession: Session | null) => {
+      // Non-blocking: food database
+      initializeFoodDatabase().catch((e) =>
+        console.warn("[App] Food DB init failed:", e)
+      );
 
-      console.log('[App] Auth event:', event, 'User:', newSession?.user?.id || 'none');
-
-      if (event === 'INITIAL_SESSION') {
-        // Authoritative session state on app start
-        setSession(newSession);
-        setIsReady(true);
-        SplashScreen.hideAsync().catch(() => {});
-
-        // Non-blocking: food database
-        initializeFoodDatabase().catch(e => console.warn('[App] Food DB init failed:', e));
-
-        // Non-blocking: AdMob
-        const mobileAdsInstance = loadMobileAds();
-        if (mobileAdsInstance) {
-          mobileAdsInstance.initialize()
-            .then(() => console.log('[App] AdMob initialized'))
-            .catch((err: unknown) => console.warn('[App] AdMob init failed (non-blocking):', err));
-        }
-
-        // Non-blocking: RevenueCat (native only)
-        const { Purchases: rc, LOG_LEVEL: ll } = loadPurchases();
-        if (rc) {
-          (async () => {
-            try {
-              const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
-              const apiKey = Platform.select({
-                ios: revenueCatConfig?.iosApiKey,
-                android: revenueCatConfig?.androidApiKey,
-              });
-              if (apiKey && !apiKey.includes('YOUR')) {
-                await rc.configure({ apiKey });
-                if (__DEV__) await rc.setLogLevel(ll.DEBUG);
-                if (newSession?.user?.id) {
-                  const { customerInfo } = await rc.logIn(newSession.user.id);
-                  console.log('[App] RevenueCat user identified:', newSession.user.id);
-                  console.log('[App] Active entitlements:', Object.keys(customerInfo.entitlements.active));
-                  if (newSession.user.email) await rc.setEmail(newSession.user.email);
-                }
-              }
-            } catch (e) {
-              console.warn('[App] RevenueCat init failed (non-blocking):', e);
-            }
-          })();
-        }
-        return;
+      // Non-blocking: AdMob
+      const mobileAdsInstance = loadMobileAds();
+      if (mobileAdsInstance) {
+        mobileAdsInstance
+          .initialize()
+          .then(() => console.log("[App] AdMob initialized"))
+          .catch((err: unknown) =>
+            console.warn("[App] AdMob init failed (non-blocking):", err)
+          );
       }
 
-      if (event === 'SIGNED_IN') {
+      // Non-blocking: RevenueCat (native only)
+      const { Purchases: rc, LOG_LEVEL: ll } = loadPurchases();
+      if (rc) {
+        (async () => {
+          try {
+            const revenueCatConfig = Constants.expoConfig?.extra?.revenueCat;
+            const apiKey = Platform.select({
+              ios: revenueCatConfig?.iosApiKey,
+              android: revenueCatConfig?.androidApiKey,
+            });
+            if (apiKey && !apiKey.includes("YOUR")) {
+              await rc.configure({ apiKey });
+              if (__DEV__) await rc.setLogLevel(ll.DEBUG);
+              if (resolvedSession?.user?.id) {
+                const { customerInfo } = await rc.logIn(
+                  resolvedSession.user.id
+                );
+                console.log(
+                  "[App] RevenueCat user identified:",
+                  resolvedSession.user.id
+                );
+                console.log(
+                  "[App] Active entitlements:",
+                  Object.keys(customerInfo.entitlements.active)
+                );
+                if (resolvedSession.user.email)
+                  await rc.setEmail(resolvedSession.user.email);
+              }
+            }
+          } catch (e) {
+            console.warn("[App] RevenueCat init failed (non-blocking):", e);
+          }
+        })();
+      }
+    };
+
+    // getSession() races a 3s timeout so a hanging Supabase call never blocks
+    // navigation. isReady is set regardless of the outcome.
+    const sessionPromise = supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error)
+          console.warn("[App] getSession error (non-fatal):", error.message);
+        return data?.session ?? null;
+      });
+
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => {
+        console.warn("[App] getSession 3s timeout — proceeding without session");
+        resolve(null);
+      }, 3000)
+    );
+
+    Promise.race([sessionPromise, timeoutPromise])
+      .catch(() => null)
+      .then((resolvedSession) => {
+        if (!mounted) return;
+        console.log(
+          "[App] Auth init complete. User:",
+          resolvedSession?.user?.id ?? "none"
+        );
+        setSession(resolvedSession);
+        setIsReady(true);
+        runPostInitSideEffects(resolvedSession);
+      });
+
+    // Ongoing auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (!mounted) return;
+      console.log(
+        "[App] Auth event:",
+        event,
+        "User:",
+        newSession?.user?.id || "none"
+      );
+
+      if (event === "SIGNED_IN") {
         setSession(newSession);
-        hasNavigatedRef.current = false; // Allow re-navigation on sign in
+        hasNavigatedRef.current = false;
         const { Purchases: rc } = loadPurchases();
         if (rc && newSession?.user?.id) {
-          rc.logIn(newSession.user.id).catch((e: unknown) => console.warn('[App] RC logIn failed:', e));
+          rc
+            .logIn(newSession.user.id)
+            .catch((e: unknown) =>
+              console.warn("[App] RC logIn failed:", e)
+            );
         }
         return;
       }
 
-      if (event === 'SIGNED_OUT') {
+      if (event === "SIGNED_OUT") {
         setSession(null);
         hasNavigatedRef.current = false;
         const { Purchases: rc } = loadPurchases();
         if (rc) rc.logOut().catch(() => {});
         return;
       }
-
-      if (event === 'TOKEN_REFRESHED') {
-        // Silently refresh — don't update session state to avoid re-triggering navigation
-        return;
-      }
     });
-
-    // Hard 4s fallback — if INITIAL_SESSION never fires (e.g. no network on cold
-    // start), show the app anyway so the user never sees a blank screen for long.
-    const hardTimeout = setTimeout(() => {
-      if (!mounted) return;
-      console.warn('[App] Hard 4s timeout — forcing ready without session');
-      setIsReady(true);
-      SplashScreen.hideAsync().catch(() => {});
-    }, 4000);
 
     return () => {
       mounted = false;
-      clearTimeout(hardTimeout);
       subscription.unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Navigation guard ─────────────────────────────────────────────────────
+  // Runs once isReady flips to true. Does NOT wait for segments — on cold
+  // start segments is [] which caused the old guard to bail and leave the
+  // blank index.tsx spinner on screen forever.
   useEffect(() => {
     if (!isReady) return;
-    if (segments.length === 0) return; // Router not mounted yet
-    if (hasNavigatedRef.current) return; // Already navigated
+    if (hasNavigatedRef.current) return;
 
-    const inAuthGroup = segments[0] === 'auth';
-    const inTabsGroup = segments[0] === '(tabs)';
-    const inOnboarding = segments[0] === 'onboarding';
+    console.log("[Navigation] isReady=true, session:", session?.user?.id ?? "none");
 
     const navigate = async () => {
+      // No session → go to auth immediately, no DB query needed.
       if (!session) {
-        if (!inAuthGroup) {
-          console.log('[Navigation] No session → signup');
-          router.replace('/auth/signup');
-          hasNavigatedRef.current = true;
-        }
-        return;
-      }
-
-      if (inTabsGroup || inOnboarding) {
+        console.log("[Navigation] No session → /auth/signup");
         hasNavigatedRef.current = true;
+        router.replace("/auth/signup");
         return;
       }
 
-      // Check onboarding with timeout
+      // Has session → check onboarding status, with a 3s safety timeout.
       try {
+        console.log("[Navigation] Session found, checking onboarding status...");
         const result = await Promise.race([
-          supabase.from('users').select('onboarding_completed').eq('id', session.user.id).maybeSingle(),
-          new Promise<{ data: null; error: Error }>(resolve =>
-            setTimeout(() => resolve({ data: null, error: new Error('timeout') }), 3000)
+          supabase
+            .from("users")
+            .select("onboarding_completed")
+            .eq("id", session.user.id)
+            .maybeSingle(),
+          new Promise<{ data: null; error: Error }>((resolve) =>
+            setTimeout(
+              () => resolve({ data: null, error: new Error("timeout") }),
+              3000
+            )
           ),
         ]);
 
         if (!result.data || result.error) {
-          console.log('[Navigation] No user data → onboarding');
-          router.replace('/onboarding/complete');
+          console.log("[Navigation] No user row or timeout → /onboarding/complete");
+          router.replace("/onboarding/complete");
         } else if (result.data.onboarding_completed) {
-          console.log('[Navigation] Onboarding done → home');
-          router.replace('/(tabs)/(home)/');
+          console.log("[Navigation] Onboarding done → /(tabs)/(home)/");
+          router.replace("/(tabs)/(home)/");
         } else {
-          console.log('[Navigation] Onboarding incomplete → onboarding');
-          router.replace('/onboarding/complete');
+          console.log("[Navigation] Onboarding incomplete → /onboarding/complete");
+          router.replace("/onboarding/complete");
         }
       } catch (e) {
-        console.error('[Navigation] Error:', e);
-        router.replace('/(tabs)/(home)/');
+        console.error("[Navigation] Unexpected error, falling back to home:", e);
+        router.replace("/(tabs)/(home)/");
       }
       hasNavigatedRef.current = true;
     };
 
     navigate();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, session, segments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, session]);
 
-  // Handle deep links for Stripe checkout success/cancel
+  // ─── Deep link handler ────────────────────────────────────────────────────
   useEffect(() => {
-    console.log('[DeepLink] Setting up deep link listener');
+    console.log("[DeepLink] Setting up deep link listener");
 
-    // Handle initial URL (app opened via deep link)
     Linking.getInitialURL().then((url) => {
       if (url) {
-        console.log('[DeepLink] Initial URL:', url);
+        console.log("[DeepLink] Initial URL:", url);
         handleDeepLink(url);
       }
     });
 
-    // Handle deep links while app is running
-    const subscription = Linking.addEventListener('url', (event) => {
-      console.log('[DeepLink] Received URL:', event.url);
+    const subscription = Linking.addEventListener("url", (event) => {
+      console.log("[DeepLink] Received URL:", event.url);
       handleDeepLink(event.url);
     });
 
@@ -223,206 +265,192 @@ export default function RootLayout() {
 
   const handleDeepLink = async (url: string) => {
     try {
-      console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[DeepLink] Processing URL:', url);
-      
+      console.log("[DeepLink] Processing URL:", url);
       const { hostname, path, queryParams } = Linking.parse(url);
-      console.log('[DeepLink] Parsed:', { hostname, path, queryParams });
+      console.log("[DeepLink] Parsed:", { hostname, path, queryParams });
 
-      // Handle checkout success
-      if (queryParams?.subscription_success === 'true') {
-        console.log('[DeepLink] ✅ Checkout success detected!');
-        console.log('[DeepLink] Session ID:', queryParams.session_id);
-        
-        // Show immediate feedback
+      if (queryParams?.subscription_success === "true") {
+        console.log("[DeepLink] Checkout success detected");
+        console.log("[DeepLink] Session ID:", queryParams.session_id);
+
         Alert.alert(
-          '✅ Payment Successful!',
-          'Processing your subscription... This will take just a moment.',
-          [{ text: 'OK' }]
+          "Payment Successful!",
+          "Processing your subscription... This will take just a moment.",
+          [{ text: "OK" }]
         );
-        
-        // Navigate to profile with proper delay
+
         setTimeout(() => {
-          router.replace('/(tabs)/profile');
+          router.replace("/(tabs)/profile");
         }, 300);
-        
-        // Sync subscription in background with retries
-        console.log('[DeepLink] 🔄 Starting subscription sync with retries...');
-        
-        const syncWithRetries = async (maxRetries = 10, delayMs = 2000) => {
+
+        const syncWithRetries = async (
+          maxRetries = 10,
+          delayMs = 2000
+        ) => {
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-              console.log(`[DeepLink] 🔄 Sync attempt ${attempt}/${maxRetries}`);
-              
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session) {
-                console.error('[DeepLink] ❌ No session found');
+              console.log(
+                `[DeepLink] Sync attempt ${attempt}/${maxRetries}`
+              );
+              const {
+                data: { session: currentSession },
+              } = await supabase.auth.getSession();
+              if (!currentSession) {
+                console.error("[DeepLink] No session found");
                 break;
               }
 
-              // Call sync-subscription Edge Function
-              const { data, error } = await supabase.functions.invoke('sync-subscription', {
-                headers: {
-                  Authorization: `Bearer ${session.access_token}`,
-                },
-              });
+              const { data, error } = await supabase.functions.invoke(
+                "sync-subscription",
+                {
+                  headers: {
+                    Authorization: `Bearer ${currentSession.access_token}`,
+                  },
+                }
+              );
 
               if (error) {
-                console.error(`[DeepLink] ⚠️ Sync attempt ${attempt} failed:`, error);
+                console.error(
+                  `[DeepLink] Sync attempt ${attempt} failed:`,
+                  error
+                );
               } else {
-                console.log(`[DeepLink] ✅ Sync attempt ${attempt} succeeded:`, data);
+                console.log(
+                  `[DeepLink] Sync attempt ${attempt} succeeded:`,
+                  data
+                );
               }
 
-              // Check if user is now premium
               const { data: userData } = await supabase
-                .from('users')
-                .select('user_type')
-                .eq('id', session.user.id)
+                .from("users")
+                .select("user_type")
+                .eq("id", currentSession.user.id)
                 .maybeSingle();
 
-              if (userData?.user_type === 'premium') {
-                console.log('[DeepLink] 🎉 Premium status confirmed!');
-                
-                // Show success message
+              if (userData?.user_type === "premium") {
+                console.log("[DeepLink] Premium status confirmed");
                 Alert.alert(
-                  '🎉 Welcome to Premium!',
-                  'Your subscription is now active. Enjoy unlimited AI-powered meal estimates and all premium features!',
-                  [{ text: 'Awesome!' }]
+                  "Welcome to Premium!",
+                  "Your subscription is now active. Enjoy unlimited AI-powered meal estimates and all premium features!",
+                  [{ text: "Awesome!" }]
                 );
-                
-                return; // Success, stop retrying
+                return;
               }
 
-              // Wait before next retry
               if (attempt < maxRetries) {
-                console.log(`[DeepLink] ⏳ Waiting ${delayMs}ms before next attempt...`);
-                await new Promise(resolve => setTimeout(resolve, delayMs));
+                await new Promise((resolve) =>
+                  setTimeout(resolve, delayMs)
+                );
               }
             } catch (error) {
-              console.error(`[DeepLink] ❌ Error in sync attempt ${attempt}:`, error);
+              console.error(
+                `[DeepLink] Error in sync attempt ${attempt}:`,
+                error
+              );
             }
           }
 
-          // If we get here, all retries failed
-          console.log('[DeepLink] ⚠️ Premium status not confirmed after all retries');
+          console.log(
+            "[DeepLink] Premium status not confirmed after all retries"
+          );
           Alert.alert(
-            'Processing...',
-            'Your payment is being processed. Premium features will be unlocked shortly. If this takes more than a few minutes, please contact support.',
-            [{ text: 'OK' }]
+            "Processing...",
+            "Your payment is being processed. Premium features will be unlocked shortly.",
+            [{ text: "OK" }]
           );
         };
 
-        // Run sync in background
-        syncWithRetries().catch(error => {
-          console.error('[DeepLink] ❌ Error in syncWithRetries:', error);
+        syncWithRetries().catch((error) => {
+          console.error("[DeepLink] Error in syncWithRetries:", error);
         });
-      }
-
-      // Handle checkout cancel
-      else if (queryParams?.subscription_cancelled === 'true') {
-        console.log('[DeepLink] ❌ Checkout cancelled');
+      } else if (queryParams?.subscription_cancelled === "true") {
+        console.log("[DeepLink] Checkout cancelled");
         setTimeout(() => {
-          router.replace('/subscription');
+          router.replace("/subscription");
         }, 300);
         Alert.alert(
-          'Checkout Cancelled',
-          'You can subscribe anytime to unlock premium features.',
-          [{ text: 'OK' }]
+          "Checkout Cancelled",
+          "You can subscribe anytime to unlock premium features.",
+          [{ text: "OK" }]
         );
-      }
-
-      // Handle subscription error
-      else if (queryParams?.subscription_error === 'true') {
-        console.log('[DeepLink] ⚠️ Subscription error detected');
+      } else if (queryParams?.subscription_error === "true") {
+        console.log("[DeepLink] Subscription error detected");
         setTimeout(() => {
-          router.replace('/(tabs)/profile');
+          router.replace("/(tabs)/profile");
         }, 300);
         Alert.alert(
-          'Processing Issue',
-          'There was an issue processing your payment. Please check your subscription status or contact support if you were charged.',
-          [{ text: 'OK' }]
+          "Processing Issue",
+          "There was an issue processing your payment. Please check your subscription status or contact support if you were charged.",
+          [{ text: "OK" }]
         );
       }
-
-      console.log('[DeepLink] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (error) {
-      console.error('[DeepLink] ❌ Error handling deep link:', error);
+      console.error("[DeepLink] Error handling deep link:", error);
     }
   };
 
-  // Listen for app state changes to sync subscription when returning from background.
-  // We track the previous state so the handler only fires on genuine foreground
-  // transitions (background/inactive → active), NOT on the initial mount event.
+  // ─── App state listener (subscription sync on foreground) ─────────────────
   useEffect(() => {
-    console.log('[AppState] Setting up app state listener');
+    console.log("[AppState] Setting up app state listener");
     let previousAppState: AppStateStatus = AppState.currentState;
 
-    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-      const wasBackground = previousAppState === 'background' || previousAppState === 'inactive';
-      const isNowActive = nextAppState === 'active';
-      previousAppState = nextAppState;
+    const subscription = AppState.addEventListener(
+      "change",
+      async (nextAppState: AppStateStatus) => {
+        const wasBackground =
+          previousAppState === "background" ||
+          previousAppState === "inactive";
+        const isNowActive = nextAppState === "active";
+        previousAppState = nextAppState;
 
-      if (!wasBackground || !isNowActive) {
-        return; // Ignore initial mount fire and non-foreground transitions
-      }
+        if (!wasBackground || !isNowActive) return;
 
-      console.log('[AppState] App foregrounded, checking for subscription updates...');
+        console.log(
+          "[AppState] App foregrounded, checking for subscription updates..."
+        );
 
-      // Hard 5s timeout so a slow/hanging Edge Function never blocks anything
-      const syncTimeout = new Promise<void>(resolve => setTimeout(resolve, 5000));
+        const syncTimeout = new Promise<void>((resolve) =>
+          setTimeout(resolve, 5000)
+        );
 
-      const doSync = async () => {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) return;
+        const doSync = async () => {
+          try {
+            const {
+              data: { session: currentSession },
+            } = await supabase.auth.getSession();
+            if (!currentSession) return;
 
-          const { data, error } = await supabase.functions.invoke('sync-subscription', {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          });
+            const { data, error } = await supabase.functions.invoke(
+              "sync-subscription",
+              {
+                headers: {
+                  Authorization: `Bearer ${currentSession.access_token}`,
+                },
+              }
+            );
 
-          if (error) {
-            console.error('[AppState] Error syncing subscription:', error);
-          } else {
-            console.log('[AppState] ✅ Subscription synced:', data);
+            if (error) {
+              console.error("[AppState] Error syncing subscription:", error);
+            } else {
+              console.log("[AppState] Subscription synced:", data);
+            }
+          } catch (error) {
+            console.error("[AppState] Error in sync:", error);
           }
-        } catch (error) {
-          console.error('[AppState] Error in sync:', error);
-        }
-      };
+        };
 
-      Promise.race([doSync(), syncTimeout]).catch(err =>
-        console.error('[AppState] Sync race error:', err)
-      );
-    });
+        Promise.race([doSync(), syncTimeout]).catch((err) =>
+          console.error("[AppState] Sync race error:", err)
+        );
+      }
+    );
 
     return () => {
       subscription.remove();
     };
   }, []);
 
-  React.useEffect(() => {
-    if (
-      !networkState.isConnected &&
-      networkState.isInternetReachable === false
-    ) {
-      Alert.alert(
-        "🔌 You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
-      );
-    }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
-
-  // Only block on isReady (auth + session resolved). Font loading is non-blocking
-  // — the app renders fine with system fonts while custom fonts finish loading.
-  // Return a visible loading indicator (not null) so the screen is never blank white.
-  if (!isReady) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }}>
-        <ActivityIndicator size="large" color="#0f4c81" />
-      </View>
-    );
-  }
-
+  // ─── Theme ────────────────────────────────────────────────────────────────
   const CustomDefaultTheme: Theme = {
     ...DefaultTheme,
     dark: false,
@@ -436,127 +464,83 @@ export default function RootLayout() {
     },
   };
 
-  const CustomDarkTheme: Theme = {
-    ...DarkTheme,
-    colors: {
-      primary: "rgb(15, 76, 129)",
-      background: "rgb(10, 25, 41)",
-      card: "rgb(30, 41, 59)",
-      text: "rgb(241, 245, 249)",
-      border: "rgb(51, 65, 85)",
-      notification: "rgb(239, 68, 68)",
-    },
-  };
-
   return (
     <ErrorBoundary>
-      <View style={{ flex: 1 }}>
+      <SafeAreaProvider>
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            {/* AdBannerProvider at root is a no-op (isPremium=true) so that any
-                useAdBanner() call outside the authenticated (tabs) zone returns
-                zero height and never renders an ad. The real provider with the
-                correct isPremium value lives inside app/(tabs)/_layout.tsx. */}
             <AdBannerProvider isPremium={true}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
-                
-                <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/verify" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/welcome" options={{ headerShown: false }} />
-                
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                
+
+                <Stack.Screen
+                  name="auth/signup"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="auth/login"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="auth/verify"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="auth/welcome"
+                  options={{ headerShown: false }}
+                />
+
+                <Stack.Screen
+                  name="(tabs)"
+                  options={{ headerShown: false }}
+                />
+
                 <Stack.Screen
                   name="onboarding/complete"
-                  options={{
-                    headerShown: false,
-                    presentation: "card",
-                  }}
+                  options={{ headerShown: false, presentation: "card" }}
                 />
-                
+
                 <Stack.Screen
                   name="add-food-simple"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-                
                 <Stack.Screen
                   name="add-food"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-                
                 <Stack.Screen
                   name="food-details"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="food-search"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="my-foods"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="barcode-lookup"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="copy-from-previous"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="ai-meal-estimator"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="my-foods-edit"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-
                 <Stack.Screen
                   name="my-foods-create"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
-                
                 <Stack.Screen
                   name="barcode-scanner"
                   options={{
@@ -564,48 +548,44 @@ export default function RootLayout() {
                     presentation: "fullScreenModal",
                   }}
                 />
-                
                 <Stack.Screen
                   name="subscription"
-                  options={{
-                    headerShown: false,
-                    presentation: "modal",
-                  }}
+                  options={{ headerShown: false, presentation: "modal" }}
                 />
 
                 <Stack.Screen
                   name="tracker/[id]"
                   options={{
                     headerShown: true,
-                    headerBackButtonDisplayMode: 'minimal',
-                    title: '',
+                    headerBackButtonDisplayMode: "minimal",
+                    title: "",
                   }}
                 />
                 <Stack.Screen
                   name="tracker/log"
                   options={{
-                    presentation: 'formSheet',
+                    presentation: "formSheet",
                     sheetGrabberVisible: true,
                     sheetAllowedDetents: [0.5, 0.75],
                     headerShown: true,
-                    title: 'Log Entry',
+                    title: "Log Entry",
                   }}
                 />
                 <Stack.Screen
                   name="tracker/create"
                   options={{
-                    presentation: 'formSheet',
+                    presentation: "formSheet",
                     sheetGrabberVisible: true,
                     sheetAllowedDetents: [0.75, 1.0],
                     headerShown: true,
-                    title: 'New Tracker',
+                    title: "New Tracker",
                   }}
                 />
               </Stack>
             </AdBannerProvider>
           </WidgetProvider>
         </ThemeProvider>
-      </View>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }
