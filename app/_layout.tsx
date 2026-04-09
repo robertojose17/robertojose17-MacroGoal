@@ -24,6 +24,8 @@ export default function RootLayout() {
     SplashScreen.hideAsync().catch(() => {});
     addLog('Layout mounted');
 
+    let unsubscribeAuth: (() => void) | null = null;
+
     const initAuth = async () => {
       try {
         addLog('Importing supabase...');
@@ -51,7 +53,7 @@ export default function RootLayout() {
           setHasSession(!!session);
         });
 
-        return () => subscription.unsubscribe();
+        unsubscribeAuth = () => subscription.unsubscribe();
       } catch (e: any) {
         const msg = e?.message || String(e);
         addLog('AUTH ERROR: ' + msg);
@@ -72,6 +74,7 @@ export default function RootLayout() {
     return () => {
       mounted.current = false;
       clearTimeout(fallback);
+      unsubscribeAuth?.();
     };
   }, []);
 
