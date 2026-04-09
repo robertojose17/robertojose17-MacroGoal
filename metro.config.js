@@ -63,6 +63,7 @@ config.resolver.extraNodeModules = {
   '@bacons/apple-targets':            path.join(STUBS, 'bacons-apple-targets.js'),
   '@react-native-community/datetimepicker': path.join(STUBS, 'datetimepicker.js'),
   'react-devtools-core':              path.join(STUBS, 'react-devtools-core.js'),
+  'rn-get-dev-server':                path.join(STUBS, 'rn-get-dev-server.js'),
 };
 
 // ─── Resolve node: built-in aliases ──────────────────────────────────────────
@@ -72,6 +73,11 @@ config.resolver.extraNodeModules = {
 // (which is already polyfilled by React Native's module system).
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Explicitly stub rn-get-dev-server — extraNodeModules is bypassed by this
+  // custom resolver, so we must intercept it here before falling through.
+  if (moduleName === 'rn-get-dev-server') {
+    return { type: 'sourceFile', filePath: path.join(STUBS, 'rn-get-dev-server.js') };
+  }
   if (moduleName.startsWith('node:')) {
     const bare = moduleName.slice(5); // strip "node:" prefix
     // Try to resolve the bare name; if it fails, return an empty module
