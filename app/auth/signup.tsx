@@ -17,7 +17,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '@/lib/supabase/client';
+import { getSupabase } from '@/lib/supabase/client';
 import * as Linking from 'expo-linking';
 
 const BG_IMAGE = require('../../assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
@@ -61,6 +61,7 @@ export default function SignUpScreen() {
       const redirectUrl = Linking.createURL('/auth/verify');
       console.log('[SignUp] Email verification redirect URL:', redirectUrl);
 
+      const supabase = getSupabase();
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,

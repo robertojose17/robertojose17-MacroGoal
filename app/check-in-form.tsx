@@ -17,7 +17,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
+import { SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 import { toLocalDateString } from '@/utils/dateUtils';

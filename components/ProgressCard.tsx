@@ -12,11 +12,15 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import Svg, { Line, Path, Circle, Text as SvgText, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
 import { toLocalDateString } from '@/utils/dateUtils';
+
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
 
 interface ProgressCardProps {
   userId: string;
@@ -220,6 +224,11 @@ function PremiumStatCard({ title, value, subtitle, explanation, accent, isDark }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
+  // Lazy require — must be inside the component, never at module scope.
+  // Module-scope require() runs synchronously during expo-router's route tree
+  // build before AppRegistry.registerComponent, causing the iOS crash.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { default: Svg, Line, Path, Circle, Text: SvgText, Rect, Defs, LinearGradient, Stop } = require('react-native-svg');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -261,6 +270,8 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
       setError(null);
 
       console.log('[ProgressCard] Loading profile data for user:', userId);
+
+      const supabase = await getSupabaseClient();
 
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -423,6 +434,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       console.log('[ProgressCard] Loading calorie logs from', startDateStr, 'to', todayStr);
 
+      const supabase = await getSupabaseClient();
       const { data: mealsData, error: mealsError } = await supabase
         .from('meals')
         .select(`date, meal_items ( calories )`)
@@ -470,6 +482,7 @@ export default function ProgressCard({ userId, isDark }: ProgressCardProps) {
 
       console.log('[ProgressCard] Loading weight check-ins from', startDateStr, 'to', todayStr);
 
+      const supabase = await getSupabaseClient();
       const { data: checkInsData, error: checkInsError } = await supabase
         .from('check_ins')
         .select('date, weight')

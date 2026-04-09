@@ -1,0 +1,27 @@
+const WS = typeof WebSocket !== 'undefined' ? WebSocket : function MockWebSocket(url, protocols) {
+  this.url = url;
+  this.readyState = 3;
+  this.bufferedAmount = 0;
+  this.extensions = '';
+  this.protocol = '';
+  this.binaryType = 'blob';
+  this.onopen = null;
+  this.onclose = null;
+  this.onerror = null;
+  this.onmessage = null;
+  this.send = function() {};
+  this.close = function() {};
+  this.addEventListener = function() {};
+  this.removeEventListener = function() {};
+  this.dispatchEvent = function() { return false; };
+};
+WS.CONNECTING = 0;
+WS.OPEN = 1;
+WS.CLOSING = 2;
+WS.CLOSED = 3;
+module.exports = WS;
+module.exports.default = WS;
+module.exports.WebSocket = WS;
+module.exports.WebSocketServer = function() {};
+module.exports.Server = function() {};
+module.exports.createWebSocketStream = function() { return null; };

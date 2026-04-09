@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { supabase } from '@/lib/supabase/client';
 import * as Linking from 'expo-linking';
 
 export default function VerifyScreen() {
@@ -52,6 +51,8 @@ export default function VerifyScreen() {
           setMessage('Setting up your account...');
 
           // Set the session using the tokens from the email link
+          const { getSupabase } = await import('@/lib/supabase/client');
+          const supabase = getSupabase();
           const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
@@ -73,7 +74,7 @@ export default function VerifyScreen() {
           // Check if user profile exists
           const userId = data.session?.user?.id;
           if (userId) {
-            const { data: userData, error: userError } = await supabase
+            const { data: userData, error: userError } = await getSupabase()
               .from('users')
               .select('onboarding_completed')
               .eq('id', userId)

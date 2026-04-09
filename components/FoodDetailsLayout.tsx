@@ -1,7 +1,11 @@
 
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase/client';
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
 import { toLocalDateString } from '@/utils/dateUtils';
 import { IconSymbol } from '@/components/IconSymbol';
 import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
@@ -275,6 +279,7 @@ export default function FoodDetailsLayout({
     }
 
     try {
+      const supabase = await getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in');
@@ -364,6 +369,7 @@ export default function FoodDetailsLayout({
 
   const checkFavoriteStatus = async (prod: OpenFoodFactsProduct) => {
     try {
+      const supabase = await getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -385,6 +391,7 @@ export default function FoodDetailsLayout({
     }
 
     try {
+      const supabase = await getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in to save favorites');
@@ -486,6 +493,7 @@ export default function FoodDetailsLayout({
     }
 
     try {
+      const supabase = await getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in');

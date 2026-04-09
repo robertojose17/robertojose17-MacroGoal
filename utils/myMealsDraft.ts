@@ -1,5 +1,6 @@
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 
 const DRAFT_KEY = '@my_meals_draft';
 

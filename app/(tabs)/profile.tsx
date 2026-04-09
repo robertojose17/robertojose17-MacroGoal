@@ -10,14 +10,28 @@ import { usePremium } from '@/hooks/usePremium';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { toLocalDateString } from '@/utils/dateUtils';
 import { Sex, ActivityLevel, GoalType } from '@/types';
-import DateTimePicker from '@react-native-community/datetimepicker';
+// DateTimePicker must NOT be imported at module scope on iOS.
+// A static import forces the native module to be evaluated synchronously
+// during expo-router's route-tree build, before AppRegistry.registerComponent,
+// which causes "App entry point named 'main' was not registered".
+// Use require() inside the component so it is only evaluated on first render.
 
 type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getLazyDateTimePicker(): any {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('@react-native-community/datetimepicker').default;
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  // Lazy-load DateTimePicker inside the component so it is never evaluated at
+  // module scope (which would crash iOS before AppRegistry.registerComponent).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const DateTimePicker: any = getLazyDateTimePicker();
   
   const { isPremium, loading: premiumLoading, refreshPremiumStatus } = usePremium();
 

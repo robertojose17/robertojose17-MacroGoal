@@ -359,8 +359,7 @@ export const setupErrorLogging = () => {
   }
 };
 
-// Auto-initialize logging when this module is imported
-// Only run in development mode - production apps don't need log forwarding
-if (__DEV__) {
-  setupErrorLogging();
-}
+// NOTE: Auto-initialization removed.
+// setupErrorLogging() is now called lazily from app/_layout.tsx inside a useEffect,
+// so this module is safe to import without any top-level side effects that could
+// block expo-router/entry from registering the "main" component on iOS.

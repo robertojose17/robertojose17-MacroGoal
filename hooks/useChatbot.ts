@@ -1,6 +1,11 @@
 
 import { useCallback, useState, useRef } from 'react';
-import { supabase } from '@/lib/supabase/client';
+
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
 
 export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
@@ -62,6 +67,7 @@ export function useChatbot() {
         console.log('[useChatbot] Images:', params.images.length);
       }
 
+      const supabase = await getSupabaseClient();
       const { data, error } = await supabase.functions.invoke('chatbot', {
         body: {
           messages: params.messages,

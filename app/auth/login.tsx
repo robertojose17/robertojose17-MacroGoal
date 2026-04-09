@@ -17,7 +17,11 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '@/lib/supabase/client';
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { getSupabase } = await import('@/lib/supabase/client');
+  return getSupabase();
+}
 
 const BG_IMAGE = require('../../assets/images/73291328-4520-475d-9d5f-c23a5206eb1d.jpeg');
 
@@ -43,6 +47,7 @@ export default function LoginScreen() {
       console.log('[Login] Step 1: Signing in with password...');
       console.log('[Login] Email:', email);
 
+      const supabase = await getSupabaseClient();
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
@@ -90,15 +95,14 @@ export default function LoginScreen() {
       Alert.alert('Reset Password', 'Enter your email address above, then tap Forgot Password.');
       return;
     }
-    supabase.auth
-      .resetPasswordForEmail(email.trim().toLowerCase())
-      .then(({ error }) => {
-        if (error) {
-          Alert.alert('Error', error.message);
-        } else {
-          Alert.alert('Check Your Email', 'A password reset link has been sent to your email.');
-        }
-      });
+    getSupabaseClient().then(async (supabase) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
+      if (error) {
+        Alert.alert('Error', error.message);
+      } else {
+        Alert.alert('Check Your Email', 'A password reset link has been sent to your email.');
+      }
+    });
   };
 
   const handleGoToSignUp = () => {

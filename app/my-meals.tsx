@@ -6,7 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS } from '@/lib/supabase/client';
+import { TABLE_SAVED_MEALS, TABLE_SAVED_MEAL_ITEMS } from '@/lib/supabase/client';
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { toLocalDateString } from '@/utils/dateUtils';
 

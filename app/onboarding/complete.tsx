@@ -6,7 +6,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Sex, GoalType, ActivityLevel } from '@/types';
-import { supabase } from '@/lib/supabase/client';
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { getSupabase } = await import('@/lib/supabase/client');
+  return getSupabase();
+}
 import { calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacros } from '@/utils/calculations';
 
 export default function CompleteOnboardingScreen() {
@@ -74,6 +78,7 @@ export default function CompleteOnboardingScreen() {
     setSaving(true);
 
     try {
+      const supabase = await getSupabaseClient();
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {

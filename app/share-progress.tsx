@@ -15,10 +15,15 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import { supabase } from '@/lib/supabase/client';
 import { TouchableOpacity } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
+
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
 
 // react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
 let ViewShot: any = null;
@@ -77,6 +82,7 @@ export default function ShareProgressScreen() {
       const today = toLocalDateString();
       
       // Get all meals in the date range
+      const supabase = await getSupabaseClient();
       const { data: allMeals } = await supabase
         .from('meals')
         .select(`
@@ -196,6 +202,7 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] userData:', userData);
 
       // Get all weight check-ins ordered by date
+      const supabase = await getSupabaseClient();
       const { data: checkIns } = await supabase
         .from('check_ins')
         .select('weight, date')
@@ -300,6 +307,7 @@ export default function ShareProgressScreen() {
       const today = toLocalDateString();
       
       // Get all meals from start date to today
+      const supabase = await getSupabaseClient();
       const { data: allMeals } = await supabase
         .from('meals')
         .select('date, meal_items(calories)')
@@ -377,6 +385,7 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] Loading card data...');
 
       // Get user
+      const supabase = await getSupabaseClient();
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         console.log('[ShareProgress] No user found');

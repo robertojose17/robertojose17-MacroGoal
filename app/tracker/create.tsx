@@ -16,7 +16,6 @@ import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { colors, spacing, borderRadius } from '@/styles/commonStyles';
 import { createTracker, updateTracker, Tracker } from '@/utils/trackersApi';
-import { supabase } from '@/lib/supabase/client';
 
 // ─── AnimatedPressable ────────────────────────────────────────────────────────
 function AnimatedPressable({
@@ -90,7 +89,8 @@ export default function CreateTrackerScreen() {
   const loadExisting = async () => {
     console.log('[CreateTracker] Loading existing tracker:', trackerId);
     try {
-      const { data, error } = await supabase
+      const { getSupabase } = await import('@/lib/supabase/client');
+      const { data, error } = await getSupabase()
         .from('trackers')
         .select('*')
         .eq('id', trackerId)

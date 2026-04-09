@@ -6,10 +6,17 @@
  * CRITICAL: All functions are non-blocking and never throw errors
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// CRITICAL: Do NOT import AsyncStorage at module scope — it is a native module
+// that crashes Hermes before AppRegistry.registerComponent runs on iOS.
+// All AsyncStorage calls are deferred to inside async functions via require().
 import { Food, Meal, MealItem, DailySummary, MealType } from '@/types';
 import { mockFoods } from '@/data/mockData';
 
+// Lazy accessor — only called inside async functions, never at module scope
+function getAsyncStorage() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('@react-native-async-storage/async-storage').default;
+}
 
 const FOODS_STORAGE_KEY = '@elite_macro_foods';
 const MEALS_STORAGE_KEY = '@elite_macro_meals';
@@ -23,6 +30,7 @@ const DAILY_SUMMARY_STORAGE_KEY = '@elite_macro_daily_summary';
 export async function initializeFoodDatabase(): Promise<void> {
   try {
     console.log('[FoodDB] Initializing food database...');
+    const AsyncStorage = getAsyncStorage();
     
     // Add timeout to prevent hanging
     const initPromise = AsyncStorage.getItem(FOODS_STORAGE_KEY);
@@ -51,6 +59,7 @@ export async function initializeFoodDatabase(): Promise<void> {
  */
 export async function getAllFoods(): Promise<Food[]> {
   try {
+    const AsyncStorage = getAsyncStorage();
     const data = await AsyncStorage.getItem(FOODS_STORAGE_KEY);
     if (data) {
       return JSON.parse(data);
@@ -91,6 +100,7 @@ export async function searchInternalFoods(query: string): Promise<Food[]> {
  */
 export async function upsertFood(food: Partial<Food>): Promise<Food> {
   try {
+    const AsyncStorage = getAsyncStorage();
     const foods = await getAllFoods();
     
     // Check if food already exists (by barcode or id)
@@ -295,6 +305,7 @@ export async function getFavoriteFoods(): Promise<Food[]> {
  */
 async function getOrCreateMeal(date: string, mealType: MealType): Promise<Meal> {
   try {
+    const AsyncStorage = getAsyncStorage();
     const mealsData = await AsyncStorage.getItem(MEALS_STORAGE_KEY);
     const meals: Meal[] = mealsData ? JSON.parse(mealsData) : [];
     
@@ -345,6 +356,7 @@ export async function addMealItem(params: {
 }): Promise<MealItem> {
   try {
     console.log('[FoodDB] Adding meal item:', params.foodName);
+    const AsyncStorage = getAsyncStorage();
     
     // Get or create the meal
     const meal = await getOrCreateMeal(params.date, params.mealType as MealType);
@@ -428,6 +440,7 @@ export async function addMealItem(params: {
 export async function updateDailySummary(date: string): Promise<void> {
   try {
     console.log('[FoodDB] Updating daily summary for:', date);
+    const AsyncStorage = getAsyncStorage();
     
     // Get all meals for this date
     const mealsData = await AsyncStorage.getItem(MEALS_STORAGE_KEY);
@@ -458,7 +471,7 @@ export async function updateDailySummary(date: string): Promise<void> {
     const summaries: DailySummary[] = summaryData ? JSON.parse(summaryData) : [];
     
     // Find or create summary for this date
-    let summaryIndex = summaries.findIndex(s => s.date === date);
+    const summaryIndex = summaries.findIndex(s => s.date === date);
     
     if (summaryIndex >= 0) {
       // Update existing summary

@@ -15,7 +15,18 @@ import {
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
+
+// Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
+async function getSupabaseClient() {
+  const { supabase } = await import('@/lib/supabase/client');
+  return supabase;
+}
+
+// Lazy getter — avoids static import of lib/supabase/client at module scope
+function getSupabaseProjectUrl(): string {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('@/lib/supabase/client').SUPABASE_PROJECT_URL as string;
+}
 
 interface CheckInPhoto {
   id: string;
@@ -33,7 +44,8 @@ interface PhotoProgressCardProps {
 
 type SlotKey = 'before' | 'after';
 
-const PHOTOS_ENDPOINT = `${SUPABASE_PROJECT_URL}/functions/v1/check-in-photos`;
+// Computed lazily to avoid evaluating SUPABASE_PROJECT_URL at module scope
+const getPhotosEndpoint = () => `${getSupabaseProjectUrl()}/functions/v1/check-in-photos`;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -182,6 +194,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
   const loadPhotos = useCallback(async () => {
     try {
       console.log('[PhotoProgressCard] Fetching all photos for user:', userId);
+      const supabase = await getSupabaseClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.log('[PhotoProgressCard] No session, skipping photo fetch');
@@ -190,7 +203,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
       }
 
       // Fetch all photos (no limit) so the user can pick any date
-      const response = await fetch(`${PHOTOS_ENDPOINT}`, {
+      const response = await fetch(getPhotosEndpoint(), {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
