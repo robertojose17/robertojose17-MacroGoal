@@ -10,7 +10,7 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect, Stack } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { listTrackers, getStats, Tracker, TrackerStats } from '@/utils/trackersApi';
@@ -280,21 +280,6 @@ export default function CheckInsScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Check-Ins',
-          headerLargeTitle: true,
-          headerTransparent: true,
-          headerShadowVisible: false,
-          headerLargeTitleShadowVisible: false,
-          headerLargeStyle: { backgroundColor: 'transparent' },
-          headerRight: () => (
-            <AnimatedPressable onPress={handleCreateTracker} style={styles.headerButton} scaleValue={0.9}>
-              <Ionicons name="add" size={22} color={colors.primary} />
-            </AnimatedPressable>
-          ),
-        }}
-      />
       <ScrollView
         style={{ flex: 1, backgroundColor: bg }}
         contentContainerStyle={styles.scrollContent}

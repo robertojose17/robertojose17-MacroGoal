@@ -1,73 +1,71 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, ScrollView } from 'react-native';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const router = useRouter();
+  const segments = useSegments();
   const [initialized, setInitialized] = useState(false);
   const [hasSession, setHasSession] = useState(false);
-  const [crashError, setCrashError] = useState<string | null>(null);
-  const [log, setLog] = useState<string[]>([]);
   const mounted = useRef(true);
-
-  const addLog = (msg: string) => {
-    console.log(msg);
-    setLog(prev => [...prev, msg]);
-  };
+  // Guard so we only navigate once after initialization
+  const navigated = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
-    SplashScreen.hideAsync().catch(() => {});
-    addLog('Layout mounted');
 
     let unsubscribeAuth: (() => void) | null = null;
 
     const initAuth = async () => {
       try {
-        addLog('Importing supabase...');
+        console.log('[RootLayout] Importing supabase...');
         const { supabase } = await import('../lib/supabase/client');
-        addLog('Supabase imported OK');
+        console.log('[RootLayout] Supabase imported OK');
 
-        addLog('Calling getSession...');
+        console.log('[RootLayout] Calling getSession...');
         const sessionResult = await Promise.race([
           supabase.auth.getSession(),
           new Promise<{ data: { session: null } }>((resolve) =>
             setTimeout(() => {
-              addLog('getSession TIMED OUT after 4s');
+              console.log('[RootLayout] getSession TIMED OUT after 4s');
               resolve({ data: { session: null } });
             }, 4000)
           ),
         ]);
 
         if (!mounted.current) return;
-        addLog('getSession done, session=' + !!sessionResult.data.session);
-        setHasSession(!!sessionResult.data.session);
-        setInitialized(true);
+        const session = sessionResult.data.session;
+        console.log('[RootLayout] getSession done, session=' + !!session);
+        setHasSession(!!session);
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        // Subscribe to auth state changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
           if (!mounted.current) return;
-          setHasSession(!!session);
+          console.log('[RootLayout] Auth state changed, session=' + !!newSession);
+          setHasSession(!!newSession);
         });
-
         unsubscribeAuth = () => subscription.unsubscribe();
       } catch (e: any) {
-        const msg = e?.message || String(e);
-        addLog('AUTH ERROR: ' + msg);
-        setCrashError(msg);
+        console.log('[RootLayout] AUTH ERROR: ' + (e?.message || String(e)));
+        // Don't block — treat as no session
         if (!mounted.current) return;
-        setInitialized(true);
+        setHasSession(false);
+      } finally {
+        if (mounted.current) {
+          setInitialized(true);
+        }
       }
     };
 
     initAuth();
 
+    // Hard fallback: if supabase import itself hangs, unblock after 6s
     const fallback = setTimeout(() => {
       if (!mounted.current) return;
-      addLog('FALLBACK TIMER fired');
+      console.log('[RootLayout] FALLBACK TIMER fired — forcing initialized=true');
       setInitialized(true);
     }, 6000);
 
@@ -78,42 +76,36 @@ export default function RootLayout() {
     };
   }, []);
 
+  // Hide splash and navigate once initialized
   useEffect(() => {
     if (!initialized) return;
-    addLog('initialized=true, hasSession=' + hasSession);
+    if (navigated.current) return;
+
+    console.log('[RootLayout] initialized=true, hasSession=' + hasSession + ', segments=' + JSON.stringify(segments));
+
+    SplashScreen.hideAsync().catch(() => {});
+
+    // Small delay to ensure the navigator is mounted before we push
     const timer = setTimeout(() => {
       if (!mounted.current) return;
+      if (navigated.current) return;
+      navigated.current = true;
+
       if (hasSession) {
-        addLog('Navigating to tabs');
+        console.log('[RootLayout] Navigating to tabs');
         router.replace('/(tabs)');
       } else {
-        addLog('Navigating to signup');
+        console.log('[RootLayout] Navigating to signup');
         router.replace('/auth/signup');
       }
-    }, 50);
+    }, 100);
+
     return () => clearTimeout(timer);
-  }, [initialized, hasSession, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, hasSession]);
 
-  // Show debug overlay if there's a crash error
-  if (crashError) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#1a1a2e', padding: 20, paddingTop: 60 }}>
-        <Text style={{ color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
-          iOS Crash Detected
-        </Text>
-        <Text style={{ color: '#ff8888', fontSize: 13, marginBottom: 20 }}>
-          {crashError}
-        </Text>
-        <Text style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 8 }}>Log:</Text>
-        <ScrollView style={{ flex: 1 }}>
-          {log.map((l, i) => (
-            <Text key={i} style={{ color: '#cccccc', fontSize: 11, marginBottom: 2 }}>{l}</Text>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  }
-
+  // Always render the Stack — never return null or a non-Stack tree,
+  // because router.replace() requires a mounted navigator to work.
   return (
     <SafeAreaProvider>
       <Stack screenOptions={{ headerShown: false }} />

@@ -7,10 +7,61 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.unstable_enablePackageExports = true;
 
+// ─── Stub mappings ────────────────────────────────────────────────────────────
+// These native modules are NOT linked in the Expo Go / preview build.
+// Metro resolves them to safe JS stubs so the bundle doesn't crash on import.
+const stubsDir = path.join(__dirname, 'stubs');
+
+config.resolver.extraNodeModules = {
+  // Reanimated — babel plugin is intentionally removed (see babel.config.js)
+  'react-native-reanimated': path.join(stubsDir, 'react-native-reanimated.js'),
+  // Gesture handler
+  'react-native-gesture-handler': path.join(stubsDir, 'react-native-gesture-handler.js'),
+  // Worklets (reanimated dependency)
+  'react-native-worklets': path.join(stubsDir, 'react-native-worklets.js'),
+  'react-native-worklets-core': path.join(stubsDir, 'react-native-worklets.js'),
+  // View shot (used by dashboard share feature)
+  'react-native-view-shot': path.join(stubsDir, 'react-native-view-shot.js'),
+  // Maps
+  'react-native-maps': path.join(stubsDir, 'react-native-maps.js'),
+  // Charts
+  'react-native-chart-kit': path.join(stubsDir, 'react-native-chart-kit.js'),
+  // Calendars
+  'react-native-calendars': path.join(stubsDir, 'react-native-calendars.js'),
+  // SVG
+  'react-native-svg': path.join(stubsDir, 'react-native-svg.js'),
+  // WebView
+  'react-native-webview': path.join(stubsDir, 'react-native-webview.js'),
+  // RevenueCat / purchases
+  'react-native-purchases': path.join(stubsDir, 'react-native-purchases.js'),
+  // Google Mobile Ads
+  'react-native-google-mobile-ads': path.join(stubsDir, 'react-native-google-mobile-ads.js'),
+  // CSS interop
+  'react-native-css-interop': path.join(stubsDir, 'react-native-css-interop.js'),
+  // Edge to edge
+  'react-native-edge-to-edge': path.join(stubsDir, 'react-native-edge-to-edge.js'),
+  // DateTimePicker
+  '@react-native-community/datetimepicker': path.join(stubsDir, 'datetimepicker.js'),
+  // Expo Glass Effect
+  'expo-glass-effect': path.join(stubsDir, 'expo-glass-effect.js'),
+  // Expo Metro Runtime — stub avoids HMRClient crash in embedded environments
+  '@expo/metro-runtime': path.join(stubsDir, 'expo-metro-runtime.js'),
+  // Expo Updates
+  'expo-updates': path.join(stubsDir, 'expo-updates.js'),
+  // Expo In-App Purchases (legacy)
+  'expo-in-app-purchases': path.join(stubsDir, 'expo-in-app-purchases.js'),
+  // Bacons Apple Targets
+  '@bacons/apple-targets': path.join(stubsDir, 'bacons-apple-targets.js'),
+  // React DevTools Core
+  'react-devtools-core': path.join(stubsDir, 'react-devtools-core.js'),
+  // rn-get-dev-server — must export a FUNCTION, not an object
+  'rn-get-dev-server': path.join(stubsDir, 'rn-get-dev-server.js'),
+};
+
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
-    new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
-  ];
+  new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
+];
 
 // Custom server middleware to receive console.log messages from the app
 const LOG_FILE_PATH = path.join(__dirname, '.natively', 'app_console.log');
