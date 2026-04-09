@@ -1,5 +1,4 @@
 import React, { useRef } from "react";
-import * as Haptics from "expo-haptics";
 import {
   Animated,
   PanResponder,
@@ -81,6 +80,8 @@ export default function ListItem({ listId }: { listId: string }) {
 
   const handleDelete = () => {
     if (process.env.EXPO_OS === "ios") {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Haptics = require("expo-haptics");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
     console.log("[ListItem] Delete pressed for:", listId);

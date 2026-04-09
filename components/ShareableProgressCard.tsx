@@ -7,16 +7,6 @@ import {
   Image,
   Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-
-// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
-let ViewShot: any = null;
-if (Platform.OS !== 'web') {
-  try { ViewShot = require('react-native-view-shot').default; } catch {}
-}
-// Fallback wrapper when ViewShot is unavailable (Expo Go / web)
-const CaptureWrapper: any = ViewShot || View;
-
 interface ShareableProgressCardProps {
   consistencyScore: number;
   weightGoalProgress: number; // % complete (0-100)
@@ -33,6 +23,12 @@ export default function ShareableProgressCard({
   dayStreak,
   onCapture,
 }: ShareableProgressCardProps) {
+  const LinearGradient: any = (() => { try { return require('expo-linear-gradient').LinearGradient; } catch { return require('react-native').View; } })();
+  let ViewShot: any = null;
+  if (Platform.OS !== 'web') {
+    try { ViewShot = require('react-native-view-shot').default; } catch {}
+  }
+  const CaptureWrapper: any = ViewShot || View;
   const viewShotRef = useRef<ViewShot>(null);
 
   // Expose the ref to parent component

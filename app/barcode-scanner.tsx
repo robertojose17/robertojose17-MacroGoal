@@ -3,7 +3,6 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -21,6 +20,7 @@ import { toLocalDateString } from '@/utils/dateUtils';
  * CRITICAL FIX: Use router.dismissTo() to dismiss ALL screens back to home, then push food-details
  */
 export default function BarcodeScannerScreen() {
+  const { CameraView, useCameraPermissions } = (() => { try { return require('expo-camera'); } catch { return { CameraView: require('react-native').View, useCameraPermissions: () => [null, () => {}] }; } })();
   const router = useRouter();
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();

@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { toLocalDateString } from '@/utils/dateUtils';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker is stubbed — lazy require inside handlers
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -143,8 +143,14 @@ export default function ChatbotScreen() {
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
 
+  const getImagePicker = () => {
+    try { return require('expo-image-picker'); } catch { return null; }
+  };
+
   // Request camera permissions
   const requestCameraPermission = useCallback(async () => {
+    const ImagePicker = getImagePicker();
+    if (!ImagePicker) return false;
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'We need camera access to use this function', [
@@ -158,6 +164,8 @@ export default function ChatbotScreen() {
 
   // Request media library permissions
   const requestMediaLibraryPermission = useCallback(async () => {
+    const ImagePicker = getImagePicker();
+    if (!ImagePicker) return false;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Media library permission is required to select photos.');
@@ -192,6 +200,9 @@ export default function ChatbotScreen() {
       const hasPermission = await requestCameraPermission();
       if (!hasPermission) return;
 
+      const ImagePicker = getImagePicker();
+      if (!ImagePicker) return;
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -214,6 +225,9 @@ export default function ChatbotScreen() {
     try {
       const hasPermission = await requestMediaLibraryPermission();
       if (!hasPermission) return;
+
+      const ImagePicker = getImagePicker();
+      if (!ImagePicker) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,

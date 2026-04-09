@@ -25,7 +25,7 @@ async function getSupabaseClient() {
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { listTrackers, logEntry as logTrackerEntry } from '@/utils/trackersApi';
 import { toLocalDateString } from '@/utils/dateUtils';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker is stubbed — lazy require inside handlePickPhoto
 
 type CheckInType = 'weight' | 'steps' | 'gym';
 
@@ -330,7 +330,12 @@ export default function CheckInFormScreen() {
   const handlePickPhoto = async (source: 'library' | 'camera') => {
     console.log('[CheckInForm] Photo picker opened — source:', source);
     try {
-      let result: ImagePicker.ImagePickerResult;
+      const ImagePicker = (() => { try { return require('expo-image-picker'); } catch { return null; } })();
+      if (!ImagePicker) {
+        Alert.alert('Not Available', 'Image picker is not available on this platform.');
+        return;
+      }
+      let result: any;
       if (source === 'camera') {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {

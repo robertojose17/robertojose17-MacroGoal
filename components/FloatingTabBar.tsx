@@ -12,7 +12,6 @@ import {
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { BlurView } from 'expo-blur';
 import { useTheme } from '@react-navigation/native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
@@ -41,6 +40,7 @@ export default function FloatingTabBar({
   borderRadius = 35,
   bottomMargin,
 }: FloatingTabBarProps) {
+  const BlurView: any = (() => { try { return require('expo-blur').BlurView; } catch { return require('react-native').View; } })();
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();

@@ -8,10 +8,11 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { Calendar, DateData } from 'react-native-calendars';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { toLocalDateString } from '@/utils/dateUtils';
+
+type DateData = { dateString: string; day: number; month: number; year: number; timestamp: number };
 
 interface CalendarDatePickerProps {
   visible: boolean;
@@ -32,6 +33,8 @@ export default function CalendarDatePicker({
   minDate,
   title = 'Select Date',
 }: CalendarDatePickerProps) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Calendar } = (() => { try { return require('react-native-calendars'); } catch { return { Calendar: () => null }; } })();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 

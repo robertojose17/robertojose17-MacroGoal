@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -24,6 +23,7 @@ export default function ProgressCircle({
   label,
   unit = '',
 }: ProgressCircleProps) {
+  const { default: Svg, Circle } = (() => { try { return require('react-native-svg'); } catch { return { default: require('react-native').View, Circle: () => null }; } })();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 

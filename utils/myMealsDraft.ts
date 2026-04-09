@@ -1,6 +1,7 @@
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+// Lazy accessor — never require AsyncStorage at module scope on iOS
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+function getAsyncStorage() { return require('@react-native-async-storage/async-storage').default; }
 
 const DRAFT_KEY = '@my_meals_draft';
 
@@ -24,7 +25,7 @@ export interface DraftItem {
  */
 export async function saveDraft(items: DraftItem[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(items));
+    await getAsyncStorage().setItem(DRAFT_KEY, JSON.stringify(items));
     console.log('[MyMealsDraft] Draft saved:', items.length, 'items');
   } catch (error) {
     console.error('[MyMealsDraft] Error saving draft:', error);
@@ -36,7 +37,7 @@ export async function saveDraft(items: DraftItem[]): Promise<void> {
  */
 export async function loadDraft(): Promise<DraftItem[]> {
   try {
-    const data = await AsyncStorage.getItem(DRAFT_KEY);
+    const data = await getAsyncStorage().getItem(DRAFT_KEY);
     if (data) {
       const items = JSON.parse(data);
       console.log('[MyMealsDraft] Draft loaded:', items.length, 'items');
@@ -54,7 +55,7 @@ export async function loadDraft(): Promise<DraftItem[]> {
  */
 export async function clearDraft(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(DRAFT_KEY);
+    await getAsyncStorage().removeItem(DRAFT_KEY);
     console.log('[MyMealsDraft] Draft cleared');
   } catch (error) {
     console.error('[MyMealsDraft] Error clearing draft:', error);

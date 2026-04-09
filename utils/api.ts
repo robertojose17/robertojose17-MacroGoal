@@ -6,12 +6,15 @@
  */
 
 import Constants from "expo-constants";
-// eslint-disable-next-line import/no-unresolved
-import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 // Get backend URL from app config
 export const API_URL = Constants.expoConfig?.extra?.backendUrl || "";
+
+// Lazy accessor — never import expo-secure-store at module scope on iOS
+// (native modules must not be evaluated before AppRegistry.registerComponent)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+function getSecureStore() { return require("expo-secure-store"); }
 
 /**
  * Get stored auth token
@@ -20,7 +23,7 @@ export async function getAuthToken(): Promise<string | null> {
   if (Platform.OS === "web") {
     return localStorage.getItem("auth_token");
   }
-  return await SecureStore.getItemAsync("auth_token");
+  return await getSecureStore().getItemAsync("auth_token");
 }
 
 /**
@@ -30,7 +33,7 @@ export async function setAuthToken(token: string): Promise<void> {
   if (Platform.OS === "web") {
     localStorage.setItem("auth_token", token);
   } else {
-    await SecureStore.setItemAsync("auth_token", token);
+    await getSecureStore().setItemAsync("auth_token", token);
   }
 }
 
@@ -41,7 +44,7 @@ export async function removeAuthToken(): Promise<void> {
   if (Platform.OS === "web") {
     localStorage.removeItem("auth_token");
   } else {
-    await SecureStore.deleteItemAsync("auth_token");
+    await getSecureStore().deleteItemAsync("auth_token");
   }
 }
 

@@ -15,8 +15,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { getSupabase } from '@/lib/supabase/client';
 import * as Linking from 'expo-linking';
 
@@ -191,14 +189,13 @@ export default function SignUpScreen() {
 
       if (!profileCreated) {
         console.error('[SignUp] ❌ Failed to create profile after all retries');
-        // Profile creation failed but auth succeeded — _layout.tsx will route
-        // to onboarding since onboarding_completed will be false/missing.
         console.log('[SignUp] Auth state change will handle navigation via _layout.tsx');
         setLoading(false);
         return;
       }
 
-      console.log('[SignUp] ✅ Signup complete — auth state change will handle navigation via _layout.tsx');
+      console.log('[SignUp] ✅ Signup complete — navigating to tabs');
+      router.replace('/(tabs)');
     } catch (error: any) {
       console.error('[SignUp] Unexpected error:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred during sign up');
@@ -225,12 +222,7 @@ export default function SignUpScreen() {
   return (
     <ImageBackground source={BG_IMAGE} style={styles.bg} resizeMode="cover">
       {/* Gradient overlay: transparent at top, solid black at bottom */}
-      <LinearGradient
-        colors={['transparent', 'transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.95)', '#000000']}
-        locations={[0, 0.35, 0.55, 0.75, 1]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <View style={[StyleSheet.absoluteFill, styles.gradientOverlay]} pointerEvents="none" />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
@@ -246,7 +238,7 @@ export default function SignUpScreen() {
           >
             {/* Glassmorphism card */}
             <View style={styles.cardWrapper}>
-              <BlurView intensity={20} tint="dark" style={styles.blurCard}>
+              <View style={styles.blurCard}>
                 <View style={styles.cardInner}>
                   <Text style={styles.cardTitle}>Create Account</Text>
 
@@ -316,7 +308,7 @@ export default function SignUpScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </BlurView>
+              </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -330,6 +322,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+  },
+  gradientOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   safeArea: {
     flex: 1,

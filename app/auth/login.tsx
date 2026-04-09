@@ -15,8 +15,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 // Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
 async function getSupabaseClient() {
   const { getSupabase } = await import('@/lib/supabase/client');
@@ -28,6 +26,8 @@ const BG_IMAGE = require('../../assets/images/73291328-4520-475d-9d5f-c23a5206eb
 
 export default function LoginScreen() {
   const router = useRouter();
+  const BlurView: any = (() => { try { return require('expo-blur').BlurView; } catch { return require('react-native').View; } })();
+  const LinearGradient: any = (() => { try { return require('expo-linear-gradient').LinearGradient; } catch { return require('react-native').View; } })();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

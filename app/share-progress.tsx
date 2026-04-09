@@ -16,7 +16,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
 import { TouchableOpacity } from 'react-native';
-import * as Sharing from 'expo-sharing';
+// expo-sharing is stubbed — lazy require inside handleShare
 import { toLocalDateString } from '@/utils/dateUtils';
 
 // Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
@@ -25,10 +25,10 @@ async function getSupabaseClient() {
   return supabase;
 }
 
-// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
-let ViewShot: any = null;
-if (Platform.OS !== 'web') {
-  try { ViewShot = require('react-native-view-shot').default; } catch {}
+// react-native-view-shot requires a native build — lazy require inside component
+function getViewShot(): any {
+  if (Platform.OS === 'web') return null;
+  try { return require('react-native-view-shot').default; } catch { return null; }
 }
 
 interface CardData {
@@ -44,10 +44,11 @@ export default function ShareProgressScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const ViewShot = getViewShot();
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [cardData, setCardData] = useState<CardData | null>(null);
-  const viewShotRef = useRef<ViewShot>(null);
+  const viewShotRef = useRef<any>(null);
 
   const calculateProteinAccuracyScore = useCallback((proteinLogged: number, proteinTarget: number): number => {
     if (proteinTarget === 0) {
@@ -483,7 +484,8 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] Card captured:', uri);
 
       // Check if sharing is available
-      const isAvailable = await Sharing.isAvailableAsync();
+      const SharingModule = (() => { try { return require('expo-sharing'); } catch { return null; } })();
+      const isAvailable = SharingModule ? await SharingModule.isAvailableAsync() : false;
       if (!isAvailable) {
         Alert.alert('Sharing not available', 'Sharing is not available on this device');
         setSharing(false);
@@ -493,7 +495,7 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] Sharing is available, proceeding...');
       
       // Share the image
-      await Sharing.shareAsync(uri, {
+      await SharingModule.shareAsync(uri, {
         mimeType: 'image/png',
         dialogTitle: 'Share your progress',
       });

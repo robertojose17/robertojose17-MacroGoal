@@ -23,14 +23,9 @@ import ProgressCard from '@/components/ProgressCard';
 import PhotoProgressCard from '@/components/PhotoProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
 
-// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
-let ViewShot: any = null;
-if (Platform.OS !== 'web') {
-  try { ViewShot = require('react-native-view-shot').default; } catch {} // eslint-disable-line @typescript-eslint/no-require-imports
-}
+// react-native-view-shot is resolved lazily inside the component that uses it
 
 // ─── Local error boundary so a crashing card doesn't blank the whole screen ───
 interface CardErrorBoundaryState { hasError: boolean; }
@@ -672,7 +667,9 @@ export default function DashboardScreen() {
             link.click();
             Alert.alert('Success', 'Image downloaded!');
           } else {
-            // For native, use expo-sharing
+            // For native, use expo-sharing (lazy require to avoid stub issues)
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const Sharing = require('expo-sharing');
             const isAvailable = await Sharing.isAvailableAsync();
             if (isAvailable) {
               await Sharing.shareAsync(uri, {

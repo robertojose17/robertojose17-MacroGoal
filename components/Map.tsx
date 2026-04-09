@@ -1,10 +1,5 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View, ViewStyle, ActivityIndicator, Platform } from 'react-native';
-// react-native-webview requires a native build — lazy require so Expo Go doesn't hang
-let WebView: any = null;
-if (Platform.OS !== 'web') {
-  try { WebView = require('react-native-webview').WebView; } catch {}
-}
 
 export interface MapMarker {
     id: string;
@@ -37,6 +32,12 @@ export const Map = ({
     style,
     showsUserLocation = false
 }: MapProps) => {
+    // react-native-webview requires a native build — lazy require so Expo Go doesn't hang
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const WebView: any = Platform.OS !== 'web'
+        ? (() => { try { return require('react-native-webview').WebView; } catch { return null; } })()
+        : null;
+    /* eslint-enable @typescript-eslint/no-require-imports */
 
     // HTML Content for Leaflet Map
     const mapHtml = useMemo(() => {
