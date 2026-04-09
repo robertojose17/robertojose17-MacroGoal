@@ -8,7 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
-import { supabase } from '@/lib/supabase/client';
+
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -93,6 +93,7 @@ export default function HomeScreen() {
       setLoading(true);
       setError(null);
       
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError) {
@@ -283,6 +284,7 @@ export default function HomeScreen() {
     console.log('[Home] Delete requested for item:', itemId);
     
     try {
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('No authenticated user found');

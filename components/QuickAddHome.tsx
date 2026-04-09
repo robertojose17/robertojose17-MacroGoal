@@ -5,7 +5,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 
 interface MyFood {
@@ -46,6 +45,7 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
     try {
       setLoading(true);
       
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('[QuickAddHome] No user found');
@@ -178,6 +178,7 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
     }
 
     try {
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Error', 'You must be logged in to add food');
@@ -278,6 +279,7 @@ export default function QuickAddHome({ mealType, date, returnTo, mode, myMealId,
     setMyFoods(myFoods.filter(f => f.id !== foodId));
 
     try {
+      const { supabase } = await import('@/lib/supabase/client');
       const { error } = await supabase
         .from('foods')
         .delete()

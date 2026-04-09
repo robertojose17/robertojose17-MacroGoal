@@ -4,7 +4,7 @@
  * Handles CRUD operations for favorite foods
  */
 
-import { supabase } from '@/lib/supabase/client';
+
 
 export interface Favorite {
   id: string;
@@ -62,6 +62,7 @@ export async function isFavorite(
 
     console.log('[Favorites] Checking if favorite:', { foodSource, actualFoodCode });
 
+    const { supabase } = await import('@/lib/supabase/client');
     const { data, error } = await supabase
       .from('favorites')
       .select('id')
@@ -102,6 +103,7 @@ export async function addFavorite(favorite: Omit<Favorite, 'id' | 'created_at' |
     console.log('[Favorites] Using food_code:', actualFoodCode);
 
     // Use upsert to handle duplicates gracefully
+    const { supabase } = await import('@/lib/supabase/client');
     const { data, error } = await supabase
       .from('favorites')
       .upsert(
@@ -161,6 +163,7 @@ export async function removeFavorite(
       actualFoodCode 
     });
 
+    const { supabase } = await import('@/lib/supabase/client');
     const { data, error, count } = await supabase
       .from('favorites')
       .delete({ count: 'exact' })
@@ -197,6 +200,7 @@ export async function removeFavoriteById(favoriteId: string): Promise<boolean> {
   try {
     console.log('[Favorites] Removing favorite by ID:', favoriteId);
 
+    const { supabase } = await import('@/lib/supabase/client');
     const { data, error, count } = await supabase
       .from('favorites')
       .delete({ count: 'exact' })
@@ -230,6 +234,7 @@ export async function getFavorites(userId: string): Promise<Favorite[]> {
   try {
     console.log('[Favorites] Getting favorites for user:', userId);
 
+    const { supabase } = await import('@/lib/supabase/client');
     const { data, error } = await supabase
       .from('favorites')
       .select('*')

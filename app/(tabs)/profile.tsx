@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/lib/supabase/client';
 import { usePremium } from '@/hooks/usePremium';
 import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToKg, calculateBMR, calculateTDEE, calculateTargetCalories, calculateMacrosWithPreset } from '@/utils/calculations';
 import { toLocalDateString } from '@/utils/dateUtils';
@@ -43,6 +42,7 @@ export default function ProfileScreen() {
   const loadUserData = async () => {
     try {
       setLoading(true);
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         console.log('[Profile] No authenticated user found');
@@ -56,6 +56,7 @@ export default function ProfileScreen() {
         supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', authUser.id).eq('is_active', true).order('start_date', { ascending: false }).limit(1),
       ]);
+
 
       if (userResult.error) {
         console.error('[Profile] Error loading user data:', userResult.error);
@@ -115,6 +116,7 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             console.log('[Profile] Logging out user');
+            const { supabase } = await import('@/lib/supabase/client');
             await supabase.auth.signOut();
             router.replace('/auth/welcome');
           },
@@ -230,6 +232,7 @@ export default function ProfileScreen() {
 
       console.log('[Profile] New calculations:', { bmr, tdee, targetCalories, macros });
 
+      const { supabase } = await import('@/lib/supabase/client');
       await supabase
         .from('goals')
         .update({ is_active: false })
@@ -298,6 +301,7 @@ export default function ProfileScreen() {
       updateData.updated_at = new Date().toISOString();
 
       console.log('[Profile] Saving to Supabase:', updateData);
+      const { supabase } = await import('@/lib/supabase/client');
       const { error } = await supabase
         .from('users')
         .update(updateData)
@@ -412,6 +416,7 @@ export default function ProfileScreen() {
         updateData.updated_at = new Date().toISOString();
         
         console.log('[Profile] Saving to Supabase:', updateData);
+        const { supabase } = await import('@/lib/supabase/client');
         const { error } = await supabase
           .from('users')
           .update(updateData)
@@ -464,6 +469,7 @@ export default function ProfileScreen() {
       
       console.log('[Profile] Saving Journey Start Date:', dateString);
       
+      const { supabase } = await import('@/lib/supabase/client');
       const { error } = await supabase
         .from('goals')
         .update({ start_date: dateString, updated_at: new Date().toISOString() })

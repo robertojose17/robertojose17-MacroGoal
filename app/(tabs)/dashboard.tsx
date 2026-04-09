@@ -23,7 +23,6 @@ import ProgressCard from '@/components/ProgressCard';
 import PhotoProgressCard from '@/components/PhotoProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import { supabase } from '@/lib/supabase/client';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
 
@@ -104,6 +103,7 @@ export default function DashboardScreen() {
 
   const loadTodaySummary = useCallback(async (userId: string, date: string) => {
     try {
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -223,6 +223,7 @@ export default function DashboardScreen() {
       console.log('[Dashboard] Start date object:', startDate.toISOString());
       console.log('[Dashboard] End date object:', endDate.toISOString());
 
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: mealsData } = await supabase
         .from('meals')
         .select(`
@@ -290,6 +291,7 @@ export default function DashboardScreen() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         console.log('[Dashboard] No user found');
@@ -464,6 +466,7 @@ export default function DashboardScreen() {
 
       // Load share card data
       const authUser = user;
+      const { supabase } = await import('@/lib/supabase/client');
       const { data: userData } = await supabase
         .from('users')
         .select('*')

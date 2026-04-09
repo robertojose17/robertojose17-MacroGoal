@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { toLocalDateString } from '@/utils/dateUtils';
-import { supabase } from '@/lib/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol';
 import CalendarDateRangePicker from '@/components/CalendarDateRangePicker';
 
@@ -222,6 +221,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
     try {
       console.log('[ConsistencyScore] Loading journey start date for user:', userId);
 
+      const { supabase } = await import('@/lib/supabase/client');
       const [{ data: userData }, { data: goalData }] = await Promise.all([
         supabase.from('users').select('created_at').eq('id', userId).maybeSingle(),
         supabase
@@ -272,6 +272,7 @@ export default function ConsistencyScore({ userId, isDark }: ConsistencyScorePro
       console.log('[ConsistencyScore] Calculating score for range:', rangeStartDate, '→', rangeEndDate);
 
       // Fetch meals and active goal in parallel
+      const { supabase } = await import('@/lib/supabase/client');
       const [{ data: allMeals, error: mealsError }, { data: goalData, error: goalError }] =
         await Promise.all([
           supabase

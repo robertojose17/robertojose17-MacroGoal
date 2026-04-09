@@ -2,47 +2,68 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Global error catcher
+const errors: string[] = [];
+const origConsoleError = console.error.bind(console);
+console.error = (...args: any[]) => {
+  errors.push(args.map(String).join(' '));
+  origConsoleError(...args);
+};
 
 export default function RootLayout() {
   const router = useRouter();
   const [initialized, setInitialized] = useState(false);
   const [hasSession, setHasSession] = useState(false);
+  const [crashError, setCrashError] = useState<string | null>(null);
+  const [log, setLog] = useState<string[]>([]);
   const mounted = useRef(true);
+
+  const addLog = (msg: string) => {
+    console.log(msg);
+    setLog(prev => [...prev, msg]);
+  };
 
   useEffect(() => {
     mounted.current = true;
-
-    // Hide splash immediately so user sees something
     SplashScreen.hideAsync().catch(() => {});
+    addLog('Layout mounted');
 
     const initAuth = async () => {
       try {
+        addLog('Importing supabase...');
         const { supabase } = await import('../lib/supabase/client');
+        addLog('Supabase imported OK');
 
-        // Race getSession against a 4-second timeout
+        addLog('Calling getSession...');
         const sessionResult = await Promise.race([
           supabase.auth.getSession(),
           new Promise<{ data: { session: null } }>((resolve) =>
-            setTimeout(() => resolve({ data: { session: null } }), 4000)
+            setTimeout(() => {
+              addLog('getSession TIMED OUT after 4s');
+              resolve({ data: { session: null } });
+            }, 4000)
           ),
         ]);
 
         if (!mounted.current) return;
-        console.log('[Layout] getSession resolved, session:', !!sessionResult.data.session);
+        addLog('getSession done, session=' + !!sessionResult.data.session);
         setHasSession(!!sessionResult.data.session);
         setInitialized(true);
 
-        // Listen for future auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
           if (!mounted.current) return;
           setHasSession(!!session);
         });
 
         return () => subscription.unsubscribe();
-      } catch (e) {
-        console.error('[Layout] Auth init error:', e);
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        addLog('AUTH ERROR: ' + msg);
+        setCrashError(msg);
         if (!mounted.current) return;
         setInitialized(true);
       }
@@ -50,10 +71,9 @@ export default function RootLayout() {
 
     initAuth();
 
-    // Absolute fallback: if nothing resolves in 6 seconds, force init
     const fallback = setTimeout(() => {
       if (!mounted.current) return;
-      console.warn('[Layout] Fallback timer fired — forcing initialized=true');
+      addLog('FALLBACK TIMER fired');
       setInitialized(true);
     }, 6000);
 
@@ -65,18 +85,42 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!initialized) return;
+    addLog('initialized=true, hasSession=' + hasSession);
     const timer = setTimeout(() => {
       if (!mounted.current) return;
       if (hasSession) {
-        console.log('[Layout] Session found — navigating to tabs');
+        addLog('Navigating to tabs');
         router.replace('/(tabs)');
       } else {
-        console.log('[Layout] No session — navigating to signup');
+        addLog('Navigating to signup');
         router.replace('/auth/signup');
       }
     }, 50);
     return () => clearTimeout(timer);
   }, [initialized, hasSession, router]);
+
+  // Show debug overlay if there's a crash error
+  if (crashError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#1a1a2e', padding: 20, paddingTop: 60 }}>
+        <Text style={{ color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
+          iOS Crash Detected
+        </Text>
+        <Text style={{ color: '#ff8888', fontSize: 13, marginBottom: 20 }}>
+          {crashError}
+        </Text>
+        <Text style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 8 }}>Log:</Text>
+        <ScrollView style={{ flex: 1 }}>
+          {log.map((l, i) => (
+            <Text key={i} style={{ color: '#cccccc', fontSize: 11, marginBottom: 2 }}>{l}</Text>
+          ))}
+          {errors.map((e, i) => (
+            <Text key={'e' + i} style={{ color: '#ff6666', fontSize: 11, marginBottom: 2 }}>ERR: {e}</Text>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaProvider>

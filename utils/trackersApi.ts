@@ -1,4 +1,3 @@
-import { supabase } from '@/lib/supabase/client';
 import { toLocalDateString } from '@/utils/dateUtils';
 
 export interface Tracker {
@@ -39,6 +38,7 @@ export interface TrackerStats {
 }
 
 async function getCurrentUserId(): Promise<string> {
+  const { supabase } = await import('@/lib/supabase/client');
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new Error('Not authenticated');
   return user.id;
@@ -47,6 +47,7 @@ async function getCurrentUserId(): Promise<string> {
 export async function listTrackers(): Promise<Tracker[]> {
   console.log('[TrackersApi] listTrackers()');
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { data, error } = await supabase
     .from('trackers')
@@ -97,6 +98,7 @@ export async function listTrackers(): Promise<Tracker[]> {
 export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
   console.log('[TrackersApi] createTracker()', data);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { data: result, error } = await supabase
     .from('trackers')
@@ -115,6 +117,7 @@ export async function createTracker(data: Partial<Tracker>): Promise<Tracker> {
 export async function updateTracker(id: string, data: Partial<Tracker>): Promise<Tracker> {
   console.log('[TrackersApi] updateTracker()', id);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { data: result, error } = await supabase
     .from('trackers')
@@ -134,6 +137,7 @@ export async function updateTracker(id: string, data: Partial<Tracker>): Promise
 export async function deleteTracker(id: string): Promise<void> {
   console.log('[TrackersApi] deleteTracker()', id);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { error } = await supabase
     .from('trackers')
@@ -150,6 +154,7 @@ export async function deleteTracker(id: string): Promise<void> {
 export async function listEntries(trackerId: string, limit = 90): Promise<TrackerEntry[]> {
   console.log('[TrackersApi] listEntries()', trackerId);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { data, error } = await supabase
     .from('tracker_entries')
@@ -174,6 +179,7 @@ export async function logEntry(
 ): Promise<TrackerEntry> {
   console.log('[TrackersApi] logEntry()', trackerId, date, value);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { data, error } = await supabase
     .from('tracker_entries')
@@ -198,6 +204,7 @@ export async function updateEntry(
 ): Promise<TrackerEntry> {
   console.log('[TrackersApi] updateEntry()', entryId);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { data: result, error } = await supabase
     .from('tracker_entries')
@@ -221,6 +228,7 @@ export async function deleteEntry(
 ): Promise<void> {
   console.log('[TrackersApi] deleteEntry()', entryId, opts);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const { error } = await supabase
     .from('tracker_entries')
@@ -239,7 +247,8 @@ export async function deleteEntry(
   // other fields like steps that should be preserved).
   if (opts?.syncCheckIns && opts.date) {
     console.log('[TrackersApi] deleteEntry — nulling check_ins.weight for date:', opts.date);
-    const { error: ciError } = await supabase
+    const { supabase: supabase2 } = await import('@/lib/supabase/client');
+    const { error: ciError } = await supabase2
       .from('check_ins')
       .update({ weight: null })
       .eq('user_id', userId)
@@ -269,6 +278,7 @@ export async function deleteEntry(
 export async function backfillWeightFromCheckIns(weightTrackerId: string): Promise<void> {
   console.log('[TrackersApi] backfillWeightFromCheckIns() trackerId:', weightTrackerId);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   // Fetch ALL check_ins rows that have a weight value — no date range restriction,
   // so every dot on the graph gets a matching tracker_entries row.
@@ -318,6 +328,7 @@ export async function backfillWeightFromCheckIns(weightTrackerId: string): Promi
 export async function getStats(trackerId: string): Promise<TrackerStats> {
   console.log('[TrackersApi] getStats()', trackerId);
   const userId = await getCurrentUserId();
+  const { supabase } = await import('@/lib/supabase/client');
 
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
