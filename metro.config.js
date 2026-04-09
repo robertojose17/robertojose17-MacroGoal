@@ -9,7 +9,6 @@ config.resolver.unstable_enablePackageExports = true;
 
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
-  'rn-get-dev-server': path.resolve(__dirname, 'stubs/rn-get-dev-server.js'),
   'react-native-purchases': path.resolve(__dirname, 'stubs/react-native-purchases.js'),
   'react-native-google-mobile-ads': path.resolve(__dirname, 'stubs/react-native-google-mobile-ads.js'),
   'expo-in-app-purchases': path.resolve(__dirname, 'stubs/expo-in-app-purchases.js'),
