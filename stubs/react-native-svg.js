@@ -1,84 +1,81 @@
-'use strict';
-// Stub for react-native-svg — used by Metro extraNodeModules when the real
-// native module is not linked. Provides no-op React components for all common exports.
-// IMPORTANT: These must be proper React function components (not plain functions)
-// so that lucide-react-native and other libraries can use them as JSX elements
-// and set .displayName on them without crashing.
-var React = require('react');
+const React = require('react');
 
-function makeComponent(name) {
-  function SvgComponent() { return null; }
-  SvgComponent.displayName = name;
-  return SvgComponent;
-}
+const Svg = (props) => null;
+Svg.displayName = 'Svg';
 
-var Svg = makeComponent('Svg');
-var Circle = makeComponent('Circle');
-var Ellipse = makeComponent('Ellipse');
-var G = makeComponent('G');
-var Text = makeComponent('Text');
-var TSpan = makeComponent('TSpan');
-var TextPath = makeComponent('TextPath');
-var Path = makeComponent('Path');
-var Polygon = makeComponent('Polygon');
-var Polyline = makeComponent('Polyline');
-var Line = makeComponent('Line');
-var Rect = makeComponent('Rect');
-var Use = makeComponent('Use');
-var SvgImage = makeComponent('Image');
-var Symbol = makeComponent('Symbol');
-var Defs = makeComponent('Defs');
-var LinearGradient = makeComponent('LinearGradient');
-var RadialGradient = makeComponent('RadialGradient');
-var Stop = makeComponent('Stop');
-var ClipPath = makeComponent('ClipPath');
-var Pattern = makeComponent('Pattern');
-var Mask = makeComponent('Mask');
-var Marker = makeComponent('Marker');
-var ForeignObject = makeComponent('ForeignObject');
-var SvgXml = makeComponent('SvgXml');
-var SvgUri = makeComponent('SvgUri');
-var SvgFromUri = makeComponent('SvgFromUri');
-var SvgFromXml = makeComponent('SvgFromXml');
-var SvgCss = makeComponent('SvgCss');
-var SvgCssUri = makeComponent('SvgCssUri');
-var SvgAst = makeComponent('SvgAst');
-var SvgWithCss = makeComponent('SvgWithCss');
-var SvgWithCssUri = makeComponent('SvgWithCssUri');
+const createSvgComponent = (name) => {
+  const Comp = (props) => null;
+  Comp.displayName = name;
+  return Comp;
+};
+
+const Circle = createSvgComponent('Circle');
+const Ellipse = createSvgComponent('Ellipse');
+const G = createSvgComponent('G');
+const Text = createSvgComponent('Text');
+const TSpan = createSvgComponent('TSpan');
+const TextPath = createSvgComponent('TextPath');
+const Path = createSvgComponent('Path');
+const Polygon = createSvgComponent('Polygon');
+const Polyline = createSvgComponent('Polyline');
+const Line = createSvgComponent('Line');
+const Rect = createSvgComponent('Rect');
+const Use = createSvgComponent('Use');
+const Image = createSvgComponent('Image');
+const Symbol = createSvgComponent('Symbol');
+const Defs = createSvgComponent('Defs');
+const LinearGradient = createSvgComponent('LinearGradient');
+const RadialGradient = createSvgComponent('RadialGradient');
+const Stop = createSvgComponent('Stop');
+const ClipPath = createSvgComponent('ClipPath');
+const Pattern = createSvgComponent('Pattern');
+const Mask = createSvgComponent('Mask');
+const ForeignObject = createSvgComponent('ForeignObject');
+const Marker = createSvgComponent('Marker');
+const SvgXml = createSvgComponent('SvgXml');
+const SvgUri = createSvgComponent('SvgUri');
+const SvgFromUri = createSvgComponent('SvgFromUri');
+const SvgFromXml = createSvgComponent('SvgFromXml');
+const SvgCss = createSvgComponent('SvgCss');
+const SvgCssUri = createSvgComponent('SvgCssUri');
+const SvgAst = createSvgComponent('SvgAst');
+const SvgWithCss = createSvgComponent('SvgWithCss');
+const SvgWithCssUri = createSvgComponent('SvgWithCssUri');
 
 module.exports = {
+  __esModule: true,
   default: Svg,
-  Svg: Svg,
-  Circle: Circle,
-  Ellipse: Ellipse,
-  G: G,
-  Text: Text,
-  TSpan: TSpan,
-  TextPath: TextPath,
-  Path: Path,
-  Polygon: Polygon,
-  Polyline: Polyline,
-  Line: Line,
-  Rect: Rect,
-  Use: Use,
-  Image: SvgImage,
-  Symbol: Symbol,
-  Defs: Defs,
-  LinearGradient: LinearGradient,
-  RadialGradient: RadialGradient,
-  Stop: Stop,
-  ClipPath: ClipPath,
-  Pattern: Pattern,
-  Mask: Mask,
-  Marker: Marker,
-  ForeignObject: ForeignObject,
-  SvgXml: SvgXml,
-  SvgUri: SvgUri,
-  SvgFromUri: SvgFromUri,
-  SvgFromXml: SvgFromXml,
-  SvgCss: SvgCss,
-  SvgCssUri: SvgCssUri,
-  SvgAst: SvgAst,
-  SvgWithCss: SvgWithCss,
-  SvgWithCssUri: SvgWithCssUri,
+  Svg,
+  Circle,
+  Ellipse,
+  G,
+  Text,
+  TSpan,
+  TextPath,
+  Path,
+  Polygon,
+  Polyline,
+  Line,
+  Rect,
+  Use,
+  Image,
+  Symbol,
+  Defs,
+  LinearGradient,
+  RadialGradient,
+  Stop,
+  ClipPath,
+  Pattern,
+  Mask,
+  ForeignObject,
+  Marker,
+  SvgXml,
+  SvgUri,
+  SvgFromUri,
+  SvgFromXml,
+  SvgCss,
+  SvgCssUri,
+  SvgAst,
+  SvgWithCss,
+  SvgWithCssUri,
 };
