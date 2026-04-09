@@ -24,6 +24,7 @@ const STUBS = {
   '@bacons/apple-targets': path.resolve(__dirname, 'stubs/bacons-apple-targets.js'),
   'expo-glass-effect': path.resolve(__dirname, 'stubs/expo-glass-effect.js'),
   'react-devtools-core': path.resolve(__dirname, 'stubs/react-devtools-core.js'),
+  'rn-get-dev-server': path.resolve(__dirname, 'stubs/rn-get-dev-server.js'),
 };
 
 config.resolver.extraNodeModules = STUBS;
