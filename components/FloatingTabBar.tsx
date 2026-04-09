@@ -40,6 +40,7 @@ export default function FloatingTabBar({
   borderRadius = 35,
   bottomMargin,
 }: FloatingTabBarProps) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const BlurView: any = (() => { try { return require('expo-blur').BlurView; } catch { return require('react-native').View; } })();
   const router = useRouter();
   const pathname = usePathname();

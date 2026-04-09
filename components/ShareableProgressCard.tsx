@@ -23,9 +23,11 @@ export default function ShareableProgressCard({
   dayStreak,
   onCapture,
 }: ShareableProgressCardProps) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const LinearGradient: any = (() => { try { return require('expo-linear-gradient').LinearGradient; } catch { return require('react-native').View; } })();
   let ViewShot: any = null;
   if (Platform.OS !== 'web') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     try { ViewShot = require('react-native-view-shot').default; } catch {}
   }
   const CaptureWrapper: any = ViewShot || View;

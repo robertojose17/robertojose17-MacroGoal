@@ -1,84 +1,28 @@
-
 import React from 'react';
+import { View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { COLORS } from '@/constants/Colors';
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+const TABS: TabBarItem[] = [
+  { name: 'home', route: '/(tabs)/(home)', icon: 'home', label: 'Home' },
+  { name: 'diary', route: '/(tabs)/diary', icon: 'menu-book', label: 'Diary' },
+  { name: 'progress', route: '/(tabs)/progress', icon: 'trending-up', label: 'Progress' },
+  { name: 'profile', route: '/(tabs)/profile', icon: 'person', label: 'Profile' },
+];
 
+export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: isDark ? colors.textSecondaryDark : colors.textSecondary,
-        tabBarStyle: {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderTopColor: isDark ? colors.borderDark : colors.border,
-          paddingBottom: 20,
-          height: 85,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'chart.bar.fill' : 'chart.bar'}
-              android_material_icon_name="analytics"
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="(home)"
-        options={{
-          title: 'Food',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'fork.knife.circle.fill' : 'fork.knife.circle'}
-              android_material_icon_name="restaurant"
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="check-ins"
-        options={{
-          title: 'Check-Ins',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'checkmark.circle.fill' : 'checkmark.circle'}
-              android_material_icon_name="check-circle"
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              ios_icon_name={focused ? 'person.fill' : 'person'}
-              android_material_icon_name="person"
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <Tabs
+        screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}
+      >
+        <Tabs.Screen name="(home)" />
+        <Tabs.Screen name="diary" />
+        <Tabs.Screen name="progress" />
+        <Tabs.Screen name="profile" />
+      </Tabs>
+      <FloatingTabBar tabs={TABS} containerWidth={320} />
+    </View>
   );
 }

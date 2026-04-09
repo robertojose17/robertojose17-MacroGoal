@@ -28,6 +28,7 @@ async function getSupabaseClient() {
 // react-native-view-shot requires a native build — lazy require inside component
 function getViewShot(): any {
   if (Platform.OS === 'web') return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   try { return require('react-native-view-shot').default; } catch { return null; }
 }
 
@@ -484,6 +485,7 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] Card captured:', uri);
 
       // Check if sharing is available
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const SharingModule = (() => { try { return require('expo-sharing'); } catch { return null; } })();
       const isAvailable = SharingModule ? await SharingModule.isAvailableAsync() : false;
       if (!isAvailable) {

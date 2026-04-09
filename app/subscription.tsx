@@ -16,13 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import Constants from 'expo-constants';
+import Purchases, { LOG_LEVEL, isPurchasesAvailable } from '@/utils/purchases';
+
 // Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
 async function getSupabaseClient() {
   const { supabase } = await import('@/lib/supabase/client');
   return supabase;
 }
-import Constants from 'expo-constants';
-import Purchases, { LOG_LEVEL, isPurchasesAvailable } from '@/utils/purchases';
 
 function loadPurchases(): { Purchases: any; LOG_LEVEL: any } {
   if (!isPurchasesAvailable) return { Purchases: null, LOG_LEVEL: null };

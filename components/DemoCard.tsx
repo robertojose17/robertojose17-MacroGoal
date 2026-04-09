@@ -3,7 +3,13 @@ import { Link } from "expo-router";
 import { Pressable, StyleSheet, View, Text } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useTheme } from "@react-navigation/native";
-import { ModalDemo } from "./homeData";
+
+interface ModalDemo {
+  title: string;
+  description: string;
+  color: string;
+  route: string;
+}
 
 interface DemoCardProps {
   item: ModalDemo;

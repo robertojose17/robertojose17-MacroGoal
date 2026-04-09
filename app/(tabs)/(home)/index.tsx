@@ -1,888 +1,356 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, RefreshControl, Alert } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import ProgressCircle from '@/components/ProgressCircle';
-import { IconSymbol } from '@/components/IconSymbol';
-import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
+import {
+  View,
+  Text,
+  ScrollView,
+  RefreshControl,
+  TouchableOpacity,
+  Alert,
+  LayoutAnimation,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
+import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { MacroRing } from '@/components/MacroRing';
+import { MacroBar } from '@/components/MacroBar';
+import { SkeletonCard } from '@/components/SkeletonLoader';
+import { COLORS } from '@/constants/Colors';
+import { apiGet, apiDelete } from '@/utils/api';
+import { Goals, FoodLog } from '@/types';
+import {
+  UtensilsCrossed,
+  Coffee,
+  Sun,
+  Moon,
+  Cookie,
+  ChefHat,
+  Bot,
+  BookOpen,
+  Trash2,
+  Plus,
+} from 'lucide-react-native';
 
+const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
+const API_BASE = `${SUPABASE_URL}/functions/v1`;
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
-interface FoodItem {
-  id: string;
-  quantity: number;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
-  fiber: number;
-  serving_description: string | null;
-  grams: number | null;
-  foods: {
-    id: string;
-    name: string;
-    brand: string | null;
-    serving_amount: number;
-    serving_unit: string;
-    user_created: boolean;
-  } | null;
-}
-
-interface MealData {
-  type: MealType;
-  label: string;
-  items: FoodItem[];
-  totalCalories: number;
-  totalProtein: number;
-  totalCarbs: number;
-  totalFats: number;
-}
-
-const formatDateForStorage = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const MEAL_CONFIG: Record<MealType, { label: string; icon: React.ReactNode; color: string }> = {
+  breakfast: { label: 'Breakfast', icon: <Coffee size={18} color={COLORS.warning} />, color: COLORS.warning },
+  lunch: { label: 'Lunch', icon: <Sun size={18} color={COLORS.accent} />, color: COLORS.accent },
+  dinner: { label: 'Dinner', icon: <Moon size={18} color={COLORS.primary} />, color: COLORS.primary },
+  snack: { label: 'Snack', icon: <Cookie size={18} color={COLORS.textSecondary} />, color: COLORS.textSecondary },
 };
 
-const getServingDisplayText = (item: FoodItem): string => {
-  // grams is the actual total grams added (serving_amount * number_of_servings),
-  // so always prefer it over serving_description which stores only the per-serving value.
-  if (item.grams) {
-    return `${Math.round(item.grams)} g`;
-  }
-  if (item.serving_description) {
-    return item.serving_description;
-  }
-  const quantity = item.quantity || 1;
-  const servingAmount = item.foods?.serving_amount || 100;
-  const servingUnit = item.foods?.serving_unit || 'g';
-  
-  if (quantity === 1) {
-    return `${servingAmount} ${servingUnit}`;
-  }
-  
-  return `${quantity}x ${servingAmount} ${servingUnit}`;
-};
+function todayDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function greetingText(name?: string) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  return name ? `${greeting}, ${name.split(' ')[0]}!` : `${greeting}!`;
+}
 
 export default function HomeScreen() {
+  const { user } = useAuth();
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  
-  const [goal, setGoal] = useState<any>(null);
-  const [meals, setMeals] = useState<MealData[]>([
-    { type: 'breakfast', label: 'Breakfast', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
-    { type: 'lunch', label: 'Lunch', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
-    { type: 'dinner', label: 'Dinner', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
-    { type: 'snack', label: 'Snacks', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
-  ]);
-  const [totalCalories, setTotalCalories] = useState(0);
-  const [totalMacros, setTotalMacros] = useState({ protein: 0, carbs: 0, fats: 0, fiber: 0 });
+  const insets = useSafeAreaInsets();
+
+  const [goals, setGoals] = useState<Goals | null>(null);
+  const [logs, setLogs] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const loadData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    console.log('[Home] Fetching goals and food logs');
     try {
-      setLoading(true);
-      setError(null);
-      
-      const { supabase } = await import('@/lib/supabase/client');
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError) {
-        console.error('[Home] Error getting user:', userError);
-        setError('Failed to authenticate. Please try logging in again.');
-        setLoading(false);
-        return;
-      }
-      
-      if (!user) {
-        console.log('[Home] No user found');
-        setError('No user session found. Please log in.');
-        setLoading(false);
-        return;
-      }
-
-      console.log('[Home] Loading data for user:', user.id);
-
-      // Load goal data
-      const { data: goalData, error: goalError } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (goalError) {
-        console.error('[Home] Error loading goal:', goalError);
-        // Use defaults if goal loading fails
-        setGoal({
-          daily_calories: 2000,
-          protein_g: 150,
-          carbs_g: 200,
-          fats_g: 65,
-          fiber_g: 30,
-        });
-      } else if (goalData) {
-        console.log('[Home] Goal loaded:', goalData);
-        setGoal(goalData);
-      } else {
-        console.log('[Home] No active goal found, using defaults');
-        setGoal({
-          daily_calories: 2000,
-          protein_g: 150,
-          carbs_g: 200,
-          fats_g: 65,
-          fiber_g: 30,
-        });
-      }
-
-      // Load meals data
-      const dateString = formatDateForStorage(selectedDate);
-      console.log('[Home] Loading meals for date:', dateString);
-      
-      const { data: mealsData, error: mealsError } = await supabase
-        .from('meals')
-        .select(`
-          id,
-          meal_type,
-          date,
-          meal_items (
-            id,
-            quantity,
-            calories,
-            protein,
-            carbs,
-            fats,
-            fiber,
-            serving_description,
-            grams,
-            foods (
-              id,
-              name,
-              brand,
-              serving_amount,
-              serving_unit,
-              user_created
-            )
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('date', dateString);
-
-      if (mealsError) {
-        console.error('[Home] Error loading meals:', mealsError);
-        setError('Failed to load meals. Please try refreshing.');
-      } else {
-        console.log('[Home] Meals loaded for', dateString, ':', mealsData?.length || 0, 'meals');
-        
-        const mealsByType: Record<MealType, FoodItem[]> = {
-          breakfast: [],
-          lunch: [],
-          dinner: [],
-          snack: [],
-        };
-
-        let totalCals = 0;
-        let totalP = 0;
-        let totalC = 0;
-        let totalF = 0;
-        let totalFib = 0;
-
-        if (mealsData && mealsData.length > 0) {
-          mealsData.forEach((meal: any) => {
-            if (meal.meal_items) {
-              meal.meal_items.forEach((item: any) => {
-                mealsByType[meal.meal_type as MealType].push(item);
-                totalCals += item.calories || 0;
-                totalP += item.protein || 0;
-                totalC += item.carbs || 0;
-                totalF += item.fats || 0;
-                totalFib += item.fiber || 0;
-              });
-            }
-          });
-        }
-
-        const buildMeal = (type: MealType, label: string): MealData => {
-          const items = [...mealsByType[type]];
-          return {
-            type,
-            label,
-            items,
-            totalCalories: items.reduce((sum, item) => sum + (item.calories || 0), 0),
-            totalProtein: items.reduce((sum, item) => sum + (item.protein || 0), 0),
-            totalCarbs: items.reduce((sum, item) => sum + (item.carbs || 0), 0),
-            totalFats: items.reduce((sum, item) => sum + (item.fats || 0), 0),
-          };
-        };
-
-        const updatedMeals: MealData[] = [
-          buildMeal('breakfast', 'Breakfast'),
-          buildMeal('lunch', 'Lunch'),
-          buildMeal('dinner', 'Dinner'),
-          buildMeal('snack', 'Snacks'),
-        ];
-
-        setMeals(updatedMeals);
-        setTotalCalories(totalCals);
-        setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
-      }
-    } catch (error: any) {
-      console.error('[Home] Error in loadData:', error);
-      setError(error?.message || 'An unexpected error occurred. Please try again.');
+      const [goalsData, logsData] = await Promise.all([
+        apiGet<Goals>(`${API_BASE}/api/goals`),
+        apiGet<{ logs: FoodLog[] }>(`${API_BASE}/api/food-logs?date=${todayDate()}`),
+      ]);
+      setGoals(goalsData);
+      setLogs(logsData.logs ?? []);
+      setError('');
+    } catch (err) {
+      console.error('[Home] Fetch error:', err);
+      setError('Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedDate]);
+  }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[Home] Screen focused, loading data');
-      loadData();
-    }, [loadData])
-  );
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadData();
+    fetchData();
   };
 
-  const handleAddFood = (mealType: MealType) => {
-    console.log('[Home] Opening add food for meal:', mealType);
-    const dateString = formatDateForStorage(selectedDate);
-    console.log('[Home] Passing date to add-food:', dateString);
-    router.push(`/add-food?meal=${mealType}&date=${dateString}`);
-  };
-
-  const handleEditFood = (item: FoodItem, isSwiping: boolean) => {
-    if (isSwiping) {
-      console.log('[Home] ❌ Blocked edit - swipe gesture is active');
-      return;
-    }
-    console.log('[Home] ✅ Opening edit food:', item.id);
-    const dateString = formatDateForStorage(selectedDate);
-    router.push({
-      pathname: '/edit-food',
-      params: {
-        itemId: item.id,
-        date: dateString,
-      },
-    });
-  };
-
-  const handleDeleteFood = useCallback(async (itemId: string) => {
-    console.log('[Home] ========== DELETE FOOD ==========');
-    console.log('[Home] Delete requested for item:', itemId);
-    
-    try {
-      const { supabase } = await import('@/lib/supabase/client');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('No authenticated user found');
-      }
-      
-      console.log('[Home] Step 1: Remove from UI state immediately');
-
-      // Find the item synchronously before mutating state so we can update totals
-      let deletedCalories = 0;
-      let deletedProtein = 0;
-      let deletedCarbs = 0;
-      let deletedFats = 0;
-      let deletedFiber = 0;
-
-      setMeals(prevMeals => {
-        const newMeals = prevMeals.map(meal => {
-          const itemToDelete = meal.items.find(i => i.id === itemId);
-          if (itemToDelete) {
-            deletedCalories = itemToDelete.calories || 0;
-            deletedProtein = itemToDelete.protein || 0;
-            deletedCarbs = itemToDelete.carbs || 0;
-            deletedFats = itemToDelete.fats || 0;
-            deletedFiber = itemToDelete.fiber || 0;
+  const handleDeleteLog = async (id: string) => {
+    console.log('[Home] Delete log pressed:', id);
+    Alert.alert('Remove Food', 'Remove this item from your diary?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setLogs(prev => prev.filter(l => l.id !== id));
+            await apiDelete(`${API_BASE}/api/food-logs/${id}`);
+          } catch (err) {
+            console.error('[Home] Delete error:', err);
+            fetchData();
           }
-          
-          const filteredItems = meal.items.filter(i => i.id !== itemId);
-          
-          return {
-            ...meal,
-            items: filteredItems,
-            totalCalories: filteredItems.reduce((sum, i) => sum + (i.calories || 0), 0),
-            totalProtein: filteredItems.reduce((sum, i) => sum + (i.protein || 0), 0),
-            totalCarbs: filteredItems.reduce((sum, i) => sum + (i.carbs || 0), 0),
-            totalFats: filteredItems.reduce((sum, i) => sum + (i.fats || 0), 0),
-          };
-        });
-        
-        console.log('[Home] ✅ UI state updated - item removed from list');
-        return newMeals;
-      });
-
-      setTotalCalories(prev => prev - deletedCalories);
-      setTotalMacros(prev => ({
-        protein: prev.protein - deletedProtein,
-        carbs: prev.carbs - deletedCarbs,
-        fats: prev.fats - deletedFats,
-        fiber: prev.fiber - deletedFiber,
-      }));
-      
-      console.log('[Home] Step 2: Delete from database');
-      
-      const { error } = await supabase
-        .from('meal_items')
-        .delete()
-        .eq('id', itemId);
-      
-      if (error) {
-        console.error('[Home] ❌ Database delete error:', error);
-        throw error;
-      }
-      
-      console.log('[Home] ✅ Successfully deleted from database');
-      
-    } catch (error: any) {
-      console.error('[Home] ❌ Error in handleDeleteFood:', error);
-      
-      Alert.alert(
-        'Delete Failed', 
-        error?.message || 'Failed to delete food entry. Please try again.',
-        [{ text: 'OK' }]
-      );
-      
-      console.log('[Home] Reloading data to sync UI with database...');
-      loadData();
-    }
-  }, [loadData]);
-
-  const goToPreviousDay = () => {
-    console.log('[Home] Navigating to previous day');
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() - 1);
-    setSelectedDate(newDate);
+        },
+      },
+    ]);
   };
 
-  const goToNextDay = () => {
-    console.log('[Home] Navigating to next day');
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + 1);
-    setSelectedDate(newDate);
+  const handleQuickAdd = (mealType: MealType) => {
+    console.log('[Home] Quick add pressed for meal type:', mealType);
+    router.push({ pathname: '/food-search', params: { meal_type: mealType } });
   };
 
-  const goToToday = () => {
-    console.log('[Home] Navigating to today');
-    setSelectedDate(new Date());
-  };
+  // Computed totals
+  const totalCalories = logs.reduce((s, l) => s + (Number(l.calories) || 0), 0);
+  const totalProtein = logs.reduce((s, l) => s + (Number(l.protein) || 0), 0);
+  const totalCarbs = logs.reduce((s, l) => s + (Number(l.carbs) || 0), 0);
+  const totalFat = logs.reduce((s, l) => s + (Number(l.fat) || 0), 0);
 
-  const isToday = () => {
-    const today = new Date();
-    return selectedDate.toDateString() === today.toDateString();
-  };
+  const logsByMeal = (meal: MealType) => logs.filter(l => l.meal_type === meal);
 
-  const isTodayOrFuture = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected >= today;
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Loading...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (error) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.errorContainer}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle"
-            android_material_icon_name="warning"
-            size={48}
-            color={colors.error}
-          />
-          <Text style={[styles.errorText, { color: isDark ? colors.textDark : colors.text }]}>
-            {error}
-          </Text>
-          <TouchableOpacity
-            style={[styles.retryButton, { backgroundColor: colors.primary }]}
-            onPress={loadData}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
-
-  const leftArrowDisabled = false;
-  const rightArrowDisabled = isTodayOrFuture();
-
-  const renderFoodItem = ({ item }: { item: FoodItem }) => (
-    <SwipeToDeleteRow onDelete={() => handleDeleteFood(item.id)}>
-      {(isSwiping: boolean) => (
-        <TouchableOpacity 
-          style={styles.foodItem}
-          onPress={() => handleEditFood(item, isSwiping)}
-          activeOpacity={0.7}
-          disabled={isSwiping}
-        >
-          <View style={styles.foodInfo}>
-            <Text style={[styles.foodName, { color: isDark ? colors.textDark : colors.text }]}>
-              {item.foods?.name || 'Unknown Food'}
-            </Text>
-            {item.foods?.brand && (
-              <Text style={[styles.foodBrand, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                {item.foods.brand}
-              </Text>
-            )}
-            <Text style={[styles.foodDetails, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              {getServingDisplayText(item)}
-            </Text>
-          </View>
-          <View style={styles.foodCalories}>
-            <Text style={[styles.foodCaloriesValue, { color: isDark ? colors.textDark : colors.text }]}>
-              {Math.round(item.calories)}
-            </Text>
-            <Text style={[styles.foodCaloriesLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              kcal
-            </Text>
-          </View>
-        </TouchableOpacity>
-      )}
-    </SwipeToDeleteRow>
-  );
-
-  const todayLabel = isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' });
-  const dateDisplay = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const dateDisplay = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const greetingDisplay = greetingText(user?.name);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      {/* Sticky date navigation header */}
-      <View style={[styles.stickyHeader, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderBottomColor: isDark ? colors.borderDark : colors.border }]}>
-        <TouchableOpacity
-          onPress={goToPreviousDay}
-          style={styles.dateButton}
-          disabled={leftArrowDisabled}
-          activeOpacity={leftArrowDisabled ? 1 : 0.7}
-        >
-          <IconSymbol
-            ios_icon_name="arrow.left"
-            android_material_icon_name="arrow-back"
-            size={22}
-            color={isDark ? colors.textDark : colors.text}
-            style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.dateCenter} onPress={goToToday} activeOpacity={0.7}>
-          <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {todayLabel}
-          </Text>
-          <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
-            {dateDisplay}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={goToNextDay}
-          style={styles.dateButton}
-          disabled={rightArrowDisabled}
-          activeOpacity={rightArrowDisabled ? 1 : 0.7}
-        >
-          <IconSymbol
-            ios_icon_name="arrow.right"
-            android_material_icon_name="arrow-forward"
-            size={22}
-            color={isDark ? colors.textDark : colors.text}
-            style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
-          />
-        </TouchableOpacity>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: COLORS.background }}
+      contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: 120 }}
+      contentInsetAdjustmentBehavior="automatic"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header */}
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: COLORS.text, letterSpacing: -0.3 }}>
+          {greetingDisplay}
+        </Text>
+        <Text style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 2 }}>{dateDisplay}</Text>
       </View>
 
-      <FlatList
-        data={[{ key: 'content' }]}
-        renderItem={() => (
-          <View>
-            <View style={[styles.caloriesCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
-              <Text style={[styles.cardTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                Calories
+      {loading ? (
+        <View style={{ paddingHorizontal: 20 }}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : error ? (
+        <View style={{ paddingHorizontal: 20, alignItems: 'center', paddingVertical: 40 }}>
+          <Text style={{ fontSize: 16, color: COLORS.danger, marginBottom: 12 }}>{error}</Text>
+          <AnimatedPressable
+            onPress={fetchData}
+            style={{
+              backgroundColor: COLORS.primary,
+              borderRadius: 12,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600' }}>Try Again</Text>
+          </AnimatedPressable>
+        </View>
+      ) : (
+        <>
+          {/* Macro Ring Card */}
+          <View
+            style={{
+              marginHorizontal: 20,
+              backgroundColor: COLORS.surface,
+              borderRadius: 20,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.text }}>Today's Nutrition</Text>
+              <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>
+                {Math.round(totalCalories)} / {goals?.calories ?? 0} kcal
               </Text>
-              
-              <View style={styles.caloriesContent}>
-                <ProgressCircle
-                  current={totalCalories}
-                  target={goal?.daily_calories || 2000}
-                  size={140}
-                  strokeWidth={12}
-                  color={colors.calories}
-                  label="kcal"
-                />
-                
-                <View style={styles.macroSummaryCompact}>
-                  <MacroSummaryRowCompact
-                    label="Protein"
-                    eaten={Math.round(totalMacros.protein)}
-                    goal={goal?.protein_g || 150}
-                    color={colors.protein}
-                    isDark={isDark}
-                  />
-                  <MacroSummaryRowCompact
-                    label="Carbs"
-                    eaten={Math.round(totalMacros.carbs)}
-                    goal={goal?.carbs_g || 200}
-                    color={colors.carbs}
-                    isDark={isDark}
-                  />
-                  <MacroSummaryRowCompact
-                    label="Fats"
-                    eaten={Math.round(totalMacros.fats)}
-                    goal={goal?.fats_g || 65}
-                    color={colors.fats}
-                    isDark={isDark}
-                  />
-                  <MacroSummaryRowCompact
-                    label="Fiber"
-                    eaten={Math.round(totalMacros.fiber)}
-                    goal={goal?.fiber_g || 30}
-                    color={colors.fiber}
-                    isDark={isDark}
-                  />
-                </View>
-              </View>
             </View>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <MacroRing
+                calories={totalCalories}
+                calorieGoal={goals?.calories ?? 2000}
+                size={150}
+              />
+            </View>
+            <MacroBar
+              label="Protein"
+              value={totalProtein}
+              goal={goals?.protein ?? 150}
+              color={COLORS.protein}
+            />
+            <MacroBar
+              label="Carbs"
+              value={totalCarbs}
+              goal={goals?.carbs ?? 200}
+              color={COLORS.carbs}
+            />
+            <MacroBar
+              label="Fat"
+              value={totalFat}
+              goal={goals?.fat ?? 65}
+              color={COLORS.fat}
+            />
+          </View>
 
-            {meals.map((meal) => (
-              <View 
-                key={meal.type}
-                style={[styles.mealCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-              >
-                <View style={styles.mealHeader}>
-                  <View style={styles.mealHeaderLeft}>
-                    <Text style={[styles.mealTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                      {meal.label}
+          {/* Quick Add Row */}
+          <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 12 }}>Quick Add</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map(meal => {
+                const cfg = MEAL_CONFIG[meal];
+                return (
+                  <AnimatedPressable
+                    key={meal}
+                    onPress={() => handleQuickAdd(meal)}
+                    style={{
+                      flex: 1,
+                      backgroundColor: COLORS.surface,
+                      borderRadius: 14,
+                      paddingVertical: 12,
+                      alignItems: 'center',
+                      gap: 6,
+                      borderWidth: 1,
+                      borderColor: COLORS.border,
+                    }}
+                  >
+                    {cfg.icon}
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textSecondary }}>
+                      {cfg.label}
                     </Text>
-                    <View style={styles.mealMacroRow}>
-                      <Text style={[styles.mealCalories, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                        {Math.round(meal.totalCalories)} kcal
-                      </Text>
-                      {meal.totalCalories > 0 && (
-                        <>
-                          <Text style={[styles.mealMacroDot, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {'  ·  '}
-                          </Text>
-                          <Text style={[styles.mealMacroValue, { color: colors.protein }]}>
-                            {Math.round(meal.totalProtein)}P
-                          </Text>
-                          <Text style={[styles.mealMacroDot, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {'  '}
-                          </Text>
-                          <Text style={[styles.mealMacroValue, { color: colors.carbs }]}>
-                            {Math.round(meal.totalCarbs)}C
-                          </Text>
-                          <Text style={[styles.mealMacroDot, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                            {'  '}
-                          </Text>
-                          <Text style={[styles.mealMacroValue, { color: colors.fats }]}>
-                            {Math.round(meal.totalFats)}F
-                          </Text>
-                        </>
-                      )}
-                    </View>
+                  </AnimatedPressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Meals Summary */}
+          {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map(meal => {
+            const mealLogs = logsByMeal(meal);
+            const cfg = MEAL_CONFIG[meal];
+            const mealCals = mealLogs.reduce((s, l) => s + (Number(l.calories) || 0), 0);
+            return (
+              <View key={meal} style={{ marginHorizontal: 20, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {cfg.icon}
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>{cfg.label}</Text>
+                    {mealCals > 0 && (
+                      <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>{Math.round(mealCals)} kcal</Text>
+                    )}
                   </View>
-                  <TouchableOpacity
-                    style={styles.addMealButton}
-                    onPress={() => handleAddFood(meal.type)}
+                  <AnimatedPressable
+                    onPress={() => handleQuickAdd(meal)}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: COLORS.primaryMuted,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
-                    <IconSymbol
-                      ios_icon_name="plus.circle.fill"
-                      android_material_icon_name="add"
-                      size={28}
-                      color={colors.info}
-                    />
-                  </TouchableOpacity>
+                    <Plus size={16} color={COLORS.primary} />
+                  </AnimatedPressable>
                 </View>
-
-                {meal.items.length === 0 ? (
-                  <TouchableOpacity 
-                    style={styles.emptyMeal}
-                    onPress={() => handleAddFood(meal.type)}
-                  >
-                    <Text style={[styles.emptyMealText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      Tap to add food
-                    </Text>
-                  </TouchableOpacity>
+                {mealLogs.length === 0 ? (
+                  <Text style={{ fontSize: 13, color: COLORS.textTertiary, paddingLeft: 4, paddingBottom: 4 }}>
+                    Nothing logged yet
+                  </Text>
                 ) : (
-                  <FlatList
-                    data={meal.items}
-                    renderItem={renderFoodItem}
-                    keyExtractor={(item) => item.id}
-                    scrollEnabled={false}
-                    ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
-                  />
+                  mealLogs.map(log => (
+                    <View
+                      key={log.id}
+                      style={{
+                        backgroundColor: COLORS.surface,
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 6,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.text }} numberOfLines={1}>
+                          {log.food_name}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
+                          {log.serving_size}{log.serving_unit} · P:{Math.round(log.protein)}g C:{Math.round(log.carbs)}g F:{Math.round(log.fat)}g
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text, marginRight: 12 }}>
+                        {Math.round(Number(log.calories))} kcal
+                      </Text>
+                      <AnimatedPressable onPress={() => handleDeleteLog(log.id)}>
+                        <Trash2 size={18} color={COLORS.danger} />
+                      </AnimatedPressable>
+                    </View>
+                  ))
                 )}
               </View>
-            ))}
+            );
+          })}
 
-            <View style={styles.bottomSpacer} />
+          {/* Bottom Actions */}
+          <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 12 }}>Tools</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {[
+                { label: 'My Foods', icon: <UtensilsCrossed size={20} color={COLORS.primary} />, route: '/my-foods' },
+                { label: 'My Meals', icon: <ChefHat size={20} color={COLORS.accent} />, route: '/my-meals' },
+                { label: 'AI Estimate', icon: <Bot size={20} color={COLORS.warning} />, route: '/ai-meal-estimator' },
+                { label: 'Chatbot', icon: <BookOpen size={20} color={COLORS.textSecondary} />, route: '/chatbot' },
+              ].map(item => (
+                <AnimatedPressable
+                  key={item.label}
+                  onPress={() => {
+                    console.log('[Home] Tool pressed:', item.label);
+                    router.push(item.route as never);
+                  }}
+                  style={{
+                    flex: 1,
+                    backgroundColor: COLORS.surface,
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                    gap: 6,
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                  }}
+                >
+                  {item.icon}
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.textSecondary, textAlign: 'center' }}>
+                    {item.label}
+                  </Text>
+                </AnimatedPressable>
+              ))}
+            </View>
           </View>
-        )}
-        keyExtractor={(item) => item.key}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.scrollContent}
-      />
-    </SafeAreaView>
+        </>
+      )}
+    </ScrollView>
   );
 }
-
-function MacroSummaryRowCompact({ label, eaten, goal, color, isDark }: any) {
-  const percentage = Math.min((eaten / goal) * 100, 100);
-  
-  return (
-    <View style={styles.macroSummaryRowCompact}>
-      <Text style={[styles.macroSummaryLabelCompact, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-        {label}
-      </Text>
-      <View style={styles.macroSummaryBarContainer}>
-        <View style={[styles.macroSummaryBarBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
-          <View
-            style={[
-              styles.macroSummaryBarFill,
-              {
-                width: `${percentage}%`,
-                backgroundColor: color,
-              },
-            ]}
-          />
-        </View>
-        <Text style={[styles.macroSummaryProgressCompact, { color: isDark ? colors.textDark : colors.text }]}>
-          {eaten} / {goal}g
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    ...typography.body,
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-  },
-  errorText: {
-    ...typography.body,
-    textAlign: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  retryButton: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  stickyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  dateButton: {
-    padding: spacing.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateCenter: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  dateLabel: {
-    ...typography.caption,
-    marginBottom: 2,
-  },
-  dateText: {
-    ...typography.h3,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: 120,
-  },
-  caloriesCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  cardTitle: {
-    ...typography.h3,
-    marginBottom: spacing.md,
-  },
-  caloriesContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  macroSummaryCompact: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  macroSummaryRowCompact: {
-    gap: 4,
-  },
-  macroSummaryLabelCompact: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  macroSummaryBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  macroSummaryBarBackground: {
-    flex: 1,
-    height: 6,
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
-  },
-  macroSummaryBarFill: {
-    height: '100%',
-    borderRadius: borderRadius.full,
-  },
-  macroSummaryProgressCompact: {
-    fontSize: 11,
-    fontWeight: '500',
-    minWidth: 70,
-    textAlign: 'right',
-  },
-  mealCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  mealHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  mealHeaderLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  mealMacroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'nowrap',
-    marginTop: 2,
-  },
-  mealMacroDot: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  mealMacroValue: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  mealTitle: {
-    ...typography.h3,
-  },
-  mealCalories: {
-    ...typography.caption,
-  },
-  addMealButton: {
-    padding: spacing.xs,
-  },
-  emptyMeal: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    borderStyle: 'dashed',
-  },
-  emptyMealText: {
-    ...typography.body,
-  },
-  itemSeparator: {
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    marginVertical: spacing.xs,
-  },
-  foodItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  foodInfo: {
-    flex: 1,
-  },
-  foodName: {
-    ...typography.bodyBold,
-    marginBottom: 2,
-  },
-  foodBrand: {
-    ...typography.caption,
-    marginBottom: 2,
-  },
-  foodDetails: {
-    ...typography.caption,
-  },
-  foodCalories: {
-    alignItems: 'flex-end',
-  },
-  foodCaloriesValue: {
-    ...typography.bodyBold,
-    fontSize: 18,
-  },
-  foodCaloriesLabel: {
-    ...typography.caption,
-  },
-  bottomSpacer: {
-    height: 40,
-  },
-});

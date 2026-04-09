@@ -16,6 +16,7 @@ export type TranscriptionError = {
 
 function getNativeModule(): any {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { NativeModulesProxy } = require('expo-modules-core');
     return NativeModulesProxy?.ExpoSpeechRecognition ?? null;
   } catch {

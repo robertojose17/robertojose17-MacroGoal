@@ -1,6 +1,7 @@
 // Stub for expo-linear-gradient — used by Metro extraNodeModules
 // when the real native module is not linked.
 'use strict';
+/* eslint-disable react/prop-types */
 
 var React = require('react');
 var RN = require('react-native');

@@ -8,10 +8,11 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-type DateData = { dateString: string; day: number; month: number; year: number; timestamp: number };
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { toLocalDateString } from '@/utils/dateUtils';
+
+type DateData = { dateString: string; day: number; month: number; year: number; timestamp: number };
 
 interface CalendarDateRangePickerProps {
   visible: boolean;
@@ -34,6 +35,7 @@ export default function CalendarDateRangePicker({
   minDate,
   title = 'Select Date Range',
 }: CalendarDateRangePickerProps) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Calendar } = (() => { try { return require('react-native-calendars'); } catch { return { Calendar: () => null }; } })();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';

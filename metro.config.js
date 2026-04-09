@@ -5,98 +5,12 @@ const fs = require('fs');
 
 const config = getDefaultConfig(__dirname);
 
-// CRITICAL: Must be false (or omitted) for iOS native module resolution.
-// When true, Metro uses package.json "exports" field which breaks many native packages.
-config.resolver.unstable_enablePackageExports = false;
+config.resolver.unstable_enablePackageExports = true;
 
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
     new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
   ];
-
-// ─── Stub out native-incompatible modules ────────────────────────────────────
-// These packages require native linking that is not present in the preview build.
-// Without stubs, Metro bundles the real packages which crash iOS before
-// AppRegistry.registerComponent ever runs (blank screen / "main not registered").
-const STUBS = path.join(__dirname, 'stubs');
-
-config.resolver.extraNodeModules = {
-  // UI / animation
-  'react-native-reanimated':          path.join(STUBS, 'react-native-reanimated.js'),
-  'react-native-gesture-handler':     path.join(STUBS, 'react-native-gesture-handler.js'),
-  'react-native-maps':                path.join(STUBS, 'react-native-maps.js'),
-  'react-native-svg':                 path.join(STUBS, 'react-native-svg.js'),
-  'react-native-view-shot':           path.join(STUBS, 'react-native-view-shot.js'),
-  'react-native-webview':             path.join(STUBS, 'react-native-webview.js'),
-  'react-native-worklets':            path.join(STUBS, 'react-native-worklets.js'),
-  'react-native-css-interop':         path.join(STUBS, 'react-native-css-interop.js'),
-  'react-native-edge-to-edge':        path.join(STUBS, 'react-native-edge-to-edge.js'),
-  'react-native-chart-kit':           path.join(STUBS, 'react-native-chart-kit.js'),
-  'react-native-calendars':           path.join(STUBS, 'react-native-calendars.js'),
-
-  // Monetisation / ads
-  'react-native-purchases':           path.join(STUBS, 'react-native-purchases.js'),
-  'react-native-google-mobile-ads':   path.join(STUBS, 'react-native-google-mobile-ads.js'),
-
-  // Expo modules that require native linking
-  'expo-blur':                        path.join(STUBS, 'expo-blur.js'),
-  'expo-camera':                      path.join(STUBS, 'expo-camera.js'),
-  'expo-linear-gradient':             path.join(STUBS, 'expo-linear-gradient.js'),
-  'expo-image-picker':                path.join(STUBS, 'expo-image-picker.js'),
-  'expo-haptics':                     path.join(STUBS, 'expo-haptics.js'),
-  'expo-sharing':                     path.join(STUBS, 'expo-sharing.js'),
-  'expo-secure-store':                path.join(STUBS, 'expo-secure-store.js'),
-  'expo-audio':                       path.join(STUBS, 'expo-audio.js'),
-  'expo-file-system':                 path.join(STUBS, 'expo-file-system.js'),
-  'expo-media-library':               path.join(STUBS, 'expo-media-library.js'),
-  'expo-print':                       path.join(STUBS, 'expo-print.js'),
-  'expo-updates':                     path.join(STUBS, 'expo-updates.js'),
-  'expo-in-app-purchases':            path.join(STUBS, 'expo-in-app-purchases.js'),
-  'expo-speech-recognition':          path.join(STUBS, 'expo-speech-recognition.js'),
-  'expo-glass-effect':                path.join(STUBS, 'expo-glass-effect.js'),
-
-  // Network / realtime
-  'ws':                               path.join(STUBS, 'ws.js'),
-  '@supabase/realtime-js':            path.join(STUBS, 'supabase-realtime.js'),
-
-  // Misc
-  '@bacons/apple-targets':            path.join(STUBS, 'bacons-apple-targets.js'),
-  '@react-native-community/datetimepicker': path.join(STUBS, 'datetimepicker.js'),
-  'react-devtools-core':              path.join(STUBS, 'react-devtools-core.js'),
-  'rn-get-dev-server':                path.join(STUBS, 'rn-get-dev-server.js'),
-};
-
-// ─── Resolve node: built-in aliases ──────────────────────────────────────────
-// Some packages (e.g. @supabase/supabase-js) import node built-ins with the
-// "node:" prefix (e.g. "node:buffer", "node:stream"). Metro doesn't understand
-// this prefix on React Native, so we strip it and let Metro resolve the bare name
-// (which is already polyfilled by React Native's module system).
-const originalResolveRequest = config.resolver.resolveRequest;
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // Explicitly stub rn-get-dev-server — extraNodeModules is bypassed by this
-  // custom resolver, so we must intercept it here before falling through.
-  if (moduleName === 'rn-get-dev-server') {
-    return { type: 'sourceFile', filePath: path.join(STUBS, 'rn-get-dev-server.js') };
-  }
-  if (moduleName.startsWith('node:')) {
-    const bare = moduleName.slice(5); // strip "node:" prefix
-    // Try to resolve the bare name; if it fails, return an empty module
-    try {
-      return (originalResolveRequest || context.resolveRequest)(
-        context,
-        bare,
-        platform,
-      );
-    } catch (_e) {
-      // Return an empty module for unknown node built-ins
-      return { type: 'empty' };
-    }
-  }
-  if (originalResolveRequest) {
-    return originalResolveRequest(context, moduleName, platform);
-  }
-  return context.resolveRequest(context, moduleName, platform);
-};
 
 // Custom server middleware to receive console.log messages from the app
 const LOG_FILE_PATH = path.join(__dirname, '.natively', 'app_console.log');

@@ -1,4 +1,5 @@
 'use strict';
+/* eslint-disable react/prop-types */
 // Stub for expo-glass-effect — native module not linked in Expo Go.
 var React = require('react');
 var RN = require('react-native');

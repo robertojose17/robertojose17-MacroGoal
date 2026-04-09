@@ -24,7 +24,7 @@ async function getSupabaseClient() {
 
 // Lazy getter — avoids static import of lib/supabase/client at module scope
 function getSupabaseProjectUrl(): string {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
   return require('@/lib/supabase/client').SUPABASE_PROJECT_URL as string;
 }
 

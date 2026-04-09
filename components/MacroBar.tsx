@@ -1,81 +1,48 @@
-
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, borderRadius } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { View, Text } from 'react-native';
+import { COLORS } from '@/constants/Colors';
 
 interface MacroBarProps {
   label: string;
-  current: number;
-  target: number;
+  value: number;
+  goal: number;
   color: string;
   unit?: string;
 }
 
-export default function MacroBar({ label, current, target, color, unit = 'g' }: MacroBarProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  
-  const percentage = Math.min((current / target) * 100, 100);
-  const remaining = Math.max(target - current, 0);
+export function MacroBar({ label, value, goal, color, unit = 'g' }: MacroBarProps) {
+  const safeGoal = goal > 0 ? goal : 1;
+  const safeValue = Number(value) || 0;
+  const pct = Math.min(safeValue / safeGoal, 1);
+  const pctDisplay = Math.round(pct * 100);
+  const valueDisplay = Math.round(safeValue);
+  const goalDisplay = Math.round(safeGoal);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={[styles.label, { color: isDark ? colors.textDark : colors.text }]}>
-          {label}
-        </Text>
-        <Text style={[styles.values, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-          {Math.round(current)} / {Math.round(target)}{unit}
+    <View style={{ marginBottom: 10 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text }}>{label}</Text>
+        <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>
+          {valueDisplay}{unit} / {goalDisplay}{unit}
         </Text>
       </View>
-      <View style={[styles.barBackground, { backgroundColor: isDark ? colors.borderDark : colors.border }]}>
+      <View
+        style={{
+          height: 8,
+          backgroundColor: COLORS.surfaceSecondary,
+          borderRadius: 4,
+          overflow: 'hidden',
+        }}
+      >
         <View
-          style={[
-            styles.barFill,
-            {
-              width: `${percentage}%`,
-              backgroundColor: color,
-            },
-          ]}
+          style={{
+            height: '100%',
+            width: `${pctDisplay}%`,
+            backgroundColor: color,
+            borderRadius: 4,
+          }}
         />
       </View>
-      <Text style={[styles.remaining, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-        {Math.round(remaining)}{unit} remaining
-      </Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  values: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  barBackground: {
-    height: 8,
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: borderRadius.full,
-  },
-  remaining: {
-    fontSize: 12,
-    marginTop: spacing.xs,
-  },
-});

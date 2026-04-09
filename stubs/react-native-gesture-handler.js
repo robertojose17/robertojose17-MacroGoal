@@ -1,4 +1,5 @@
 'use strict';
+/* eslint-disable react/prop-types */
 var React = require('react');
 var RN = require('react-native');
 var View = RN.View;

@@ -6,12 +6,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
+import { addToDraft } from '@/utils/myMealsDraft';
+import { toLocalDateString } from '@/utils/dateUtils';
+
 async function getSupabaseClient() {
   const { supabase } = await import('@/lib/supabase/client');
   return supabase;
 }
-import { addToDraft } from '@/utils/myMealsDraft';
-import { toLocalDateString } from '@/utils/dateUtils';
 
 export default function AddFoodSimpleScreen() {
   const router = useRouter();

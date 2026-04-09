@@ -1,499 +1,209 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, ActivityIndicator, Alert } from 'react-native';
+import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { COLORS } from '@/constants/Colors';
+import { apiGet } from '@/utils/api';
+import { Food } from '@/types';
+import { X } from 'lucide-react-native';
 
-import React, { useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { IconSymbol } from '@/components/IconSymbol';
-import { toLocalDateString } from '@/utils/dateUtils';
+const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
+const API_BASE = `${SUPABASE_URL}/functions/v1`;
 
-/**
- * BARCODE SCANNER SCREEN
- * 
- * MyFitnessPal-style flow:
- * 1. Open camera
- * 2. Scan barcode ONCE
- * 3. Immediately close camera
- * 4. Navigate DIRECTLY to Food Details (dismissing ALL previous screens including Add Food Menu)
- * 
- * CRITICAL FIX: Use router.dismissTo() to dismiss ALL screens back to home, then push food-details
- */
 export default function BarcodeScannerScreen() {
-  const { CameraView, useCameraPermissions } = (() => { try { return require('expo-camera'); } catch { return { CameraView: require('react-native').View, useCameraPermissions: () => [null, () => {}] }; } })();
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-
-  const mode = (params.mode as string) || 'diary';
-  const context = (params.context as string) || undefined;
-  const mealType = (params.meal as string) || 'breakfast';
-  const date = (params.date as string) || toLocalDateString();
-  const returnTo = (params.returnTo as string) || undefined;
-  const myMealId = (params.mealId as string) || undefined;
-
-  const [permission, requestPermission] = useCameraPermissions();
-  
-  // One-scan lock using ref (doesn't cause re-renders)
-  const hasScannedRef = useRef(false);
-  const isMountedRef = useRef(true);
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ meal_type?: string; date?: string }>();
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [scanned, setScanned] = useState(false);
+  const [looking, setLooking] = useState(false);
 
   useEffect(() => {
-    console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
-    console.log('[BarcodeScanner] Params:', { mode, context, mealType, date, returnTo, myMealId });
-    isMountedRef.current = true;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Camera = require('expo-camera');
+        const { status } = await Camera.Camera.requestCameraPermissionsAsync();
+        setHasPermission(status === 'granted');
+      } catch {
+        setHasPermission(false);
+      }
+    })();
+  }, []);
 
-    return () => {
-      console.log('[BarcodeScanner] ========== COMPONENT UNMOUNTED ==========');
-      isMountedRef.current = false;
-    };
-  }, [mode, context, mealType, date, returnTo, myMealId]);
-
-  // Reset state when screen gains focus
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[BarcodeScanner] Screen focused → reset scan state');
-      hasScannedRef.current = false;
-
-      return () => {
-        console.log('[BarcodeScanner] Screen unfocused');
-      };
-    }, [])
-  );
-
-  /**
-   * Perform OpenFoodFacts lookup and navigate to Food Details
-   * CRITICAL FIX: Use router.dismissTo() to dismiss ALL screens back to home, then push food-details
-   */
-  const performLookupAndNavigate = useCallback(async (barcode: string) => {
-    console.log('[BarcodeScanner] ========== PERFORMING LOOKUP ==========');
-    console.log('[BarcodeScanner] Barcode:', barcode);
-
+  const handleBarCodeScanned = async ({ data }: { data: string }) => {
+    if (scanned || looking) return;
+    console.log('[BarcodeScanner] Barcode scanned:', data);
+    setScanned(true);
+    setLooking(true);
     try {
-      const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-      console.log('[BarcodeScanner] Lookup URL:', url);
+      let food: Food | null = null;
 
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'EliteMacroTracker/1.0',
-          'Accept': 'application/json',
-        },
-      });
-
-      console.log('[BarcodeScanner] HTTP Status:', response.status);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
+      // Try custom foods first
+      try {
+        const customRes = await apiGet<{ food: Food }>(`${API_BASE}/api/foods/barcode/${data}`);
+        if (customRes.food) food = customRes.food;
+      } catch {
+        // not found in custom foods
       }
 
-      const result = await response.json();
-      const status = Number(result.status);
-      
-      console.log('[BarcodeScanner] OpenFoodFacts status:', status);
+      // Try OpenFoodFacts
+      if (!food) {
+        const offRes = await fetch(`https://world.openfoodfacts.org/api/v0/product/${data}.json`);
+        if (offRes.ok) {
+          const offData = await offRes.json();
+          if (offData.status === 1 && offData.product) {
+            const p = offData.product;
+            const n = p.nutriments ?? {};
+            food = {
+              id: `off-${data}`,
+              name: p.product_name ?? 'Unknown Product',
+              brand: p.brands,
+              calories: Number(n['energy-kcal_100g']) || 0,
+              protein: Number(n['proteins_100g']) || 0,
+              carbs: Number(n['carbohydrates_100g']) || 0,
+              fat: Number(n['fat_100g']) || 0,
+              serving_size: 100,
+              serving_unit: 'g',
+              barcode: data,
+              is_custom: false,
+            };
+          }
+        }
+      }
 
-      if (status === 1 && result.product) {
-        console.log('[BarcodeScanner] ✅ PRODUCT FOUND:', result.product.product_name);
-        console.log('[BarcodeScanner] 🚀 Navigating to food-details, preserving add-food stack');
-        console.log('[BarcodeScanner] Context:', context);
-        console.log('[BarcodeScanner] ReturnTo:', returnTo);
-
-        router.push({
+      if (food) {
+        router.replace({
           pathname: '/food-details',
           params: {
-            offData: JSON.stringify(result.product),
-            meal: mealType,
-            date: date,
-            mode: mode,
-            context: context,
-            returnTo: returnTo,
-            mealId: myMealId || '',
+            food: JSON.stringify(food),
+            meal_type: params.meal_type ?? 'breakfast',
+            date: params.date ?? new Date().toISOString().split('T')[0],
           },
         });
       } else {
-        console.log('[BarcodeScanner] ❌ PRODUCT NOT FOUND, navigating to barcode-lookup');
-
-        router.push({
-          pathname: '/barcode-lookup',
-          params: {
-            barcode: barcode,
-            meal: mealType,
-            date: date,
-            mode: mode,
-            context: context,
-            returnTo: returnTo,
-            mealId: myMealId || '',
-          },
-        });
+        Alert.alert(
+          'Not Found',
+          `No food found for barcode ${data}. Would you like to create a custom food?`,
+          [
+            { text: 'Cancel', onPress: () => { setScanned(false); setLooking(false); } },
+            { text: 'Create Food', onPress: () => router.push('/my-foods-create') },
+          ]
+        );
       }
-    } catch (error: any) {
-      console.error('[BarcodeScanner] ❌ LOOKUP ERROR:', error);
-
-      router.push({
-        pathname: '/barcode-lookup',
-        params: {
-          barcode: barcode,
-          meal: mealType,
-          date: date,
-          mode: mode,
-          context: context,
-          returnTo: returnTo,
-          mealId: myMealId || '',
-          error: error.message || 'Lookup failed',
-        },
-      });
+    } catch (err) {
+      console.error('[BarcodeScanner] Lookup error:', err);
+      Alert.alert('Error', 'Failed to look up barcode. Please try again.', [
+        { text: 'OK', onPress: () => { setScanned(false); setLooking(false); } },
+      ]);
     }
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
+  };
 
-  /**
-   * Handle barcode scan
-   * CRITICAL FIX: Use dismissTo() to remove ALL screens including Add Food Menu
-   */
-  const handleBarCodeScanned = useCallback(async ({ type, data }: { type: string; data: string }) => {
-    // Check one-scan lock
-    if (hasScannedRef.current) {
-      console.log('[BarcodeScanner] ⚠️ Already scanned, ignoring duplicate scan');
-      return;
-    }
-
-    // Check if component is still mounted
-    if (!isMountedRef.current) {
-      console.log('[BarcodeScanner] ⚠️ Component unmounted, ignoring scan');
-      return;
-    }
-
-    console.log('[BarcodeScanner] ========== BARCODE SCANNED ==========');
-    console.log('[BarcodeScanner] SCANNED BARCODE:', data);
-    console.log('[BarcodeScanner] Type:', type);
-
-    // Clean the barcode
-    const cleanBarcode = data.trim();
-    
-    // Validate barcode
-    if (!cleanBarcode || cleanBarcode.length === 0) {
-      console.log('[BarcodeScanner] ❌ Empty barcode, ignoring');
-      return;
-    }
-
-    // Set one-scan lock IMMEDIATELY
-    hasScannedRef.current = true;
-    console.log('[BarcodeScanner] ✅ One-scan lock activated');
-
-    // Start lookup process immediately (no delay needed)
-    console.log('[BarcodeScanner] 🚀 STARTING LOOKUP PROCESS');
-    performLookupAndNavigate(cleanBarcode);
-  }, [performLookupAndNavigate]);
-
-  // Show loading while checking permissions
-  if (!permission) {
+  if (hasPermission === null) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? colors.textDark : colors.text }]}>
-            Checking camera permissions...
-          </Text>
-        </View>
-      </SafeAreaView>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator color="#fff" size="large" />
+      </View>
     );
   }
 
-  // Undetermined: show explanation with a single "Continue" button — no dismiss option
-  if (permission.status === 'undetermined') {
+  if (hasPermission === false) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top', 'bottom']}>
-        <View style={styles.permissionContainer}>
-          <IconSymbol
-            ios_icon_name="camera.fill"
-            android_material_icon_name="camera_alt"
-            size={72}
-            color={colors.primary}
-          />
-          <Text style={[styles.permissionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Camera Access
-          </Text>
-          <Text style={[styles.permissionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Macro Goal needs access to your camera to scan food barcodes and look up nutrition information.
-          </Text>
-          <TouchableOpacity
-            style={[styles.permissionButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              console.log('[BarcodeScanner] Continue pressed — requesting camera permission');
-              requestPermission();
-            }}
-          >
-            <Text style={styles.permissionButtonText}>Continue</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, padding: 32 }}>
+        <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' }}>
+          Camera permission required
+        </Text>
+        <Text style={{ fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 24 }}>
+          Please enable camera access in Settings to scan barcodes
+        </Text>
+        <AnimatedPressable
+          onPress={() => router.back()}
+          style={{ backgroundColor: COLORS.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600' }}>Go Back</Text>
+        </AnimatedPressable>
+      </View>
     );
   }
 
-  // Denied: camera access was refused — guide user to Settings
-  if (!permission.granted) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => {
-            console.log('[BarcodeScanner] Back pressed from denied screen');
-            router.back();
-          }}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow_back"
-              size={24}
-              color={isDark ? colors.textDark : colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? colors.textDark : colors.text }]}>
-            Barcode Scanner
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
+  let CameraView: React.ComponentType<{
+    style?: object;
+    onBarcodeScanned?: (data: { data: string }) => void;
+    barcodeScannerSettings?: object;
+  }> | null = null;
 
-        <View style={styles.permissionContainer}>
-          <IconSymbol
-            ios_icon_name="camera.fill"
-            android_material_icon_name="camera_alt"
-            size={72}
-            color={isDark ? colors.textSecondaryDark : colors.textSecondary}
-          />
-          <Text style={[styles.permissionTitle, { color: isDark ? colors.textDark : colors.text }]}>
-            Camera Access Required
-          </Text>
-          <Text style={[styles.permissionText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            Camera access has been denied. To scan barcodes, please enable camera access for Macro Goal in your device Settings.
-          </Text>
-          <TouchableOpacity
-            style={[styles.permissionButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              console.log('[BarcodeScanner] Open Settings pressed');
-              Linking.openURL('app-settings:');
-            }}
-          >
-            <Text style={styles.permissionButtonText}>Open Settings</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const CameraModule = require('expo-camera');
+    CameraView = CameraModule.CameraView ?? CameraModule.Camera;
+  } catch {
+    CameraView = null;
+  }
+
+  if (!CameraView) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background }}>
+        <Text style={{ color: COLORS.danger }}>Camera not available</Text>
+      </View>
     );
   }
 
-  // Show camera view
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: '#000000' }]} edges={['top']}>
-      <View style={styles.cameraContainer}>
+    <>
+      <Stack.Screen options={{ title: 'Scan Barcode', headerTransparent: true }} />
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
         <CameraView
-          style={styles.camera}
-          facing="back"
-          barcodeScannerSettings={{
-            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
-          }}
-          onBarcodeScanned={hasScannedRef.current ? undefined : handleBarCodeScanned}
+          style={{ flex: 1 }}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
         />
 
-        {/* Overlay with scanning frame */}
-        <View style={styles.overlay}>
-          {/* Top overlay */}
-          <View style={styles.overlayTop}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => {
-                console.log('[BarcodeScanner] Close button pressed');
-                hasScannedRef.current = false;
-                router.back();
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={28}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Middle with scanning frame */}
-          <View style={styles.overlayMiddle}>
-            <View style={styles.overlayLeft} />
-            <View style={styles.scanFrame}>
-              <View style={[styles.corner, styles.cornerTopLeft]} />
-              <View style={[styles.corner, styles.cornerTopRight]} />
-              <View style={[styles.corner, styles.cornerBottomLeft]} />
-              <View style={[styles.corner, styles.cornerBottomRight]} />
-            </View>
-            <View style={styles.overlayRight} />
-          </View>
-
-          {/* Bottom overlay with instructions */}
-          <View style={styles.overlayBottom}>
-            <View style={styles.instructionsContainer}>
-              <Text style={styles.instructionsText}>
-                Align the barcode within the frame
-              </Text>
-              <Text style={styles.instructionsSubtext}>
-                The barcode will be scanned automatically
-              </Text>
-            </View>
-          </View>
+        {/* Overlay */}
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <View
+            style={{
+              width: 260,
+              height: 160,
+              borderRadius: 16,
+              borderWidth: 2,
+              borderColor: COLORS.primary,
+            }}
+          />
+          <Text style={{ color: '#fff', marginTop: 20, fontSize: 14, fontWeight: '500' }}>
+            {looking ? 'Looking up barcode...' : 'Point camera at barcode'}
+          </Text>
+          {looking && <ActivityIndicator color={COLORS.primary} style={{ marginTop: 12 }} />}
         </View>
+
+        {/* Close button */}
+        <AnimatedPressable
+          onPress={() => router.back()}
+          style={{
+            position: 'absolute',
+            top: insets.top + 60,
+            right: 20,
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <X size={20} color="#fff" />
+        </AnimatedPressable>
       </View>
-    </SafeAreaView>
+    </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: spacing.lg,
-    textAlign: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : 0,
-    paddingBottom: spacing.md,
-  },
-  title: {
-    ...typography.h3,
-    flex: 1,
-    textAlign: 'center',
-  },
-  permissionContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  permissionTitle: {
-    ...typography.h2,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  permissionText: {
-    ...typography.body,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  permissionButton: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  permissionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  cameraContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  camera: {
-    flex: 1,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-  },
-  overlayTop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingTop: Platform.OS === 'android' ? spacing.lg : spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: borderRadius.full,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlayMiddle: {
-    flexDirection: 'row',
-    height: 250,
-  },
-  overlayLeft: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-  },
-  scanFrame: {
-    width: 280,
-    height: 250,
-    position: 'relative',
-  },
-  corner: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderColor: '#FFFFFF',
-    borderWidth: 4,
-  },
-  cornerTopLeft: {
-    top: 0,
-    left: 0,
-    borderRightWidth: 0,
-    borderBottomWidth: 0,
-    borderTopLeftRadius: borderRadius.lg,
-  },
-  cornerTopRight: {
-    top: 0,
-    right: 0,
-    borderLeftWidth: 0,
-    borderBottomWidth: 0,
-    borderTopRightRadius: borderRadius.lg,
-  },
-  cornerBottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderRightWidth: 0,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: borderRadius.lg,
-  },
-  cornerBottomRight: {
-    bottom: 0,
-    right: 0,
-    borderLeftWidth: 0,
-    borderTopWidth: 0,
-    borderBottomRightRadius: borderRadius.lg,
-  },
-  overlayRight: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-  },
-  overlayBottom: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  instructionsContainer: {
-    alignItems: 'center',
-  },
-  instructionsText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  instructionsSubtext: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-});

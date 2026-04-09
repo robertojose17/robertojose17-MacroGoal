@@ -1,20 +1,21 @@
 
-import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
+import { toLocalDateString } from '@/utils/dateUtils';
+import { IconSymbol } from '@/components/IconSymbol';
+import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
+import { addToDraft } from '@/utils/myMealsDraft';
+
 // Lazy import — never import supabase at module scope on iOS (crashes before AppRegistry)
 async function getSupabaseClient() {
   const { supabase } = await import('@/lib/supabase/client');
   return supabase;
 }
-import { toLocalDateString } from '@/utils/dateUtils';
-import { IconSymbol } from '@/components/IconSymbol';
-import { isFavorite, toggleFavorite } from '@/utils/favoritesDatabase';
-import { useRouter } from 'expo-router';
-import { addToDraft } from '@/utils/myMealsDraft';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, ActivityIndicator, Alert, Animated } from 'react-native';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 /** Safely coerce any value to a finite number, defaulting to 0 on NaN/null/undefined */
 function safeNum(value: unknown, fallback = 0): number {

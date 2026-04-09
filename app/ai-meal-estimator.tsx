@@ -1,399 +1,270 @@
-
 import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  TouchableOpacity,
   TextInput,
   ScrollView,
   ActivityIndicator,
   Alert,
-  Platform,
+  Animated,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
-import { usePremium } from '@/hooks/usePremium';
+import { useRouter, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { COLORS } from '@/constants/Colors';
+import { apiPost } from '@/utils/api';
+import { Bot, Sparkles, Plus } from 'lucide-react-native';
 
-/**
- * AI Meal Estimator Screen
- * 
- * This screen allows users to describe their meal in text and get AI-powered
- * nutrition estimates. Premium feature — non-subscribers are redirected to the
- * subscription screen.
- * 
- * NOTE: All voice/microphone/transcription functionality has been removed.
- * Users can only input meal descriptions via text.
- */
+const SUPABASE_URL = 'https://esgptfiofoaeguslgvcq.supabase.co';
+const API_BASE = `${SUPABASE_URL}/functions/v1`;
+
+interface EstimateResult {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  serving_size: number;
+  serving_unit: string;
+}
+
+type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 export default function AIMealEstimatorScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const { isPremium, loading: premiumLoading } = usePremium();
+  const insets = useSafeAreaInsets();
+  const [description, setDescription] = useState('');
+  const [result, setResult] = useState<EstimateResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [mealType, setMealType] = useState<MealType>('lunch');
+  const [adding, setAdding] = useState(false);
 
-  const [mealDescription, setMealDescription] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<any>(null);
-
-  // --- Premium gate ---
-  if (premiumLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        <View style={styles.gateLoadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!isPremium) {
-    console.log('[AIMealEstimator] Non-premium user attempted access — showing paywall');
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        <View style={[styles.header, { backgroundColor: colors.card }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow-back"
-              size={24}
-              color={colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>AI Meal Estimator</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
-        <View style={styles.gateContainer}>
-          <View style={[styles.gateIconCircle, { backgroundColor: colors.primary + '20' }]}>
-            <IconSymbol
-              ios_icon_name="star.fill"
-              android_material_icon_name="star"
-              size={48}
-              color={colors.primary}
-            />
-          </View>
-          <Text style={[styles.gateTitle, { color: colors.text }]}>Premium Feature</Text>
-          <Text style={[styles.gateMessage, { color: colors.grey }]}>
-            AI Meal Estimator is a premium feature. Describe any meal and get instant calorie and macro estimates — no barcode needed.
-          </Text>
-          <TouchableOpacity
-            style={[styles.gateButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              console.log('[AIMealEstimator] User tapped Upgrade to Premium');
-              router.push('/subscription');
-            }}
-          >
-            <IconSymbol
-              ios_icon_name="star.fill"
-              android_material_icon_name="star"
-              size={18}
-              color="#FFFFFF"
-            />
-            <Text style={styles.gateButtonText}>Upgrade to Premium</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.gateBackButton}
-            onPress={() => {
-              console.log('[AIMealEstimator] Non-premium user tapped Go Back');
-              router.back();
-            }}
-          >
-            <Text style={[styles.gateBackText, { color: colors.grey }]}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-  // --- End premium gate ---
-
-  const handleAnalyze = async () => {
-    if (!mealDescription.trim()) {
-      Alert.alert('Error', 'Please describe your meal');
-      return;
-    }
-
-    setIsAnalyzing(true);
+  const handleEstimate = async () => {
+    console.log('[AIMealEstimator] Estimate pressed, description:', description);
+    if (!description.trim()) return;
+    setLoading(true);
+    setResult(null);
     try {
-      // TODO: Backend Integration - Call the AI meal estimation API endpoint here
-      // Placeholder result for now
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setResult({
-        calories: 450,
-        protein: 25,
-        carbs: 45,
-        fats: 15,
-        fiber: 5,
+      const data = await apiPost<EstimateResult>(`${API_BASE}/api/ai/estimate-meal`, {
+        description: description.trim(),
       });
-    } catch (error) {
-      console.error('[AIMealEstimator] Error analyzing meal:', error);
-      Alert.alert('Error', 'Failed to analyze meal');
+      setResult(data);
+    } catch (err) {
+      console.error('[AIMealEstimator] Estimate error:', err);
+      Alert.alert('Error', 'Failed to estimate macros. Please try again.');
     } finally {
-      setIsAnalyzing(false);
+      setLoading(false);
     }
   };
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <View style={[styles.header, { backgroundColor: colors.card }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol 
-            ios_icon_name="chevron.left" 
-            android_material_icon_name="arrow-back" 
-            size={24} 
-            color={colors.text} 
-          />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
-          AI Meal Estimator
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+  const handleAddToDiary = async () => {
+    if (!result) return;
+    console.log('[AIMealEstimator] Add to diary pressed:', result.name, 'type:', mealType);
+    setAdding(true);
+    try {
+      await apiPost(`${API_BASE}/api/food-logs`, {
+        food_name: result.name,
+        calories: Number(result.calories),
+        protein: Number(result.protein),
+        carbs: Number(result.carbs),
+        fat: Number(result.fat),
+        serving_size: Number(result.serving_size) || 1,
+        serving_unit: result.serving_unit || 'serving',
+        meal_type: mealType,
+        logged_at: new Date().toISOString().split('T')[0],
+      });
+      Alert.alert('Added!', `${result.name} has been added to your ${mealType}.`, [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (err) {
+      console.error('[AIMealEstimator] Add to diary error:', err);
+      Alert.alert('Error', 'Failed to add to diary. Please try again.');
+    } finally {
+      setAdding(false);
+    }
+  };
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        <View style={[styles.infoCard, { backgroundColor: colors.backgroundAlt }]}>
-          <IconSymbol
-            ios_icon_name="info.circle.fill"
-            android_material_icon_name="info"
-            size={20}
-            color={colors.primary}
-          />
-          <Text style={[styles.infoText, { color: colors.text }]}>
-            Describe your meal and get instant nutrition estimates powered by AI
+  const mealTypeLabel = mealType.charAt(0).toUpperCase() + mealType.slice(1);
+
+  return (
+    <>
+      <Stack.Screen options={{ title: 'AI Estimator' }} />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: COLORS.background }}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={{ alignItems: 'center', marginBottom: 24 }}>
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 20,
+              backgroundColor: 'rgba(245,158,11,0.1)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <Bot size={32} color={COLORS.warning} />
+          </View>
+          <Text style={{ fontSize: 20, fontWeight: '800', color: COLORS.text, letterSpacing: -0.3 }}>
+            AI Macro Estimator
+          </Text>
+          <Text style={{ fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginTop: 6, maxWidth: 280 }}>
+            Describe your meal and AI will estimate the macros
           </Text>
         </View>
 
-        <Text style={[styles.label, { color: colors.text }]}>
-          Describe your meal
-        </Text>
-        
-        <TextInput
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.backgroundAlt,
-              color: colors.text,
-              borderColor: colors.grey,
-            },
-          ]}
-          placeholder="e.g., Grilled chicken breast with rice and broccoli"
-          placeholderTextColor={colors.grey}
-          value={mealDescription}
-          onChangeText={setMealDescription}
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
+        {/* Input */}
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 6 }}>Describe your meal</Text>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="e.g. 2 scrambled eggs with toast and orange juice"
+            placeholderTextColor={COLORS.textTertiary}
+            multiline
+            numberOfLines={4}
+            style={{
+              backgroundColor: COLORS.surfaceSecondary,
+              borderRadius: 12,
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              fontSize: 16,
+              color: COLORS.text,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              minHeight: 100,
+              textAlignVertical: 'top',
+            }}
+          />
+        </View>
 
-        <TouchableOpacity
-          style={[styles.analyzeButton, isAnalyzing && styles.analyzeButtonDisabled]}
-          onPress={handleAnalyze}
-          disabled={isAnalyzing}
+        <AnimatedPressable
+          onPress={handleEstimate}
+          disabled={loading || !description.trim()}
+          style={{
+            backgroundColor: COLORS.warning,
+            borderRadius: 14,
+            height: 52,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            marginBottom: 24,
+            opacity: !description.trim() ? 0.5 : 1,
+          }}
         >
-          {isAnalyzing ? (
+          {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.analyzeButtonText}>Analyze Meal</Text>
+            <>
+              <Sparkles size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Estimate Macros</Text>
+            </>
           )}
-        </TouchableOpacity>
+        </AnimatedPressable>
 
+        {/* Result */}
         {result && (
-          <View style={[styles.resultCard, { backgroundColor: colors.backgroundAlt }]}>
-            <Text style={[styles.resultTitle, { color: colors.text }]}>
-              Estimated Nutrition
+          <View
+            style={{
+              backgroundColor: COLORS.surface,
+              borderRadius: 20,
+              padding: 20,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.text, marginBottom: 4 }}>
+              {result.name}
             </Text>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.grey }]}>
-                Calories
-              </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.calories} kcal
-              </Text>
+            <Text style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 16 }}>
+              {result.serving_size} {result.serving_unit}
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              {[
+                { label: 'Calories', value: String(Math.round(Number(result.calories))), unit: 'kcal', color: COLORS.primary },
+                { label: 'Protein', value: String(Math.round(Number(result.protein))), unit: 'g', color: COLORS.protein },
+                { label: 'Carbs', value: String(Math.round(Number(result.carbs))), unit: 'g', color: COLORS.carbs },
+                { label: 'Fat', value: String(Math.round(Number(result.fat))), unit: 'g', color: COLORS.fat },
+              ].map(item => (
+                <View
+                  key={item.label}
+                  style={{
+                    flex: 1,
+                    backgroundColor: COLORS.surfaceSecondary,
+                    borderRadius: 12,
+                    padding: 12,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: item.color }}>{item.value}</Text>
+                  <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>{item.unit}</Text>
+                  <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>{item.label}</Text>
+                </View>
+              ))}
             </View>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.grey }]}>
-                Protein
-              </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.protein}g
-              </Text>
+
+            {/* Meal Type */}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 10 }}>Add to meal</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {MEAL_TYPES.map(mt => {
+                const isSelected = mealType === mt;
+                const label = mt.charAt(0).toUpperCase() + mt.slice(1);
+                return (
+                  <AnimatedPressable
+                    key={mt}
+                    onPress={() => setMealType(mt)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      backgroundColor: isSelected ? COLORS.primary : COLORS.surfaceSecondary,
+                      borderWidth: 1,
+                      borderColor: isSelected ? COLORS.primary : COLORS.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: isSelected ? '#fff' : COLORS.textSecondary }}>
+                      {label}
+                    </Text>
+                  </AnimatedPressable>
+                );
+              })}
             </View>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.grey }]}>
-                Carbs
-              </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.carbs}g
-              </Text>
-            </View>
-            <View style={styles.macroRow}>
-              <Text style={[styles.macroLabel, { color: colors.grey }]}>
-                Fats
-              </Text>
-              <Text style={[styles.macroValue, { color: colors.text }]}>
-                {result.fats}g
-              </Text>
-            </View>
+
+            <AnimatedPressable
+              onPress={handleAddToDiary}
+              disabled={adding}
+              style={{
+                backgroundColor: COLORS.primary,
+                borderRadius: 14,
+                height: 52,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              {adding ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Plus size={18} color="#fff" />
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Add to {mealTypeLabel}</Text>
+                </>
+              )}
+            </AnimatedPressable>
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  headerTitle: {
-    fontSize: typography.lg,
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: spacing.lg,
-  },
-  infoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: typography.sm,
-    lineHeight: 20,
-  },
-  label: {
-    fontSize: typography.md,
-    fontWeight: '500',
-    marginBottom: spacing.sm,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    fontSize: typography.md,
-    minHeight: 120,
-    marginBottom: spacing.lg,
-  },
-  analyzeButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  analyzeButtonDisabled: {
-    opacity: 0.6,
-  },
-  analyzeButtonText: {
-    color: '#fff',
-    fontSize: typography.md,
-    fontWeight: '600',
-  },
-  resultCard: {
-    borderRadius: borderRadius.md,
-    padding: spacing.lg,
-  },
-  resultTitle: {
-    fontSize: typography.lg,
-    fontWeight: '600',
-    marginBottom: spacing.md,
-  },
-  macroRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  macroLabel: {
-    fontSize: typography.md,
-  },
-  macroValue: {
-    fontSize: typography.md,
-    fontWeight: '500',
-  },
-  gateLoadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  gateContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  gateIconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  gateTitle: {
-    fontSize: typography.xl,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  gateMessage: {
-    fontSize: typography.md,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing.xl,
-  },
-  gateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
-    width: '100%',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  gateButtonText: {
-    color: '#FFFFFF',
-    fontSize: typography.md,
-    fontWeight: '700',
-  },
-  gateBackButton: {
-    paddingVertical: spacing.sm,
-  },
-  gateBackText: {
-    fontSize: typography.md,
-    textDecorationLine: 'underline',
-  },
-});

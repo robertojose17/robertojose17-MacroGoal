@@ -10,15 +10,15 @@ import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { getRecentFoods } from '@/utils/foodDatabase';
 import { getFavorites, removeFavoriteById, Favorite } from '@/utils/favoritesDatabase';
 import { OpenFoodFactsProduct, extractServingSize, extractNutrition } from '@/utils/openFoodFacts';
+import { Food } from '@/types';
+import { addToDraft } from '@/utils/myMealsDraft';
+import { toLocalDateString } from '@/utils/dateUtils';
+import { usePremium } from '@/hooks/usePremium';
+
 async function getSupabaseClient() {
   const { supabase } = await import('@/lib/supabase/client');
   return supabase;
 }
-import { Food } from '@/types';
-import { addToDraft } from '@/utils/myMealsDraft';
-import { toLocalDateString } from '@/utils/dateUtils';
-import QuickAddHome from '@/components/QuickAddHome';
-import { usePremium } from '@/hooks/usePremium';
 
 /** Safely coerce any value to a finite number, defaulting to 0 on NaN/null/undefined */
 function safeNum(value: unknown, fallback = 0): number {
@@ -2028,15 +2028,11 @@ export default function AddFoodScreen() {
             )}
 
             {activeTab === 'quick-add' && (
-              <QuickAddHome
-                mealType={mealType}
-                date={date}
-                returnTo={returnTo}
-                mode={context === 'my_meals_builder' ? 'mymeal' : 'diary'}
-                myMealId={params.myMealId as string | undefined}
-                context={context}
-                onQuickAdd={showSuccessBanner}
-              />
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <Text style={{ color: isDark ? colors.textSecondaryDark : colors.textSecondary, fontSize: 15 }}>
+                  Quick add is not available.
+                </Text>
+              </View>
             )}
 
             {activeTab === 'my-meals' && (
