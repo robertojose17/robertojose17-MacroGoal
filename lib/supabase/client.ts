@@ -11,12 +11,33 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export const SUPABASE_PROJECT_URL = SUPABASE_URL;
 
+// Safe AsyncStorage wrapper compatible with both v1 and v2
+const ExpoSecureStoreAdapter = {
+  getItem: async (key: string): Promise<string | null> => {
+    try {
+      return await AsyncStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch {}
+  },
+  removeItem: async (key: string): Promise<void> => {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {}
+  },
+};
+
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: AsyncStorage,
+    storage: ExpoSecureStoreAdapter,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false, // Must be false for React Native — no URL-based OAuth callbacks
+    detectSessionInUrl: false,
   },
 });
 

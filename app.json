@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "buildNumber": "5",
-      "bundleIdentifier": "com.robertojose17.macrogoal",
+      "bundleIdentifier": "com.robertojose17.macrogoaldev",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "We need access to speech recognition to transcribe your voice input for the AI meal estimator",
@@ -28,7 +28,7 @@
       },
       "edgeToEdgeEnabled": true,
       "versionCode": 3,
-      "package": "com.robertojose17.macrogoal",
+      "package": "com.robertojose17.macrogoaldev",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -59,9 +59,12 @@
           "photosPermission": "Elite Macro Tracker needs access to your photo library to let you select progress photos for your weight check-ins. For example, you can choose a photo from your gallery to track your body transformation over time alongside your weight measurements."
         }
       ],
-      "@bacons/apple-targets",
       "expo-secure-store"
     ],
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "ON_ERROR_RECOVERY"
+    },
     "scheme": "macrogoal",
     "experiments": {
       "typedRoutes": true

@@ -9,8 +9,6 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  console.log('[Tab Layout] Rendering tab layout, colorScheme:', colorScheme);
-
   return (
     <Tabs
       screenOptions={{
@@ -71,17 +69,14 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => {
-            console.log('[Tab Layout] Rendering Profile tab icon, focused:', focused);
-            return (
-              <IconSymbol
-                ios_icon_name={focused ? 'person.fill' : 'person'}
-                android_material_icon_name="person"
-                size={28}
-                color={color}
-              />
-            );
-          },
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              ios_icon_name={focused ? 'person.fill' : 'person'}
+              android_material_icon_name="person"
+              size={28}
+              color={color}
+            />
+          ),
         }}
       />
     </Tabs>

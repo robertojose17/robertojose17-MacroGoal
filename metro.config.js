@@ -26,6 +26,10 @@ const STUBS = {
   'expo-glass-effect': path.resolve(__dirname, 'stubs/expo-glass-effect.js'),
   'react-devtools-core': path.resolve(__dirname, 'stubs/react-devtools-core.js'),
   'rn-get-dev-server': path.resolve(__dirname, 'stubs/rn-get-dev-server.js'),
+  'expo-updates': path.resolve(__dirname, 'stubs/expo-updates.js'),
+  '@react-native-community/datetimepicker': path.resolve(__dirname, 'stubs/datetimepicker.js'),
+  '@expo/metro-runtime': path.resolve(__dirname, 'stubs/expo-metro-runtime.js'),
+  'expo-speech-recognition': path.resolve(__dirname, 'stubs/expo-speech-recognition.js'),
 };
 
 config.resolver.extraNodeModules = STUBS;
@@ -34,7 +38,22 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (Object.prototype.hasOwnProperty.call(STUBS, moduleName)) {
     return { filePath: STUBS[moduleName], type: 'sourceFile' };
   }
+  // Intercept any local path that includes expo-speech-recognition
+  if (moduleName.includes('expo-speech-recognition')) {
+    return { filePath: path.resolve(__dirname, 'stubs/expo-speech-recognition.js'), type: 'sourceFile' };
+  }
   return context.resolveRequest(context, moduleName, platform);
+};
+
+// Optimize for faster bundling
+config.transformer = config.transformer || {};
+config.transformer.minifierConfig = {
+  keep_fnames: true,
+  mangle: { keep_fnames: true },
+  output: { ascii_only: true, quote_style: 3, wrap_iife: true },
+  sourceMap: { includeSources: false },
+  toplevel: false,
+  compress: { reduce_funcs: false },
 };
 
 module.exports = config;

@@ -26,18 +26,7 @@ import {
   listTrackers,
   backfillWeightFromCheckIns,
 } from '@/utils/trackersApi';
-import {
-  Flame,
-  Trophy,
-  Target,
-  TrendingUp,
-  Calendar,
-  MoreHorizontal,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  BarChart3,
-} from 'lucide-react-native';
+import { MaterialCommunityIcons, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 
 // ─── AnimatedPressable ────────────────────────────────────────────────────────
@@ -321,7 +310,7 @@ export default function TrackerDetailScreen() {
           headerRight: () => (
             tracker && !tracker.is_default ? (
               <AnimatedPressable onPress={handleMore} style={styles.headerIconBtn} scaleValue={0.9}>
-                <MoreHorizontal size={20} color={subColor} strokeWidth={2} />
+                <MaterialCommunityIcons name="dots-horizontal" size={20} color={subColor} />
               </AnimatedPressable>
             ) : null
           ),
@@ -359,7 +348,7 @@ export default function TrackerDetailScreen() {
                 label="day streak"
                 value={String(stats?.current_streak ?? 0)}
                 sub="current"
-                icon={<Flame size={20} color="#FF8A5B" strokeWidth={2} />}
+                icon={<MaterialCommunityIcons name="fire" size={20} color="#FF8A5B" />}
                 iconColor="#FF8A5B"
                 isDark={isDark}
               />
@@ -367,7 +356,7 @@ export default function TrackerDetailScreen() {
                 label="best ever"
                 value={String(stats?.best_streak ?? 0)}
                 sub="all time"
-                icon={<Trophy size={20} color="#F59E0B" strokeWidth={2} />}
+                icon={<MaterialCommunityIcons name="trophy-outline" size={20} color="#F59E0B" />}
                 iconColor="#F59E0B"
                 isDark={isDark}
               />
@@ -378,14 +367,14 @@ export default function TrackerDetailScreen() {
               <StatCard
                 label="of days logged"
                 value={`${completionPct}%`}
-                icon={<CheckCircle2 size={20} color={colors.success} strokeWidth={2} />}
+                icon={<MaterialIcons name="check-circle" size={20} color={colors.success} />}
                 iconColor={colors.success}
                 isDark={isDark}
               />
               <StatCard
                 label="total entries"
                 value={String(stats?.days_tracked ?? 0)}
-                icon={<Calendar size={20} color={colors.primary} strokeWidth={2} />}
+                icon={<MaterialIcons name="calendar-today" size={20} color={colors.primary} />}
                 iconColor={colors.primary}
                 isDark={isDark}
               />
@@ -396,14 +385,14 @@ export default function TrackerDetailScreen() {
               <StatCard
                 label="this week"
                 value={String(stats?.this_week_count ?? 0)}
-                icon={<TrendingUp size={20} color="#8B5CF6" strokeWidth={2} />}
+                icon={<MaterialIcons name="trending-up" size={20} color="#8B5CF6" />}
                 iconColor="#8B5CF6"
                 isDark={isDark}
               />
               <StatCard
                 label="last week"
                 value={String(stats?.last_week_count ?? 0)}
-                icon={<BarChart3 size={20} color="#6B7280" strokeWidth={2} />}
+                icon={<MaterialIcons name="bar-chart" size={20} color="#6B7280" />}
                 iconColor="#6B7280"
                 isDark={isDark}
               />
@@ -423,7 +412,7 @@ export default function TrackerDetailScreen() {
               </View>
               {tracker && tracker.tracker_type !== 'binary' && stats && Number(stats.avg_value) > 0 ? (
                 <View style={styles.avgRow}>
-                  <Target size={14} color={subColor} strokeWidth={2} />
+                  <MaterialIcons name="my-location" size={14} color={subColor} />
                   <Text style={[styles.avgText, { color: subColor }]}>
                     Avg: {avgDisplay}
                   </Text>
@@ -435,7 +424,7 @@ export default function TrackerDetailScreen() {
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: textColor }]}>Recent Entries</Text>
               <AnimatedPressable onPress={handleLogEntry} style={[styles.logEntryBtn, { backgroundColor: colors.primary }]} scaleValue={0.94}>
-                <Plus size={14} color="#fff" strokeWidth={2.5} />
+                <Ionicons name="add" size={14} color="#fff" />
                 <Text style={styles.logEntryBtnText}>Log entry</Text>
               </AnimatedPressable>
             </View>
@@ -468,7 +457,7 @@ export default function TrackerDetailScreen() {
                         </View>
                         <Text style={[styles.entryValue, { color: colors.primary }]}>{valueDisplay}</Text>
                         <View style={[styles.deleteHint, { backgroundColor: colors.error + '18' }]}>
-                          <Trash2 size={12} color={colors.error} strokeWidth={2} />
+                          <MaterialIcons name="delete-outline" size={12} color={colors.error} />
                         </View>
                       </View>
                     </SwipeToDeleteRow>

@@ -1,44 +1,9 @@
-// v-final
 import React, { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, ScrollView } from 'react-native';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
-
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { error: Error | null }
-> {
-  constructor(props: any) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-  render() {
-    if (this.state.error) {
-      return (
-        <View style={{ flex: 1, backgroundColor: '#ff0000', padding: 40, paddingTop: 80 }}>
-          <ScrollView>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
-              APP CRASH
-            </Text>
-            <Text style={{ color: 'white', fontSize: 14, marginBottom: 10 }}>
-              {this.state.error.message}
-            </Text>
-            <Text style={{ color: 'white', fontSize: 11 }}>
-              {this.state.error.stack}
-            </Text>
-          </ScrollView>
-        </View>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 export default function RootLayout() {
   const router = useRouter();
@@ -48,16 +13,28 @@ export default function RootLayout() {
 
   useEffect(() => {
     mounted.current = true;
+
+    // Hide splash immediately so user sees something
     SplashScreen.hideAsync().catch(() => {});
 
     const initAuth = async () => {
       try {
         const { supabase } = await import('../lib/supabase/client');
-        const { data } = await supabase.auth.getSession();
+
+        // Race getSession against a 4-second timeout
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null } }>((resolve) =>
+            setTimeout(() => resolve({ data: { session: null } }), 4000)
+          ),
+        ]);
+
         if (!mounted.current) return;
-        setHasSession(!!data.session);
+        console.log('[Layout] getSession resolved, session:', !!sessionResult.data.session);
+        setHasSession(!!sessionResult.data.session);
         setInitialized(true);
 
+        // Listen for future auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
           if (!mounted.current) return;
           setHasSession(!!session);
@@ -65,14 +42,25 @@ export default function RootLayout() {
 
         return () => subscription.unsubscribe();
       } catch (e) {
-        console.error('Auth init error:', e);
+        console.error('[Layout] Auth init error:', e);
         if (!mounted.current) return;
         setInitialized(true);
       }
     };
 
     initAuth();
-    return () => { mounted.current = false; };
+
+    // Absolute fallback: if nothing resolves in 6 seconds, force init
+    const fallback = setTimeout(() => {
+      if (!mounted.current) return;
+      console.warn('[Layout] Fallback timer fired — forcing initialized=true');
+      setInitialized(true);
+    }, 6000);
+
+    return () => {
+      mounted.current = false;
+      clearTimeout(fallback);
+    };
   }, []);
 
   useEffect(() => {
@@ -80,19 +68,19 @@ export default function RootLayout() {
     const timer = setTimeout(() => {
       if (!mounted.current) return;
       if (hasSession) {
+        console.log('[Layout] Session found — navigating to tabs');
         router.replace('/(tabs)');
       } else {
+        console.log('[Layout] No session — navigating to signup');
         router.replace('/auth/signup');
       }
-    }, 100);
+    }, 50);
     return () => clearTimeout(timer);
-  }, [initialized, hasSession]);
+  }, [initialized, hasSession, router]);
 
   return (
-    <ErrorBoundary>
-      <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-      </SafeAreaProvider>
-    </ErrorBoundary>
+    <SafeAreaProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </SafeAreaProvider>
   );
 }

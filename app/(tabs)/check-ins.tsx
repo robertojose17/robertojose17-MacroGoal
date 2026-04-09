@@ -14,7 +14,7 @@ import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { listTrackers, getStats, Tracker, TrackerStats } from '@/utils/trackersApi';
-import { Flame, Trophy, Plus, ChevronRight, CheckCircle2 } from 'lucide-react-native';
+import { MaterialCommunityIcons, Ionicons, MaterialIcons } from '@expo/vector-icons';
 
 // ─── AnimatedPressable ────────────────────────────────────────────────────────
 function AnimatedPressable({
@@ -141,10 +141,10 @@ function TrackerCard({
           ) : null}
         </View>
         <AnimatedPressable onPress={onLog} style={[styles.logButton, { backgroundColor: colors.primary }]} scaleValue={0.94}>
-          <Plus size={14} color="#fff" strokeWidth={2.5} />
+          <Ionicons name="add" size={14} color="#fff" />
           <Text style={styles.logButtonText}>Log</Text>
         </AnimatedPressable>
-        <ChevronRight size={16} color={subColor} strokeWidth={2} style={{ marginLeft: 4 }} />
+        <Ionicons name="chevron-forward" size={16} color={subColor} style={{ marginLeft: 4 }} />
       </View>
 
       {/* Divider */}
@@ -154,7 +154,7 @@ function TrackerCard({
       <View style={styles.statsRow}>
         {/* Streak */}
         <View style={styles.statChip}>
-          <Flame size={13} color="#FF8A5B" strokeWidth={2} />
+          <MaterialCommunityIcons name="fire" size={13} color="#FF8A5B" />
           <Text style={[styles.statChipText, { color: textColor }]}>
             {streak}
             <Text style={[styles.statChipLabel, { color: subColor }]}> day streak</Text>
@@ -163,7 +163,7 @@ function TrackerCard({
 
         {/* Completion */}
         <View style={styles.statChip}>
-          <CheckCircle2 size={13} color={colors.success} strokeWidth={2} />
+          <MaterialIcons name="check-circle" size={13} color={colors.success} />
           <Text style={[styles.statChipText, { color: textColor }]}>
             {completionPct}
             <Text style={[styles.statChipLabel, { color: subColor }]}>% rate</Text>
@@ -290,7 +290,7 @@ export default function CheckInsScreen() {
           headerLargeStyle: { backgroundColor: 'transparent' },
           headerRight: () => (
             <AnimatedPressable onPress={handleCreateTracker} style={styles.headerButton} scaleValue={0.9}>
-              <Plus size={22} color={colors.primary} strokeWidth={2.5} />
+              <Ionicons name="add" size={22} color={colors.primary} />
             </AnimatedPressable>
           ),
         }}
@@ -336,14 +336,14 @@ export default function CheckInsScreen() {
           /* Empty state */
           <View style={[styles.emptyCard, { backgroundColor: isDark ? colors.cardDark : colors.card, borderColor: isDark ? colors.cardBorderDark : colors.cardBorder }]}>
             <View style={[styles.emptyIconCircle, { backgroundColor: colors.primary + '18' }]}>
-              <Trophy size={32} color={colors.primary} strokeWidth={1.5} />
+              <MaterialCommunityIcons name="trophy-outline" size={32} color={colors.primary} />
             </View>
             <Text style={[styles.emptyTitle, { color: textColor }]}>No trackers yet</Text>
             <Text style={[styles.emptySub, { color: subColor }]}>
               Create your first tracker to start building healthy habits
             </Text>
             <AnimatedPressable onPress={handleCreateTracker} style={[styles.emptyButton, { backgroundColor: colors.primary }]}>
-              <Plus size={16} color="#fff" strokeWidth={2.5} />
+              <Ionicons name="add" size={16} color="#fff" />
               <Text style={styles.emptyButtonText}>Create tracker</Text>
             </AnimatedPressable>
           </View>
