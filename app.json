@@ -60,8 +60,7 @@
         }
       ],
       "@bacons/apple-targets",
-      "expo-secure-store",
-      "react-native-edge-to-edge"
+      "expo-secure-store"
     ],
     "scheme": "macrogoal",
     "experiments": {

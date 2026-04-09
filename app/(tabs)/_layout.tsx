@@ -1,26 +1,15 @@
 
 import React from 'react';
-import { Platform, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AdBannerProvider, useAdBanner } from '@/components/AdBannerContext';
-import { AdBannerFooter } from '@/components/AdBannerFooter';
-import { usePremium } from '@/hooks/usePremium';
 
-function TabLayoutInner() {
+export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { adBannerHeight } = useAdBanner();
-  const hasAd = adBannerHeight > 0;
 
-  console.log('[Tab Layout] Rendering tab layout for platform:', Platform.OS, 'hasAd:', hasAd);
-
-  // When ad is showing, shift the tab bar up by the banner height so it sits above the banner.
-  const tabBarHeight = Platform.OS === 'ios' ? (hasAd ? 60 : 85) : 60;
-  const tabBarPaddingBottom = Platform.OS === 'ios' ? (hasAd ? 8 : 20) : 5;
-  const tabBarMarginBottom = hasAd ? adBannerHeight : 0;
+  console.log('[Tab Layout] Rendering tab layout, colorScheme:', colorScheme);
 
   return (
     <Tabs
@@ -31,9 +20,8 @@ function TabLayoutInner() {
         tabBarStyle: {
           backgroundColor: isDark ? colors.cardDark : colors.card,
           borderTopColor: isDark ? colors.borderDark : colors.border,
-          paddingBottom: tabBarPaddingBottom,
-          height: tabBarHeight,
-          marginBottom: tabBarMarginBottom,
+          paddingBottom: 20,
+          height: 85,
         },
       }}
     >
@@ -97,20 +85,5 @@ function TabLayoutInner() {
         }}
       />
     </Tabs>
-  );
-}
-
-export default function TabLayout() {
-  const { isPremium, loading } = usePremium();
-  // While premium status is loading, treat as non-premium so no async hang blocks render.
-  const effectivePremium = loading ? false : isPremium;
-  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium:', effectivePremium, 'loading:', loading);
-  return (
-    <AdBannerProvider isPremium={effectivePremium}>
-      <View style={{ flex: 1 }}>
-        <TabLayoutInner />
-        <AdBannerFooter isPremium={effectivePremium} />
-      </View>
-    </AdBannerProvider>
   );
 }

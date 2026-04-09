@@ -1,26 +1,10 @@
 /**
- * Error Boundary Component Template
- *
- * Catches JavaScript errors anywhere in the child component tree,
- * logs those errors, and displays a fallback UI.
- *
- * Usage:
- * ```tsx
- * <ErrorBoundary>
- *   <App />
- * </ErrorBoundary>
- * ```
- *
- * Or wrap specific screens:
- * ```tsx
- * <ErrorBoundary fallback={<CustomErrorScreen />}>
- *   <ComplexFeature />
- * </ErrorBoundary>
- * ```
+ * Diagnostic Error Boundary — shows a bright red full-screen crash report.
+ * This makes silent blank-screen crashes visible so we can identify the root cause.
  */
 
 import React, { Component, ReactNode } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 
 interface Props {
   children: ReactNode;
@@ -37,75 +21,78 @@ interface State {
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
-    return {
-      hasError: true,
-      error,
-      errorInfo: null,
-    };
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to console
-    console.error("Error caught by boundary:", error, errorInfo);
-
-    // Update state with error info
-    this.setState({
-      error,
-      errorInfo,
-    });
-
-    // Call custom error handler if provided
+    console.error("[ErrorBoundary] CRASH CAUGHT:", error.message);
+    console.error("[ErrorBoundary] Stack:", error.stack);
+    console.error("[ErrorBoundary] Component stack:", errorInfo.componentStack);
+    this.setState({ error, errorInfo });
     this.props.onError?.(error, errorInfo);
   }
 
   handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    });
+    this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
   render() {
     if (this.state.hasError) {
-      // Custom fallback UI
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      // Default fallback UI
+      const errorMessage = this.state.error?.message ?? "Unknown error";
+      const errorStack = this.state.error?.stack ?? "";
+      const componentStack = this.state.errorInfo?.componentStack ?? "";
+
       return (
-        <View style={styles.container}>
-          <Text style={styles.title}>Oops! Something went wrong</Text>
-          <Text style={styles.message}>
-            We're sorry for the inconvenience. The app encountered an error.
-          </Text>
+        <View style={{ flex: 1, backgroundColor: "#CC0000", padding: 0 }}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 24, paddingTop: 80, paddingBottom: 60 }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "bold", marginBottom: 8 }}>
+              APP CRASH
+            </Text>
+            <Text style={{ color: "#FFDDDD", fontSize: 13, fontWeight: "bold", marginBottom: 16 }}>
+              An error was caught by ErrorBoundary. This screen replaces the blank white screen.
+            </Text>
 
-          {__DEV__ && this.state.error && (
-            <ScrollView style={styles.errorDetails}>
-              <Text style={styles.errorTitle}>Error Details (Dev Only):</Text>
-              <Text style={styles.errorText}>
-                {this.state.error.toString()}
+            <Text style={{ color: "#FFEEEE", fontSize: 11, fontWeight: "bold", marginBottom: 4 }}>
+              ERROR MESSAGE:
+            </Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 14, marginBottom: 16, fontFamily: "monospace" }}>
+              {errorMessage}
+            </Text>
+
+            <Text style={{ color: "#FFEEEE", fontSize: 11, fontWeight: "bold", marginBottom: 4 }}>
+              JS STACK:
+            </Text>
+            <Text style={{ color: "#FFDDDD", fontSize: 11, marginBottom: 16, fontFamily: "monospace" }}>
+              {errorStack}
+            </Text>
+
+            <Text style={{ color: "#FFEEEE", fontSize: 11, fontWeight: "bold", marginBottom: 4 }}>
+              COMPONENT STACK:
+            </Text>
+            <Text style={{ color: "#FFDDDD", fontSize: 11, marginBottom: 24, fontFamily: "monospace" }}>
+              {componentStack}
+            </Text>
+
+            <TouchableOpacity
+              onPress={this.handleReset}
+              style={{ backgroundColor: "#FFFFFF", borderRadius: 8, padding: 14, alignItems: "center" }}
+            >
+              <Text style={{ color: "#CC0000", fontWeight: "bold", fontSize: 16 }}>
+                Try Again
               </Text>
-              {this.state.errorInfo && (
-                <Text style={styles.errorStack}>
-                  {this.state.errorInfo.componentStack}
-                </Text>
-              )}
-            </ScrollView>
-          )}
-
-          <TouchableOpacity style={styles.button} onPress={this.handleReset}>
-            <Text style={styles.buttonText}>Try Again</Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       );
     }
@@ -113,61 +100,3 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    backgroundColor: "#fff",
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 16,
-    color: "#000",
-  },
-  message: {
-    fontSize: 16,
-    textAlign: "center",
-    color: "#666",
-    marginBottom: 24,
-  },
-  errorDetails: {
-    maxHeight: 200,
-    width: "100%",
-    padding: 16,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    marginBottom: 24,
-  },
-  errorTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 8,
-    color: "#FF3B30",
-  },
-  errorText: {
-    fontSize: 12,
-    color: "#333",
-    fontFamily: "monospace",
-    marginBottom: 8,
-  },
-  errorStack: {
-    fontSize: 10,
-    color: "#666",
-    fontFamily: "monospace",
-  },
-  button: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});

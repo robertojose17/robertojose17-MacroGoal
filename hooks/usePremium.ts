@@ -1,12 +1,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
-import { supabase } from '@/lib/supabase/client';
 import Purchases, { isPurchasesAvailable } from '@/utils/purchases';
 
 function loadPurchases(): any {
   return isPurchasesAvailable ? Purchases : null;
 }
+
 // Use `any` for CustomerInfo so we don't import the type from the native module
 type CustomerInfo = any;
 
@@ -21,42 +21,10 @@ interface UsePremiumReturn {
 }
 
 /**
- * Hook to check if the current user has an active premium subscription
+ * Hook to check if the current user has an active premium subscription.
  *
- * This hook uses RevenueCat as the primary source of truth for premium status,
- * with Supabase as a fallback for offline scenarios.
- *
- * Architecture:
- * 1. Primary: Check RevenueCat entitlements (real-time, authoritative)
- * 2. Fallback: Check Supabase users.user_type (derived state, synced via webhook)
- *
- * The hook re-checks on every SIGNED_IN auth event so that after a sign-out/sign-in
- * cycle the correct entitlements for the newly-identified RevenueCat user are loaded
- * immediately, without requiring the user to trigger a purchase or restore flow.
- *
- * @returns {UsePremiumReturn} Premium status, loading state, customer info, and refresh function
- *
- * @example
- * ```tsx
- * function MyComponent() {
- *   const { isPremium, loading, expirationDate } = usePremium();
- *
- *   if (loading) return <ActivityIndicator />;
- *
- *   return (
- *     <View>
- *       {isPremium ? (
- *         <>
- *           <Text>Premium Feature</Text>
- *           {expirationDate && <Text>Expires: {expirationDate}</Text>}
- *         </>
- *       ) : (
- *         <Button title="Upgrade to Premium" onPress={() => router.push('/subscription')} />
- *       )}
- *     </View>
- *   );
- * }
- * ```
+ * Uses RevenueCat as the primary source of truth, with Supabase as fallback.
+ * Supabase is lazy-imported to avoid module-level crashes on cold start in Expo Go.
  */
 export function usePremium(): UsePremiumReturn {
   const [isPremium, setIsPremium] = useState(false);
@@ -82,6 +50,12 @@ export function usePremium(): UsePremiumReturn {
       setLoading(true);
       setError(null);
 
+      // Lazy-import supabase to avoid module-level crashes on cold start in Expo Go.
+      // The real supabase client calls createClient() with AsyncStorage at module level;
+      // importing it statically from this hook would force that to run before the JS
+      // runtime is fully ready, causing a blank white screen on iOS.
+      const { supabase } = await import('@/lib/supabase/client');
+
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -100,7 +74,7 @@ export function usePremium(): UsePremiumReturn {
       if (Platform.OS !== 'web' && Purchases) {
         for (let attempt = 1; attempt <= 2; attempt++) {
           try {
-            console.log(`[usePremium] 🔍 Checking RevenueCat entitlements (attempt ${attempt})...`);
+            console.log(`[usePremium] Checking RevenueCat entitlements (attempt ${attempt})...`);
 
             // Wrap getCustomerInfo in a 5s timeout so a slow/uninitialized
             // RevenueCat never blocks the tab layout from rendering.
@@ -113,18 +87,16 @@ export function usePremium(): UsePremiumReturn {
             console.log('[usePremium] RevenueCat Customer Info:');
             console.log('[usePremium] - Original App User ID:', info.originalAppUserId);
             console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
-            console.log('[usePremium] - All Entitlements:', Object.keys(info.entitlements.all));
 
             // If RevenueCat still has an anonymous user ID but we have a real
             // session, it means the SDK hasn't been identified yet (race with
             // _layout.tsx init). Log in now so we get the right entitlements.
             const isAnonymousUser = info.originalAppUserId.startsWith('$RCAnonymousID:');
             if (isAnonymousUser && user.id) {
-              console.log('[usePremium] ⚠️ RevenueCat still anonymous, logging in user:', user.id);
+              console.log('[usePremium] RevenueCat still anonymous, logging in user:', user.id);
               try {
                 const { customerInfo: identifiedInfo } = await Purchases.logIn(user.id);
-                console.log('[usePremium] ✅ RevenueCat user identified from hook:', user.id);
-                console.log('[usePremium] Active entitlements after login:', Object.keys(identifiedInfo.entitlements.active));
+                console.log('[usePremium] RevenueCat user identified from hook:', user.id);
 
                 const premiumEntitlementAfterLogin =
                   identifiedInfo.entitlements.active['pro'] ||
@@ -138,11 +110,10 @@ export function usePremium(): UsePremiumReturn {
                 if (premiumEntitlementAfterLogin?.expirationDate) {
                   setExpirationDate(premiumEntitlementAfterLogin.expirationDate);
                 }
-                console.log('[usePremium] ✅ Premium status after login:', hasActiveAfterLogin);
-                console.log('[usePremium] ========== PREMIUM STATUS CHECK COMPLETE ==========');
+                console.log('[usePremium] Premium status after login:', hasActiveAfterLogin);
                 return;
               } catch (loginErr) {
-                console.warn('[usePremium] ⚠️ Could not log in to RevenueCat from hook:', loginErr);
+                console.warn('[usePremium] Could not log in to RevenueCat from hook:', loginErr);
                 // Fall through to use the anonymous info we already have
               }
             }
@@ -155,36 +126,29 @@ export function usePremium(): UsePremiumReturn {
               info.entitlements.active['premium'];
             const hasActiveEntitlement = premiumEntitlement?.isActive || false;
 
-            console.log('[usePremium] Premium Entitlement Details:');
-            console.log('[usePremium] - Is Active:', hasActiveEntitlement);
-            console.log('[usePremium] - Matched entitlement key:', premiumEntitlement ? 'found' : 'none (checked: pro, Macrogoal Pro, macrogoal_pro, premium)');
-            console.log('[usePremium] - Product Identifier:', premiumEntitlement?.productIdentifier);
-            console.log('[usePremium] - Will Renew:', premiumEntitlement?.willRenew);
-            console.log('[usePremium] - Period Type:', premiumEntitlement?.periodType);
+            console.log('[usePremium] Premium Entitlement - Is Active:', hasActiveEntitlement);
 
             if (premiumEntitlement?.expirationDate) {
               setExpirationDate(premiumEntitlement.expirationDate);
-              console.log('[usePremium] - Expiration Date:', premiumEntitlement.expirationDate);
             }
 
-            console.log('[usePremium] ✅ RevenueCat premium status:', hasActiveEntitlement);
+            console.log('[usePremium] RevenueCat premium status:', hasActiveEntitlement);
             setIsPremium(hasActiveEntitlement);
             setLoading(false);
-            console.log('[usePremium] ========== PREMIUM STATUS CHECK COMPLETE ==========');
             return;
           } catch (revenueCatError) {
             if (attempt === 1) {
-              console.warn('[usePremium] ⚠️ RevenueCat attempt 1 failed, retrying in 1s:', revenueCatError);
+              console.warn('[usePremium] RevenueCat attempt 1 failed, retrying in 1s:', revenueCatError);
               await new Promise(resolve => setTimeout(resolve, 1000));
             } else {
-              console.warn('[usePremium] ⚠️ RevenueCat check failed after 2 attempts, falling back to Supabase:', revenueCatError);
+              console.warn('[usePremium] RevenueCat check failed after 2 attempts, falling back to Supabase:', revenueCatError);
             }
           }
         }
       }
 
       // Fallback: Check Supabase for premium status (derived state)
-      console.log('[usePremium] 🔍 Checking Supabase for premium status...');
+      console.log('[usePremium] Checking Supabase for premium status...');
       const { data: userData, error: fetchError } = await supabase
         .from('users')
         .select('user_type')
@@ -192,17 +156,17 @@ export function usePremium(): UsePremiumReturn {
         .single();
 
       if (fetchError) {
-        console.error('[usePremium] ❌ Error fetching user data:', fetchError);
+        console.error('[usePremium] Error fetching user data:', fetchError);
         throw fetchError;
       }
 
       const userIsPremium = userData?.user_type === 'premium';
-      console.log('[usePremium] ✅ Supabase premium status:', userIsPremium);
+      console.log('[usePremium] Supabase premium status:', userIsPremium);
       setIsPremium(userIsPremium);
 
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to check premium status';
-      console.error('[usePremium] ❌ Error checking premium status:', err);
+      console.error('[usePremium] Error checking premium status:', err);
       setError(errorMessage);
       setIsPremium(false);
     } finally {
@@ -213,7 +177,7 @@ export function usePremium(): UsePremiumReturn {
   }, []);
 
   const refreshPremiumStatus = useCallback(async () => {
-    console.log('[usePremium] 🔄 Manually refreshing premium status (forced)');
+    console.log('[usePremium] Manually refreshing premium status (forced)');
     await checkPremiumStatus(true);
   }, [checkPremiumStatus]);
 
@@ -224,14 +188,10 @@ export function usePremium(): UsePremiumReturn {
     const Purchases = loadPurchases();
 
     // Set up RevenueCat listener for real-time updates (native only).
-    // This fires when a purchase completes or when RevenueCat pushes an update.
     if (Platform.OS !== 'web' && Purchases) {
       console.log('[usePremium] Setting up RevenueCat customer info listener');
-      Purchases.addCustomerInfoUpdateListener((info) => {
-        console.log('[usePremium] 🔔 RevenueCat customer info updated via listener');
-        console.log('[usePremium] - Original App User ID:', info.originalAppUserId);
-        console.log('[usePremium] - Active Entitlements:', Object.keys(info.entitlements.active));
-
+      Purchases.addCustomerInfoUpdateListener((info: any) => {
+        console.log('[usePremium] RevenueCat customer info updated via listener');
         setCustomerInfo(info);
         const premiumEntitlement =
           info.entitlements.active['pro'] ||
@@ -239,40 +199,39 @@ export function usePremium(): UsePremiumReturn {
           info.entitlements.active['macrogoal_pro'] ||
           info.entitlements.active['premium'];
         const hasActiveEntitlement = premiumEntitlement?.isActive || false;
-
         console.log('[usePremium] - Premium Status:', hasActiveEntitlement);
         setIsPremium(hasActiveEntitlement);
-
         if (premiumEntitlement?.expirationDate) {
           setExpirationDate(premiumEntitlement.expirationDate);
         }
       });
     }
 
-    // Subscribe to Supabase auth state changes.
-    // On SIGNED_IN (including after sign-out → sign-in), re-check premium status
-    // so the Profile tab reflects the correct entitlements for the newly-logged-in
-    // user without requiring a purchase or restore flow.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user?.id) {
-        console.log('[usePremium] 🔐 SIGNED_IN event detected, refreshing premium status for user:', session.user.id);
-        // Small delay to allow _layout.tsx to complete Purchases.logIn() first,
-        // so getCustomerInfo() returns entitlements for the identified user.
-        setTimeout(() => {
-          console.log('[usePremium] ⏱️ Running post-login premium check');
-          checkPremiumStatus();
-        }, 1500);
-      } else if (event === 'SIGNED_OUT') {
-        console.log('[usePremium] 🚪 SIGNED_OUT event detected, resetting premium status');
-        setIsPremium(false);
-        setCustomerInfo(null);
-        setExpirationDate(null);
-        setError(null);
-      }
+    // Subscribe to Supabase auth state changes via lazy import.
+    let unsubscribe: (() => void) | null = null;
+    import('@/lib/supabase/client').then(({ supabase }) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session?.user?.id) {
+          console.log('[usePremium] SIGNED_IN event, refreshing premium status for user:', session.user.id);
+          setTimeout(() => {
+            console.log('[usePremium] Running post-login premium check');
+            checkPremiumStatus();
+          }, 1500);
+        } else if (event === 'SIGNED_OUT') {
+          console.log('[usePremium] SIGNED_OUT event, resetting premium status');
+          setIsPremium(false);
+          setCustomerInfo(null);
+          setExpirationDate(null);
+          setError(null);
+        }
+      });
+      unsubscribe = () => subscription.unsubscribe();
+    }).catch((e) => {
+      console.warn('[usePremium] Could not subscribe to auth state changes:', e);
     });
 
     return () => {
-      subscription.unsubscribe();
+      if (unsubscribe) unsubscribe();
     };
   }, [checkPremiumStatus]);
 

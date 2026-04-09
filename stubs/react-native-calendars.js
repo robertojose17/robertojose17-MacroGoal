@@ -5,6 +5,10 @@ var React = require('react');
 
 function noop() { return null; }
 
+// DateData is used as a TypeScript type but also imported as a value in some files.
+// Provide it as an empty object so destructuring imports don't crash.
+var DateData = {};
+
 module.exports = {
   default: noop,
   Calendar: noop,
@@ -13,5 +17,5 @@ module.exports = {
   WeekCalendar: noop,
   ExpandableCalendar: noop,
   TimelineList: noop,
-  DateData: {},
+  DateData: DateData,
 };

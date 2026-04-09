@@ -1,19 +1,11 @@
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
-import { Platform } from "react-native";
 
-// Safely require @bacons/apple-targets — the build/ directory may be absent
-// in some install states, so we guard with try/catch to prevent a crash.
-let ExtensionStorage: { reloadWidget: () => void } | null = null;
-try {
-  if (Platform.OS === "ios") {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const AppleTargets = require("@bacons/apple-targets");
-    ExtensionStorage = AppleTargets?.ExtensionStorage ?? null;
-  }
-} catch {
-  // Package not built or not available — widget refresh will be a no-op
-}
+// Widget refresh is a no-op in Expo Go — @bacons/apple-targets is stubbed
+// via metro.config.js extraNodeModules so the real native module never loads.
+// In a production native build with the extension linked, swap this import
+// for the real one: import { ExtensionStorage } from '@bacons/apple-targets';
+const ExtensionStorage: { reloadWidget: () => void } | null = null;
 
 type WidgetContextType = {
   refreshWidget: () => void;
@@ -22,18 +14,8 @@ type WidgetContextType = {
 const WidgetContext = createContext<WidgetContextType | null>(null);
 
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
-  React.useEffect(() => {
-    if (Platform.OS === "ios" && ExtensionStorage) {
-      try {
-        ExtensionStorage.reloadWidget();
-      } catch (error) {
-        console.log("[WidgetContext] Error reloading widget:", error);
-      }
-    }
-  }, []);
-
   const refreshWidget = useCallback(() => {
-    if (Platform.OS === "ios" && ExtensionStorage) {
+    if (ExtensionStorage) {
       try {
         ExtensionStorage.reloadWidget();
       } catch (error) {
