@@ -1,10 +1,10 @@
 'use strict';
 // Stub for rn-get-dev-server.
-// The real package's default export IS the function itself (not an object).
-// Callers do: const getDevServer = require('rn-get-dev-server'); getDevServer();
-// So module.exports must be the function directly — no __esModule flag, no wrapping.
+// Some callers do: require('rn-get-dev-server')()
+// Others do:       require('rn-get-dev-server').getDevServer()
+// Support both by making the export a function that also has a .getDevServer property.
 function getDevServer() {
   return { bundleLoadedFromServer: false, hotLoadingEnabled: false, url: '' };
 }
+getDevServer.getDevServer = getDevServer;
 module.exports = getDevServer;
-module.exports.getDevServer = getDevServer;

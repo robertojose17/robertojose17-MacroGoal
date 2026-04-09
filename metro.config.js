@@ -10,6 +10,14 @@ config.resolver.unstable_enablePackageExports = true;
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   'rn-get-dev-server': path.resolve(__dirname, 'stubs/rn-get-dev-server.js'),
+  'react-native-purchases': path.resolve(__dirname, 'stubs/react-native-purchases.js'),
+  'react-native-google-mobile-ads': path.resolve(__dirname, 'stubs/react-native-google-mobile-ads.js'),
+  'expo-in-app-purchases': path.resolve(__dirname, 'stubs/expo-in-app-purchases.js'),
+  'react-native-maps': path.resolve(__dirname, 'stubs/react-native-maps.js'),
+  'react-native-worklets-core': path.resolve(__dirname, 'stubs/react-native-worklets.js'),
+  '@bacons/apple-targets': path.resolve(__dirname, 'stubs/bacons-apple-targets.js'),
+  'react-native-edge-to-edge': path.resolve(__dirname, 'stubs/react-native-edge-to-edge.js'),
+  'expo-speech-recognition': path.resolve(__dirname, 'stubs/expo-speech-recognition.js'),
 };
 
 // Use turborepo to restore the cache when possible

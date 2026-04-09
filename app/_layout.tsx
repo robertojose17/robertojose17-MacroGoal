@@ -2,17 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
-
-// Global error catcher
-const errors: string[] = [];
-const origConsoleError = console.error.bind(console);
-console.error = (...args: any[]) => {
-  errors.push(args.map(String).join(' '));
-  origConsoleError(...args);
-};
 
 export default function RootLayout() {
   const router = useRouter();
@@ -113,9 +105,6 @@ export default function RootLayout() {
         <ScrollView style={{ flex: 1 }}>
           {log.map((l, i) => (
             <Text key={i} style={{ color: '#cccccc', fontSize: 11, marginBottom: 2 }}>{l}</Text>
-          ))}
-          {errors.map((e, i) => (
-            <Text key={'e' + i} style={{ color: '#ff6666', fontSize: 11, marginBottom: 2 }}>ERR: {e}</Text>
           ))}
         </ScrollView>
       </View>
