@@ -235,10 +235,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
   const textColor = isDark ? colors.textDark : colors.text;
   const subtextColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
 
-  const cardWidth = Dimensions.get('window').width - spacing.md * 2;
-  const photoWidth = Math.floor((cardWidth - spacing.lg * 2 - spacing.md * 2 - 32) / 2);
-  const photoSize = photoWidth;
-  const photoHeight = Math.floor(photoWidth * 1.5);
+  const photoHeight = Math.floor((Dimensions.get('window').width - spacing.md * 2) * 0.75);
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const beforePhoto = photos.find((p) => p.id === beforeId) ?? null;
@@ -321,21 +318,25 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
           <View style={styles.photoWrapper}>
             <Image
               source={{ uri: afterPhoto.photo_url }}
-              style={[styles.photo, { width: photoSize, height: photoHeight }]}
+              style={[styles.photo, { width: '100%', height: photoHeight }]}
               resizeMode="cover"
             />
-            <DatePill
-              label={afterDateLabel}
-              isDark={isDark}
-              onPress={handleAfterPillPress}
-            />
+            <View style={styles.datePillRow}>
+              <DatePill
+                label={afterDateLabel}
+                isDark={isDark}
+                onPress={handleAfterPillPress}
+              />
+            </View>
           </View>
+
+          <View style={[styles.photoSeparator, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
 
           <View
             style={[
               styles.photoWrapper,
               styles.placeholderWrapper,
-              { width: photoSize, height: photoHeight, borderColor: isDark ? colors.borderDark : colors.border },
+              { height: photoHeight, borderColor: isDark ? colors.borderDark : colors.border },
             ]}
           >
             <IconSymbol
@@ -357,27 +358,33 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
           <View style={styles.photoWrapper}>
             <Image
               source={{ uri: beforePhoto.photo_url }}
-              style={[styles.photo, { width: photoSize, height: photoHeight }]}
+              style={[styles.photo, { width: '100%', height: photoHeight }]}
               resizeMode="cover"
             />
-            <DatePill
-              label={beforeDateLabel}
-              isDark={isDark}
-              onPress={handleBeforePillPress}
-            />
+            <View style={styles.datePillRow}>
+              <DatePill
+                label={beforeDateLabel}
+                isDark={isDark}
+                onPress={handleBeforePillPress}
+              />
+            </View>
           </View>
+
+          <View style={[styles.photoSeparator, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
 
           <View style={styles.photoWrapper}>
             <Image
               source={{ uri: afterPhoto.photo_url }}
-              style={[styles.photo, { width: photoSize, height: photoHeight }]}
+              style={[styles.photo, { width: '100%', height: photoHeight }]}
               resizeMode="cover"
             />
-            <DatePill
-              label={afterDateLabel}
-              isDark={isDark}
-              onPress={handleAfterPillPress}
-            />
+            <View style={styles.datePillRow}>
+              <DatePill
+                label={afterDateLabel}
+                isDark={isDark}
+                onPress={handleAfterPillPress}
+              />
+            </View>
           </View>
         </View>
       )}
@@ -430,26 +437,32 @@ export default PhotoProgressCardErrorBoundary;
 const styles = StyleSheet.create({
   card: {
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
     marginBottom: spacing.md,
     borderWidth: 1,
     elevation: 2,
+    overflow: 'hidden',
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
   },
   cardTitle: {
     ...typography.h3,
   },
   loadingContainer: {
     alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
     paddingVertical: spacing.xl,
   },
   emptyContainer: {
     alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
     paddingVertical: spacing.xl,
     gap: spacing.md,
   },
@@ -460,16 +473,23 @@ const styles = StyleSheet.create({
   },
   photosRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    alignItems: 'flex-start',
+    paddingBottom: spacing.md,
   },
   photoWrapper: {
+    flex: 1,
     alignItems: 'center',
     gap: spacing.xs,
   },
   photo: {
-    borderRadius: borderRadius.md,
+    borderRadius: 0,
+  },
+  photoSeparator: {
+    width: 1,
+    alignSelf: 'stretch',
+  },
+  datePillRow: {
+    alignItems: 'center',
   },
   arrowContainer: {
     alignItems: 'center',
