@@ -3,7 +3,6 @@ const {
   withPodfileProperties,
   withXcodeProject,
 } = require('@expo/config-plugins');
-const { mergeContents } = require('@expo/config-plugins/build/utils/generateCode');
 const fs = require('fs');
 const path = require('path');
 
@@ -13,7 +12,7 @@ const path = require('path');
  * across all three injection points:
  *   1. Podfile.properties.json  (picked up by the React Native Podfile template)
  *   2. Xcode project build settings for all targets/configurations
- *   3. Podfile post_install hook for all pod targets
+ *   3. Podfile post_install hook — injected INSIDE the existing block, not as a new one
  */
 
 // ─── 1. Podfile.properties.json ──────────────────────────────────────────────
@@ -58,20 +57,21 @@ const withFollyXcodeProject = (config) => {
   });
 };
 
-// ─── 3. Podfile post_install hook — all pod targets ──────────────────────────
-const POST_INSTALL_BLOCK = `
-# withFollyCoroutineFix: inject FOLLY_CFG_NO_COROUTINES=1 into every pod target
-post_install do |installer|
+// ─── 3. Podfile — inject folly fix INSIDE the existing post_install block ─────
+const FOLLY_FIX_CODE = `
+  # Fix for folly/coro/Coroutine.h not found (withFollyCoroutineFix)
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_NO_CONFIG=1'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_MOBILE=1'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_USE_LIBCPP=1'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_HAVE_CLOCK_GETTIME=1'
       config.build_settings['OTHER_CPLUSPLUSFLAGS'] ||= ['$(inherited)']
       config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFOLLY_CFG_NO_COROUTINES=1'
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
     end
-  end
-end
-`;
+  end`;
 
 const withFollyPodfilePatch = (config) => {
   return withDangerousMod(config, [
@@ -84,22 +84,36 @@ const withFollyPodfilePatch = (config) => {
         return cfg;
       }
 
-      const podfileContents = fs.readFileSync(podfilePath, 'utf8');
+      let contents = fs.readFileSync(podfilePath, 'utf8');
 
-      const result = mergeContents({
-        tag: 'withFollyCoroutineFix',
-        src: podfileContents,
-        newSrc: POST_INSTALL_BLOCK,
-        anchor: /^(\s*)end\s*$/m, // append before the last `end` in the file
-        offset: 0,
-        comment: '#',
-      });
+      // Skip if already injected
+      if (contents.includes('FOLLY_CFG_NO_COROUTINES')) {
+        console.log('[withFollyCoroutineFix] Folly fix already present in Podfile, skipping.');
+        return cfg;
+      }
 
-      if (!result.didMerge) {
-        console.log('[withFollyCoroutineFix] Podfile already contains the post_install block, skipping.');
+      // Find the existing post_install block and inject our code before its closing `end`
+      // Matches: post_install do |installer| ... end  (non-greedy, multiline)
+      const postInstallRegex = /^(post_install do \|installer\|)([\s\S]*?)(^end)/m;
+      const match = postInstallRegex.exec(contents);
+
+      if (match) {
+        const insertionIndex = match.index + match[1].length + match[2].length;
+        contents =
+          contents.slice(0, insertionIndex) +
+          FOLLY_FIX_CODE +
+          '\n' +
+          contents.slice(insertionIndex);
+        fs.writeFileSync(podfilePath, contents);
+        console.log('[withFollyCoroutineFix] Injected folly fix inside existing post_install block.');
       } else {
-        console.log('[withFollyCoroutineFix] Appended post_install block to Podfile.');
-        fs.writeFileSync(podfilePath, result.contents);
+        // No existing post_install block found — append a new one as fallback
+        console.warn('[withFollyCoroutineFix] No existing post_install block found, appending a new one.');
+        contents +=
+          `\npost_install do |installer|` +
+          FOLLY_FIX_CODE +
+          '\nend\n';
+        fs.writeFileSync(podfilePath, contents);
       }
 
       return cfg;
