@@ -61,7 +61,8 @@
       ],
       "@bacons/apple-targets",
       "expo-secure-store",
-      "react-native-edge-to-edge"
+      "react-native-edge-to-edge",
+      "./plugins/withFollyCoroutineFix"
     ],
     "scheme": "macrogoal",
     "experiments": {
