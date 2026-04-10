@@ -236,7 +236,9 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
   const subtextColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
 
   const cardWidth = Dimensions.get('window').width - spacing.md * 2;
-  const photoSize = Math.floor((cardWidth - spacing.lg * 2 - spacing.md * 2 - 32) / 2);
+  const photoWidth = Math.floor((cardWidth - spacing.lg * 2 - spacing.md * 2 - 32) / 2);
+  const photoSize = photoWidth;
+  const photoHeight = Math.floor(photoWidth * 1.5);
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const beforePhoto = photos.find((p) => p.id === beforeId) ?? null;
@@ -319,7 +321,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
           <View style={styles.photoWrapper}>
             <Image
               source={{ uri: afterPhoto.photo_url }}
-              style={[styles.photo, { width: photoSize, height: photoSize }]}
+              style={[styles.photo, { width: photoSize, height: photoHeight }]}
               resizeMode="cover"
             />
             <DatePill
@@ -333,7 +335,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
             style={[
               styles.photoWrapper,
               styles.placeholderWrapper,
-              { width: photoSize, height: photoSize, borderColor: isDark ? colors.borderDark : colors.border },
+              { width: photoSize, height: photoHeight, borderColor: isDark ? colors.borderDark : colors.border },
             ]}
           >
             <IconSymbol
@@ -355,7 +357,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
           <View style={styles.photoWrapper}>
             <Image
               source={{ uri: beforePhoto.photo_url }}
-              style={[styles.photo, { width: photoSize, height: photoSize }]}
+              style={[styles.photo, { width: photoSize, height: photoHeight }]}
               resizeMode="cover"
             />
             <DatePill
@@ -368,7 +370,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
           <View style={styles.photoWrapper}>
             <Image
               source={{ uri: afterPhoto.photo_url }}
-              style={[styles.photo, { width: photoSize, height: photoSize }]}
+              style={[styles.photo, { width: photoSize, height: photoHeight }]}
               resizeMode="cover"
             />
             <DatePill
