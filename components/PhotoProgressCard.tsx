@@ -304,7 +304,7 @@ function PhotoProgressCardInner({ userId, isDark }: PhotoProgressCardProps) {
       {emptyState && (
         <View style={styles.emptyContainer}>
           <IconSymbol
-            ios_icon_name="photo.on.rectangle.angled"
+            ios_icon_name="photo.stack"
             android_material_icon_name="photo_library"
             size={40}
             color={subtextColor}
