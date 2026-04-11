@@ -1,56 +1,56 @@
 #!/usr/bin/env node
 /**
- * Injects FOLLY_CFG_NO_COROUTINES=1 into the generated Podfile's post_install hook.
- * Fixes: 'folly/coro/Coroutine.h' file not found on Xcode 26 / iOS 26 SDK.
- * Run AFTER expo prebuild via eas.json prebuildCommand.
+ * Injects FOLLY_CFG_NO_COROUTINES=1 preprocessor definition into the Podfile.
+ * This fixes 'folly/coro/Coroutine.h' file not found on Xcode 26 / iOS 26 SDK.
+ *
+ * The RCT-Folly CocoaPod includes folly/coro/ headers that are incompatible
+ * with Xcode 26. Setting FOLLY_CFG_NO_COROUTINES=1 disables those code paths.
+ *
+ * Run AFTER expo prebuild (the Podfile must already exist).
+ * Safe to run on Android-only builds — exits cleanly if Podfile is absent.
  */
 const fs = require('fs');
 const path = require('path');
 
-const FOLLY_RUBY = `
-  # patch-podfile.js: fix folly/coro/Coroutine.h not found on Xcode 26 / iOS 26 SDK
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |build_config|
-      defs = build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
-      if defs.nil?
-        build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'FOLLY_CFG_NO_COROUTINES=1']
-      elsif defs.is_a?(Array)
-        unless defs.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
-          build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs + ['FOLLY_CFG_NO_COROUTINES=1']
-        end
-      elsif defs.is_a?(String)
-        unless defs.include?('FOLLY_CFG_NO_COROUTINES')
-          build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = [defs, 'FOLLY_CFG_NO_COROUTINES=1']
-        end
-      end
-    end
-  end
-`;
-
 const podfilePath = path.join(process.cwd(), 'ios', 'Podfile');
 
 if (!fs.existsSync(podfilePath)) {
-  console.error('[patch-podfile] ERROR: Podfile not found at', podfilePath);
-  process.exit(1);
+  console.log('[patch-podfile] No Podfile found (not an iOS build?), skipping.');
+  process.exit(0);
 }
 
 let podfile = fs.readFileSync(podfilePath, 'utf8');
 
-if (podfile.includes('patch-podfile.js')) {
+if (podfile.includes('FOLLY_CFG_NO_COROUTINES')) {
   console.log('[patch-podfile] Already patched, skipping.');
   process.exit(0);
 }
 
-if (podfile.includes('post_install do |installer|')) {
-  podfile = podfile.replace(
-    'post_install do |installer|',
-    'post_install do |installer|' + FOLLY_RUBY
-  );
-  console.log('[patch-podfile] Injected into existing post_install hook.');
-} else {
-  podfile += '\npost_install do |installer|' + FOLLY_RUBY + '\nend\n';
-  console.log('[patch-podfile] Added new post_install hook.');
-}
+// Append a standalone post_install block.
+// CocoaPods allows multiple post_install blocks — each runs in order.
+const postInstallBlock = `
+# patch-podfile.js — fix folly/coro/Coroutine.h not found on Xcode 26 / iOS 26 SDK
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Disable Folly coroutines — incompatible with Xcode 26 / iOS 26 SDK
+      existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+      if existing.nil?
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'FOLLY_CFG_NO_COROUTINES=1']
+      elsif existing.is_a?(Array)
+        unless existing.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ['FOLLY_CFG_NO_COROUTINES=1']
+        end
+      elsif existing.is_a?(String)
+        unless existing.include?('FOLLY_CFG_NO_COROUTINES')
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = [existing, 'FOLLY_CFG_NO_COROUTINES=1']
+        end
+      end
+    end
+  end
+end
+`;
 
+podfile = podfile + '\n' + postInstallBlock;
 fs.writeFileSync(podfilePath, podfile, 'utf8');
-console.log('[patch-podfile] Done.');
+console.log('[patch-podfile] Podfile patched with FOLLY_CFG_NO_COROUTINES=1 post_install hook.');
