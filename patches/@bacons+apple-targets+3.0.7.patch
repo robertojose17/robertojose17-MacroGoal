@@ -1,0 +1,16 @@
+diff --git a/node_modules/@bacons/apple-targets/build/config-plugin.js b/node_modules/@bacons/apple-targets/build/config-plugin.js
+index 1234567..abcdefg 100644
+--- a/node_modules/@bacons/apple-targets/build/config-plugin.js
++++ b/node_modules/@bacons/apple-targets/build/config-plugin.js
+@@ -22,6 +22,12 @@ const withTargetsDir = (config, _props) => {
+     const targets = (0, glob_1.globSync)(`${root}/${match}/expo-target.config.@(json|js)`, {
+         cwd: projectRoot,
+         absolute: true,
+     });
++    // If there are no targets, skip all Xcode project modifications entirely.
++    // This prevents @bacons/xcode from attempting to parse the pbxproj when
++    // there are no Apple targets (widgets/extensions) configured in this project.
++    if (targets.length === 0) {
++        return config;
++    }
+     targets.forEach((configPath) => {

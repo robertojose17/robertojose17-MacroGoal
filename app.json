@@ -38,6 +38,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      "./plugins/withSuppressAppleTargets",
       "expo-font",
       "expo-router",
       "expo-web-browser",
