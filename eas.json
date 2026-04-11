@@ -3,14 +3,17 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "node scripts/patch-folly.js && npx expo prebuild --non-interactive && node scripts/patch-podfile.js"
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "node scripts/patch-folly.js && npx expo prebuild --non-interactive && node scripts/patch-podfile.js"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "node scripts/patch-folly.js && npx expo prebuild --non-interactive && node scripts/patch-podfile.js"
     }
   }
 }
