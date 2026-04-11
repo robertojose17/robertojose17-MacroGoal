@@ -1,73 +1,42 @@
-const { withDangerousMod } = require('@expo/config-plugins');
+const { withPodfileProperties, withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
-/**
- * Fix for 'folly/coro/Coroutine.h' file not found on Xcode 26 / iOS 26 SDK.
- * react-native-reanimated and other pods use Folly with coroutines enabled by default,
- * but the coroutine headers are missing from the iOS 26 SDK.
- *
- * This appends a post_install hook to the Podfile that sets
- * FOLLY_CFG_NO_COROUTINES=1 as a preprocessor definition on every pod target,
- * which disables the coroutine code paths in Folly.
- */
+const FOLLY_GUARD = `// Fix for Xcode 26 / iOS 26 SDK: folly/coro/Coroutine.h is missing
+#ifndef FOLLY_CFG_NO_COROUTINES
+#define FOLLY_CFG_NO_COROUTINES 1
+#endif
+
+`;
+
+const FILES_TO_PATCH = [
+  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp',
+];
+
 const withFollyCoroutineFix = (config) => {
-  return withDangerousMod(config, [
+  // 1. Set via Podfile properties
+  config = withPodfileProperties(config, (cfg) => {
+    cfg.modResults['FOLLY_CFG_NO_COROUTINES'] = '1';
+    return cfg;
+  });
+
+  // 2. Patch source files directly so the define is present before any folly include
+  config = withDangerousMod(config, [
     'ios',
     async (cfg) => {
-      const podfilePath = path.join(cfg.modRequest.platformProjectRoot, 'Podfile');
-      let podfileContent = fs.readFileSync(podfilePath, 'utf8');
-
-      const marker = '# FOLLY_CFG_NO_COROUTINES_FIX';
-
-      // Only add once
-      if (podfileContent.includes(marker)) {
-        return cfg;
+      const projectRoot = cfg.modRequest.projectRoot;
+      for (const relPath of FILES_TO_PATCH) {
+        const filePath = path.join(projectRoot, relPath);
+        if (!fs.existsSync(filePath)) continue;
+        let content = fs.readFileSync(filePath, 'utf8');
+        if (content.includes('FOLLY_CFG_NO_COROUTINES')) continue; // already patched
+        fs.writeFileSync(filePath, FOLLY_GUARD + content, 'utf8');
       }
-
-      const postInstallHook = `
-${marker}
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-      unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('FOLLY_CFG_NO_COROUTINES=1')
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
-      end
-    end
-  end
-end
-`;
-
-      // Check if there's already a post_install hook — if so, we need to merge
-      // React Native's Podfile template already has a post_install hook.
-      // We cannot add a second one. Instead, inject our lines INSIDE the existing one.
-      if (podfileContent.includes('post_install do |installer|')) {
-        // Inject our lines at the start of the existing post_install block
-        const injection = `
-  ${marker}
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-      unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('FOLLY_CFG_NO_COROUTINES=1')
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
-      end
-    end
-  end
-`;
-        podfileContent = podfileContent.replace(
-          'post_install do |installer|',
-          `post_install do |installer|\n${injection}`
-        );
-      } else {
-        // No existing post_install — append ours
-        podfileContent += postInstallHook;
-      }
-
-      fs.writeFileSync(podfilePath, podfileContent);
       return cfg;
     },
   ]);
+
+  return config;
 };
 
 module.exports = withFollyCoroutineFix;
