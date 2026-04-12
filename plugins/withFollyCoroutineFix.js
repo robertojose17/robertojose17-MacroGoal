@@ -8,6 +8,8 @@ const path = require('path');
  * 2. `#include <ranges>` broken — replaces ShadowTreeCloner.cpp with C++17-compatible version
  * 3. C++ override mismatch — ReanimatedMountHook::shadowTreeDidMount uses `double mountTime`
  *    but UIManagerMountHook base class changed to `HighResTimeStamp mountTime` in RN 0.81.x
+ * 4. Duplicate symbols libRNWorklets.a / libRNReanimated.a — neutralize RNWorklets pod
+ *    (react-native-reanimated 3.17.x bundles worklets internally)
  *
  * Uses withDangerousMod so it runs DURING expo prebuild, after node_modules exist.
  * Also injects FOLLY_CFG_NO_COROUTINES=1 into Podfile post_install as belt-and-suspenders.
@@ -290,10 +292,12 @@ class ReanimatedMountHook : public UIManagerMountHook {
     podspec = podspec
       .replace(/s\.source_files\s*=\s*[^\n]+/g, "s.source_files = []")
       .replace(/s\.exclude_files\s*=\s*[^\n]+\n?/g, '')
-      .replace(/s\.compiler_flags\s*=\s*[^\n]+\n?/g, '');
+      .replace(/s\.compiler_flags\s*=\s*[^\n]+\n?/g, '')
+      .replace(/s\.dependency\s+['"]React[^'"]*['"]\s*[^\n]*\n?/g, '')
+      .replace(/s\.dependency\s+['"]RCT[^'"]*['"]\s*[^\n]*\n?/g, '');
     podspec = '# ' + WORKLETS_PATCH_MARKER + '\n' + podspec;
     fs.writeFileSync(workletsPodspecPath, podspec, 'utf8');
-    console.log('[withFollyCoroutineFix] Fix 6: Patched podspec (emptied source_files):', workletsPodspecPath);
+    console.log('[withFollyCoroutineFix] Fix 6: Patched podspec (emptied source_files + removed React deps):', workletsPodspecPath);
   }
 
   // Fix 6b: Remove codegenConfig from worklets package.json (both package name variants)
@@ -319,6 +323,7 @@ class ReanimatedMountHook : public UIManagerMountHook {
       continue;
     }
     delete workletsJson.codegenConfig;
+    delete workletsJson.reactNativeConfig;
     workletsJson._patchFollyFix6 = WORKLETS_CODEGEN_MARKER;
     fs.writeFileSync(workletsPackageJsonPath, JSON.stringify(workletsJson, null, 2) + '\n', 'utf8');
     console.log('[withFollyCoroutineFix] Fix 6b: Removed codegenConfig from:', workletsPackageJsonPath);
@@ -425,21 +430,75 @@ function applyPodfilePatch(podfilePath) {
 
   let content = fs.readFileSync(podfilePath, 'utf8');
 
-  if (content.includes('withFollyCoroutineFix-v9')) {
+  if (content.includes('withFollyCoroutineFix-v13')) {
     console.log('[withFollyCoroutineFix] Podfile already patched.');
     return;
+  }
+
+  // --- RNWorklets pod override injection ---
+  const WORKLETS_OVERRIDE_MARKER = 'withFollyCoroutineFix-worklets-override-v2';
+  // Remove old v1 override if present (it was injected in wrong location)
+  content = content.replace(/\n {2}# withFollyCoroutineFix-worklets-override-v1\n {2}# Override RNWorklets[^\n]*\n {2}# Having both[^\n]*\n {2}pod 'RNWorklets'[^\n]*\n/g, '');
+
+  if (!content.includes(WORKLETS_OVERRIDE_MARKER)) {
+    const overrideSnippet = `
+  # ${WORKLETS_OVERRIDE_MARKER}
+  # Override RNWorklets with empty stub — react-native-reanimated 3.17.x bundles worklets internally
+  # Having both causes duplicate symbol linker errors (_OBJC_CLASS_$_NativeWorkletsModuleSpecBase)
+  pod 'RNWorklets', :path => '../ios-patches'
+`;
+    // Inject inside the main target block — find `use_react_native!` call and inject after it
+    // This is always inside the target block in Expo-generated Podfiles
+    const useReactNativeRegex = /^([ \t]*use_react_native!\([^)]*\)[ \t]*)$/m;
+    const useReactNativeSimpleRegex = /^([ \t]*use_react_native![ \t]*)$/m;
+
+    if (useReactNativeRegex.test(content)) {
+      content = content.replace(useReactNativeRegex, `$1\n${overrideSnippet}`);
+      console.log('[withFollyCoroutineFix] Podfile: injected RNWorklets pod override after use_react_native!.');
+    } else if (useReactNativeSimpleRegex.test(content)) {
+      content = content.replace(useReactNativeSimpleRegex, `$1\n${overrideSnippet}`);
+      console.log('[withFollyCoroutineFix] Podfile: injected RNWorklets pod override after use_react_native!.');
+    } else {
+      // Fallback: inject before the closing `end` of the first target block
+      // Find `target '...' do` and its matching `end`
+      const targetBlockEndRegex = /^([ \t]*end[ \t]*\n[ \t]*\n[ \t]*post_install)/m;
+      if (targetBlockEndRegex.test(content)) {
+        content = content.replace(targetBlockEndRegex, `${overrideSnippet}\n$1`);
+        console.log('[withFollyCoroutineFix] Podfile: injected RNWorklets pod override before target end.');
+      } else {
+        console.warn('[withFollyCoroutineFix] Podfile: could not find injection point for RNWorklets override.');
+      }
+    }
   }
 
   // --- pre_install injection ---
   const PRE_INSTALL_BLOCK = `
 pre_install do |installer|
-  # withFollyCoroutineFix-pre-v1: Remove RNWorklets since RNReanimated 3.17.x bundles it internally
-  installer.pod_targets.reject! { |pod| pod.name == 'RNWorklets' }
+  # withFollyCoroutineFix-pre-v3: Neutralize RNWorklets since RNReanimated 3.17.x bundles it internally
+  begin
+    next if installer.nil?
+    pod_targets = installer.respond_to?(:pod_targets) ? installer.pod_targets : nil
+    next if pod_targets.nil?
+    pod_targets.compact.each do |target|
+      next if target.nil?
+      next unless target.name.to_s == 'RNWorklets' || target.name.to_s.start_with?('RNWorklets')
+      target.build_configurations.each do |config|
+        next if config.nil?
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphoneos*]'] = 'arm64 x86_64 arm64e'
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64 x86_64 arm64e'
+        config.build_settings['EXCLUDED_ARCHS'] = 'arm64 x86_64 arm64e'
+      end rescue nil
+    end
+  rescue => e
+    puts "[withFollyCoroutineFix] pre_install error: #{e.message}"
+  end
 end
 `;
 
-  const preInstallMarker = 'withFollyCoroutineFix-pre-v1';
+  const preInstallMarker = 'withFollyCoroutineFix-pre-v3';
   if (!content.includes(preInstallMarker)) {
+    // Remove old pre_install blocks (v1 and v2)
+    content = content.replace(/\npre_install do \|installer\|\n {2}# withFollyCoroutineFix-pre-v[12][^\n]*\n[\s\S]*?\nend\n/g, '');
     // Inject before the first post_install block, or before end-of-file
     const preInstallInsertRegex = /^([ \t]*post_install do \|installer\|)/m;
     if (preInstallInsertRegex.test(content)) {
@@ -447,61 +506,79 @@ end
     } else {
       content = content + PRE_INSTALL_BLOCK;
     }
-    console.log('[withFollyCoroutineFix] Podfile: injected pre_install RNWorklets removal.');
+    console.log('[withFollyCoroutineFix] Podfile: injected pre_install RNWorklets neutralization.');
   }
 
   // --- post_install injection ---
   const postInstallRegex = /^([ \t]*post_install do \|installer\|[ \t]*)$/m;
-  const injection = `  # withFollyCoroutineFix-v9 — disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk
-  unless installer.pods_project.nil?
-    installer.pods_project.targets.each do |target|
+  const injection = `  # withFollyCoroutineFix-v13 — disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk
+  begin
+    next if installer.nil?
+    pods_project = installer.pods_project rescue nil
+    next if pods_project.nil?
+
+    # Inject FOLLY_CFG_NO_COROUTINES=1 into all targets
+    pods_project.targets.each do |target|
+      next if target.nil?
       target.build_configurations.each do |config|
+        next if config.nil?
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
         unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('FOLLY_CFG_NO_COROUTINES=1')
           config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
         end
-      end
+      end rescue nil
     end
 
-    # Neutralize RNWorklets: RNReanimated 3.17.x bundles it, so exclude it from linking
-    installer.pods_project.targets.each do |target|
-      next unless target.name == 'RNWorklets'
+    # Neutralize RNWorklets: RNReanimated 3.17.x bundles it — exclude all archs so it links nothing
+    pods_project.targets.each do |target|
+      next if target.nil?
+      next unless target.name.to_s == 'RNWorklets' || target.name.to_s.start_with?('RNWorklets')
       target.build_configurations.each do |config|
-        # Mark as excluded so it produces no output
+        next if config.nil?
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphoneos*]'] = 'arm64 x86_64 arm64e'
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64 x86_64 arm64e'
         config.build_settings['EXCLUDED_ARCHS'] = 'arm64 x86_64 arm64e'
-      end
+        config.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = 'DEBUG'
+      end rescue nil
     end
 
-    # Remove RNWorklets from all aggregate link phases
-    installer.pods_project.targets.each do |target|
-      target.build_phases.each do |phase|
+    # Remove RNWorklets from all framework link phases
+    pods_project.targets.each do |target|
+      next if target.nil?
+      (target.build_phases rescue []).each do |phase|
+        next if phase.nil?
         next unless phase.is_a?(Xcodeproj::Project::Object::PBXFrameworksBuildPhase)
-        phase.files.to_a.each do |file|
-          next unless file.display_name&.include?('RNWorklets')
-          phase.remove_file_reference(file.file_ref)
+        (phase.files.to_a rescue []).each do |file|
+          next if file.nil?
+          next unless file.display_name.to_s.include?('RNWorklets')
+          phase.remove_file_reference(file.file_ref) rescue nil
         end
       end
     end
 
     # Remove RNWorklets from ReactCodegen to fix duplicate codegen symbols
-    installer.pods_project.targets.each do |target|
+    pods_project.targets.each do |target|
+      next if target.nil?
       next unless target.name == 'ReactCodegen' || target.name == 'React-Codegen'
-      target.source_build_phase.files.to_a.each do |file|
-        next unless file.display_name&.include?('rnworklets')
-        target.source_build_phase.remove_file_reference(file.file_ref)
+      (target.source_build_phase.files.to_a rescue []).each do |file|
+        next if file.nil?
+        next unless file.display_name.to_s.include?('rnworklets')
+        target.source_build_phase.remove_file_reference(file.file_ref) rescue nil
       end
     end
 
-    # Fix shadowNodeFromValue removed in RN 0.81.x — inject compat shim into ReanimatedModuleProxy.cpp
-    proxy_cpp_candidates = Dir.glob(File.join(installer.sandbox.root, '**', 'ReanimatedModuleProxy.cpp'))
-    proxy_cpp_candidates.each do |proxy_cpp_path|
-      next unless File.exist?(proxy_cpp_path)
-      content = File.read(proxy_cpp_path)
-      shim_marker = 'compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x'
-      primitives_include = '#include <react/renderer/uimanager/primitives.h>'
-      next if content.include?(shim_marker)
-      next unless content.include?(primitives_include)
-      shim = <<~SHIM
+    # Fix shadowNodeFromValue removed in RN 0.81.x
+    sandbox_root = (installer.sandbox.root rescue nil)
+    unless sandbox_root.nil?
+      proxy_cpp_candidates = Dir.glob(File.join(sandbox_root, '**', 'ReanimatedModuleProxy.cpp'))
+      proxy_cpp_candidates.each do |proxy_cpp_path|
+        next unless File.exist?(proxy_cpp_path)
+        content = File.read(proxy_cpp_path) rescue next
+        shim_marker = 'compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x'
+        primitives_include = '#include <react/renderer/uimanager/primitives.h>'
+        next if content.include?(shim_marker)
+        next unless content.include?(primitives_include)
+        shim = <<~SHIM
 
 // compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x
 namespace {
@@ -513,10 +590,14 @@ inline facebook::react::ShadowNode::Shared shadowNodeFromValue(
 }
 } // namespace
 SHIM
-      patched_content = content.sub(primitives_include, primitives_include + shim)
-      File.write(proxy_cpp_path, patched_content)
-      puts "[withFollyCoroutineFix] Patched ReanimatedModuleProxy.cpp: injected v6 compat shim"
+        patched_content = content.sub(primitives_include, primitives_include + shim)
+        File.write(proxy_cpp_path, patched_content) rescue nil
+        puts "[withFollyCoroutineFix] Patched ReanimatedModuleProxy.cpp: injected v6 compat shim"
+      end
     end
+  rescue => e
+    puts "[withFollyCoroutineFix] post_install error: #{e.message}"
+    puts e.backtrace.first(5).join("\\n") rescue nil
   end`;
 
   if (postInstallRegex.test(content)) {
