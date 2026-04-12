@@ -20,9 +20,10 @@ import { TouchableOpacity } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
 
-// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
+// react-native-view-shot requires a native build — lazy import so Expo Go doesn't hang
 let ViewShot: any = null;
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   try { ViewShot = require('react-native-view-shot').default; } catch {}
 }
 

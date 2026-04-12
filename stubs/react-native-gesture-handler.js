@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 'use strict';
 var React = require('react');
 var RN = require('react-native');

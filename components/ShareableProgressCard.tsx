@@ -9,9 +9,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// react-native-view-shot requires a native build — lazy require so Expo Go doesn't hang
+// react-native-view-shot requires a native build — lazy import so Expo Go doesn't hang
 let ViewShot: any = null;
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   try { ViewShot = require('react-native-view-shot').default; } catch {}
 }
 // Fallback wrapper when ViewShot is unavailable (Expo Go / web)

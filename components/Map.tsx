@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View, ViewStyle, ActivityIndicator, Platform } from 'react-native';
-// react-native-webview requires a native build — lazy require so Expo Go doesn't hang
+// react-native-webview requires a native build — lazy import so Expo Go doesn't hang
 let WebView: any = null;
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   try { WebView = require('react-native-webview').WebView; } catch {}
 }
 
