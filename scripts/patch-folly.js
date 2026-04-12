@@ -1,179 +1,291 @@
 #!/usr/bin/env node
-/**
- * Bulletproof patch for 'folly/coro/Coroutine.h file not found' on Xcode 26 / iPhoneOS26.0.sdk.
- *
- * Prepends FOLLY_CFG_NO_COROUTINES=1 define guards to specific reanimated Fabric C++ files.
- * Idempotent — files already containing the marker are skipped.
- * Safe — exits with code 0 even if files are missing (e.g. before node_modules exist).
- */
-
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
 const projectRoot = process.cwd();
+let patched = 0, skipped = 0, missing = 0;
 
-// The exact define block to prepend
-const MARKER = 'patch-folly: disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk';
-const DEFINE_BLOCK =
-  '// ' + MARKER + '\n' +
+const FOLLY_MARKER = 'patch-folly: disable Folly coroutines for Xcode 26';
+const FOLLY_BLOCK =
+  '// ' + FOLLY_MARKER + '\n' +
   '#ifndef FOLLY_CFG_NO_COROUTINES\n' +
   '#define FOLLY_CFG_NO_COROUTINES 1\n' +
   '#endif\n\n';
 
-// Specific files known to trigger the build error — patch unconditionally
-const TARGET_FILES = [
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ReanimatedMountHook.cpp',
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp',
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ReanimatedCommitHook.cpp',
-].map((p) => path.join(projectRoot, p));
+const RANGES_MARKER = 'ranges-patch: removed <ranges> for iPhoneOS26.0.sdk';
 
-// Additional directories to scan for any other folly-including C++ files
-const SCAN_DIRS = [
-  path.join(projectRoot, 'node_modules/react-native-reanimated/Common/cpp'),
-  path.join(projectRoot, 'node_modules/react-native-reanimated/ios'),
-];
+// Marker for the HighResTimeStamp signature fix
+const MOUNT_HOOK_MARKER = 'mount-hook-patch: HighResTimeStamp signature for RN 0.81.x';
 
-const FOLLY_INCLUDE_RE = /#include\s+[<"]folly\//;
+const FIXED_SHADOW_TREE_CLONER = `// ${RANGES_MARKER}
+#ifdef RCT_NEW_ARCH_ENABLED
 
-let patched = 0;
-let skipped = 0;
-let missing = 0;
+#include <reanimated/Fabric/ShadowTreeCloner.h>
 
-function patchFile(filePath, unconditional) {
-  let content;
-  try {
-    content = fs.readFileSync(filePath, 'utf8');
-  } catch (_e) {
-    missing++;
-    console.log('[patch-folly] Not found (ok):', path.relative(projectRoot, filePath));
-    return;
+#include <algorithm>
+#include <utility>
+
+namespace reanimated {
+
+Props::Shared mergeProps(
+    const ShadowNode &shadowNode,
+    const PropsMap &propsMap,
+    const ShadowNodeFamily &family) {
+  const auto it = propsMap.find(&family);
+
+  if (it == propsMap.end()) {
+    return ShadowNodeFragment::propsPlaceholder();
   }
 
-  if (content.includes(MARKER)) {
-    skipped++;
-    console.log('[patch-folly] Already patched, skipping:', path.relative(projectRoot, filePath));
-    return;
+  PropsParserContext propsParserContext{
+      shadowNode.getSurfaceId(), *shadowNode.getContextContainer()};
+  const auto &propsVector = it->second;
+  auto newProps = shadowNode.getProps();
+
+#ifdef ANDROID
+  if (propsVector.size() > 1) {
+    folly::dynamic newPropsDynamic = folly::dynamic::object;
+    for (const auto &props : propsVector) {
+      newPropsDynamic = folly::dynamic::merge(
+          props.operator folly::dynamic(), newPropsDynamic);
+    }
+    return shadowNode.getComponentDescriptor().cloneProps(
+        propsParserContext, newProps, RawProps(newPropsDynamic));
+  }
+#endif
+
+  for (const auto &props : propsVector) {
+    newProps = shadowNode.getComponentDescriptor().cloneProps(
+        propsParserContext, newProps, RawProps(props));
   }
 
-  if (!unconditional && !FOLLY_INCLUDE_RE.test(content)) {
-    return;
-  }
-
-  try {
-    fs.writeFileSync(filePath, DEFINE_BLOCK + content, 'utf8');
-    patched++;
-    console.log('[patch-folly] Patched:', path.relative(projectRoot, filePath));
-  } catch (e) {
-    console.error('[patch-folly] ERROR writing:', filePath, e.message);
-  }
+  return newProps;
 }
 
-function scanDir(dir) {
-  if (!fs.existsSync(dir)) {
-    console.log('[patch-folly] Scan dir not found (ok):', path.relative(projectRoot, dir));
-    return;
-  }
-  let entries;
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (e) {
-    console.error('[patch-folly] Cannot read dir:', dir, e.message);
-    return;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      scanDir(full);
-    } else if (entry.isFile()) {
-      const ext = path.extname(entry.name);
-      if (ext === '.cpp' || ext === '.h' || ext === '.mm' || ext === '.cc') {
-        patchFile(full, false);
-      }
+ShadowNode::Unshared cloneShadowTreeWithNewPropsRecursive(
+    const ShadowNode &shadowNode,
+    const ChildrenMap &childrenMap,
+    const PropsMap &propsMap) {
+  const auto family = &shadowNode.getFamily();
+  const auto affectedChildrenIt = childrenMap.find(family);
+  auto children = shadowNode.getChildren();
+
+  if (affectedChildrenIt != childrenMap.end()) {
+    for (const auto index : affectedChildrenIt->second) {
+      children[index] = cloneShadowTreeWithNewPropsRecursive(
+          *children[index], childrenMap, propsMap);
     }
   }
+
+  return shadowNode.clone(
+      {mergeProps(shadowNode, propsMap, *family),
+       std::make_shared<ShadowNode::ListOfShared>(children),
+       shadowNode.getState()});
 }
 
-// ─── Step 3: Remove <ranges> from ShadowTreeCloner.cpp ───────────────────────
-// std::ranges::reverse_view is C++20 and broken under iPhoneOS26.0.sdk.
-// Replace with a C++17-compatible manual reverse loop.
-const RANGES_MARKER = 'ranges-patch: removed <ranges> for iPhoneOS26.0.sdk';
-const SHADOW_TREE_CLONER = path.join(
+RootShadowNode::Unshared cloneShadowTreeWithNewProps(
+    const RootShadowNode &oldRootNode,
+    const PropsMap &propsMap) {
+  ChildrenMap childrenMap;
+
+  for (auto &[family, _] : propsMap) {
+    const auto ancestors = family->getAncestors(oldRootNode);
+
+    for (auto rit = ancestors.rbegin(); rit != ancestors.rend(); ++rit) {
+      const auto &parentNode = rit->first;
+      const auto &index = rit->second;
+      const auto parentFamily = &parentNode.get().getFamily();
+      auto &affectedChildren = childrenMap[parentFamily];
+
+      if (affectedChildren.contains(index)) {
+        continue;
+      }
+
+      affectedChildren.insert(index);
+    }
+  }
+
+  return std::static_pointer_cast<RootShadowNode>(
+      cloneShadowTreeWithNewPropsRecursive(oldRootNode, childrenMap, propsMap));
+}
+
+} // namespace reanimated
+
+#endif // RCT_NEW_ARCH_ENABLED
+`;
+
+const fabricDir = path.join(
   projectRoot,
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp'
+  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric'
 );
 
-function patchRanges(filePath) {
-  let content;
-  try {
-    content = fs.readFileSync(filePath, 'utf8');
-  } catch (_e) {
-    console.log('[patch-folly] ShadowTreeCloner.cpp not found (ok):', path.relative(projectRoot, filePath));
-    return;
-  }
+// Fix 1: FOLLY_CFG_NO_COROUTINES for ReanimatedMountHook and ReanimatedCommitHook
+for (const name of ['ReanimatedMountHook.cpp', 'ReanimatedCommitHook.cpp']) {
+  const filePath = path.join(fabricDir, name);
+  if (!fs.existsSync(filePath)) { missing++; console.log('[patch-folly] Not found (ok):', name); continue; }
+  const content = fs.readFileSync(filePath, 'utf8');
+  if (content.includes(FOLLY_MARKER)) { skipped++; console.log('[patch-folly] Already patched:', name); continue; }
+  fs.writeFileSync(filePath, FOLLY_BLOCK + content, 'utf8');
+  patched++; console.log('[patch-folly] Patched (folly):', name);
+}
 
+// Fix 2: Replace ShadowTreeCloner.cpp entirely
+const shadowTreeClonerPath = path.join(fabricDir, 'ShadowTreeCloner.cpp');
+if (!fs.existsSync(shadowTreeClonerPath)) {
+  missing++; console.log('[patch-folly] ShadowTreeCloner.cpp not found (ok)');
+} else {
+  const content = fs.readFileSync(shadowTreeClonerPath, 'utf8');
   if (content.includes(RANGES_MARKER)) {
-    console.log('[patch-folly] ShadowTreeCloner.cpp <ranges> patch already applied, skipping.');
+    skipped++; console.log('[patch-folly] ShadowTreeCloner.cpp already patched');
+  } else {
+    fs.writeFileSync(shadowTreeClonerPath, FIXED_SHADOW_TREE_CLONER, 'utf8');
+    patched++; console.log('[patch-folly] Patched ShadowTreeCloner.cpp (<ranges> removed)');
+  }
+}
+
+// Fix 3: ReanimatedMountHook.h — replace `double mountTime` with `HighResTimeStamp mountTime`
+const mountHookHPath = path.join(fabricDir, 'ReanimatedMountHook.h');
+if (!fs.existsSync(mountHookHPath)) {
+  missing++; console.log('[patch-folly] ReanimatedMountHook.h not found (ok)');
+} else {
+  const content = fs.readFileSync(mountHookHPath, 'utf8');
+  if (content.includes(MOUNT_HOOK_MARKER)) {
+    skipped++; console.log('[patch-folly] ReanimatedMountHook.h already patched');
+  } else {
+    // Replace the entire file with the fixed version
+    const fixed = `// ${MOUNT_HOOK_MARKER}
+#pragma once
+#ifdef RCT_NEW_ARCH_ENABLED
+
+#include <reanimated/Fabric/PropsRegistry.h>
+#include <reanimated/Fabric/ShadowTreeCloner.h>
+
+#include <react/renderer/uimanager/UIManagerMountHook.h>
+
+#include <memory>
+
+namespace reanimated {
+
+using namespace facebook::react;
+
+class ReanimatedMountHook : public UIManagerMountHook {
+ public:
+  ReanimatedMountHook(
+      const std::shared_ptr<PropsRegistry> &propsRegistry,
+      const std::shared_ptr<UIManager> &uiManager);
+  ~ReanimatedMountHook() noexcept override;
+
+  void shadowTreeDidMount(
+      const RootShadowNode::Shared &rootShadowNode,
+      HighResTimeStamp mountTime) noexcept override;
+
+ private:
+  const std::shared_ptr<PropsRegistry> propsRegistry_;
+  const std::shared_ptr<UIManager> uiManager_;
+};
+
+} // namespace reanimated
+
+#endif // RCT_NEW_ARCH_ENABLED
+`;
+    fs.writeFileSync(mountHookHPath, fixed, 'utf8');
+    patched++; console.log('[patch-folly] Patched ReanimatedMountHook.h (HighResTimeStamp)');
+  }
+}
+
+// Fix 4: ReanimatedMountHook.cpp — replace `double)` with `HighResTimeStamp /*mountTime*/)`
+const mountHookCppPath = path.join(fabricDir, 'ReanimatedMountHook.cpp');
+if (!fs.existsSync(mountHookCppPath)) {
+  missing++; console.log('[patch-folly] ReanimatedMountHook.cpp not found (ok)');
+} else {
+  const content = fs.readFileSync(mountHookCppPath, 'utf8');
+  if (content.includes(MOUNT_HOOK_MARKER)) {
+    skipped++; console.log('[patch-folly] ReanimatedMountHook.cpp already patched');
+  } else {
+    const fixed = `// ${MOUNT_HOOK_MARKER}
+#ifdef RCT_NEW_ARCH_ENABLED
+
+#include <reanimated/Fabric/ReanimatedCommitShadowNode.h>
+#include <reanimated/Fabric/ReanimatedMountHook.h>
+
+namespace reanimated {
+
+ReanimatedMountHook::ReanimatedMountHook(
+    const std::shared_ptr<PropsRegistry> &propsRegistry,
+    const std::shared_ptr<UIManager> &uiManager)
+    : propsRegistry_(propsRegistry), uiManager_(uiManager) {
+  uiManager_->registerMountHook(*this);
+}
+
+ReanimatedMountHook::~ReanimatedMountHook() noexcept {
+  uiManager_->unregisterMountHook(*this);
+}
+
+void ReanimatedMountHook::shadowTreeDidMount(
+    const RootShadowNode::Shared &rootShadowNode,
+    HighResTimeStamp /*mountTime*/) noexcept {
+  auto reaShadowNode =
+      std::reinterpret_pointer_cast<ReanimatedCommitShadowNode>(
+          std::const_pointer_cast<RootShadowNode>(rootShadowNode));
+
+  if (reaShadowNode->hasReanimatedMountTrait()) {
+    reaShadowNode->unsetReanimatedMountTrait();
     return;
   }
 
-  // Remove #include <ranges>
-  content = content.replace(
-    '#include <ranges>\n',
-    '// #include <ranges> — removed: broken under iPhoneOS26.0.sdk\n'
-  );
-
-  // Add #include <algorithm> after #include <utility> if not already present
-  if (!content.includes('#include <algorithm>')) {
-    content = content.replace(
-      '#include <utility>',
-      '#include <algorithm>\n#include <utility>'
-    );
+  {
+    auto lock = propsRegistry_->createLock();
+    propsRegistry_->handleNodeRemovals(*rootShadowNode);
+    propsRegistry_->unpauseReanimatedCommits();
+    if (!propsRegistry_->shouldCommitAfterPause()) {
+      return;
+    }
   }
 
-  // Replace std::ranges::reverse_view(ancestors) with a C++17 reverse loop.
-  // Original:
-  //   for (const auto &[parentNode, index] :
-  //        std::ranges::reverse_view(ancestors)) {
-  // Replacement uses rbegin/rend via a helper lambda to keep the same structure.
-  content = content.replace(
-    /for\s*\(const auto &\[parentNode, index\]\s*:\s*std::ranges::reverse_view\(ancestors\)\)/,
-    'for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it)\n    if (const auto &[parentNode, index] = *it; true)'
-  );
+  const auto &shadowTreeRegistry = uiManager_->getShadowTreeRegistry();
+  shadowTreeRegistry.visit(
+      rootShadowNode->getSurfaceId(), [&](ShadowTree const &shadowTree) {
+        shadowTree.commit(
+            [&](RootShadowNode const &oldRootShadowNode)
+                -> RootShadowNode::Unshared {
+              PropsMap propsMap;
 
-  // Prepend the idempotency marker comment
-  content = '// ' + RANGES_MARKER + '\n' + content;
+              RootShadowNode::Unshared rootNode =
+                  std::static_pointer_cast<RootShadowNode>(
+                      oldRootShadowNode.ShadowNode::clone({}));
+              {
+                auto lock = propsRegistry_->createLock();
 
-  try {
-    fs.writeFileSync(filePath, content, 'utf8');
-    patched++;
-    console.log('[patch-folly] Patched <ranges> in ShadowTreeCloner.cpp');
-  } catch (e) {
-    console.error('[patch-folly] ERROR writing ShadowTreeCloner.cpp:', e.message);
+                propsRegistry_->for_each([&](const ShadowNodeFamily &family,
+                                             const folly::dynamic &props) {
+                  propsMap[&family].emplace_back(props);
+                });
+
+                rootNode =
+                    cloneShadowTreeWithNewProps(oldRootShadowNode, propsMap);
+              }
+
+              auto reaShadowNode =
+                  std::reinterpret_pointer_cast<ReanimatedCommitShadowNode>(
+                      rootNode);
+              reaShadowNode->setReanimatedCommitTrait();
+
+              return rootNode;
+            },
+            {false, true});
+      });
+}
+
+} // namespace reanimated
+
+#endif // RCT_NEW_ARCH_ENABLED
+`;
+    fs.writeFileSync(mountHookCppPath, fixed, 'utf8');
+    patched++; console.log('[patch-folly] Patched ReanimatedMountHook.cpp (HighResTimeStamp)');
   }
 }
 
-console.log('[patch-folly] Starting — patching react-native-reanimated for Xcode 26 / iPhoneOS26.0.sdk...');
-
-// Step 1: Unconditionally patch the known-bad files (FOLLY_CFG_NO_COROUTINES)
-console.log('[patch-folly] Step 1: Patching known target files unconditionally...');
-for (const f of TARGET_FILES) {
-  patchFile(f, true);
-}
-
-// Step 2: Scan broader directories for any other folly-including files
-console.log('[patch-folly] Step 2: Scanning for other folly-including C++ files...');
-for (const dir of SCAN_DIRS) {
-  scanDir(dir);
-}
-
-// Step 3: Remove <ranges> / std::ranges::reverse_view from ShadowTreeCloner.cpp
-console.log('[patch-folly] Step 3: Patching <ranges> usage in ShadowTreeCloner.cpp...');
-patchRanges(SHADOW_TREE_CLONER);
-
-console.log(
-  `[patch-folly] Done. patched=${patched} skipped(already done)=${skipped} missing(ok)=${missing}`
-);
-
+console.log(`[patch-folly] Done. patched=${patched} skipped=${skipped} missing=${missing}`);
 process.exit(0);
