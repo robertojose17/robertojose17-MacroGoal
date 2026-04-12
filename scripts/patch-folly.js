@@ -292,9 +292,9 @@ const reanimatedProxyPath = path.join(
   projectRoot,
   'node_modules/react-native-reanimated/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp'
 );
-const PROXY_SHIM_MARKER = 'compat-shim: shadowNodeFromValue removed in RN 0.81.x';
+const PROXY_SHIM_MARKER = 'compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x';
 // Shim goes AFTER the primitives.h include — no need to re-include it
-const PROXY_SHIM = `\n// ${PROXY_SHIM_MARKER}\nnamespace {\ninline facebook::react::ShadowNode::Shared shadowNodeFromValue(\n    facebook::jsi::Runtime &rt,\n    const facebook::jsi::Value &value) {\n  return shadowNodeListFromValue(rt, value).front();\n}\n} // namespace\n`;
+const PROXY_SHIM = `\n// ${PROXY_SHIM_MARKER}\nnamespace {\ninline facebook::react::ShadowNode::Shared shadowNodeFromValue(\n    facebook::jsi::Runtime &rt,\n    const facebook::jsi::Value &value) {\n  auto result = shadowNodeListFromValue(rt, value);\n  return result->at(0);\n}\n} // namespace\n`;
 const PRIMITIVES_INCLUDE = '#include <react/renderer/uimanager/primitives.h>';
 
 if (!fs.existsSync(reanimatedProxyPath)) {
@@ -302,11 +302,22 @@ if (!fs.existsSync(reanimatedProxyPath)) {
 } else {
   let content = fs.readFileSync(reanimatedProxyPath, 'utf8');
   if (content.includes(PROXY_SHIM_MARKER)) {
-    skipped++; console.log('[patch-folly] ReanimatedModuleProxy.cpp already has compat shim');
-  } else if (!content.includes(PRIMITIVES_INCLUDE)) {
-    missing++; console.log('[patch-folly] ReanimatedModuleProxy.cpp: primitives.h include not found, skipping shim');
+    skipped++; console.log('[patch-folly] ReanimatedModuleProxy.cpp already has v6 compat shim');
   } else {
-    // Remove any previous bad patches (replaceAll attempts that changed call sites)
+    // Remove any old shim versions
+    const oldMarkers = [
+      'compat-shim: shadowNodeFromValue removed in RN 0.81.x',
+      'compat-shim-v5: shadowNodeFromValue removed in RN 0.81.x',
+    ];
+    for (const oldMarker of oldMarkers) {
+      if (content.includes(oldMarker)) {
+        const shimStart = content.indexOf('// ' + oldMarker);
+        const shimEnd = content.indexOf('} // namespace\n', shimStart) + '} // namespace\n'.length;
+        content = content.slice(0, shimStart) + content.slice(shimEnd);
+        console.log('[patch-folly] Removed old shim version');
+      }
+    }
+    // Also remove any call-site replacements from even older attempts
     content = content
       .replaceAll('shadowNodeListFromValue(rnRuntime, shadowNodeWrapper).front()', 'shadowNodeFromValue(rnRuntime, shadowNodeWrapper)')
       .replaceAll('shadowNodeListFromValue(rt, shadowNodeWrapper).front()', 'shadowNodeFromValue(rt, shadowNodeWrapper)')
@@ -314,10 +325,13 @@ if (!fs.existsSync(reanimatedProxyPath)) {
       .replaceAll('shadowNodeListFromValue(rnRuntime, shadowNodeWrapper)->front()', 'shadowNodeFromValue(rnRuntime, shadowNodeWrapper)')
       .replaceAll('shadowNodeListFromValue(rt, shadowNodeWrapper)->front()', 'shadowNodeFromValue(rt, shadowNodeWrapper)')
       .replaceAll('shadowNodeListFromValue(rt, shadowNodeValue)->front()', 'shadowNodeFromValue(rt, shadowNodeValue)');
-    // Inject shim right after the primitives.h include line
-    content = content.replace(PRIMITIVES_INCLUDE, PRIMITIVES_INCLUDE + PROXY_SHIM);
-    fs.writeFileSync(reanimatedProxyPath, content, 'utf8');
-    patched++; console.log('[patch-folly] Patched ReanimatedModuleProxy.cpp: injected shadowNodeFromValue compat shim after primitives.h');
+    if (!content.includes(PRIMITIVES_INCLUDE)) {
+      missing++; console.log('[patch-folly] ReanimatedModuleProxy.cpp: primitives.h include not found, skipping shim');
+    } else {
+      content = content.replace(PRIMITIVES_INCLUDE, PRIMITIVES_INCLUDE + PROXY_SHIM);
+      fs.writeFileSync(reanimatedProxyPath, content, 'utf8');
+      patched++; console.log('[patch-folly] Patched ReanimatedModuleProxy.cpp: injected v6 compat shim');
+    }
   }
 }
 
