@@ -222,7 +222,7 @@ class ReanimatedMountHook : public UIManagerMountHook {
     }
   }
 
-  // Fix 5: ReanimatedModuleProxy.cpp — shadowNodeFromValue -> shadowNodeListFromValue(...).front()
+  // Fix 5: ReanimatedModuleProxy.cpp — shadowNodeFromValue -> shadowNodeListFromValue(...)->front()
   const reanimatedProxyPath = path.join(
     projectRoot,
     'node_modules/react-native-reanimated/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp'
@@ -230,13 +230,18 @@ class ReanimatedMountHook : public UIManagerMountHook {
   if (!fs.existsSync(reanimatedProxyPath)) {
     console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp not found (ok)');
   } else {
-    const proxyContent = fs.readFileSync(reanimatedProxyPath, 'utf8');
+    let proxyContent = fs.readFileSync(reanimatedProxyPath, 'utf8');
     if (proxyContent.includes('shadowNodeFromValue(')) {
-      const fixedProxy = proxyContent.replace(/shadowNodeFromValue\(([^)]+)\)/g, 'shadowNodeListFromValue($1).front()');
-      fs.writeFileSync(reanimatedProxyPath, fixedProxy, 'utf8');
-      console.log('[withFollyCoroutineFix] Patched ReanimatedModuleProxy.cpp: shadowNodeFromValue -> shadowNodeListFromValue(...).front()');
+      proxyContent = proxyContent.replace(/shadowNodeFromValue\(([^)]+)\)/g, 'shadowNodeListFromValue($1)->front()');
+      fs.writeFileSync(reanimatedProxyPath, proxyContent, 'utf8');
+      console.log('[withFollyCoroutineFix] Patched ReanimatedModuleProxy.cpp: shadowNodeFromValue -> shadowNodeListFromValue(...)->front()');
+    } else if (proxyContent.includes('shadowNodeListFromValue') && proxyContent.includes('.front()')) {
+      // Fix previous bad patch that used . instead of ->
+      proxyContent = proxyContent.replace(/shadowNodeListFromValue\(([^)]+)\)\.front\(\)/g, 'shadowNodeListFromValue($1)->front()');
+      fs.writeFileSync(reanimatedProxyPath, proxyContent, 'utf8');
+      console.log('[withFollyCoroutineFix] Fixed ReanimatedModuleProxy.cpp: .front() -> ->front()');
     } else {
-      console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp already patched (shadowNodeFromValue not found)');
+      console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp already patched correctly');
     }
   }
 

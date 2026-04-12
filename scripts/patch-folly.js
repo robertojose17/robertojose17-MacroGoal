@@ -287,7 +287,7 @@ void ReanimatedMountHook::shadowTreeDidMount(
   }
 }
 
-// Fix 5: ReanimatedModuleProxy.cpp — shadowNodeFromValue -> shadowNodeListFromValue(...).front()
+// Fix 5: ReanimatedModuleProxy.cpp — shadowNodeFromValue -> shadowNodeListFromValue(...)->front()
 const nodeModulesDir = path.join(projectRoot, 'node_modules');
 const reanimatedProxyPath = path.join(
   nodeModulesDir,
@@ -296,13 +296,18 @@ const reanimatedProxyPath = path.join(
 if (!fs.existsSync(reanimatedProxyPath)) {
   missing++; console.log('[patch-folly] ReanimatedModuleProxy.cpp not found (ok)');
 } else {
-  const content = fs.readFileSync(reanimatedProxyPath, 'utf8');
+  let content = fs.readFileSync(reanimatedProxyPath, 'utf8');
   if (content.includes('shadowNodeFromValue(')) {
-    const fixed = content.replace(/shadowNodeFromValue\(([^)]+)\)/g, 'shadowNodeListFromValue($1).front()');
-    fs.writeFileSync(reanimatedProxyPath, fixed, 'utf8');
-    patched++; console.log('[patch-folly] Patched ReanimatedModuleProxy.cpp: shadowNodeFromValue -> shadowNodeListFromValue(...).front()');
+    content = content.replace(/shadowNodeFromValue\(([^)]+)\)/g, 'shadowNodeListFromValue($1)->front()');
+    fs.writeFileSync(reanimatedProxyPath, content, 'utf8');
+    patched++; console.log('[patch-folly] Patched ReanimatedModuleProxy.cpp: shadowNodeFromValue -> shadowNodeListFromValue(...)->front()');
+  } else if (content.includes('shadowNodeListFromValue') && content.includes('.front()')) {
+    // Fix previous bad patch that used . instead of ->
+    content = content.replace(/shadowNodeListFromValue\(([^)]+)\)\.front\(\)/g, 'shadowNodeListFromValue($1)->front()');
+    fs.writeFileSync(reanimatedProxyPath, content, 'utf8');
+    patched++; console.log('[patch-folly] Fixed ReanimatedModuleProxy.cpp: .front() -> ->front()');
   } else {
-    skipped++; console.log('[patch-folly] ReanimatedModuleProxy.cpp already patched (shadowNodeFromValue not found)');
+    skipped++; console.log('[patch-folly] ReanimatedModuleProxy.cpp already patched correctly');
   }
 }
 
