@@ -271,48 +271,57 @@ class ReanimatedMountHook : public UIManagerMountHook {
   }
 
   // Fix 6: Patch RNWorklets.podspec to produce empty library (RNReanimated 3.17.x bundles it)
-  const workletsPodspecPath = path.join(projectRoot, 'node_modules/react-native-worklets-core/RNWorklets.podspec');
+  // Handles both 'react-native-worklets-core' and 'react-native-worklets' package names.
   const WORKLETS_PATCH_MARKER = 'patch-folly-fix6: emptied for RNReanimated 3.17.x';
-  if (!fs.existsSync(workletsPodspecPath)) {
-    console.log('[withFollyCoroutineFix] Fix 6: RNWorklets.podspec not found (ok)');
-  } else {
+  const workletsPodspecCandidates = [
+    path.join(projectRoot, 'node_modules/react-native-worklets-core/RNWorklets.podspec'),
+    path.join(projectRoot, 'node_modules/react-native-worklets/RNWorklets.podspec'),
+  ];
+  for (const workletsPodspecPath of workletsPodspecCandidates) {
+    if (!fs.existsSync(workletsPodspecPath)) {
+      console.log('[withFollyCoroutineFix] Fix 6: podspec not found (ok):', workletsPodspecPath);
+      continue;
+    }
     let podspec = fs.readFileSync(workletsPodspecPath, 'utf8');
     if (podspec.includes(WORKLETS_PATCH_MARKER)) {
-      console.log('[withFollyCoroutineFix] Fix 6: RNWorklets.podspec already patched');
-    } else {
-      podspec = podspec
-        .replace(/s\.source_files\s*=\s*[^\n]+/g, 's.source_files = []')
-        .replace(/s\.exclude_files\s*=\s*[^\n]+\n?/g, '')
-        .replace(/s\.compiler_flags\s*=\s*[^\n]+\n?/g, '');
-      podspec = '# ' + WORKLETS_PATCH_MARKER + '\n' + podspec;
-      fs.writeFileSync(workletsPodspecPath, podspec, 'utf8');
-      console.log('[withFollyCoroutineFix] Fix 6: Patched RNWorklets.podspec: emptied source_files');
+      console.log('[withFollyCoroutineFix] Fix 6: already patched:', workletsPodspecPath);
+      continue;
     }
+    podspec = podspec
+      .replace(/s\.source_files\s*=\s*[^\n]+/g, "s.source_files = []")
+      .replace(/s\.exclude_files\s*=\s*[^\n]+\n?/g, '')
+      .replace(/s\.compiler_flags\s*=\s*[^\n]+\n?/g, '');
+    podspec = '# ' + WORKLETS_PATCH_MARKER + '\n' + podspec;
+    fs.writeFileSync(workletsPodspecPath, podspec, 'utf8');
+    console.log('[withFollyCoroutineFix] Fix 6: Patched podspec (emptied source_files):', workletsPodspecPath);
   }
 
-  // Fix 6b: Remove codegenConfig from react-native-worklets-core/package.json
-  const workletsPackageJsonPath = path.join(projectRoot, 'node_modules/react-native-worklets-core/package.json');
+  // Fix 6b: Remove codegenConfig from worklets package.json (both package name variants)
   const WORKLETS_CODEGEN_MARKER = 'patch-folly-fix6: codegenConfig removed';
-  if (!fs.existsSync(workletsPackageJsonPath)) {
-    console.log('[withFollyCoroutineFix] Fix 6b: react-native-worklets-core/package.json not found (ok)');
-  } else {
+  const workletsPackageJsonCandidates = [
+    path.join(projectRoot, 'node_modules/react-native-worklets-core/package.json'),
+    path.join(projectRoot, 'node_modules/react-native-worklets/package.json'),
+  ];
+  for (const workletsPackageJsonPath of workletsPackageJsonCandidates) {
+    if (!fs.existsSync(workletsPackageJsonPath)) {
+      console.log('[withFollyCoroutineFix] Fix 6b: package.json not found (ok):', workletsPackageJsonPath);
+      continue;
+    }
     let workletsJson;
     try {
       workletsJson = JSON.parse(fs.readFileSync(workletsPackageJsonPath, 'utf8'));
     } catch (e) {
-      console.warn('[withFollyCoroutineFix] Fix 6b: Failed to parse react-native-worklets-core/package.json:', e.message);
-      workletsJson = null;
+      console.warn('[withFollyCoroutineFix] Fix 6b: Failed to parse:', workletsPackageJsonPath, e.message);
+      continue;
     }
-    if (workletsJson !== null) {
-      if (workletsJson._patchFollyFix6 === WORKLETS_CODEGEN_MARKER || !workletsJson.codegenConfig) {
-        console.log('[withFollyCoroutineFix] Fix 6b: react-native-worklets-core/package.json already patched or has no codegenConfig');
-      } else {
-        delete workletsJson.codegenConfig;
-        workletsJson._patchFollyFix6 = WORKLETS_CODEGEN_MARKER;
-        fs.writeFileSync(workletsPackageJsonPath, JSON.stringify(workletsJson, null, 2) + '\n', 'utf8');
-        console.log('[withFollyCoroutineFix] Fix 6b: Removed codegenConfig from react-native-worklets-core/package.json');
-      }
+    if (workletsJson._patchFollyFix6 === WORKLETS_CODEGEN_MARKER || !workletsJson.codegenConfig) {
+      console.log('[withFollyCoroutineFix] Fix 6b: already patched or no codegenConfig:', workletsPackageJsonPath);
+      continue;
     }
+    delete workletsJson.codegenConfig;
+    workletsJson._patchFollyFix6 = WORKLETS_CODEGEN_MARKER;
+    fs.writeFileSync(workletsPackageJsonPath, JSON.stringify(workletsJson, null, 2) + '\n', 'utf8');
+    console.log('[withFollyCoroutineFix] Fix 6b: Removed codegenConfig from:', workletsPackageJsonPath);
   }
 
   // Fix 4: ReanimatedMountHook.cpp — replace `double)` with `HighResTimeStamp /*mountTime*/)`

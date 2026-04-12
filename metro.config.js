@@ -7,6 +7,18 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.unstable_enablePackageExports = true;
 
+// Stub out react-native-worklets at the JS bundler level.
+// react-native-reanimated 3.x bundles worklets internally; having both
+// linked natively causes duplicate symbol linker errors on iOS
+// (_OBJC_CLASS_$_NativeWorkletsModuleSpecBase, worklets::* symbols).
+// The stub prevents Metro from resolving the real native module while
+// the withFollyCoroutineFix plugin empties its podspec at prebuild time.
+config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  'react-native-worklets': require.resolve('./stubs/react-native-worklets.js'),
+  'react-native-worklets-core': require.resolve('./stubs/react-native-worklets.js'),
+};
+
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
     new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),
