@@ -270,6 +270,51 @@ class ReanimatedMountHook : public UIManagerMountHook {
     }
   }
 
+  // Fix 6: Patch RNWorklets.podspec to produce empty library (RNReanimated 3.17.x bundles it)
+  const workletsPodspecPath = path.join(projectRoot, 'node_modules/react-native-worklets-core/RNWorklets.podspec');
+  const WORKLETS_PATCH_MARKER = 'patch-folly-fix6: emptied for RNReanimated 3.17.x';
+  if (!fs.existsSync(workletsPodspecPath)) {
+    console.log('[withFollyCoroutineFix] Fix 6: RNWorklets.podspec not found (ok)');
+  } else {
+    let podspec = fs.readFileSync(workletsPodspecPath, 'utf8');
+    if (podspec.includes(WORKLETS_PATCH_MARKER)) {
+      console.log('[withFollyCoroutineFix] Fix 6: RNWorklets.podspec already patched');
+    } else {
+      podspec = podspec
+        .replace(/s\.source_files\s*=\s*[^\n]+/g, 's.source_files = []')
+        .replace(/s\.exclude_files\s*=\s*[^\n]+\n?/g, '')
+        .replace(/s\.compiler_flags\s*=\s*[^\n]+\n?/g, '');
+      podspec = '# ' + WORKLETS_PATCH_MARKER + '\n' + podspec;
+      fs.writeFileSync(workletsPodspecPath, podspec, 'utf8');
+      console.log('[withFollyCoroutineFix] Fix 6: Patched RNWorklets.podspec: emptied source_files');
+    }
+  }
+
+  // Fix 6b: Remove codegenConfig from react-native-worklets-core/package.json
+  const workletsPackageJsonPath = path.join(projectRoot, 'node_modules/react-native-worklets-core/package.json');
+  const WORKLETS_CODEGEN_MARKER = 'patch-folly-fix6: codegenConfig removed';
+  if (!fs.existsSync(workletsPackageJsonPath)) {
+    console.log('[withFollyCoroutineFix] Fix 6b: react-native-worklets-core/package.json not found (ok)');
+  } else {
+    let workletsJson;
+    try {
+      workletsJson = JSON.parse(fs.readFileSync(workletsPackageJsonPath, 'utf8'));
+    } catch (e) {
+      console.warn('[withFollyCoroutineFix] Fix 6b: Failed to parse react-native-worklets-core/package.json:', e.message);
+      workletsJson = null;
+    }
+    if (workletsJson !== null) {
+      if (workletsJson._patchFollyFix6 === WORKLETS_CODEGEN_MARKER || !workletsJson.codegenConfig) {
+        console.log('[withFollyCoroutineFix] Fix 6b: react-native-worklets-core/package.json already patched or has no codegenConfig');
+      } else {
+        delete workletsJson.codegenConfig;
+        workletsJson._patchFollyFix6 = WORKLETS_CODEGEN_MARKER;
+        fs.writeFileSync(workletsPackageJsonPath, JSON.stringify(workletsJson, null, 2) + '\n', 'utf8');
+        console.log('[withFollyCoroutineFix] Fix 6b: Removed codegenConfig from react-native-worklets-core/package.json');
+      }
+    }
+  }
+
   // Fix 4: ReanimatedMountHook.cpp — replace `double)` with `HighResTimeStamp /*mountTime*/)`
   const mountHookCppPath = path.join(fabricDir, 'ReanimatedMountHook.cpp');
   if (!fs.existsSync(mountHookCppPath)) {
@@ -371,14 +416,34 @@ function applyPodfilePatch(podfilePath) {
 
   let content = fs.readFileSync(podfilePath, 'utf8');
 
-  if (content.includes('withFollyCoroutineFix-v6')) {
+  if (content.includes('withFollyCoroutineFix-v9')) {
     console.log('[withFollyCoroutineFix] Podfile already patched.');
     return;
   }
 
-  // Try to inject inside an existing post_install block first
+  // --- pre_install injection ---
+  const PRE_INSTALL_BLOCK = `
+pre_install do |installer|
+  # withFollyCoroutineFix-pre-v1: Remove RNWorklets since RNReanimated 3.17.x bundles it internally
+  installer.pod_targets.reject! { |pod| pod.name == 'RNWorklets' }
+end
+`;
+
+  const preInstallMarker = 'withFollyCoroutineFix-pre-v1';
+  if (!content.includes(preInstallMarker)) {
+    // Inject before the first post_install block, or before end-of-file
+    const preInstallInsertRegex = /^([ \t]*post_install do \|installer\|)/m;
+    if (preInstallInsertRegex.test(content)) {
+      content = content.replace(preInstallInsertRegex, PRE_INSTALL_BLOCK + '\n$1');
+    } else {
+      content = content + PRE_INSTALL_BLOCK;
+    }
+    console.log('[withFollyCoroutineFix] Podfile: injected pre_install RNWorklets removal.');
+  }
+
+  // --- post_install injection ---
   const postInstallRegex = /^([ \t]*post_install do \|installer\|[ \t]*)$/m;
-  const injection = `  # withFollyCoroutineFix-v6 — disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk
+  const injection = `  # withFollyCoroutineFix-v9 — disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk
   unless installer.pods_project.nil?
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
@@ -389,16 +454,32 @@ function applyPodfilePatch(podfilePath) {
       end
     end
 
-    # Fix duplicate symbols: RNReanimated 3.17.x already bundles worklets symbols,
-    # so remove libRNWorklets.a from every target's link phase to avoid collision.
+    # Neutralize RNWorklets: RNReanimated 3.17.x bundles it, so exclude it from linking
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'RNWorklets'
+      target.build_configurations.each do |config|
+        # Mark as excluded so it produces no output
+        config.build_settings['EXCLUDED_ARCHS'] = 'arm64 x86_64 arm64e'
+      end
+    end
+
+    # Remove RNWorklets from all aggregate link phases
     installer.pods_project.targets.each do |target|
       target.build_phases.each do |phase|
         next unless phase.is_a?(Xcodeproj::Project::Object::PBXFrameworksBuildPhase)
-        phase.files.each do |file|
-          if file.display_name&.include?('RNWorklets')
-            phase.remove_file_reference(file.file_ref)
-          end
+        phase.files.to_a.each do |file|
+          next unless file.display_name&.include?('RNWorklets')
+          phase.remove_file_reference(file.file_ref)
         end
+      end
+    end
+
+    # Remove RNWorklets from ReactCodegen to fix duplicate codegen symbols
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'ReactCodegen' || target.name == 'React-Codegen'
+      target.source_build_phase.files.to_a.each do |file|
+        next unless file.display_name&.include?('rnworklets')
+        target.source_build_phase.remove_file_reference(file.file_ref)
       end
     end
 

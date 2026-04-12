@@ -335,5 +335,63 @@ if (!fs.existsSync(reanimatedProxyPath)) {
   }
 }
 
+// Fix 6: Patch RNWorklets.podspec to produce empty library (RNReanimated 3.17.x bundles it)
+const workletsPodspecPath = path.join(projectRoot, 'node_modules/react-native-worklets-core/RNWorklets.podspec');
+const WORKLETS_PATCH_MARKER = 'patch-folly-fix6: emptied for RNReanimated 3.17.x';
+if (!fs.existsSync(workletsPodspecPath)) {
+  missing++; console.log('[patch-folly] Fix 6: RNWorklets.podspec not found (ok)');
+} else {
+  let podspec = fs.readFileSync(workletsPodspecPath, 'utf8');
+  if (podspec.includes(WORKLETS_PATCH_MARKER)) {
+    skipped++; console.log('[patch-folly] Fix 6: RNWorklets.podspec already patched');
+  } else {
+    // Replace source_files with empty array to prevent compilation
+    // This stops both the C++ symbols AND the codegen from running
+    podspec = podspec
+      .replace(/s\.source_files\s*=\s*[^\n]+/g, 's.source_files = []')
+      .replace(/s\.exclude_files\s*=\s*[^\n]+\n?/g, '')
+      .replace(/s\.compiler_flags\s*=\s*[^\n]+\n?/g, '');
+    // Add marker comment at top
+    podspec = '# ' + WORKLETS_PATCH_MARKER + '\n' + podspec;
+    fs.writeFileSync(workletsPodspecPath, podspec, 'utf8');
+    patched++; console.log('[patch-folly] Fix 6: Patched RNWorklets.podspec: emptied source_files');
+  }
+}
+
+// Fix 6b: react-native-worklets-core/package.json — remove codegenConfig to prevent
+// duplicate NativeWorkletsModuleSpecBase symbols when RNReanimated 3.17.x bundles RNWorklets.
+const workletsPackageJsonPath = path.join(
+  projectRoot,
+  'node_modules/react-native-worklets-core/package.json'
+);
+const WORKLETS_CODEGEN_MARKER = 'patch-folly-fix6: codegenConfig removed';
+
+if (!fs.existsSync(workletsPackageJsonPath)) {
+  missing++; console.log('[patch-folly] Fix 6b: react-native-worklets-core/package.json not found (ok — package may not be installed)');
+} else {
+  let workletsJson;
+  try {
+    workletsJson = JSON.parse(fs.readFileSync(workletsPackageJsonPath, 'utf8'));
+  } catch (e) {
+    console.warn('[patch-folly] Fix 6b: Failed to parse react-native-worklets-core/package.json:', e.message);
+    workletsJson = null;
+  }
+  if (workletsJson !== null) {
+    if (!workletsJson.codegenConfig) {
+      skipped++; console.log('[patch-folly] Fix 6b: react-native-worklets-core/package.json has no codegenConfig (already clean or already patched)');
+    } else {
+      // Idempotency: check for our marker in a custom field
+      if (workletsJson._patchFollyFix6 === WORKLETS_CODEGEN_MARKER) {
+        skipped++; console.log('[patch-folly] Fix 6b: react-native-worklets-core/package.json already patched (marker present)');
+      } else {
+        delete workletsJson.codegenConfig;
+        workletsJson._patchFollyFix6 = WORKLETS_CODEGEN_MARKER;
+        fs.writeFileSync(workletsPackageJsonPath, JSON.stringify(workletsJson, null, 2) + '\n', 'utf8');
+        patched++; console.log('[patch-folly] Fix 6b: Removed codegenConfig from react-native-worklets-core/package.json');
+      }
+    }
+  }
+}
+
 console.log(`[patch-folly] Done. patched=${patched} skipped=${skipped} missing=${missing}`);
 process.exit(0);
