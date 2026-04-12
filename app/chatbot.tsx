@@ -433,7 +433,7 @@ If the user provides both text and photo, use both sources to make the most accu
       if (!actualPrompt && imageToSend) {
         // Image-only: use default prompt
         actualPrompt =
-          'Estimate calories and macronutrients (protein, carbs, fats, fiber) for this meal from the photo. Make reasonable assumptions about portion sizes and ingredients.';
+          'You are a precise nutrition expert with extensive knowledge of restaurant menus, fast food chains, and branded food products worldwide. When the user mentions a specific restaurant (McDonalds, Chipotle, Subway, etc.), brand, or menu item, use the ACTUAL nutritional data for that specific product — not a generic estimate. If the item is generic or homemade, provide a reasonable estimate based on standard portions.';
       }
 
       const apiMessages: ChatMessage[] = [
