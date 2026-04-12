@@ -4,16 +4,16 @@
       "developmentClient": true,
       "distribution": "internal",
       "autoIncrement": true,
-      "prebuildCommand": "npx expo prebuild --non-interactive && node scripts/patch-folly.js"
+      "prebuildCommand": "node scripts/patch-folly.js ; npx expo prebuild --non-interactive && node scripts/patch-folly.js"
     },
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
-      "prebuildCommand": "npx expo prebuild --non-interactive && node scripts/patch-folly.js"
+      "prebuildCommand": "node scripts/patch-folly.js ; npx expo prebuild --non-interactive && node scripts/patch-folly.js"
     },
     "production": {
       "autoIncrement": true,
-      "prebuildCommand": "npx expo prebuild --non-interactive && node scripts/patch-folly.js"
+      "prebuildCommand": "node scripts/patch-folly.js ; npx expo prebuild --non-interactive && node scripts/patch-folly.js"
     }
   }
 }
