@@ -170,12 +170,12 @@ export default function RootLayout() {
       }
 
       if (event === "SIGNED_OUT") {
-        console.log("[Navigation] SIGNED_OUT → /auth/signup");
+        console.log("[Navigation] SIGNED_OUT → /auth/welcome");
         setSession(null);
         hasNavigatedRef.current = true;
         const { Purchases: rc } = loadPurchases();
         if (rc) rc.logOut().catch(() => {});
-        router.replace("/auth/signup");
+        router.replace("/auth/welcome");
         return;
       }
     });
@@ -200,9 +200,9 @@ export default function RootLayout() {
     const navigate = async () => {
       // No session → go to auth immediately, no DB query needed.
       if (!session) {
-        console.log("[Navigation] No session → /auth/signup");
+        console.log("[Navigation] No session → /auth/welcome");
         hasNavigatedRef.current = true;
-        router.replace("/auth/signup");
+        router.replace("/auth/welcome");
         return;
       }
 
