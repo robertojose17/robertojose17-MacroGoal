@@ -170,10 +170,12 @@ export default function RootLayout() {
       }
 
       if (event === "SIGNED_OUT") {
+        console.log("[Navigation] SIGNED_OUT → /auth/signup");
         setSession(null);
-        hasNavigatedRef.current = false;
+        hasNavigatedRef.current = true;
         const { Purchases: rc } = loadPurchases();
         if (rc) rc.logOut().catch(() => {});
+        router.replace("/auth/signup");
         return;
       }
     });
