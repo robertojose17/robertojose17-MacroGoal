@@ -70,6 +70,12 @@ export default function SubscriptionScreen() {
 
     const { Purchases, LOG_LEVEL } = loadPurchases();
 
+    if (!Purchases) {
+      console.log('[Subscription] Purchases SDK not available on this platform');
+      setLoading(false);
+      return;
+    }
+
     try {
       console.log('[Subscription] ========== INITIALIZING REVENUECAT ==========');
 
