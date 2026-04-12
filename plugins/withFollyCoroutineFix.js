@@ -3,9 +3,12 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Adds FOLLY_CFG_NO_COROUTINES=1 to the Podfile post_install hook.
+ * Adds FOLLY_CFG_NO_COROUTINES=1 to the existing post_install hook in the Podfile.
  * Fixes: 'folly/coro/Coroutine.h' file not found on Xcode 26 / iOS 26 SDK.
- * The RCT-Folly pod includes folly/coro/ headers incompatible with Xcode 26.
+ *
+ * Instead of appending a new post_install block (which CocoaPods rejects as of
+ * recent versions), this plugin finds the existing `post_install do |installer|`
+ * line and injects the fix code immediately after it.
  */
 function withFollyCoroutineFix(config) {
   return withDangerousMod(config, [
@@ -20,36 +23,30 @@ function withFollyCoroutineFix(config) {
 
       let content = fs.readFileSync(podfilePath, 'utf8');
 
-      if (content.includes('FOLLY_CFG_NO_COROUTINES')) {
+      // Guard: already patched
+      if (content.includes('withFollyCoroutineFix')) {
         console.log('[withFollyCoroutineFix] Already patched.');
         return cfg;
       }
 
-      const block = `
-# withFollyCoroutineFix — disable Folly coroutines for Xcode 26 / iOS 26 SDK
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |build_config|
-      existing = build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
-      if existing.nil?
-        build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'FOLLY_CFG_NO_COROUTINES=1']
-      elsif existing.is_a?(Array)
-        unless existing.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
-          build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ['FOLLY_CFG_NO_COROUTINES=1']
-        end
-      elsif existing.is_a?(String)
-        unless existing.include?('FOLLY_CFG_NO_COROUTINES')
-          build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ' FOLLY_CFG_NO_COROUTINES=1'
-        end
-      end
-    end
-  end
-end
-`;
+      // Find the existing post_install hook and inject immediately after its opening line
+      const postInstallRegex = /^([ \t]*post_install do \|installer\|[ \t]*)$/m;
+      if (!postInstallRegex.test(content)) {
+        console.warn('[withFollyCoroutineFix] Could not find existing post_install block. Skipping.');
+        return cfg;
+      }
 
-      content = content + '\n' + block;
+      const injection = `  # withFollyCoroutineFix — disable Folly coroutines for Xcode 26 / iOS 26 SDK
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
+    end
+  end`;
+
+      content = content.replace(postInstallRegex, `$1\n${injection}`);
       fs.writeFileSync(podfilePath, content, 'utf8');
-      console.log('[withFollyCoroutineFix] Podfile patched.');
+      console.log('[withFollyCoroutineFix] Podfile patched (injected inside existing post_install).');
       return cfg;
     },
   ]);

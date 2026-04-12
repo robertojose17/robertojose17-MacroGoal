@@ -3,8 +3,9 @@
  * Injects FOLLY_CFG_NO_COROUTINES=1 preprocessor definition into the Podfile.
  * This fixes 'folly/coro/Coroutine.h' file not found on Xcode 26 / iOS 26 SDK.
  *
- * The RCT-Folly CocoaPod includes folly/coro/ headers that are incompatible
- * with Xcode 26. Setting FOLLY_CFG_NO_COROUTINES=1 disables those code paths.
+ * Injects inside the EXISTING post_install block rather than appending a new one,
+ * because CocoaPods rejects multiple post_install hooks with:
+ *   [!] Specifying multiple 'post_install' hooks is unsupported.
  *
  * Run AFTER expo prebuild (the Podfile must already exist).
  * Safe to run on Android-only builds — exits cleanly if Podfile is absent.
@@ -21,36 +22,27 @@ if (!fs.existsSync(podfilePath)) {
 
 let podfile = fs.readFileSync(podfilePath, 'utf8');
 
+// Guard: already patched (by this script or by withFollyCoroutineFix plugin)
 if (podfile.includes('FOLLY_CFG_NO_COROUTINES')) {
   console.log('[patch-podfile] Already patched, skipping.');
   process.exit(0);
 }
 
-// Append a standalone post_install block.
-// CocoaPods allows multiple post_install blocks — each runs in order.
-const postInstallBlock = `
-# patch-podfile.js — fix folly/coro/Coroutine.h not found on Xcode 26 / iOS 26 SDK
-post_install do |installer|
+// Find the existing post_install hook and inject immediately after its opening line
+const postInstallRegex = /^([ \t]*post_install do \|installer\|[ \t]*)$/m;
+if (!postInstallRegex.test(podfile)) {
+  console.warn('[patch-podfile] Could not find existing post_install block. Skipping.');
+  process.exit(0);
+}
+
+const injection = `  # patch-podfile.js — fix folly/coro/Coroutine.h not found on Xcode 26 / iOS 26 SDK
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # Disable Folly coroutines — incompatible with Xcode 26 / iOS 26 SDK
-      existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
-      if existing.nil?
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'FOLLY_CFG_NO_COROUTINES=1']
-      elsif existing.is_a?(Array)
-        unless existing.any? { |d| d.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
-          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ['FOLLY_CFG_NO_COROUTINES=1']
-        end
-      elsif existing.is_a?(String)
-        unless existing.include?('FOLLY_CFG_NO_COROUTINES')
-          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = [existing, 'FOLLY_CFG_NO_COROUTINES=1']
-        end
-      end
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
     end
-  end
-end
-`;
+  end`;
 
-podfile = podfile + '\n' + postInstallBlock;
+podfile = podfile.replace(postInstallRegex, `$1\n${injection}`);
 fs.writeFileSync(podfilePath, podfile, 'utf8');
-console.log('[patch-podfile] Podfile patched with FOLLY_CFG_NO_COROUTINES=1 post_install hook.');
+console.log('[patch-podfile] Podfile patched with FOLLY_CFG_NO_COROUTINES=1 (injected inside existing post_install).');
