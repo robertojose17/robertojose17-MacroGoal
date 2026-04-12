@@ -81,19 +81,23 @@ diff --git a/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp b/Common/cpp/rean
 +    if (const auto &[parentNode, index] = *it; true) {
        const auto parentFamily = &parentNode.get().getFamily();
        auto &affectedChildren = childrenMap[parentFamily];
+ 
 diff --git a/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp b/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp
 --- a/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp
 +++ b/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp
-@@ -24,6 +24,16 @@
+@@ -24,6 +24,18 @@
  #include <react/renderer/scheduler/Scheduler.h>
  #include <react/renderer/uimanager/UIManagerBinding.h>
  #include <react/renderer/uimanager/primitives.h>
-+// compat-shim: shadowNodeFromValue removed in RN 0.81.x — define inline wrapper
++// compat-shim-v7: shadowNodeFromValue removed in RN 0.81.x
++// Placed inside #ifdef RCT_NEW_ARCH_ENABLED so shadowNodeListFromValue is in scope.
 +namespace {
 +inline facebook::react::ShadowNode::Shared shadowNodeFromValue(
 +    facebook::jsi::Runtime &rt,
 +    const facebook::jsi::Value &value) {
-+  return shadowNodeListFromValue(rt, value).front();
++  // shadowNodeListFromValue returns std::shared_ptr<std::vector<ShadowNode::Shared>>
++  auto list = shadowNodeListFromValue(rt, value);
++  return list->at(0);
 +}
 +} // namespace
  #endif // RCT_NEW_ARCH_ENABLED

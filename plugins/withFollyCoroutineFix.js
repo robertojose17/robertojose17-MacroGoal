@@ -229,9 +229,11 @@ class ReanimatedMountHook : public UIManagerMountHook {
     projectRoot,
     'node_modules/react-native-reanimated/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp'
   );
-  const PROXY_SHIM_MARKER = 'compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x';
-  // Shim goes AFTER the primitives.h include — no need to re-include it
-  const PROXY_SHIM = `\n// ${PROXY_SHIM_MARKER}\nnamespace {\ninline facebook::react::ShadowNode::Shared shadowNodeFromValue(\n    facebook::jsi::Runtime &rt,\n    const facebook::jsi::Value &value) {\n  auto result = shadowNodeListFromValue(rt, value);\n  return result->at(0);\n}\n} // namespace\n`;
+  const PROXY_SHIM_MARKER = 'compat-shim-v7: shadowNodeFromValue removed in RN 0.81.x';
+  // Shim goes AFTER the primitives.h include, still inside #ifdef RCT_NEW_ARCH_ENABLED,
+  // so shadowNodeListFromValue is in scope. shadowNodeListFromValue returns
+  // std::shared_ptr<std::vector<ShadowNode::Shared>>, so ->at(0) is correct.
+  const PROXY_SHIM = `\n// ${PROXY_SHIM_MARKER}\nnamespace {\ninline facebook::react::ShadowNode::Shared shadowNodeFromValue(\n    facebook::jsi::Runtime &rt,\n    const facebook::jsi::Value &value) {\n  auto list = shadowNodeListFromValue(rt, value);\n  return list->at(0);\n}\n} // namespace\n`;
   const PRIMITIVES_INCLUDE = '#include <react/renderer/uimanager/primitives.h>';
 
   if (!fs.existsSync(reanimatedProxyPath)) {
@@ -239,12 +241,13 @@ class ReanimatedMountHook : public UIManagerMountHook {
   } else {
     let proxyContent = fs.readFileSync(reanimatedProxyPath, 'utf8');
     if (proxyContent.includes(PROXY_SHIM_MARKER)) {
-      console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp already has v6 compat shim');
+      console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp already has v7 compat shim');
     } else {
       // Remove any old shim versions
       const oldMarkers = [
         'compat-shim: shadowNodeFromValue removed in RN 0.81.x',
         'compat-shim-v5: shadowNodeFromValue removed in RN 0.81.x',
+        'compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x',
       ];
       for (const oldMarker of oldMarkers) {
         if (proxyContent.includes(oldMarker)) {
@@ -430,7 +433,7 @@ function applyPodfilePatch(podfilePath) {
 
   let content = fs.readFileSync(podfilePath, 'utf8');
 
-  if (content.includes('withFollyCoroutineFix-v13')) {
+  if (content.includes('withFollyCoroutineFix-v14')) {
     console.log('[withFollyCoroutineFix] Podfile already patched.');
     return;
   }
@@ -511,20 +514,29 @@ end
 
   // --- post_install injection ---
   const postInstallRegex = /^([ \t]*post_install do \|installer\|[ \t]*)$/m;
-  const injection = `  # withFollyCoroutineFix-v13 — disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk
+  const injection = `  # withFollyCoroutineFix-v14 — disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk
   begin
     next if installer.nil?
     pods_project = installer.pods_project rescue nil
     next if pods_project.nil?
 
-    # Inject FOLLY_CFG_NO_COROUTINES=1 into all targets
+    # Inject FOLLY_CFG_NO_COROUTINES=1 into all targets.
+    # GCC_PREPROCESSOR_DEFINITIONS can be a String or an Array in Xcodeproj — handle both.
     pods_project.targets.each do |target|
       next if target.nil?
       target.build_configurations.each do |config|
         next if config.nil?
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-        unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('FOLLY_CFG_NO_COROUTINES=1')
-          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'
+        existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+        if existing.nil?
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = '$(inherited) FOLLY_CFG_NO_COROUTINES=1'
+        elsif existing.is_a?(Array)
+          unless existing.any? { |v| v.to_s.include?('FOLLY_CFG_NO_COROUTINES') }
+            existing << 'FOLLY_CFG_NO_COROUTINES=1'
+          end
+        elsif existing.is_a?(String)
+          unless existing.include?('FOLLY_CFG_NO_COROUTINES')
+            config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ' FOLLY_CFG_NO_COROUTINES=1'
+          end
         end
       end rescue nil
     end
@@ -574,19 +586,20 @@ end
       proxy_cpp_candidates.each do |proxy_cpp_path|
         next unless File.exist?(proxy_cpp_path)
         content = File.read(proxy_cpp_path) rescue next
-        shim_marker = 'compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x'
+        shim_marker = 'compat-shim-v7: shadowNodeFromValue removed in RN 0.81.x'
         primitives_include = '#include <react/renderer/uimanager/primitives.h>'
         next if content.include?(shim_marker)
         next unless content.include?(primitives_include)
         shim = <<~SHIM
 
-// compat-shim-v6: shadowNodeFromValue removed in RN 0.81.x
+// compat-shim-v7: shadowNodeFromValue removed in RN 0.81.x
+// shadowNodeListFromValue returns std::shared_ptr<std::vector<ShadowNode::Shared>>
 namespace {
 inline facebook::react::ShadowNode::Shared shadowNodeFromValue(
     facebook::jsi::Runtime &rt,
     const facebook::jsi::Value &value) {
-  auto result = shadowNodeListFromValue(rt, value);
-  return result->at(0);
+  auto list = shadowNodeListFromValue(rt, value);
+  return list->at(0);
 }
 } // namespace
 SHIM
