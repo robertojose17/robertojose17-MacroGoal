@@ -17,6 +17,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { usePremium } from '@/hooks/usePremium';
+import { supabase } from '@/lib/supabase/client';
 
 /**
  * AI Meal Estimator Screen
@@ -116,22 +117,27 @@ export default function AIMealEstimatorScreen() {
       return;
     }
 
+    console.log('[AIMealEstimator] Analyzing meal:', mealDescription.trim());
     setIsAnalyzing(true);
     try {
-      // TODO: Backend Integration - Call the AI meal estimation API endpoint here
-      // Placeholder result for now
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      const { data, error } = await supabase.functions.invoke('estimate-meal', {
+        body: { description: mealDescription.trim() },
+      });
+
+      if (error || !data) {
+        throw new Error('Failed to analyze meal. Please try again.');
+      }
+
+      console.log('[AIMealEstimator] Result received:', data);
       setResult({
-        calories: 450,
-        protein: 25,
-        carbs: 45,
-        fats: 15,
-        fiber: 5,
+        calories: data.calories,
+        protein: data.protein,
+        carbs: data.carbs,
+        fats: data.fats,
       });
     } catch (error) {
       console.error('[AIMealEstimator] Error analyzing meal:', error);
-      Alert.alert('Error', 'Failed to analyze meal');
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to analyze meal');
     } finally {
       setIsAnalyzing(false);
     }
