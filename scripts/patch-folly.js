@@ -1,21 +1,10 @@
 #!/usr/bin/env node
 /**
- * Patches react-native-reanimated C++ source files that include ANY folly header.
- * Fixes: 'folly/coro/Coroutine.h' file not found on Xcode 26 / iPhoneOS26.0.sdk.
+ * Bulletproof patch for 'folly/coro/Coroutine.h file not found' on Xcode 26 / iPhoneOS26.0.sdk.
  *
- * Root cause: folly headers transitively pull in folly/coro/Coroutine.h, which
- * requires C++20 coroutine support that Xcode 26's clang does not provide for
- * the iOS target in the same way. Setting FOLLY_CFG_NO_COROUTINES=1 disables
- * the coroutine code paths inside folly.
- *
- * Strategy: prepend a #define guard at the very top of every .cpp/.h file that
- * contains any `#include <folly/` or `#include "folly/` line. This is a
- * belt-and-suspenders complement to the Podfile GCC_PREPROCESSOR_DEFINITIONS
- * injection — the source-level define fires before any header is parsed.
- *
- * Idempotent: files already containing the marker are skipped.
- *
- * Run via eas.json prebuildCommand BEFORE expo prebuild.
+ * Prepends FOLLY_CFG_NO_COROUTINES=1 define guards to specific reanimated Fabric C++ files.
+ * Idempotent — files already containing the marker are skipped.
+ * Safe — exits with code 0 even if files are missing (e.g. before node_modules exist).
  */
 
 'use strict';
@@ -25,96 +14,67 @@ const path = require('path');
 
 const projectRoot = process.cwd();
 
-// Directories to scan
-const SCAN_DIRS = [
-  path.join(projectRoot, 'node_modules/react-native-reanimated/Common/cpp'),
-  path.join(projectRoot, 'node_modules/react-native-reanimated/android'),
-  path.join(projectRoot, 'node_modules/react-native-reanimated/ios'),
-];
-
-// Specific high-priority files to always patch if they exist
-const PRIORITY_FILES = [
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ReanimatedMountHook.cpp',
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp',
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ReanimatedCommitHook.cpp',
-  'node_modules/react-native-reanimated/Common/cpp/reanimated/Core/ReanimatedHiddenHeaders.h',
-].map((p) => path.join(projectRoot, p));
-
-// Match any #include that pulls in a folly header (angle-bracket or quoted)
-const FOLLY_INCLUDE_RE = /#include\s+[<"]folly\//;
-
-// Idempotency marker — if this string is present the file is already patched
-const ALREADY_PATCHED_MARKER = 'patch-folly: disable coroutines';
-
-// The define block to prepend
+// The exact define block to prepend
+const MARKER = 'patch-folly: disable Folly coroutines for Xcode 26 / iPhoneOS26.0.sdk';
 const DEFINE_BLOCK =
-  '// patch-folly: disable coroutines for Xcode 26\n' +
+  '// ' + MARKER + '\n' +
   '#ifndef FOLLY_CFG_NO_COROUTINES\n' +
   '#define FOLLY_CFG_NO_COROUTINES 1\n' +
   '#endif\n\n';
 
-let patchedCount = 0;
-let skippedCount = 0;
-let missingCount = 0;
+// Specific files known to trigger the build error — patch unconditionally
+const TARGET_FILES = [
+  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ReanimatedMountHook.cpp',
+  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp',
+  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ReanimatedCommitHook.cpp',
+].map((p) => path.join(projectRoot, p));
 
-function patchFile(filePath) {
+// Additional directories to scan for any other folly-including C++ files
+const SCAN_DIRS = [
+  path.join(projectRoot, 'node_modules/react-native-reanimated/Common/cpp'),
+  path.join(projectRoot, 'node_modules/react-native-reanimated/ios'),
+];
+
+const FOLLY_INCLUDE_RE = /#include\s+[<"]folly\//;
+
+let patched = 0;
+let skipped = 0;
+let missing = 0;
+
+function patchFile(filePath, unconditional) {
   let content;
   try {
     content = fs.readFileSync(filePath, 'utf8');
   } catch (_e) {
-    missingCount++;
+    missing++;
+    console.log('[patch-folly] Not found (ok):', path.relative(projectRoot, filePath));
     return;
   }
 
-  // Idempotency check
-  if (content.includes(ALREADY_PATCHED_MARKER)) {
-    skippedCount++;
+  if (content.includes(MARKER)) {
+    skipped++;
+    console.log('[patch-folly] Already patched, skipping:', path.relative(projectRoot, filePath));
     return;
   }
 
-  // Only patch files that actually include folly headers
-  if (!FOLLY_INCLUDE_RE.test(content)) {
+  if (!unconditional && !FOLLY_INCLUDE_RE.test(content)) {
     return;
   }
 
   try {
     fs.writeFileSync(filePath, DEFINE_BLOCK + content, 'utf8');
-    patchedCount++;
+    patched++;
     console.log('[patch-folly] Patched:', path.relative(projectRoot, filePath));
   } catch (e) {
-    console.error('[patch-folly] Failed to write:', filePath, e.message);
-  }
-}
-
-function patchFileUnconditionally(filePath) {
-  let content;
-  try {
-    content = fs.readFileSync(filePath, 'utf8');
-  } catch (_e) {
-    // File doesn't exist on this machine — that's fine
-    return;
-  }
-
-  if (content.includes(ALREADY_PATCHED_MARKER)) {
-    skippedCount++;
-    return;
-  }
-
-  try {
-    fs.writeFileSync(filePath, DEFINE_BLOCK + content, 'utf8');
-    patchedCount++;
-    console.log('[patch-folly] Patched (priority):', path.relative(projectRoot, filePath));
-  } catch (e) {
-    console.error('[patch-folly] Failed to write:', filePath, e.message);
+    console.error('[patch-folly] ERROR writing:', filePath, e.message);
   }
 }
 
 function scanDir(dir) {
   if (!fs.existsSync(dir)) {
-    console.warn('[patch-folly] Directory not found (will exist on build server):', path.relative(projectRoot, dir));
+    console.log('[patch-folly] Scan dir not found (ok):', path.relative(projectRoot, dir));
     return;
   }
-
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -122,7 +82,6 @@ function scanDir(dir) {
     console.error('[patch-folly] Cannot read dir:', dir, e.message);
     return;
   }
-
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -130,27 +89,91 @@ function scanDir(dir) {
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name);
       if (ext === '.cpp' || ext === '.h' || ext === '.mm' || ext === '.cc') {
-        patchFile(full);
+        patchFile(full, false);
       }
     }
   }
 }
 
-console.log('[patch-folly] Starting folly coroutine patch for react-native-reanimated...');
+// ─── Step 3: Remove <ranges> from ShadowTreeCloner.cpp ───────────────────────
+// std::ranges::reverse_view is C++20 and broken under iPhoneOS26.0.sdk.
+// Replace with a C++17-compatible manual reverse loop.
+const RANGES_MARKER = 'ranges-patch: removed <ranges> for iPhoneOS26.0.sdk';
+const SHADOW_TREE_CLONER = path.join(
+  projectRoot,
+  'node_modules/react-native-reanimated/Common/cpp/reanimated/Fabric/ShadowTreeCloner.cpp'
+);
 
-// 1. Patch priority files unconditionally (even if they don't match the regex,
-//    they are known to trigger the build error)
-console.log('[patch-folly] Patching priority files...');
-for (const f of PRIORITY_FILES) {
-  patchFileUnconditionally(f);
+function patchRanges(filePath) {
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf8');
+  } catch (_e) {
+    console.log('[patch-folly] ShadowTreeCloner.cpp not found (ok):', path.relative(projectRoot, filePath));
+    return;
+  }
+
+  if (content.includes(RANGES_MARKER)) {
+    console.log('[patch-folly] ShadowTreeCloner.cpp <ranges> patch already applied, skipping.');
+    return;
+  }
+
+  // Remove #include <ranges>
+  content = content.replace(
+    '#include <ranges>\n',
+    '// #include <ranges> — removed: broken under iPhoneOS26.0.sdk\n'
+  );
+
+  // Add #include <algorithm> after #include <utility> if not already present
+  if (!content.includes('#include <algorithm>')) {
+    content = content.replace(
+      '#include <utility>',
+      '#include <algorithm>\n#include <utility>'
+    );
+  }
+
+  // Replace std::ranges::reverse_view(ancestors) with a C++17 reverse loop.
+  // Original:
+  //   for (const auto &[parentNode, index] :
+  //        std::ranges::reverse_view(ancestors)) {
+  // Replacement uses rbegin/rend via a helper lambda to keep the same structure.
+  content = content.replace(
+    /for\s*\(const auto &\[parentNode, index\]\s*:\s*std::ranges::reverse_view\(ancestors\)\)/,
+    'for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it)\n    if (const auto &[parentNode, index] = *it; true)'
+  );
+
+  // Prepend the idempotency marker comment
+  content = '// ' + RANGES_MARKER + '\n' + content;
+
+  try {
+    fs.writeFileSync(filePath, content, 'utf8');
+    patched++;
+    console.log('[patch-folly] Patched <ranges> in ShadowTreeCloner.cpp');
+  } catch (e) {
+    console.error('[patch-folly] ERROR writing ShadowTreeCloner.cpp:', e.message);
+  }
 }
 
-// 2. Scan all C++ source directories
-console.log('[patch-folly] Scanning source directories...');
+console.log('[patch-folly] Starting — patching react-native-reanimated for Xcode 26 / iPhoneOS26.0.sdk...');
+
+// Step 1: Unconditionally patch the known-bad files (FOLLY_CFG_NO_COROUTINES)
+console.log('[patch-folly] Step 1: Patching known target files unconditionally...');
+for (const f of TARGET_FILES) {
+  patchFile(f, true);
+}
+
+// Step 2: Scan broader directories for any other folly-including files
+console.log('[patch-folly] Step 2: Scanning for other folly-including C++ files...');
 for (const dir of SCAN_DIRS) {
   scanDir(dir);
 }
 
+// Step 3: Remove <ranges> / std::ranges::reverse_view from ShadowTreeCloner.cpp
+console.log('[patch-folly] Step 3: Patching <ranges> usage in ShadowTreeCloner.cpp...');
+patchRanges(SHADOW_TREE_CLONER);
+
 console.log(
-  `[patch-folly] Done. Patched: ${patchedCount}, Already patched (skipped): ${skippedCount}, Not found: ${missingCount}`
+  `[patch-folly] Done. patched=${patched} skipped(already done)=${skipped} missing(ok)=${missing}`
 );
+
+process.exit(0);
