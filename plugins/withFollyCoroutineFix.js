@@ -222,6 +222,24 @@ class ReanimatedMountHook : public UIManagerMountHook {
     }
   }
 
+  // Fix 5: ReanimatedModuleProxy.cpp — shadowNodeFromValue -> shadowNodeListFromValue(...).front()
+  const reanimatedProxyPath = path.join(
+    projectRoot,
+    'node_modules/react-native-reanimated/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp'
+  );
+  if (!fs.existsSync(reanimatedProxyPath)) {
+    console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp not found (ok)');
+  } else {
+    const proxyContent = fs.readFileSync(reanimatedProxyPath, 'utf8');
+    if (proxyContent.includes('shadowNodeFromValue(')) {
+      const fixedProxy = proxyContent.replace(/shadowNodeFromValue\(([^)]+)\)/g, 'shadowNodeListFromValue($1).front()');
+      fs.writeFileSync(reanimatedProxyPath, fixedProxy, 'utf8');
+      console.log('[withFollyCoroutineFix] Patched ReanimatedModuleProxy.cpp: shadowNodeFromValue -> shadowNodeListFromValue(...).front()');
+    } else {
+      console.log('[withFollyCoroutineFix] ReanimatedModuleProxy.cpp already patched (shadowNodeFromValue not found)');
+    }
+  }
+
   // Fix 4: ReanimatedMountHook.cpp — replace `double)` with `HighResTimeStamp /*mountTime*/)`
   const mountHookCppPath = path.join(fabricDir, 'ReanimatedMountHook.cpp');
   if (!fs.existsSync(mountHookCppPath)) {

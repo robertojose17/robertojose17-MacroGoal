@@ -287,5 +287,24 @@ void ReanimatedMountHook::shadowTreeDidMount(
   }
 }
 
+// Fix 5: ReanimatedModuleProxy.cpp — shadowNodeFromValue -> shadowNodeListFromValue(...).front()
+const nodeModulesDir = path.join(projectRoot, 'node_modules');
+const reanimatedProxyPath = path.join(
+  nodeModulesDir,
+  'react-native-reanimated/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.cpp'
+);
+if (!fs.existsSync(reanimatedProxyPath)) {
+  missing++; console.log('[patch-folly] ReanimatedModuleProxy.cpp not found (ok)');
+} else {
+  const content = fs.readFileSync(reanimatedProxyPath, 'utf8');
+  if (content.includes('shadowNodeFromValue(')) {
+    const fixed = content.replace(/shadowNodeFromValue\(([^)]+)\)/g, 'shadowNodeListFromValue($1).front()');
+    fs.writeFileSync(reanimatedProxyPath, fixed, 'utf8');
+    patched++; console.log('[patch-folly] Patched ReanimatedModuleProxy.cpp: shadowNodeFromValue -> shadowNodeListFromValue(...).front()');
+  } else {
+    skipped++; console.log('[patch-folly] ReanimatedModuleProxy.cpp already patched (shadowNodeFromValue not found)');
+  }
+}
+
 console.log(`[patch-folly] Done. patched=${patched} skipped=${skipped} missing=${missing}`);
 process.exit(0);
