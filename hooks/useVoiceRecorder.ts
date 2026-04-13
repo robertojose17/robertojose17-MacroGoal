@@ -73,7 +73,7 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
       // Call transcribe-audio edge function
       console.log('[useVoiceRecorder] Calling transcribe-audio edge function...');
       const { data, error: fnError } = await supabase.functions.invoke('transcribe-audio', {
-        body: { audio: base64, mimeType: 'audio/m4a', language: 'en' },
+        body: { audioBase64: base64, mimeType: 'audio/m4a', language: 'en' },
       });
 
       if (fnError || !data?.text) {
