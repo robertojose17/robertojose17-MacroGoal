@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -18,13 +18,16 @@ if (Platform.OS !== 'web') {
 }
 const CaptureWrapper: any = ViewShot || View;
 
+export interface ShareableProgressCardHandle {
+  captureWhenReady: () => Promise<string>;
+}
+
 export interface ShareableProgressCardProps {
   beforePhoto?: string | null;
   afterPhoto?: string | null;
   beforeDate?: string | null;
   afterDate?: string | null;
   leaderboardPhrase?: string | null;
-  onCapture?: (ref: React.RefObject<any>) => void;
 }
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -33,79 +36,117 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
   return source as ImageSourcePropType;
 }
 
-export default function ShareableProgressCard({
-  beforePhoto,
-  afterPhoto,
-  leaderboardPhrase,
-  onCapture,
-}: ShareableProgressCardProps) {
-  const viewShotRef = useRef<any>(null);
-  const [beforeLoaded, setBeforeLoaded] = useState(false);
-  const [afterLoaded, setAfterLoaded] = useState(false);
+const ShareableProgressCard = forwardRef<ShareableProgressCardHandle, ShareableProgressCardProps>(
+  function ShareableProgressCard(
+    { beforePhoto, afterPhoto, leaderboardPhrase },
+    ref
+  ) {
+    const viewShotRef = useRef<any>(null);
+    const [beforeLoaded, setBeforeLoaded] = useState(false);
+    const [afterLoaded, setAfterLoaded] = useState(false);
 
-  const hasLeaderboard = !!leaderboardPhrase;
+    const hasLeaderboard = !!leaderboardPhrase;
 
-  useEffect(() => {
-    if (onCapture && viewShotRef.current) {
-      onCapture(viewShotRef);
-    }
-  }, [onCapture]);
+    useImperativeHandle(ref, () => ({
+      captureWhenReady: (): Promise<string> => {
+        console.log('[ShareableProgressCard] captureWhenReady called');
+        return new Promise((resolve, reject) => {
+          const startTime = Date.now();
+          const TIMEOUT_MS = 10_000;
+          const POLL_INTERVAL_MS = 100;
+          const SETTLE_DELAY_MS = 150;
 
-  return (
-    <CaptureWrapper
-      ref={viewShotRef}
-      options={{ format: 'png', quality: 1, result: 'tmpfile' }}
-      style={styles.captureWrapper}
-    >
-      <View style={styles.card}>
-        {/* ── PHOTOS ROW ── */}
-        <View style={styles.photoRow}>
-          <View style={styles.photoContainer}>
-            {!beforeLoaded && (
-              <View style={styles.photoPlaceholder}>
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
-              </View>
-            )}
-            <Image
-              source={resolveImageSource(beforePhoto)}
-              style={styles.photo}
-              resizeMode="cover"
-              onLoad={() => {
-                console.log('[ShareableProgressCard] Before photo loaded');
-                setBeforeLoaded(true);
-              }}
-            />
-          </View>
-          <View style={styles.photoContainer}>
-            {!afterLoaded && (
-              <View style={styles.photoPlaceholder}>
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
-              </View>
-            )}
-            <Image
-              source={resolveImageSource(afterPhoto)}
-              style={styles.photo}
-              resizeMode="cover"
-              onLoad={() => {
-                console.log('[ShareableProgressCard] After photo loaded');
-                setAfterLoaded(true);
-              }}
-            />
-          </View>
-        </View>
+          const poll = () => {
+            const elapsed = Date.now() - startTime;
+            const photosReady = beforeLoaded && afterLoaded;
+            const timedOut = elapsed >= TIMEOUT_MS;
 
-        {/* ── LEADERBOARD BADGE ── */}
-        {hasLeaderboard && (
-          <View style={styles.badgeContainer}>
-            <View style={styles.leaderboardBadge}>
-              <Text style={styles.leaderboardText}>{leaderboardPhrase}</Text>
+            if (photosReady || timedOut) {
+              if (timedOut && !photosReady) {
+                console.warn('[ShareableProgressCard] Timed out waiting for photos — capturing anyway');
+              } else {
+                console.log('[ShareableProgressCard] Photos ready, waiting settle delay...');
+              }
+
+              setTimeout(() => {
+                if (!viewShotRef.current) {
+                  reject(new Error('ViewShot ref not available'));
+                  return;
+                }
+                console.log('[ShareableProgressCard] Capturing...');
+                viewShotRef.current.capture().then((uri: string) => {
+                  console.log('[ShareableProgressCard] Capture complete:', uri);
+                  resolve(uri);
+                }).catch(reject);
+              }, SETTLE_DELAY_MS);
+            } else {
+              setTimeout(poll, POLL_INTERVAL_MS);
+            }
+          };
+
+          poll();
+        });
+      },
+    }), [beforeLoaded, afterLoaded]);
+
+    return (
+      <CaptureWrapper
+        ref={viewShotRef}
+        options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+        style={styles.captureWrapper}
+      >
+        <View style={styles.card}>
+          {/* ── PHOTOS ROW ── */}
+          <View style={styles.photoRow}>
+            <View style={styles.photoContainer}>
+              {!beforeLoaded && (
+                <View style={styles.photoPlaceholder}>
+                  <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
+                </View>
+              )}
+              <Image
+                source={resolveImageSource(beforePhoto)}
+                style={styles.photo}
+                resizeMode="cover"
+                onLoad={() => {
+                  console.log('[ShareableProgressCard] Before photo loaded');
+                  setBeforeLoaded(true);
+                }}
+              />
+            </View>
+            <View style={styles.photoContainer}>
+              {!afterLoaded && (
+                <View style={styles.photoPlaceholder}>
+                  <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
+                </View>
+              )}
+              <Image
+                source={resolveImageSource(afterPhoto)}
+                style={styles.photo}
+                resizeMode="cover"
+                onLoad={() => {
+                  console.log('[ShareableProgressCard] After photo loaded');
+                  setAfterLoaded(true);
+                }}
+              />
             </View>
           </View>
-        )}
-      </View>
-    </CaptureWrapper>
-  );
-}
+
+          {/* ── LEADERBOARD BADGE ── */}
+          {hasLeaderboard && (
+            <View style={styles.badgeContainer}>
+              <View style={styles.leaderboardBadge}>
+                <Text style={styles.leaderboardText}>{leaderboardPhrase}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </CaptureWrapper>
+    );
+  }
+);
+
+export default ShareableProgressCard;
 
 const styles = StyleSheet.create({
   captureWrapper: {

@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import ShareableProgressCard from '@/components/ShareableProgressCard';
+import ShareableProgressCard, { ShareableProgressCardHandle } from '@/components/ShareableProgressCard';
 import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
 import { TouchableOpacity } from 'react-native';
 import * as Sharing from 'expo-sharing';
@@ -48,7 +48,7 @@ export default function ShareProgressScreen() {
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [cardData, setCardData] = useState<CardData | null>(null);
-  const viewShotRef = useRef<ViewShot>(null);
+  const viewShotRef = useRef<ShareableProgressCardHandle>(null);
 
   const calculateProteinAccuracyScore = useCallback((proteinLogged: number, proteinTarget: number): number => {
     if (proteinTarget === 0) {
@@ -430,7 +430,7 @@ export default function ShareProgressScreen() {
       setSharing(true);
       console.log('[ShareProgress] Capturing card...');
 
-      const uri = await viewShotRef.current.capture();
+      const uri = await viewShotRef.current.captureWhenReady();
       console.log('[ShareProgress] Card captured:', uri);
 
       const isAvailable = await Sharing.isAvailableAsync();
@@ -562,12 +562,12 @@ export default function ShareProgressScreen() {
 
         <View style={styles.cardPreview}>
           <ShareableProgressCard
+            ref={viewShotRef}
             beforePhoto={cardData.beforePhotoUrl}
             afterPhoto={cardData.afterPhotoUrl}
             beforeDate={cardData.beforeDateLabel}
             afterDate={cardData.afterDateLabel}
             leaderboardPhrase={cardData.leaderboardPhrase}
-            onCapture={(ref) => { viewShotRef.current = ref.current; }}
           />
         </View>
 
