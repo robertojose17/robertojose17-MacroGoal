@@ -18,6 +18,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { usePremium } from '@/hooks/usePremium';
 import { supabase } from '@/lib/supabase/client';
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 
 /**
  * AI Meal Estimator Screen
@@ -39,6 +40,14 @@ export default function AIMealEstimatorScreen() {
   const [mealDescription, setMealDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  const { isRecording, isTranscribing, startRecording, stopRecordingAndTranscribe } = useVoiceRecorder({
+    onTranscription: (text) => {
+      console.log('[AIMealEstimator] Voice transcription received:', text);
+      setMealDescription(text);
+    },
+    onError: (message) => Alert.alert('Error de voz', message),
+  });
 
   // --- Premium gate ---
   if (premiumLoading) {
@@ -177,23 +186,49 @@ export default function AIMealEstimatorScreen() {
           Describe your meal
         </Text>
         
-        <TextInput
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.backgroundAlt,
-              color: colors.text,
-              borderColor: colors.grey,
-            },
-          ]}
-          placeholder="e.g., Grilled chicken breast with rice and broccoli"
-          placeholderTextColor={colors.grey}
-          value={mealDescription}
-          onChangeText={setMealDescription}
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.backgroundAlt,
+                color: colors.text,
+                borderColor: isRecording ? '#FF3B30' : colors.grey,
+              },
+            ]}
+            placeholder="e.g., Grilled chicken breast with rice and broccoli"
+            placeholderTextColor={colors.grey}
+            value={mealDescription}
+            onChangeText={setMealDescription}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
+          <TouchableOpacity
+            style={[styles.micButton, { backgroundColor: isRecording ? '#FF3B3015' : colors.primary + '15' }]}
+            onPress={() => {
+              if (isRecording) {
+                console.log('[AIMealEstimator] Mic button pressed — stopping recording');
+                stopRecordingAndTranscribe();
+              } else {
+                console.log('[AIMealEstimator] Mic button pressed — starting recording');
+                startRecording();
+              }
+            }}
+            disabled={isAnalyzing || isTranscribing}
+          >
+            {isTranscribing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol
+                ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
+                android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
+                size={22}
+                color={isRecording ? '#FF3B30' : colors.primary}
+              />
+            )}
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={[styles.analyzeButton, isAnalyzing && styles.analyzeButtonDisabled]}
@@ -310,7 +345,20 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     fontSize: typography.md,
     minHeight: 120,
+  },
+  inputWrapper: {
+    position: 'relative',
     marginBottom: spacing.lg,
+  },
+  micButton: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   analyzeButton: {
     backgroundColor: colors.primary,
