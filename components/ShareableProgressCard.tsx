@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Image,
   Platform,
   ImageSourcePropType,
+  ActivityIndicator,
 } from 'react-native';
 
 // react-native-view-shot requires a native build — lazy import so Expo Go doesn't hang
@@ -39,6 +40,8 @@ export default function ShareableProgressCard({
   onCapture,
 }: ShareableProgressCardProps) {
   const viewShotRef = useRef<any>(null);
+  const [beforeLoaded, setBeforeLoaded] = useState(false);
+  const [afterLoaded, setAfterLoaded] = useState(false);
 
   const hasLeaderboard = !!leaderboardPhrase;
 
@@ -57,16 +60,38 @@ export default function ShareableProgressCard({
       <View style={styles.card}>
         {/* ── PHOTOS ROW ── */}
         <View style={styles.photoRow}>
-          <Image
-            source={resolveImageSource(beforePhoto)}
-            style={styles.photo}
-            resizeMode="cover"
-          />
-          <Image
-            source={resolveImageSource(afterPhoto)}
-            style={styles.photo}
-            resizeMode="cover"
-          />
+          <View style={styles.photoContainer}>
+            {!beforeLoaded && (
+              <View style={styles.photoPlaceholder}>
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
+              </View>
+            )}
+            <Image
+              source={resolveImageSource(beforePhoto)}
+              style={styles.photo}
+              resizeMode="cover"
+              onLoad={() => {
+                console.log('[ShareableProgressCard] Before photo loaded');
+                setBeforeLoaded(true);
+              }}
+            />
+          </View>
+          <View style={styles.photoContainer}>
+            {!afterLoaded && (
+              <View style={styles.photoPlaceholder}>
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
+              </View>
+            )}
+            <Image
+              source={resolveImageSource(afterPhoto)}
+              style={styles.photo}
+              resizeMode="cover"
+              onLoad={() => {
+                console.log('[ShareableProgressCard] After photo loaded');
+                setAfterLoaded(true);
+              }}
+            />
+          </View>
         </View>
 
         {/* ── LEADERBOARD BADGE ── */}
@@ -99,8 +124,24 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 320,
   },
-  photo: {
+  photoContainer: {
     width: '50%',
+    height: '100%',
+    backgroundColor: '#1A1A1A',
+  },
+  photoPlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1A1A',
+    zIndex: 1,
+  },
+  photo: {
+    width: '100%',
     height: '100%',
   },
   badgeContainer: {
