@@ -15,7 +15,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
 import { TouchableOpacity } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
@@ -33,6 +33,11 @@ interface CardData {
   weightLost: number;
   dayStreak: number;
   motivationalLine: string;
+  leaderboardPhrase: string;
+  beforePhotoUrl?: string | null;
+  afterPhotoUrl?: string | null;
+  beforeDateLabel?: string;
+  afterDateLabel?: string;
 }
 
 export default function ShareProgressScreen() {
@@ -69,15 +74,10 @@ export default function ShareProgressScreen() {
     }
   }, []);
 
-  /**
-   * Calculate Consistency Score based on check-in data
-   * Uses the same logic as ConsistencyScore component
-   */
   const calculateConsistencyScore = useCallback(async (userId: string, startDate: string, proteinTarget: number): Promise<number> => {
     try {
       const today = toLocalDateString();
-      
-      // Get all meals in the date range
+
       const { data: allMeals } = await supabase
         .from('meals')
         .select(`
@@ -94,7 +94,6 @@ export default function ShareProgressScreen() {
         .lte('date', today)
         .order('date', { ascending: true });
 
-      // Organize data by date
       const dailyData: { [date: string]: { calories: number; protein: number; hasMeals: boolean } } = {};
 
       if (allMeals && allMeals.length > 0) {
@@ -105,11 +104,11 @@ export default function ShareProgressScreen() {
 
           if (meal.meal_items && meal.meal_items.length > 0) {
             dailyData[meal.date].hasMeals = true;
-            
+
             for (const item of meal.meal_items) {
               const itemCalories = parseFloat(String(item.calories || '0'));
               const itemProtein = parseFloat(String(item.protein || '0'));
-              
+
               dailyData[meal.date].calories += itemCalories;
               dailyData[meal.date].protein += itemProtein;
             }
@@ -117,7 +116,6 @@ export default function ShareProgressScreen() {
         }
       }
 
-      // Generate all dates in range
       const allDatesInRange: string[] = [];
       const start = new Date(startDate + 'T00:00:00');
       const end = new Date(today + 'T00:00:00');
@@ -129,53 +127,42 @@ export default function ShareProgressScreen() {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Edge case: If range > 2 days with no data at all, score = 0
       const hasNoData = Object.keys(dailyData).length === 0;
       if (allDatesInRange.length > 2 && hasNoData) {
         return 0;
       }
 
-      // Calculate daily scores
       const dailyScores: { trackingScore: number; streakScore: number; proteinScore: number }[] = [];
       let currentStreakDays = 0;
 
       for (let i = 0; i < allDatesInRange.length; i++) {
         const date = allDatesInRange[i];
         const dayData = dailyData[date];
-        
-        // A) Daily Tracking Score (0 or 40)
+
         const hasTracking = dayData?.hasMeals || false;
         const trackingScore = hasTracking ? 40 : 0;
 
-        // B) Streak Score (0-35)
         if (hasTracking) {
           currentStreakDays++;
         } else {
           currentStreakDays = Math.floor(currentStreakDays * 0.3);
         }
 
-        const streakScore = currentStreakDays > 0 
+        const streakScore = currentStreakDays > 0
           ? Math.round(35 * (1 - Math.exp(-0.1 * currentStreakDays)))
           : 0;
 
-        // C) Protein Accuracy Score (0-25)
         const proteinLogged = dayData?.protein || 0;
         const proteinScore = calculateProteinAccuracyScore(proteinLogged, proteinTarget);
 
-        dailyScores.push({
-          trackingScore,
-          streakScore,
-          proteinScore,
-        });
+        dailyScores.push({ trackingScore, streakScore, proteinScore });
       }
 
-      // Calculate averages
       const avgTracking = dailyScores.reduce((sum, day) => sum + day.trackingScore, 0) / dailyScores.length;
       const avgStreak = dailyScores.reduce((sum, day) => sum + day.streakScore, 0) / dailyScores.length;
       const avgProtein = dailyScores.reduce((sum, day) => sum + day.proteinScore, 0) / dailyScores.length;
 
       const totalScore = Math.round(avgTracking + avgStreak + avgProtein);
-      // Ensure score is between 0 and 100
       return Math.max(0, Math.min(100, totalScore));
     } catch (error) {
       console.error('[ShareProgress] Error calculating consistency score:', error);
@@ -183,20 +170,13 @@ export default function ShareProgressScreen() {
     }
   }, [calculateProteinAccuracyScore]);
 
-  /**
-   * Calculate Weight Goal Progress (% Complete)
-   * % Complete = (Weight Lost so far ÷ Total Weight Goal) × 100
-   * Source: CHECK-IN data (not calories)
-   */
   const calculateWeightGoalProgress = async (
     userId: string,
     userData: any
   ): Promise<{ weightGoalProgress: number; weightLost: number }> => {
     try {
       console.log('[ShareProgress] === WEIGHT GOAL PROGRESS CALCULATION ===');
-      console.log('[ShareProgress] userData:', userData);
 
-      // Get all weight check-ins ordered by date
       const { data: checkIns } = await supabase
         .from('check_ins')
         .select('weight, date')
@@ -207,100 +187,53 @@ export default function ShareProgressScreen() {
       console.log('[ShareProgress] Check-ins found:', checkIns?.length || 0);
 
       if (!checkIns || checkIns.length === 0) {
-        console.log('[ShareProgress] No check-ins found, returning 0');
         return { weightGoalProgress: 0, weightLost: 0 };
       }
 
-      // Get first and last weight (in kg from database)
       const firstWeightKg = checkIns[0].weight;
       const lastWeightKg = checkIns[checkIns.length - 1].weight;
-      
-      console.log('[ShareProgress] First weight (kg):', firstWeightKg);
-      console.log('[ShareProgress] Last weight (kg):', lastWeightKg);
 
-      // Calculate weight lost in lbs
       const weightLostKg = firstWeightKg - lastWeightKg;
       const weightLostLbs = weightLostKg * 2.20462;
 
-      console.log('[ShareProgress] Weight lost (kg):', weightLostKg);
-      console.log('[ShareProgress] Weight lost (lbs):', weightLostLbs);
-
-      // Calculate % complete if goal weight is set
       let weightGoalProgress = 0;
-
-      // Parse goal_weight from userData
       const goalWeightRaw = userData?.goal_weight;
-      console.log('[ShareProgress] Goal weight (raw):', goalWeightRaw);
 
       if (goalWeightRaw) {
         const goalWeightKg = parseFloat(goalWeightRaw);
-        console.log('[ShareProgress] Goal weight (kg):', goalWeightKg);
-
         if (!isNaN(goalWeightKg) && goalWeightKg > 0) {
-          // Calculate total weight goal (starting weight - goal weight)
           const totalWeightGoalKg = firstWeightKg - goalWeightKg;
           const totalWeightGoalLbs = totalWeightGoalKg * 2.20462;
-          
-          console.log('[ShareProgress] Total weight goal (kg):', totalWeightGoalKg);
-          console.log('[ShareProgress] Total weight goal (lbs):', totalWeightGoalLbs);
-
-          // DEFENSIVE GUARD: Only calculate % if totalWeightGoalLbs > 0
-          const isValidGoal = totalWeightGoalLbs > 0;
-          if (isValidGoal) {
+          if (totalWeightGoalLbs > 0) {
             weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
-            console.log('[ShareProgress] Weight goal progress (%):', weightGoalProgress);
-          } else {
-            console.log('[ShareProgress] Total weight goal <= 0, cannot calculate %');
-            weightGoalProgress = 0;
           }
-        } else {
-          console.log('[ShareProgress] Invalid goal weight, cannot calculate %');
         }
       } else {
-        console.log('[ShareProgress] No goal weight set');
-        // If no goal weight, assume 10% of starting weight as goal
         const assumedGoalLbs = (firstWeightKg * 2.20462) * 0.1;
-        const hasAssumedGoal = assumedGoalLbs > 0;
-        if (hasAssumedGoal) {
+        if (assumedGoalLbs > 0) {
           weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
-          console.log('[ShareProgress] Using assumed goal (10% of start), progress:', weightGoalProgress);
         }
       }
 
-      // DEFENSIVE GUARD: Clamp progress between 0 and 100, handle NaN/Infinity
       if (isNaN(weightGoalProgress) || !isFinite(weightGoalProgress)) {
-        console.log('[ShareProgress] Invalid progress value, setting to 0');
         weightGoalProgress = 0;
       } else {
         weightGoalProgress = Math.max(0, Math.min(100, Math.round(weightGoalProgress)));
       }
 
-      // DEFENSIVE GUARD: Ensure weightLost is non-negative and rounded
       const finalWeightLost = Math.max(0, Math.round(weightLostLbs * 10) / 10);
 
-      console.log('[ShareProgress] === FINAL VALUES ===');
-      console.log('[ShareProgress] Weight goal progress:', weightGoalProgress);
-      console.log('[ShareProgress] Weight lost:', finalWeightLost);
-
-      return {
-        weightGoalProgress,
-        weightLost: finalWeightLost,
-      };
+      return { weightGoalProgress, weightLost: finalWeightLost };
     } catch (error) {
       console.error('[ShareProgress] Error calculating weight goal progress:', error);
       return { weightGoalProgress: 0, weightLost: 0 };
     }
   };
 
-  /**
-   * Calculate Day Streak
-   * Consecutive days with at least one meal logged
-   */
   const calculateDayStreak = async (userId: string, startDate: string): Promise<number> => {
     try {
       const today = toLocalDateString();
-      
-      // Get all meals from start date to today
+
       const { data: allMeals } = await supabase
         .from('meals')
         .select('date, meal_items(calories)')
@@ -313,7 +246,6 @@ export default function ShareProgressScreen() {
         return 0;
       }
 
-      // Find days with logged meals
       const daysWithData = new Set<string>();
       allMeals.forEach((meal: any) => {
         if (meal.meal_items && meal.meal_items.length > 0) {
@@ -323,19 +255,13 @@ export default function ShareProgressScreen() {
         }
       });
 
-      // Calculate current streak (working backwards from today)
       let streak = 0;
       const currentDate = new Date(today + 'T00:00:00');
-      const maxIterations = 1000; // Safety limit to prevent infinite loop
-      
+      const maxIterations = 1000;
+
       while (streak < maxIterations) {
         const dateStr = toLocalDateString(currentDate);
-        
-        // Safety check: don't go before start date
-        if (dateStr < startDate) {
-          break;
-        }
-        
+        if (dateStr < startDate) break;
         if (daysWithData.has(dateStr)) {
           streak++;
           currentDate.setDate(currentDate.getDate() - 1);
@@ -351,24 +277,14 @@ export default function ShareProgressScreen() {
     }
   };
 
-  /**
-   * Get Motivational Line
-   * Based on consistency score, weight lost, and day streak
-   */
   const getMotivationalLine = (
     consistencyScore: number,
     weightLost: number,
     dayStreak: number
   ): string => {
-    if (dayStreak >= 14) {
-      return 'Still showing up 💪';
-    }
-    if (consistencyScore >= 90) {
-      return 'One step closer 🔥';
-    }
-    if (weightLost >= 5) {
-      return 'Progress over perfection';
-    }
+    if (dayStreak >= 14) return 'Still showing up 💪';
+    if (consistencyScore >= 90) return 'One step closer 🔥';
+    if (weightLost >= 5) return 'Progress over perfection';
     return 'Small wins add up';
   };
 
@@ -377,7 +293,6 @@ export default function ShareProgressScreen() {
       setLoading(true);
       console.log('[ShareProgress] Loading card data...');
 
-      // Get user
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         console.log('[ShareProgress] No user found');
@@ -385,20 +300,10 @@ export default function ShareProgressScreen() {
         return;
       }
 
-      // Get user profile
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      // Get active goal
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .maybeSingle();
+      const [{ data: userData }, { data: goalData }] = await Promise.all([
+        supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
+        supabase.from('goals').select('*').eq('user_id', authUser.id).eq('is_active', true).maybeSingle(),
+      ]);
 
       const goal = goalData || {
         daily_calories: 2000,
@@ -409,7 +314,6 @@ export default function ShareProgressScreen() {
         start_date: toLocalDateString(),
       };
 
-      // Determine journey start date
       let startDate: string;
       if (goalData?.start_date) {
         startDate = goalData.start_date;
@@ -421,25 +325,75 @@ export default function ShareProgressScreen() {
 
       console.log('[ShareProgress] Journey start date:', startDate);
 
-      // ===== CALCULATE CONSISTENCY SCORE =====
-      const consistencyScore = await calculateConsistencyScore(authUser.id, startDate, goal.protein_g || 150);
-      console.log('[ShareProgress] Consistency Score:', consistencyScore);
+      // Run independent calculations in parallel
+      const [consistencyScore, weightResult, dayStreak, checkInsWithPhotos] = await Promise.all([
+        calculateConsistencyScore(authUser.id, startDate, goal.protein_g || 150),
+        calculateWeightGoalProgress(authUser.id, userData),
+        calculateDayStreak(authUser.id, startDate),
+        supabase
+          .from('check_ins')
+          .select('id, date, photo_url')
+          .eq('user_id', authUser.id)
+          .not('photo_url', 'is', null)
+          .order('date', { ascending: true }),
+      ]);
 
-      // ===== CALCULATE WEIGHT GOAL PROGRESS (% COMPLETE) =====
-      const { weightGoalProgress, weightLost } = await calculateWeightGoalProgress(
-        authUser.id,
-        userData
-      );
+      const { weightGoalProgress, weightLost } = weightResult;
+
+      console.log('[ShareProgress] Consistency Score:', consistencyScore);
       console.log('[ShareProgress] Weight Goal Progress:', weightGoalProgress, '%');
       console.log('[ShareProgress] Weight Lost:', weightLost, 'lb');
-
-      // ===== CALCULATE DAY STREAK =====
-      const dayStreak = await calculateDayStreak(authUser.id, startDate);
       console.log('[ShareProgress] Day Streak:', dayStreak);
 
-      // ===== GET MOTIVATIONAL LINE =====
+      // Extract before/after photos
+      const photosData = checkInsWithPhotos.data ?? [];
+      const beforeCheckIn = photosData.length > 0 ? photosData[0] : null;
+      const afterCheckIn = photosData.length > 1 ? photosData[photosData.length - 1] : null;
+
+      const beforePhotoUrl: string | null = beforeCheckIn?.photo_url ?? null;
+      const afterPhotoUrl: string | null = afterCheckIn?.photo_url ?? null;
+
+      const formatDateLabel = (dateStr: string | null | undefined): string => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      };
+
+      const beforeDateLabel = formatDateLabel(beforeCheckIn?.date);
+      const afterDateLabel = photosData.length > 1 ? formatDateLabel(afterCheckIn?.date) : 'Today';
+
+      console.log('[ShareProgress] Before photo:', beforePhotoUrl ? 'found' : 'none');
+      console.log('[ShareProgress] After photo:', afterPhotoUrl ? 'found' : 'none');
+
+      // Fetch leaderboard phrase
+      const fallbackPhrase = "Keep going — you're building momentum 📈";
+      let leaderboardPhrase = fallbackPhrase;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('[ShareProgress] Fetching leaderboard rank for score:', consistencyScore);
+        const leaderboardResponse = await fetch(
+          `${SUPABASE_PROJECT_URL}/functions/v1/get-leaderboard-rank`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+            body: JSON.stringify({ score: consistencyScore }),
+          }
+        );
+        if (leaderboardResponse.ok) {
+          const leaderboardData = await leaderboardResponse.json();
+          leaderboardPhrase = leaderboardData.phrase ?? fallbackPhrase;
+          console.log('[ShareProgress] Leaderboard phrase:', leaderboardPhrase);
+        } else {
+          console.warn('[ShareProgress] Leaderboard rank fetch returned', leaderboardResponse.status);
+        }
+      } catch (e) {
+        console.warn('[ShareProgress] Leaderboard rank fetch failed, using fallback');
+      }
+
       const motivationalLine = getMotivationalLine(consistencyScore, weightLost, dayStreak);
-      console.log('[ShareProgress] Motivational Line:', motivationalLine);
 
       setCardData({
         consistencyScore,
@@ -447,6 +401,11 @@ export default function ShareProgressScreen() {
         weightLost,
         dayStreak,
         motivationalLine,
+        leaderboardPhrase,
+        beforePhotoUrl,
+        afterPhotoUrl,
+        beforeDateLabel,
+        afterDateLabel,
       });
 
       setLoading(false);
@@ -461,6 +420,7 @@ export default function ShareProgressScreen() {
   }, [loadCardData]);
 
   const handleShare = async () => {
+    console.log('[ShareProgress] Share button pressed');
     if (!viewShotRef.current) {
       console.log('[ShareProgress] ViewShot ref not available');
       return;
@@ -470,21 +430,18 @@ export default function ShareProgressScreen() {
       setSharing(true);
       console.log('[ShareProgress] Capturing card...');
 
-      // Capture the card as an image
       const uri = await viewShotRef.current.capture();
       console.log('[ShareProgress] Card captured:', uri);
 
-      // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
         Alert.alert('Sharing not available', 'Sharing is not available on this device');
         setSharing(false);
         return;
       }
-      
+
       console.log('[ShareProgress] Sharing is available, proceeding...');
-      
-      // Share the image
+
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
         dialogTitle: 'Share your progress',
@@ -509,7 +466,7 @@ export default function ShareProgressScreen() {
         edges={['top']}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => { console.log('[ShareProgress] Back pressed'); router.back(); }} style={styles.backButton}>
             <IconSymbol
               ios_icon_name="chevron.left"
               android_material_icon_name="arrow_back"
@@ -542,7 +499,7 @@ export default function ShareProgressScreen() {
         edges={['top']}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => { console.log('[ShareProgress] Back pressed'); router.back(); }} style={styles.backButton}>
             <IconSymbol
               ios_icon_name="chevron.left"
               android_material_icon_name="arrow_back"
@@ -573,7 +530,7 @@ export default function ShareProgressScreen() {
       edges={['top']}
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => { console.log('[ShareProgress] Back pressed'); router.back(); }} style={styles.backButton}>
           <IconSymbol
             ios_icon_name="chevron.left"
             android_material_icon_name="arrow_back"
@@ -605,10 +562,19 @@ export default function ShareProgressScreen() {
 
         <View style={styles.cardPreview}>
           <ShareableProgressCard
-            {...cardData}
-            onCapture={(ref) => {
-              viewShotRef.current = ref.current;
-            }}
+            consistencyScore={cardData.consistencyScore}
+            weightGoalProgress={cardData.weightGoalProgress}
+            weightLost={cardData.weightLost}
+            dayStreak={cardData.dayStreak}
+            trackedDays={0}
+            totalDays={1}
+            avgProteinAccuracy={0}
+            leaderboardPhrase={cardData.leaderboardPhrase}
+            beforePhotoUrl={cardData.beforePhotoUrl}
+            afterPhotoUrl={cardData.afterPhotoUrl}
+            beforeDateLabel={cardData.beforeDateLabel}
+            afterDateLabel={cardData.afterDateLabel}
+            onCapture={(ref) => { viewShotRef.current = ref.current; }}
           />
         </View>
 
@@ -733,7 +699,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
     transform: [{ scale: 0.28 }],
-    marginVertical: -420,
+    marginVertical: -691,
   },
   shareButton: {
     backgroundColor: colors.primary,

@@ -19,19 +19,21 @@ if (Platform.OS !== 'web') {
 // Fallback wrapper when ViewShot is unavailable (Expo Go / web)
 const CaptureWrapper: any = ViewShot || View;
 
+const logoSource = require('@/assets/images/f2a2c236-6222-458c-89ac-a96bcb5eeff1.jpeg');
+
 interface ShareableProgressCardProps {
   consistencyScore: number;
-  weightGoalProgress: number;    // % complete (0-100)
-  weightLost: number;            // in lbs
+  weightGoalProgress: number;
+  weightLost: number;
   dayStreak: number;
-  trackedDays: number;           // e.g. 42
-  totalDays: number;             // e.g. 50
-  avgProteinAccuracy: number;    // % (0-100)
-  leaderboardPhrase: string;     // e.g. "You're in the top 15% of Macro Goal users 🔥"
+  trackedDays: number;
+  totalDays: number;
+  avgProteinAccuracy: number;
+  leaderboardPhrase: string;
   beforePhotoUrl?: string | null;
   afterPhotoUrl?: string | null;
-  beforeDateLabel?: string;      // e.g. "Jan 5"
-  afterDateLabel?: string;       // e.g. "Today"
+  beforeDateLabel?: string;
+  afterDateLabel?: string;
   onCapture?: (ref: React.RefObject<any>) => void;
 }
 
@@ -42,13 +44,6 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 }
 
 export default function ShareableProgressCard({
-  consistencyScore,
-  weightGoalProgress,
-  weightLost,
-  dayStreak,
-  trackedDays,
-  totalDays,
-  avgProteinAccuracy,
   leaderboardPhrase,
   beforePhotoUrl,
   afterPhotoUrl,
@@ -64,23 +59,7 @@ export default function ShareableProgressCard({
     }
   }, [onCapture]);
 
-  // Defensive guards for all numeric values
-  const safeConsistency = isNaN(consistencyScore) || !isFinite(consistencyScore) ? 0 : Math.max(0, Math.min(100, Math.round(consistencyScore)));
-  const safeWeightGoal = isNaN(weightGoalProgress) || !isFinite(weightGoalProgress) ? 0 : Math.max(0, Math.min(100, Math.round(weightGoalProgress)));
-  const safeWeightLost = isNaN(weightLost) || !isFinite(weightLost) ? 0 : Math.max(0, weightLost);
-  const safeDayStreak = isNaN(dayStreak) || !isFinite(dayStreak) ? 0 : Math.max(0, Math.round(dayStreak));
-  const safeTrackedDays = isNaN(trackedDays) || !isFinite(trackedDays) ? 0 : Math.max(0, Math.round(trackedDays));
-  const safeTotalDays = isNaN(totalDays) || !isFinite(totalDays) ? 1 : Math.max(1, Math.round(totalDays));
-  const safeProteinAccuracy = isNaN(avgProteinAccuracy) || !isFinite(avgProteinAccuracy) ? 0 : Math.max(0, Math.min(100, Math.round(avgProteinAccuracy)));
-
   console.log('[ShareableProgressCard] Rendering with values:', {
-    safeConsistency,
-    safeWeightGoal,
-    safeWeightLost,
-    safeDayStreak,
-    safeTrackedDays,
-    safeTotalDays,
-    safeProteinAccuracy,
     leaderboardPhrase,
     hasBeforePhoto: !!beforePhotoUrl,
     hasAfterPhoto: !!afterPhotoUrl,
@@ -92,11 +71,8 @@ export default function ShareableProgressCard({
   const singlePhotoUrl = beforePhotoUrl || afterPhotoUrl;
   const singlePhotoLabel = beforePhotoUrl ? (beforeDateLabel || '') : (afterDateLabel || 'Today');
 
-  const weightLostDisplay = `-${safeWeightLost.toFixed(1)} lb`;
-  const weightGoalDisplay = `${safeWeightGoal}%`;
-  const trackedDaysDisplay = `${safeTrackedDays}/${safeTotalDays}`;
-  const proteinDisplay = `${safeProteinAccuracy}%`;
-  const streakDisplay = `${safeDayStreak}🔥`;
+  const resolvedBeforeLabel = beforeDateLabel || '';
+  const resolvedAfterLabel = afterDateLabel || 'Today';
 
   return (
     <CaptureWrapper
@@ -106,69 +82,48 @@ export default function ShareableProgressCard({
     >
       <View style={styles.card}>
 
-        {/* ── HEADER ── */}
-        <View style={styles.header}>
-          <Text style={styles.appName}>MACRO GOAL</Text>
-          <Text style={styles.tagline}>Track. Improve. Share.</Text>
-        </View>
-
         {/* ── PHOTOS SECTION ── */}
-        {hasAnyPhoto && (
+        {hasAnyPhoto ? (
           <View style={styles.photosSection}>
             {hasBothPhotos ? (
               <View style={styles.photoRow}>
                 <View style={styles.photoContainer}>
-                  <Image source={resolveImageSource(beforePhotoUrl)} style={styles.photo} resizeMode="cover" />
-                  <Text style={styles.photoLabel}>{beforeDateLabel || ''}</Text>
+                  <Image
+                    source={resolveImageSource(beforePhotoUrl)}
+                    style={styles.photo}
+                    resizeMode="cover"
+                  />
+                  <Text style={styles.photoLabel}>{resolvedBeforeLabel}</Text>
                 </View>
                 <View style={styles.photoContainer}>
-                  <Image source={resolveImageSource(afterPhotoUrl)} style={styles.photo} resizeMode="cover" />
-                  <Text style={styles.photoLabel}>{afterDateLabel || 'Today'}</Text>
+                  <Image
+                    source={resolveImageSource(afterPhotoUrl)}
+                    style={styles.photo}
+                    resizeMode="cover"
+                  />
+                  <Text style={styles.photoLabel}>{resolvedAfterLabel}</Text>
                 </View>
               </View>
             ) : hasSinglePhoto ? (
               <View style={styles.singlePhotoContainer}>
-                <Image source={resolveImageSource(singlePhotoUrl)} style={styles.singlePhoto} resizeMode="cover" />
+                <Image
+                  source={resolveImageSource(singlePhotoUrl)}
+                  style={styles.singlePhoto}
+                  resizeMode="cover"
+                />
                 <Text style={styles.photoLabel}>{singlePhotoLabel}</Text>
               </View>
             ) : null}
           </View>
+        ) : (
+          <View style={styles.placeholderSection}>
+            <Text style={styles.placeholderText}>
+              Add progress photos to see your transformation
+            </Text>
+          </View>
         )}
 
-        {/* ── SIX METRIC CARDS ── */}
-        <View style={styles.metricsGrid}>
-          {/* Row 1 */}
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, styles.colorTeal]}>{safeConsistency}</Text>
-            <Text style={styles.metricLabel}>Consistency Score</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, styles.colorOrange]}>{streakDisplay}</Text>
-            <Text style={styles.metricLabel}>Day Streak</Text>
-          </View>
-
-          {/* Row 2 */}
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, styles.colorGreen]}>{weightLostDisplay}</Text>
-            <Text style={styles.metricLabel}>Weight Lost</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, styles.colorGreen]}>{weightGoalDisplay}</Text>
-            <Text style={styles.metricLabel}>to Weight Goal</Text>
-          </View>
-
-          {/* Row 3 */}
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, styles.colorTeal]}>{trackedDaysDisplay}</Text>
-            <Text style={styles.metricLabel}>Days Tracked</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, styles.colorPurple]}>{proteinDisplay}</Text>
-            <Text style={styles.metricLabel}>Protein Accuracy</Text>
-          </View>
-        </View>
-
-        {/* ── LEADERBOARD PHRASE ── */}
+        {/* ── LEADERBOARD BADGE ── */}
         <LinearGradient
           colors={['#5B9AA8', '#4A8A98']}
           start={{ x: 0, y: 0 }}
@@ -178,10 +133,13 @@ export default function ShareableProgressCard({
           <Text style={styles.leaderboardText}>{leaderboardPhrase}</Text>
         </LinearGradient>
 
-        {/* ── FOOTER ── */}
-        <View style={styles.footer}>
-          <Text style={styles.footerBuilt}>Built with Macro Goal</Text>
-          <Text style={styles.footerUrl}>macrogoal.app</Text>
+        {/* ── LOGO ── */}
+        <View style={styles.logoContainer}>
+          <Image
+            source={logoSource}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
 
       </View>
@@ -193,50 +151,29 @@ const styles = StyleSheet.create({
   captureWrapper: {
     width: 1080,
     height: 1920,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0F1117',
   },
   card: {
     width: 1080,
     height: 1920,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#0F1117',
     alignItems: 'center',
     paddingHorizontal: 48,
     paddingTop: 80,
-    paddingBottom: 60,
-  },
-
-  // ── HEADER ──
-  header: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    width: '100%',
-    borderRadius: 24,
-    paddingVertical: 48,
-    marginBottom: 40,
-  },
-  appName: {
-    fontSize: 52,
-    fontWeight: '700',
-    color: '#5B9AA8',
-    letterSpacing: 4,
-  },
-  tagline: {
-    fontSize: 24,
-    fontWeight: '400',
-    color: '#9CA3AF',
-    marginTop: 12,
-    letterSpacing: 1,
+    paddingBottom: 80,
   },
 
   // ── PHOTOS ──
   photosSection: {
     width: '100%',
-    marginBottom: 40,
+    flex: 1,
+    marginBottom: 48,
   },
   photoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 24,
+    flex: 1,
   },
   photoContainer: {
     alignItems: 'center',
@@ -244,99 +181,77 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: 480,
-    height: 640,
-    borderRadius: 20,
-    backgroundColor: '#E5E7EB',
+    height: 1200,
+    borderRadius: 24,
+    backgroundColor: '#1C1F2A',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   singlePhotoContainer: {
     alignItems: 'center',
+    flex: 1,
   },
   singlePhoto: {
-    width: 840,
-    height: 640,
-    borderRadius: 20,
-    backgroundColor: '#E5E7EB',
+    width: 984,
+    height: 1200,
+    borderRadius: 24,
+    backgroundColor: '#1C1F2A',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   photoLabel: {
-    fontSize: 24,
-    fontWeight: '400',
-    color: '#9CA3AF',
-    marginTop: 16,
+    fontSize: 28,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginTop: 20,
+    opacity: 0.8,
   },
 
-  // ── METRICS GRID ──
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 24,
+  // ── PLACEHOLDER ──
+  placeholderSection: {
     width: '100%',
-    justifyContent: 'space-between',
-    marginBottom: 40,
-  },
-  metricCard: {
-    width: 460,
-    height: 260,
-    backgroundColor: '#FFFFFF',
+    flex: 1,
+    marginBottom: 48,
     borderRadius: 24,
+    backgroundColor: '#1C1F2A',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    paddingHorizontal: 80,
   },
-  metricValue: {
-    fontSize: 120,
-    fontWeight: '700',
-    lineHeight: 140,
-  },
-  metricLabel: {
-    fontSize: 32,
-    fontWeight: '500',
-    color: '#9CA3AF',
-    marginTop: 4,
+  placeholderText: {
+    fontSize: 40,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.35)',
     textAlign: 'center',
-    paddingHorizontal: 16,
+    lineHeight: 60,
   },
-
-  // Metric value colors
-  colorTeal: { color: '#5B9AA8' },
-  colorOrange: { color: '#FF8A5B' },
-  colorGreen: { color: '#10B981' },
-  colorPurple: { color: '#8B5CF6' },
 
   // ── LEADERBOARD ──
   leaderboardBadge: {
     width: '100%',
-    borderRadius: 20,
+    borderRadius: 24,
     paddingHorizontal: 40,
-    paddingVertical: 32,
+    paddingVertical: 40,
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 48,
   },
   leaderboardText: {
-    fontSize: 40,
+    fontSize: 44,
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
-    lineHeight: 56,
+    lineHeight: 60,
   },
 
-  // ── FOOTER ──
-  footer: {
+  // ── LOGO ──
+  logoContainer: {
     alignItems: 'center',
-    marginTop: 'auto',
+    justifyContent: 'center',
   },
-  footerBuilt: {
-    fontSize: 24,
-    fontWeight: '400',
-    color: '#9CA3AF',
-    marginBottom: 8,
-  },
-  footerUrl: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#5B9AA8',
+  logo: {
+    width: 320,
+    height: 120,
   },
 });
