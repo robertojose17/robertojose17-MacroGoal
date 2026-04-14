@@ -128,6 +128,7 @@ const styles = StyleSheet.create({
     width: '50%',
     height: '100%',
     backgroundColor: '#1A1A1A',
+    overflow: 'hidden',
   },
   photoPlaceholder: {
     position: 'absolute',
@@ -141,8 +142,12 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   photo: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
   },
   badgeContainer: {
     alignItems: 'center',
