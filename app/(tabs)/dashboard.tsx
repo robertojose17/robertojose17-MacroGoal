@@ -23,7 +23,7 @@ import ProgressCard from '@/components/ProgressCard';
 import PhotoProgressCard from '@/components/PhotoProgressCard';
 import ConsistencyScore from '@/components/ConsistencyScore';
 import ShareableProgressCard from '@/components/ShareableProgressCard';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, SUPABASE_PROJECT_URL } from '@/lib/supabase/client';
 import * as Sharing from 'expo-sharing';
 import { toLocalDateString } from '@/utils/dateUtils';
 
@@ -462,23 +462,23 @@ export default function DashboardScreen() {
         return;
       }
 
-      // Load share card data
       const authUser = user;
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
 
-      const userName = userData?.name || 'Alex';
+      // Fetch user profile, active goal, and check-in photos in parallel
+      const { data: { session } } = await supabase.auth.getSession();
 
-      // Get active goal
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .maybeSingle();
+      const [userResult, goalResult, photosResult] = await Promise.all([
+        supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
+        supabase.from('goals').select('*').eq('user_id', authUser.id).eq('is_active', true).maybeSingle(),
+        fetch(`${SUPABASE_PROJECT_URL}/functions/v1/check-in-photos`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        }),
+      ]);
+
+      console.log('[Dashboard] Fetched user, goal, and photos in parallel');
+
+      const userData = userResult.data;
+      const goalData = goalResult.data;
 
       const goalForShare = goalData || {
         daily_calories: 2000,
@@ -488,6 +488,39 @@ export default function DashboardScreen() {
         fiber_g: 30,
         start_date: toLocalDateString(),
       };
+
+      // Parse photos
+      let beforePhotoUrl: string | null = null;
+      let afterPhotoUrl: string | null = null;
+      let beforeDateLabel = '';
+      let afterDateLabel = 'Today';
+
+      try {
+        if (photosResult.ok) {
+          const photosData = await photosResult.json();
+          const allPhotos: any[] = photosData.photos ?? [];
+          const sortedPhotos = [...allPhotos].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const formatDateShort = (iso: string) => {
+            const d = new Date(iso);
+            return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+          };
+          const beforePhoto = sortedPhotos.length >= 2 ? sortedPhotos[0] : null;
+          const afterPhoto = sortedPhotos.length >= 1 ? sortedPhotos[sortedPhotos.length - 1] : null;
+          beforePhotoUrl = beforePhoto?.photo_url ?? null;
+          afterPhotoUrl = afterPhoto?.photo_url ?? null;
+          beforeDateLabel = beforePhoto ? formatDateShort(beforePhoto.created_at) : '';
+          afterDateLabel = afterPhoto ? 'Today' : '';
+          console.log('[Dashboard] Photos loaded — before:', !!beforePhotoUrl, 'after:', !!afterPhotoUrl);
+        } else {
+          const errText = await photosResult.text();
+          console.warn('[Dashboard] check-in-photos fetch failed:', photosResult.status, errText);
+        }
+      } catch (photoErr) {
+        console.warn('[Dashboard] Error parsing photos response:', photoErr);
+      }
 
       // Get today's nutrition data
       const today = toLocalDateString();
@@ -525,7 +558,7 @@ export default function DashboardScreen() {
         });
       }
 
-      // Calculate streak (last 7 days for demo)
+      // Calculate streak (last 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
       const startDateStr = toLocalDateString(sevenDaysAgo);
@@ -550,12 +583,12 @@ export default function DashboardScreen() {
 
       const streakDays = daysWithData.size;
 
-      // Calculate protein accuracy
+      // Calculate protein accuracy (today)
       const proteinAccuracy = goalForShare.protein_g > 0
         ? Math.round((totalP / goalForShare.protein_g) * 100)
         : 0;
 
-      // Get weight data for weight lost calculation and goal progress
+      // Get weight data
       const { data: checkIns } = await supabase
         .from('check_ins')
         .select('weight, date')
@@ -569,27 +602,22 @@ export default function DashboardScreen() {
       if (checkIns && checkIns.length > 0) {
         const firstWeightKg = checkIns[0].weight;
         const lastWeightKg = checkIns[checkIns.length - 1].weight;
-        
-        // Calculate weight lost in lbs
         const weightLostKg = firstWeightKg - lastWeightKg;
         const weightLostLbs = weightLostKg * 2.20462;
         weightLost = Math.max(0, weightLostLbs);
 
-        // Calculate weight goal progress
         const goalWeightRaw = userData?.goal_weight;
         if (goalWeightRaw) {
           const goalWeightKg = parseFloat(goalWeightRaw);
           if (!isNaN(goalWeightKg) && goalWeightKg > 0) {
             const totalWeightGoalKg = firstWeightKg - goalWeightKg;
             const totalWeightGoalLbs = totalWeightGoalKg * 2.20462;
-            
             if (totalWeightGoalLbs > 0) {
               weightGoalProgress = (weightLostLbs / totalWeightGoalLbs) * 100;
               weightGoalProgress = Math.max(0, Math.min(100, weightGoalProgress));
             }
           }
         } else {
-          // If no goal weight, assume 10% of starting weight as goal
           const assumedGoalLbs = (firstWeightKg * 2.20462) * 0.1;
           if (assumedGoalLbs > 0) {
             weightGoalProgress = (weightLostLbs / assumedGoalLbs) * 100;
@@ -598,53 +626,72 @@ export default function DashboardScreen() {
         }
       }
 
-      // Defensive guards
-      if (isNaN(weightLost) || !isFinite(weightLost)) {
-        weightLost = 0;
-      }
-      if (isNaN(weightGoalProgress) || !isFinite(weightGoalProgress)) {
-        weightGoalProgress = 0;
-      }
+      if (isNaN(weightLost) || !isFinite(weightLost)) weightLost = 0;
+      if (isNaN(weightGoalProgress) || !isFinite(weightGoalProgress)) weightGoalProgress = 0;
 
       console.log('[Dashboard] Weight Lost:', weightLost, 'lb');
       console.log('[Dashboard] Weight Goal Progress:', weightGoalProgress, '%');
 
-      // Calculate discipline score (simplified version)
+      // Calculate discipline score
       const dailyTrackingScore = daysWithData.size >= 5 ? 40 : (daysWithData.size / 7) * 40;
       const streakScore = Math.min(35, streakDays * 5);
-      const proteinScore = proteinAccuracy >= 95 && proteinAccuracy <= 105 ? 25 : 
-                          proteinAccuracy >= 80 ? 20 : 
+      const proteinScore = proteinAccuracy >= 95 && proteinAccuracy <= 105 ? 25 :
+                          proteinAccuracy >= 80 ? 20 :
                           proteinAccuracy >= 60 ? 15 : 10;
       const disciplineScore = Math.round(dailyTrackingScore + streakScore + proteinScore);
 
-      // Format date range
-      const startDate = new Date(goalForShare.start_date + 'T00:00:00');
-      const dateRange = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - Today`;
+      console.log('[Dashboard] Discipline score:', disciplineScore);
 
-      // Get motivational line
-      const getMotivationalLine = (score: number, lost: number, streak: number): string => {
-        if (streak >= 14) {
-          return 'Still showing up 💪';
-        }
-        if (score >= 90) {
-          return 'One step closer 🔥';
-        }
-        if (lost >= 5) {
-          return 'Progress over perfection';
-        }
-        return 'Small wins add up';
-      };
+      // totalDays = days since goal start date
+      const goalStartDate = new Date(goalForShare.start_date + 'T00:00:00');
+      const todayDate = new Date();
+      const totalDays = Math.max(1, Math.ceil((todayDate.getTime() - goalStartDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-      const motivationalLine = getMotivationalLine(disciplineScore, weightLost, streakDays);
+      // avgProteinAccuracy across tracked days
+      const avgProteinAccuracy = streakDays > 0 && goalForShare.protein_g > 0
+        ? Math.min(100, Math.round((totalP / goalForShare.protein_g) * 100))
+        : 0;
+
+      // Call leaderboard Edge Function
+      let leaderboardPhrase = "Keep going — you're building momentum 📈";
+      try {
+        console.log('[Dashboard] Fetching leaderboard rank for score:', disciplineScore);
+        const leaderboardResponse = await fetch(`${SUPABASE_PROJECT_URL}/functions/v1/get-leaderboard-rank`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ score: disciplineScore }),
+        });
+        if (leaderboardResponse.ok) {
+          const leaderboardData = await leaderboardResponse.json();
+          leaderboardPhrase = leaderboardData.phrase ?? leaderboardPhrase;
+          console.log('[Dashboard] Leaderboard phrase:', leaderboardPhrase);
+        } else {
+          const errText = await leaderboardResponse.text();
+          console.warn('[Dashboard] Leaderboard rank fetch returned', leaderboardResponse.status, errText);
+        }
+      } catch (e) {
+        console.warn('[Dashboard] Leaderboard rank fetch failed, using fallback phrase');
+      }
 
       const cardData = {
         consistencyScore: disciplineScore,
         weightGoalProgress,
         weightLost,
         dayStreak: streakDays,
-        motivationalLine,
+        trackedDays: daysWithData.size,
+        totalDays,
+        avgProteinAccuracy,
+        leaderboardPhrase,
+        beforePhotoUrl,
+        afterPhotoUrl,
+        beforeDateLabel,
+        afterDateLabel,
       };
 
+      console.log('[Dashboard] Share card data ready:', cardData);
       setShareCardData(cardData);
 
       // Wait for the card to render

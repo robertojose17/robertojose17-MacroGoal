@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Image,
   Platform,
+  ImageSourcePropType,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -20,11 +21,24 @@ const CaptureWrapper: any = ViewShot || View;
 
 interface ShareableProgressCardProps {
   consistencyScore: number;
-  weightGoalProgress: number; // % complete (0-100)
-  weightLost: number; // in lbs
+  weightGoalProgress: number;    // % complete (0-100)
+  weightLost: number;            // in lbs
   dayStreak: number;
-  motivationalLine: string;
-  onCapture?: (ref: React.RefObject<ViewShot>) => void;
+  trackedDays: number;           // e.g. 42
+  totalDays: number;             // e.g. 50
+  avgProteinAccuracy: number;    // % (0-100)
+  leaderboardPhrase: string;     // e.g. "You're in the top 15% of Macro Goal users 🔥"
+  beforePhotoUrl?: string | null;
+  afterPhotoUrl?: string | null;
+  beforeDateLabel?: string;      // e.g. "Jan 5"
+  afterDateLabel?: string;       // e.g. "Today"
+  onCapture?: (ref: React.RefObject<any>) => void;
+}
+
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
 }
 
 export default function ShareableProgressCard({
@@ -32,82 +46,145 @@ export default function ShareableProgressCard({
   weightGoalProgress,
   weightLost,
   dayStreak,
+  trackedDays,
+  totalDays,
+  avgProteinAccuracy,
+  leaderboardPhrase,
+  beforePhotoUrl,
+  afterPhotoUrl,
+  beforeDateLabel,
+  afterDateLabel,
   onCapture,
 }: ShareableProgressCardProps) {
-  const viewShotRef = useRef<ViewShot>(null);
+  const viewShotRef = useRef<any>(null);
 
-  // Expose the ref to parent component
   React.useEffect(() => {
     if (onCapture && viewShotRef.current) {
       onCapture(viewShotRef);
     }
   }, [onCapture]);
 
-  // DEFENSIVE GUARDS: Ensure all numeric values are valid
-  const safeConsistencyScore = isNaN(consistencyScore) || !isFinite(consistencyScore) ? 0 : Math.max(0, Math.min(100, Math.round(consistencyScore)));
-  const safeWeightGoalProgress = isNaN(weightGoalProgress) || !isFinite(weightGoalProgress) ? 0 : Math.max(0, Math.min(100, Math.round(weightGoalProgress)));
+  // Defensive guards for all numeric values
+  const safeConsistency = isNaN(consistencyScore) || !isFinite(consistencyScore) ? 0 : Math.max(0, Math.min(100, Math.round(consistencyScore)));
+  const safeWeightGoal = isNaN(weightGoalProgress) || !isFinite(weightGoalProgress) ? 0 : Math.max(0, Math.min(100, Math.round(weightGoalProgress)));
   const safeWeightLost = isNaN(weightLost) || !isFinite(weightLost) ? 0 : Math.max(0, weightLost);
   const safeDayStreak = isNaN(dayStreak) || !isFinite(dayStreak) ? 0 : Math.max(0, Math.round(dayStreak));
+  const safeTrackedDays = isNaN(trackedDays) || !isFinite(trackedDays) ? 0 : Math.max(0, Math.round(trackedDays));
+  const safeTotalDays = isNaN(totalDays) || !isFinite(totalDays) ? 1 : Math.max(1, Math.round(totalDays));
+  const safeProteinAccuracy = isNaN(avgProteinAccuracy) || !isFinite(avgProteinAccuracy) ? 0 : Math.max(0, Math.min(100, Math.round(avgProteinAccuracy)));
 
-  console.log('[ShareableProgressCard] === RENDERING WITH VALUES ===');
-  console.log('[ShareableProgressCard] Consistency Score:', safeConsistencyScore);
-  console.log('[ShareableProgressCard] Weight Goal Progress:', safeWeightGoalProgress, '%');
-  console.log('[ShareableProgressCard] Weight Lost:', safeWeightLost, 'lb');
-  console.log('[ShareableProgressCard] Day Streak:', safeDayStreak);
+  console.log('[ShareableProgressCard] Rendering with values:', {
+    safeConsistency,
+    safeWeightGoal,
+    safeWeightLost,
+    safeDayStreak,
+    safeTrackedDays,
+    safeTotalDays,
+    safeProteinAccuracy,
+    leaderboardPhrase,
+    hasBeforePhoto: !!beforePhotoUrl,
+    hasAfterPhoto: !!afterPhotoUrl,
+  });
+
+  const hasBothPhotos = !!beforePhotoUrl && !!afterPhotoUrl;
+  const hasSinglePhoto = !hasBothPhotos && (!!beforePhotoUrl || !!afterPhotoUrl);
+  const hasAnyPhoto = !!beforePhotoUrl || !!afterPhotoUrl;
+  const singlePhotoUrl = beforePhotoUrl || afterPhotoUrl;
+  const singlePhotoLabel = beforePhotoUrl ? (beforeDateLabel || '') : (afterDateLabel || 'Today');
+
+  const weightLostDisplay = `-${safeWeightLost.toFixed(1)} lb`;
+  const weightGoalDisplay = `${safeWeightGoal}%`;
+  const trackedDaysDisplay = `${safeTrackedDays}/${safeTotalDays}`;
+  const proteinDisplay = `${safeProteinAccuracy}%`;
+  const streakDisplay = `${safeDayStreak}🔥`;
 
   return (
     <CaptureWrapper
       ref={viewShotRef}
-      options={{
-        format: 'png',
-        quality: 1,
-        result: 'tmpfile',
-      }}
+      options={{ format: 'png', quality: 1, result: 'tmpfile' }}
       style={styles.captureWrapper}
     >
-      <LinearGradient
-        colors={['#FFFFFF', '#F9FAFB', '#F3F4F6']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.card}
-      >
-        {/* SECTION 1 — TOP / HERO */}
-        {/* Big number with explicit label "Consistency Score" */}
-        <View style={styles.heroSection}>
-          <Text style={styles.heroValue}>
-            {safeConsistencyScore}
-          </Text>
-          <Text style={styles.heroLabel}>Consistency Score</Text>
+      <View style={styles.card}>
+
+        {/* ── HEADER ── */}
+        <View style={styles.header}>
+          <Text style={styles.appName}>MACRO GOAL</Text>
+          <Text style={styles.tagline}>Track. Improve. Share.</Text>
         </View>
 
-        {/* SECTION 2 — GOAL PROGRESS */}
-        {/* Weight goal progress as simple text */}
-        <View style={styles.progressTextSection}>
-          <Text style={styles.progressText}>
-            {safeWeightGoalProgress}% to weight goal
-          </Text>
+        {/* ── PHOTOS SECTION ── */}
+        {hasAnyPhoto && (
+          <View style={styles.photosSection}>
+            {hasBothPhotos ? (
+              <View style={styles.photoRow}>
+                <View style={styles.photoContainer}>
+                  <Image source={resolveImageSource(beforePhotoUrl)} style={styles.photo} resizeMode="cover" />
+                  <Text style={styles.photoLabel}>{beforeDateLabel || ''}</Text>
+                </View>
+                <View style={styles.photoContainer}>
+                  <Image source={resolveImageSource(afterPhotoUrl)} style={styles.photo} resizeMode="cover" />
+                  <Text style={styles.photoLabel}>{afterDateLabel || 'Today'}</Text>
+                </View>
+              </View>
+            ) : hasSinglePhoto ? (
+              <View style={styles.singlePhotoContainer}>
+                <Image source={resolveImageSource(singlePhotoUrl)} style={styles.singlePhoto} resizeMode="cover" />
+                <Text style={styles.photoLabel}>{singlePhotoLabel}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* ── SIX METRIC CARDS ── */}
+        <View style={styles.metricsGrid}>
+          {/* Row 1 */}
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, styles.colorTeal]}>{safeConsistency}</Text>
+            <Text style={styles.metricLabel}>Consistency Score</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, styles.colorOrange]}>{streakDisplay}</Text>
+            <Text style={styles.metricLabel}>Day Streak</Text>
+          </View>
+
+          {/* Row 2 */}
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, styles.colorGreen]}>{weightLostDisplay}</Text>
+            <Text style={styles.metricLabel}>Weight Lost</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, styles.colorGreen]}>{weightGoalDisplay}</Text>
+            <Text style={styles.metricLabel}>to Weight Goal</Text>
+          </View>
+
+          {/* Row 3 */}
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, styles.colorTeal]}>{trackedDaysDisplay}</Text>
+            <Text style={styles.metricLabel}>Days Tracked</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, styles.colorPurple]}>{proteinDisplay}</Text>
+            <Text style={styles.metricLabel}>Protein Accuracy</Text>
+          </View>
         </View>
 
-        {/* SECTION 3 — RESULTS STRIP (ONE LINE) */}
-        {/* Single horizontal line with stats */}
-        <View style={styles.resultsStrip}>
-          <Text style={styles.resultsText}>
-            <Text style={styles.resultsBold}>–{safeWeightLost.toFixed(1)} lb</Text>
-            <Text style={styles.resultsNormal}> lost</Text>
-            <Text style={styles.resultsSeparator}> • </Text>
-            <Text style={styles.resultsBold}>{safeDayStreak}-day</Text>
-            <Text style={styles.resultsNormal}> streak </Text>
-            <Text style={styles.resultsEmoji}>🔥</Text>
-          </Text>
-        </View>
+        {/* ── LEADERBOARD PHRASE ── */}
+        <LinearGradient
+          colors={['#5B9AA8', '#4A8A98']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.leaderboardBadge}
+        >
+          <Text style={styles.leaderboardText}>{leaderboardPhrase}</Text>
+        </LinearGradient>
 
-        {/* SECTION 4 — FOOTER (OPTIONAL BUT CLEAN) */}
-        {/* Subtle branding */}
+        {/* ── FOOTER ── */}
         <View style={styles.footer}>
-          <Text style={styles.footerBrand}>Macro Goal</Text>
-          <Text style={styles.footerTagline}>Built with Macro Goal</Text>
+          <Text style={styles.footerBuilt}>Built with Macro Goal</Text>
+          <Text style={styles.footerUrl}>macrogoal.app</Text>
         </View>
-      </LinearGradient>
+
+      </View>
     </CaptureWrapper>
   );
 }
@@ -121,138 +198,145 @@ const styles = StyleSheet.create({
   card: {
     width: 1080,
     height: 1920,
-    padding: 60,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 140,
+    paddingHorizontal: 48,
+    paddingTop: 80,
+    paddingBottom: 60,
   },
-  
-  // SECTION 1 — TOP / HERO
-  heroSection: {
+
+  // ── HEADER ──
+  header: {
     alignItems: 'center',
-    marginBottom: 56,
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    borderRadius: 24,
+    paddingVertical: 48,
+    marginBottom: 40,
   },
-  heroValue: {
-    fontSize: 320,
-    fontWeight: '900',
-    lineHeight: 320,
-    letterSpacing: -16,
-    color: '#5B9AA8',
-  },
-  heroLabel: {
+  appName: {
     fontSize: 52,
     fontWeight: '700',
-    color: '#1F2937',
-    marginTop: 20,
-    letterSpacing: 0.5,
+    color: '#5B9AA8',
+    letterSpacing: 4,
   },
-
-  // SECTION 2 — GOAL PROGRESS
-  progressTextSection: {
-    paddingHorizontal: 60,
-    marginBottom: 48,
-  },
-  progressText: {
-    fontSize: 36,
-    fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 48,
-  },
-
-  // SECTION 3 — RESULTS STRIP (ONE LINE)
-  resultsStrip: {
-    paddingHorizontal: 60,
-    marginBottom: 64,
-  },
-  resultsText: {
-    fontSize: 40,
-    textAlign: 'center',
-    lineHeight: 52,
-  },
-  resultsBold: {
-    fontWeight: '900',
-    color: '#1F2937',
-  },
-  resultsNormal: {
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  resultsSeparator: {
+  tagline: {
+    fontSize: 24,
     fontWeight: '400',
-    color: '#D1D5DB',
-  },
-  resultsEmoji: {
-    fontSize: 40,
+    color: '#9CA3AF',
+    marginTop: 12,
+    letterSpacing: 1,
   },
 
-  // SECTION 4 — TRANSFORMATION (EMOTIONAL ANCHOR)
-  photoSection: {
+  // ── PHOTOS ──
+  photosSection: {
     width: '100%',
-    marginBottom: 56,
+    marginBottom: 40,
   },
   photoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 32,
+    justifyContent: 'space-between',
+    gap: 24,
   },
   photoContainer: {
     alignItems: 'center',
+    flex: 1,
   },
   photo: {
-    width: 420,
-    height: 560,
-    borderRadius: 24,
+    width: 480,
+    height: 640,
+    borderRadius: 20,
     backgroundColor: '#E5E7EB',
-    boxShadow: '0px 8px 28px rgba(0, 0, 0, 0.12)',
-    elevation: 6,
-  },
-  photoLabel: {
-    fontSize: 20,
-    fontWeight: '400',
-    color: '#9CA3AF',
-    marginTop: 16,
-  },
-  photoArrow: {
-    paddingHorizontal: 16,
-  },
-  photoArrowText: {
-    fontSize: 40,
-    fontWeight: '300',
-    color: '#D1D5DB',
   },
   singlePhotoContainer: {
     alignItems: 'center',
   },
   singlePhoto: {
     width: 840,
-    height: 560,
-    borderRadius: 24,
+    height: 640,
+    borderRadius: 20,
     backgroundColor: '#E5E7EB',
-    boxShadow: '0px 8px 28px rgba(0, 0, 0, 0.12)',
-    elevation: 6,
+  },
+  photoLabel: {
+    fontSize: 24,
+    fontWeight: '400',
+    color: '#9CA3AF',
+    marginTop: 16,
   },
 
-  // SECTION 5 — FOOTER (OPTIONAL BUT CLEAN)
+  // ── METRICS GRID ──
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 24,
+    width: '100%',
+    justifyContent: 'space-between',
+    marginBottom: 40,
+  },
+  metricCard: {
+    width: 460,
+    height: 260,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  metricValue: {
+    fontSize: 120,
+    fontWeight: '700',
+    lineHeight: 140,
+  },
+  metricLabel: {
+    fontSize: 32,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+
+  // Metric value colors
+  colorTeal: { color: '#5B9AA8' },
+  colorOrange: { color: '#FF8A5B' },
+  colorGreen: { color: '#10B981' },
+  colorPurple: { color: '#8B5CF6' },
+
+  // ── LEADERBOARD ──
+  leaderboardBadge: {
+    width: '100%',
+    borderRadius: 20,
+    paddingHorizontal: 40,
+    paddingVertical: 32,
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  leaderboardText: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 56,
+  },
+
+  // ── FOOTER ──
   footer: {
     alignItems: 'center',
     marginTop: 'auto',
-    paddingTop: 40,
-    paddingBottom: 60,
-    width: '100%',
   },
-  footerBrand: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#5B9AA8',
-    letterSpacing: 1.5,
-    marginBottom: 12,
-  },
-  footerTagline: {
-    fontSize: 20,
-    fontWeight: '500',
+  footerBuilt: {
+    fontSize: 24,
+    fontWeight: '400',
     color: '#9CA3AF',
-    letterSpacing: 0.3,
+    marginBottom: 8,
+  },
+  footerUrl: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#5B9AA8',
   },
 });
