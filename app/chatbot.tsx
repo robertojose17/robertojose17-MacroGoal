@@ -22,7 +22,6 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
 import { supabase } from '@/lib/supabase/client';
-import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { addToDraft } from '@/utils/myMealsDraft';
 
 // Generate a unique ID for each message
@@ -102,17 +101,6 @@ export default function ChatbotScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
   const { sendMessage, loading } = useChatbot();
-
-  const { isRecording, isTranscribing, startRecording, stopRecordingAndTranscribe, cancelRecording } = useVoiceRecorder({
-    onTranscription: (text) => {
-      console.log('[Chatbot] Voice transcription received:', text);
-      setInputText(text);
-    },
-    onError: (message) => {
-      console.warn('[Chatbot] Voice recorder error:', message);
-      Alert.alert('Voice Error', message);
-    },
-  });
 
   // Setup and cleanup
   useEffect(() => {
@@ -1305,34 +1293,6 @@ Break complex meals into individual ingredients. Be specific with portions. Roun
               />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.photoButton,
-                { backgroundColor: isDark ? colors.backgroundDark : colors.background },
-              ]}
-              onPress={() => {
-                if (isRecording) {
-                  console.log('[Chatbot] Mic button pressed — stopping recording and transcribing');
-                  stopRecordingAndTranscribe();
-                } else {
-                  console.log('[Chatbot] Mic button pressed — starting recording');
-                  startRecording();
-                }
-              }}
-              disabled={loading || isTranscribing}
-            >
-              {isTranscribing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <IconSymbol
-                  ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
-                  android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
-                  size={24}
-                  color={isRecording ? '#FF3B30' : colors.primary}
-                />
-              )}
-            </TouchableOpacity>
-
             <TextInput
               style={[
                 styles.input,
@@ -1347,7 +1307,7 @@ Break complex meals into individual ingredients. Be specific with portions. Roun
               onChangeText={setInputText}
               multiline
               maxLength={500}
-              editable={!loading && !isRecording && !isTranscribing}
+              editable={!loading}
             />
 
             <TouchableOpacity
