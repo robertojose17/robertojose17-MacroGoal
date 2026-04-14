@@ -562,18 +562,11 @@ export default function ShareProgressScreen() {
 
         <View style={styles.cardPreview}>
           <ShareableProgressCard
-            consistencyScore={cardData.consistencyScore}
-            weightGoalProgress={cardData.weightGoalProgress}
-            weightLost={cardData.weightLost}
-            dayStreak={cardData.dayStreak}
-            trackedDays={0}
-            totalDays={1}
-            avgProteinAccuracy={0}
+            beforePhoto={cardData.beforePhotoUrl}
+            afterPhoto={cardData.afterPhotoUrl}
+            beforeDate={cardData.beforeDateLabel}
+            afterDate={cardData.afterDateLabel}
             leaderboardPhrase={cardData.leaderboardPhrase}
-            beforePhotoUrl={cardData.beforePhotoUrl}
-            afterPhotoUrl={cardData.afterPhotoUrl}
-            beforeDateLabel={cardData.beforeDateLabel}
-            afterDateLabel={cardData.afterDateLabel}
             onCapture={(ref) => { viewShotRef.current = ref.current; }}
           />
         </View>
@@ -699,7 +692,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
     transform: [{ scale: 0.28 }],
-    marginVertical: -691,
+    marginVertical: -465,
   },
   shareButton: {
     backgroundColor: colors.primary,
