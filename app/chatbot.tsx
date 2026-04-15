@@ -399,7 +399,9 @@ Always respond in TWO parts:
 
 2. A brief natural language explanation mentioning whether the data came from an official source or is an estimate.
 
-Break complex meals into individual ingredients. Be specific with portions. Round all numbers to the nearest integer.`,
+Break complex meals into individual ingredients. Be specific with portions. Round all numbers to the nearest integer.
+
+Do NOT include citation markers, reference numbers, or footnotes such as [1], [2], [3], [4] etc. in your response. Write in plain prose only.`,
       };
 
       const validMessages = messages.filter((m) => {
