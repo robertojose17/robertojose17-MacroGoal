@@ -255,7 +255,7 @@ export default function FoodDetailsLayout({
       setProduct(parsedProduct);
 
       const servingInfo = extractServingSize(parsedProduct);
-      setServingAmount(Math.round(servingInfo.grams).toString());
+      setServingAmount(parseFloat(servingInfo.grams.toFixed(2)).toString());
       setServingUnit('g');
 
       await checkFavoriteStatus(parsedProduct);

@@ -163,7 +163,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
           singularUnit = unit.slice(0, -1);
         }
         
-        const roundedGramsPerUnit = Math.round(gramsPerUnit);
+        const roundedGramsPerUnit = parseFloat(gramsPerUnit.toFixed(2));
         return {
           description: `1 ${singularUnit}`,
           grams: roundedGramsPerUnit,
@@ -188,7 +188,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         return {
           description,
           grams,
-          displayText: `${description} (${Math.round(grams)} g)`,
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false,
         };
@@ -204,9 +204,9 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
       if (!isNaN(grams) && grams > 0) {
         console.log('[OpenFoodFacts] Pattern 2 matched (pure grams):', grams);
         return {
-          description: `${Math.round(grams)} g`,
+          description: `${parseFloat(grams.toFixed(2))} g`,
           grams,
-          displayText: `${Math.round(grams)} g`,
+          displayText: `${parseFloat(grams.toFixed(2))} g`,
           hasValidGrams: true,
           isEstimated: false,
         };
@@ -226,7 +226,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         return {
           description,
           grams,
-          displayText: `${description} (${Math.round(grams)} g)`,
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false,
         };
@@ -246,7 +246,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         return {
           description,
           grams,
-          displayText: `${description} (${Math.round(grams)} g)`,
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false,
         };
@@ -268,16 +268,16 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
           return {
             description,
             grams,
-            displayText: `${description} (${Math.round(grams)} g)`,
+            displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
             hasValidGrams: true,
             isEstimated: false,
           };
         }
         
         return {
-          description: `${Math.round(grams)} g`,
+          description: `${parseFloat(grams.toFixed(2))} g`,
           grams,
-          displayText: `${Math.round(grams)} g`,
+          displayText: `${parseFloat(grams.toFixed(2))} g`,
           hasValidGrams: true,
           isEstimated: false,
         };
@@ -301,8 +301,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         
         return {
           description,
-          grams: Math.round(grams),
-          displayText: `${description} (≈ ${Math.round(grams)} g)`,
+          grams: parseFloat(grams.toFixed(2)),
+          displayText: `${description} (≈ ${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: true,
         };
@@ -325,8 +325,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
-          grams: Math.round(grams),
-          displayText: `${description} (${Math.round(grams)} g)`,
+          grams: parseFloat(grams.toFixed(2)),
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
@@ -350,8 +350,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
-          grams: Math.round(grams),
-          displayText: `${description} (${Math.round(grams)} g)`,
+          grams: parseFloat(grams.toFixed(2)),
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
@@ -375,8 +375,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
-          grams: Math.round(grams),
-          displayText: `${description} (${Math.round(grams)} g)`,
+          grams: parseFloat(grams.toFixed(2)),
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
@@ -400,8 +400,8 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         // NEW: Use 1:1 conversion, no "≈" symbol needed
         return {
           description,
-          grams: Math.round(grams),
-          displayText: `${description} (${Math.round(grams)} g)`,
+          grams: parseFloat(grams.toFixed(2)),
+          displayText: `${description} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false, // Not estimated anymore since we're using intentional 1:1
         };
@@ -420,7 +420,7 @@ export function extractServingSize(product: OpenFoodFactsProduct): ServingSizeIn
         return {
           description: servingSize,
           grams,
-          displayText: `${servingSize} (${Math.round(grams)} g)`,
+          displayText: `${servingSize} (${parseFloat(grams.toFixed(2))} g)`,
           hasValidGrams: true,
           isEstimated: false,
         };
