@@ -108,7 +108,7 @@ export default function ChatbotScreen() {
       console.log('[ChatbotScreen] Voice transcription received:', text);
       setInputText(text);
     },
-    onError: (message) => Alert.alert('Error de voz', message),
+    onError: (message) => Alert.alert('Voice Error', message),
   });
 
   // Setup and cleanup

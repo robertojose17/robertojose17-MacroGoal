@@ -19,7 +19,7 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
       const status = await AudioModule.requestRecordingPermissionsAsync();
       console.log('[useVoiceRecorder] microphone permission status:', status.granted);
       if (!status.granted) {
-        onError('Se necesita permiso de micrófono para grabar audio.');
+        onError('Microphone permission is required to record audio.');
         return;
       }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
@@ -29,7 +29,7 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
       console.log('[useVoiceRecorder] recording started');
     } catch (err) {
       console.log('[useVoiceRecorder] startRecording error:', err);
-      onError('No se pudo iniciar la grabación. Intenta de nuevo.');
+      onError('Could not start recording. Please try again.');
     }
   }, [recorder, onError]);
 
@@ -42,7 +42,7 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
       const uri = recorder.uri;
       console.log('[useVoiceRecorder] recording stopped, uri:', uri);
       if (!uri) {
-        onError('La grabación falló — no se creó ningún archivo de audio.');
+        onError('Recording failed — no audio file was created.');
         return;
       }
       setIsTranscribing(true);
@@ -56,19 +56,19 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
       });
       console.log('[useVoiceRecorder] transcribe-audio response:', { data, fnError });
       if (fnError || !data?.text) {
-        onError('La transcripción falló. Intenta de nuevo o escribe tu descripción.');
+        onError('Transcription failed. Please try again or type your description.');
         return;
       }
       const text: string = data.text.trim();
       if (!text) {
-        onError('No se detectó voz. Intenta de nuevo y habla claramente.');
+        onError('No speech detected. Please try again and speak clearly.');
         return;
       }
       console.log('[useVoiceRecorder] transcription result:', text);
       onTranscription(text);
     } catch (err) {
       console.log('[useVoiceRecorder] stopRecordingAndTranscribe error:', err);
-      onError('La transcripción falló. Intenta de nuevo.');
+      onError('Transcription failed. Please try again.');
     } finally {
       setIsTranscribing(false);
     }
