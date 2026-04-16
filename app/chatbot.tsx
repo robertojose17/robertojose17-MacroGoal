@@ -21,7 +21,6 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChatbot, ChatMessage } from '@/hooks/useChatbot';
-import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { supabase } from '@/lib/supabase/client';
 import { addToDraft } from '@/utils/myMealsDraft';
 
@@ -102,14 +101,6 @@ export default function ChatbotScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
 
   const { sendMessage, loading } = useChatbot();
-
-  const { isRecording, isTranscribing, startRecording, stopRecordingAndTranscribe } = useVoiceRecorder({
-    onTranscription: (text) => {
-      console.log('[ChatbotScreen] Voice transcription received:', text);
-      setInputText(text);
-    },
-    onError: (message) => Alert.alert('Voice Error', message),
-  });
 
   // Setup and cleanup
   useEffect(() => {
@@ -1318,36 +1309,8 @@ Do NOT include citation markers, reference numbers, or footnotes such as [1], [2
               onChangeText={setInputText}
               multiline
               maxLength={500}
-              editable={!loading && !isRecording && !isTranscribing}
+              editable={!loading}
             />
-
-            <TouchableOpacity
-              style={[
-                styles.micButton,
-                { backgroundColor: isRecording ? '#FF3B3020' : (isDark ? colors.backgroundDark : colors.background) },
-              ]}
-              onPress={() => {
-                if (isRecording) {
-                  console.log('[ChatbotScreen] Stop recording pressed');
-                  stopRecordingAndTranscribe();
-                } else {
-                  console.log('[ChatbotScreen] Start recording pressed');
-                  startRecording();
-                }
-              }}
-              disabled={loading || isTranscribing}
-            >
-              {isTranscribing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <IconSymbol
-                  ios_icon_name={isRecording ? 'stop.circle.fill' : 'mic.fill'}
-                  android_material_icon_name={isRecording ? 'stop_circle' : 'mic'}
-                  size={24}
-                  color={isRecording ? '#FF3B30' : colors.primary}
-                />
-              )}
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={[
@@ -1602,13 +1565,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     maxHeight: 100,
     ...typography.body,
-  },
-  micButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sendButton: {
     width: 40,
