@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import { supabase } from '@/lib/supabase/client';
+
+const OPENROUTER_API_KEY = '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';
 
 interface UseVoiceRecorderOptions {
   onTranscription: (text: string) => void;
@@ -50,21 +51,50 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      console.log('[useVoiceRecorder] invoking transcribe-audio edge function');
-      const { data, error: fnError } = await supabase.functions.invoke('transcribe-audio', {
-        body: { audioBase64: base64, mimeType: 'audio/m4a' },
+
+      console.log('[useVoiceRecorder] calling OpenRouter Whisper directly, base64 length:', base64.length);
+
+      // Convert base64 to binary
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const audioBlob = new Blob([bytes], { type: 'audio/m4a' });
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.m4a');
+      formData.append('model', 'openai/whisper-1');
+      formData.append('response_format', 'json');
+
+      const response = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://macro-goal.app',
+          'X-Title': 'Macro Goal',
+        },
+        body: formData,
       });
-      console.log('[useVoiceRecorder] transcribe-audio response:', { data, fnError });
-      if (fnError || !data?.text) {
+
+      console.log('[useVoiceRecorder] OpenRouter response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[useVoiceRecorder] OpenRouter error:', errorText);
         onError('Transcription failed. Please try again or type your description.');
         return;
       }
-      const text: string = data.text.trim();
+
+      const data = await response.json();
+      console.log('[useVoiceRecorder] transcription result:', data.text);
+
+      const text: string = (data.text || '').trim();
       if (!text) {
         onError('No speech detected. Please try again and speak clearly.');
         return;
       }
-      console.log('[useVoiceRecorder] transcription result:', text);
+
       onTranscription(text);
     } catch (err) {
       console.log('[useVoiceRecorder] stopRecordingAndTranscribe error:', err);
