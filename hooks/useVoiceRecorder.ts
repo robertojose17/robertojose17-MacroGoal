@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync } from 'expo-audio';
-import * as FileSystem from 'expo-file-system/legacy';
 
 const OPENROUTER_API_KEY = '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';
 
@@ -47,23 +46,15 @@ export function useVoiceRecorder({ onTranscription, onError }: UseVoiceRecorderO
         return;
       }
       setIsTranscribing(true);
-      console.log('[useVoiceRecorder] reading audio file as base64');
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
 
-      console.log('[useVoiceRecorder] calling OpenRouter Whisper directly, base64 length:', base64.length);
+      console.log('[useVoiceRecorder] sending audio to OpenRouter via URI...');
 
-      // Convert base64 to binary
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      const audioBlob = new Blob([bytes], { type: 'audio/m4a' });
       const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.m4a');
+      formData.append('file', {
+        uri,
+        type: 'audio/m4a',
+        name: 'audio.m4a',
+      } as any);
       formData.append('model', 'openai/whisper-1');
       formData.append('response_format', 'json');
 
