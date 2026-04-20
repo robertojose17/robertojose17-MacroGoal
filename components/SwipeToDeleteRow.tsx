@@ -69,14 +69,18 @@ export default function SwipeToDeleteRow({
         }
       },
       onPanResponderTerminate: () => {
-        Animated.timing(translateX, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }).start(() => {
-          currentX.current = 0;
-          setIsSwiping(false);
-        });
+        if (currentX.current < SWIPE_THRESHOLD) {
+          onDeleteRef.current();
+        } else {
+          Animated.timing(translateX, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            currentX.current = 0;
+            setIsSwiping(false);
+          });
+        }
       },
     })
   ).current;
