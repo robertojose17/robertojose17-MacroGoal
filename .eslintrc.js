@@ -48,7 +48,9 @@ module.exports = {
         'better-auth/react',
         '@better-auth/expo/client',
         'expo-secure-store',
-        'expo-speech-recognition'
+        'expo-speech-recognition',
+        '@stardazed/streams-text-encoding',
+        '@ungap/structured-clone'
       ]
     }],
     "prefer-const": "off",
