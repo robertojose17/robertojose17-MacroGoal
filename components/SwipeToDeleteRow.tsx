@@ -91,10 +91,11 @@ export default function SwipeToDeleteRow({
 
   return (
     <View style={styles.container}>
-      {/* Red delete background revealed as the row slides left */}
-      <View style={styles.deleteBackground}>
-        <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
-      </View>
+      {isSwiping && (
+        <View style={styles.deleteBackground}>
+          <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+        </View>
+      )}
 
       <Animated.View style={[styles.content, animatedStyle]} {...panResponder.panHandlers}>
         {typeof children === 'function' ? children(isSwiping) : children}
