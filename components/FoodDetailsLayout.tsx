@@ -21,7 +21,7 @@ function safeNum(value: unknown, fallback = 0): number {
 type ServingUnit = 'g' | 'oz' | 'ml' | 'fl oz' | 'cup' | 'tbsp' | 'tsp' | 'piece' | 'serving';
 
 type ServingOption = {
-  unit: ServingUnit;
+  key: string;
   label: string;
   gramsPerUnit: number;
 };
@@ -111,8 +111,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginRight: spacing.sm,
   },
-  unitButton: {
+  servingAmountDisplay: {
     flex: 1,
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginRight: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  unitButton: {
+    flex: 2,
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
@@ -230,10 +239,11 @@ export default function FoodDetailsLayout({
   const [loading, setLoading] = useState(true);
   const [isFav, setIsFav] = useState(false);
 
-  const [servingAmount, setServingAmount] = useState('1');
+  const [servingAmount, setServingAmount] = useState(1);
   const [servingUnit, setServingUnit] = useState<ServingUnit>('serving');
   const [numberOfServings, setNumberOfServings] = useState('1');
   const [showUnitOptions, setShowUnitOptions] = useState(false);
+  const [selectedServingOptionKey, setSelectedServingOptionKey] = useState('default');
 
   const [bannerQueue, setBannerQueue] = useState<{ id: number; message: string; timestamp: number }[]>([]);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
@@ -255,8 +265,10 @@ export default function FoodDetailsLayout({
       setProduct(parsedProduct);
 
       const servingInfo = extractServingSize(parsedProduct);
-      setServingAmount(parseFloat(servingInfo.grams.toFixed(2)).toString());
-      setServingUnit('g');
+      setServingAmount(servingInfo.grams);
+      setServingUnit('serving');
+      setNumberOfServings('1');
+      setSelectedServingOptionKey('default');
 
       await checkFavoriteStatus(parsedProduct);
     } catch (error) {
@@ -320,9 +332,11 @@ export default function FoodDetailsLayout({
       };
 
       setProduct(mockProduct);
-      setServingAmount(mealItem.grams?.toString() || '100');
-      setServingUnit('g');
+      const gramsPerServing = (mealItem.grams || 100) / (mealItem.quantity || 1);
+      setServingAmount(gramsPerServing);
+      setServingUnit('serving');
       setNumberOfServings(mealItem.quantity.toString());
+      setSelectedServingOptionKey('default');
 
       await checkFavoriteStatus(mockProduct);
     } catch (error) {
@@ -427,23 +441,13 @@ export default function FoodDetailsLayout({
     }
   };
 
-  const convertToGrams = (amount: number, unit: ServingUnit): number => {
-    return amount * UNIT_CONVERSIONS[unit];
-  };
-
-  const convertFromGrams = (grams: number, unit: ServingUnit): number => {
-    return grams / UNIT_CONVERSIONS[unit];
-  };
-
-  const handleServingAmountChange = (newAmount: string) => {
-    setServingAmount(newAmount);
-  };
-
-  const handleServingUnitChange = (newUnit: ServingUnit) => {
-    const currentGrams = convertToGrams(parseFloat(servingAmount) || 0, servingUnit);
-    const newAmount = convertFromGrams(currentGrams, newUnit);
-    setServingAmount(Math.round(newAmount).toString());
-    setServingUnit(newUnit);
+  const handleServingOptionChange = (option: ServingOption) => {
+    console.log('[FoodDetails] Serving unit changed to:', option.label, 'gramsPerUnit=', option.gramsPerUnit);
+    const totalGrams = servingAmount * (parseFloat(numberOfServings) || 1);
+    const newNumberOfServings = totalGrams / option.gramsPerUnit;
+    setServingAmount(option.gramsPerUnit);
+    setNumberOfServings(newNumberOfServings.toFixed(2));
+    setSelectedServingOptionKey(option.key);
     setShowUnitOptions(false);
   };
 
@@ -452,10 +456,8 @@ export default function FoodDetailsLayout({
   };
 
   const getTotalGrams = (): number => {
-    const amount = parseFloat(servingAmount) || 0;
     const servings = parseFloat(numberOfServings) || 1;
-    const gramsPerServing = convertToGrams(amount, servingUnit);
-    return gramsPerServing * servings;
+    return servingAmount * servings;
   };
 
   const calculateMacros = () => {
@@ -498,7 +500,7 @@ export default function FoodDetailsLayout({
       const nutrition = extractNutrition(product);
       const servingInfo = extractServingSize(product);
 
-      const servingDescription = `${servingAmount} ${servingUnit}`;
+      const servingDescription = `${servingAmount % 1 === 0 ? servingAmount : servingAmount.toFixed(2)} g`;
 
       // Ensure all macro values sent to DB are finite numbers, never NaN/null
       const safeMacros = {
@@ -747,10 +749,6 @@ export default function FoodDetailsLayout({
     }
   };
 
-  const handleUnitOptionPress = (option: ServingOption) => {
-    handleServingUnitChange(option.unit);
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
@@ -773,11 +771,17 @@ export default function FoodDetailsLayout({
 
   const macros = calculateMacros();
 
+  const defaultServingInfo = extractServingSize(product);
   const servingOptions: ServingOption[] = [
-    { unit: 'g', label: 'Grams (g)', gramsPerUnit: 1 },
-    { unit: 'oz', label: 'Ounces (oz)', gramsPerUnit: 28.35 },
-    { unit: 'serving', label: 'Serving', gramsPerUnit: extractServingSize(product).grams },
+    { key: 'default', label: defaultServingInfo.description || `1 serving (${defaultServingInfo.grams}g)`, gramsPerUnit: defaultServingInfo.grams },
+    { key: 'g', label: '1 g', gramsPerUnit: 1 },
+    { key: 'oz', label: '1 oz', gramsPerUnit: 28.35 },
+    { key: 'lb', label: '1 lb', gramsPerUnit: 453.592 },
   ];
+
+  const currentOption = servingOptions.find((o) => o.key === selectedServingOptionKey) || servingOptions[0];
+  const currentUnitLabel = currentOption.label;
+  const servingAmountDisplay = servingAmount % 1 === 0 ? servingAmount.toString() : servingAmount.toFixed(2);
 
   const currentBanner = bannerQueue[0];
 
@@ -828,19 +832,19 @@ export default function FoodDetailsLayout({
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Serving Size</Text>
           <View style={styles.servingRow}>
-            <TextInput
-              style={[styles.servingInput, { color: textColor, borderColor, backgroundColor: cardBackground }]}
-              value={servingAmount}
-              onChangeText={handleServingAmountChange}
-              keyboardType="decimal-pad"
-              placeholder="Amount"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-            />
+            <View style={[styles.servingAmountDisplay, { borderColor, backgroundColor: cardBackground }]}>
+              <Text style={{ color: textColor, fontSize: 16 }}>{servingAmountDisplay}</Text>
+              <Text style={{ color: isDark ? '#888' : '#666', fontSize: 16, marginLeft: 4 }}>g</Text>
+            </View>
             <TouchableOpacity
-              style={[styles.unitButton, { borderColor, backgroundColor: cardBackground }]}
-              onPress={() => setShowUnitOptions(!showUnitOptions)}
+              style={[styles.unitButton, { borderColor, backgroundColor: cardBackground, flexDirection: 'row', justifyContent: 'space-between' }]}
+              onPress={() => {
+                console.log('[FoodDetails] Unit selector pressed, showUnitOptions=', !showUnitOptions);
+                setShowUnitOptions(!showUnitOptions);
+              }}
             >
-              <Text style={[styles.unitButtonText, { color: textColor }]}>{servingUnit}</Text>
+              <Text style={[styles.unitButtonText, { color: textColor, flex: 1 }]} numberOfLines={1}>{currentUnitLabel}</Text>
+              <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand-more" size={16} color={textColor} />
             </TouchableOpacity>
           </View>
 
@@ -848,9 +852,9 @@ export default function FoodDetailsLayout({
             <View style={[styles.unitOptionsContainer, { backgroundColor: cardBackground }]}>
               {servingOptions.map((option) => (
                 <TouchableOpacity
-                  key={option.unit}
-                  style={[styles.unitOption, { borderBottomColor: borderColor }]}
-                  onPress={() => handleUnitOptionPress(option)}
+                  key={option.key}
+                  style={[styles.unitOption, { borderBottomColor: borderColor, backgroundColor: option.key === selectedServingOptionKey ? (isDark ? '#2a2a2a' : '#f0f0f0') : undefined }]}
+                  onPress={() => handleServingOptionChange(option)}
                 >
                   <Text style={[styles.unitOptionText, { color: textColor }]}>{option.label}</Text>
                 </TouchableOpacity>
