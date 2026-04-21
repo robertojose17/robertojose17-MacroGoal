@@ -1,5 +1,4 @@
 
-import { Ionicons } from '@expo/vector-icons';
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, View } from 'react-native';
 
@@ -91,12 +90,6 @@ export default function SwipeToDeleteRow({
 
   return (
     <View style={styles.container}>
-      {isSwiping && (
-        <View style={styles.deleteBackground}>
-          <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
-        </View>
-      )}
-
       <Animated.View style={[styles.content, animatedStyle]} {...panResponder.panHandlers}>
         {typeof children === 'function' ? children(isSwiping) : children}
       </Animated.View>
@@ -108,13 +101,6 @@ const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
     width: '100%',
-  },
-  deleteBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#FF3B30',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    paddingRight: 20,
   },
   content: {
     width: '100%',
