@@ -615,7 +615,7 @@ export default function FoodDetailsLayout({
             food_id: draftFoodId,
             food_name: foodName,
             food_brand: foodBrand || undefined,
-            serving_amount: parseFloat(servingAmount) || 100,
+            serving_amount: servingAmount || 100,
             serving_unit: servingUnit,
             servings_count: servingsCount,
             calories: safeMacros.calories,
