@@ -831,11 +831,17 @@ export default function FoodDetailsLayout({
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Serving Size</Text>
-          <View style={styles.servingRow}>
-            <View style={[styles.servingAmountDisplay, { borderColor, backgroundColor: cardBackground }]}>
-              <Text style={{ color: textColor, fontSize: 16 }}>{servingAmountDisplay}</Text>
-              <Text style={{ color: isDark ? '#888' : '#666', fontSize: 16, marginLeft: 4 }}>g</Text>
-            </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+            <Text style={[styles.numberOfServingsLabel, { color: textColor }]}>Number of servings:</Text>
+            <TextInput
+              style={[styles.numberOfServingsInput, { color: textColor, borderColor, backgroundColor: cardBackground, marginRight: spacing.sm }]}
+              value={numberOfServings}
+              onChangeText={handleNumberOfServingsChange}
+              keyboardType="decimal-pad"
+              placeholder="1"
+              placeholderTextColor={isDark ? '#666' : '#999'}
+            />
             <TouchableOpacity
               style={[styles.unitButton, { borderColor, backgroundColor: cardBackground, flexDirection: 'row', justifyContent: 'space-between' }]}
               onPress={() => {
@@ -861,18 +867,6 @@ export default function FoodDetailsLayout({
               ))}
             </View>
           )}
-
-          <View style={styles.numberOfServingsRow}>
-            <Text style={[styles.numberOfServingsLabel, { color: textColor }]}>Number of servings:</Text>
-            <TextInput
-              style={[styles.numberOfServingsInput, { color: textColor, borderColor, backgroundColor: cardBackground }]}
-              value={numberOfServings}
-              onChangeText={handleNumberOfServingsChange}
-              keyboardType="decimal-pad"
-              placeholder="1"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-            />
-          </View>
         </View>
 
         <View style={styles.section}>
