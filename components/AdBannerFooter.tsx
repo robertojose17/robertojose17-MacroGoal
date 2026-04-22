@@ -41,7 +41,6 @@
 
 import React, { useState } from 'react';
 import { View, useColorScheme, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BannerAd, BannerAdSize, TestIds, isBannerAdAvailable } from '@/utils/bannerAd';
 
 // Inline the constant to avoid module-evaluation-order issues in Hermes production builds.
@@ -55,7 +54,6 @@ interface AdBannerFooterProps {
 }
 
 export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
-  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const [adLoaded, setAdLoaded] = useState(false);
 
@@ -64,7 +62,6 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
 
   const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
-  const containerMinHeight = AD_BANNER_HEIGHT + insets.bottom;
 
   const handleAdLoaded = () => {
     console.log('[AdBannerFooter] Ad loaded successfully');
@@ -79,16 +76,11 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
   return (
     <View
       style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        zIndex: 5,
+        height: 94,
         backgroundColor: bgColor,
-        paddingBottom: insets.bottom,
+        paddingBottom: 34,
         alignItems: 'center',
-        // Only take up space once ad is loaded to avoid flash
-        minHeight: containerMinHeight,
+        justifyContent: 'center',
       }}
     >
       {adUnitId && (
@@ -105,7 +97,6 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
 }
 
 export function useAdBannerHeight(isPremium: boolean): number {
-  const insets = useSafeAreaInsets();
   if (isPremium || Platform.OS !== 'ios' || !isBannerAdAvailable) return 0;
-  return AD_BANNER_HEIGHT + insets.bottom;
+  return 94;
 }

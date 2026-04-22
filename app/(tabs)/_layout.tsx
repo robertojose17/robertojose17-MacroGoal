@@ -2,19 +2,16 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AdBannerFooter, AD_BANNER_HEIGHT } from '@/components/AdBannerFooter';
+import { AdBannerFooter } from '@/components/AdBannerFooter';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { isPremium, loading } = useUserProfile();
-  const insets = useSafeAreaInsets();
-
   console.log('[Tab Layout] Rendering tab layout, isPremium:', isPremium, 'loading:', loading);
 
   if (loading) return null;
@@ -34,7 +31,7 @@ export default function TabLayout() {
           borderTopColor: tabBarBorderColor,
           paddingBottom: isPremium ? 20 : 8,
           height: isPremium ? 85 : 60,
-          marginBottom: isPremium ? 0 : AD_BANNER_HEIGHT + insets.bottom,
+          marginBottom: isPremium ? 0 : 94,
         },
       }}
     >
