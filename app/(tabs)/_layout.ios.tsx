@@ -11,9 +11,11 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { isPremium } = useUserProfile();
+  const { isPremium, loading } = useUserProfile();
 
-  console.log('[Tab Layout iOS] Rendering tab layout, isPremium:', isPremium);
+  console.log('[Tab Layout iOS] Rendering tab layout, isPremium:', isPremium, 'loading:', loading);
+
+  if (loading) return null;
 
   const tabBarInactiveTintColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
   const tabBarBackgroundColor = isDark ? colors.cardDark : colors.card;

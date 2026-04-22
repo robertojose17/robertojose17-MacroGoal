@@ -64,7 +64,7 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
 
   const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
-  const containerMinHeight = adLoaded ? AD_BANNER_HEIGHT + insets.bottom : 0;
+  const containerMinHeight = AD_BANNER_HEIGHT + insets.bottom;
 
   const handleAdLoaded = () => {
     console.log('[AdBannerFooter] Ad loaded successfully');
