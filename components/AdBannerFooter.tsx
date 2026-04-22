@@ -83,6 +83,7 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
         bottom: 0,
         left: 0,
         right: 0,
+        zIndex: 1,
         backgroundColor: bgColor,
         paddingBottom: insets.bottom,
         alignItems: 'center',
