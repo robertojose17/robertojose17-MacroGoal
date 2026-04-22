@@ -5,33 +5,32 @@ import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AdBannerProvider, useAdBanner } from '@/components/AdBannerContext';
-import { AdBannerFooter } from '@/components/AdBannerFooter';
+import { AdBannerFooter, AD_BANNER_HEIGHT } from '@/components/AdBannerFooter';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
-function TabLayoutInner() {
+export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { adBannerHeight } = useAdBanner();
-  const hasAd = adBannerHeight > 0;
+  const { isPremium } = useUserProfile();
 
-  console.log('[Tab Layout iOS] Rendering tab layout, hasAd:', hasAd);
+  console.log('[Tab Layout iOS] Rendering tab layout, isPremium:', isPremium);
 
-  const tabBarHeight = hasAd ? 60 : 85;
-  const tabBarPaddingBottom = hasAd ? 8 : 20;
+  const tabBarInactiveTintColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
+  const tabBarBackgroundColor = isDark ? colors.cardDark : colors.card;
+  const tabBarBorderColor = isDark ? colors.borderDark : colors.border;
 
-  return (
+  const tabs = (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: isDark ? colors.textSecondaryDark : colors.textSecondary,
+        tabBarInactiveTintColor: tabBarInactiveTintColor,
         tabBarStyle: {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderTopColor: isDark ? colors.borderDark : colors.border,
-          paddingBottom: tabBarPaddingBottom,
-          height: tabBarHeight,
-          marginBottom: hasAd ? adBannerHeight : 0,
+          backgroundColor: tabBarBackgroundColor,
+          borderTopColor: tabBarBorderColor,
+          paddingBottom: isPremium ? 20 : 8,
+          height: isPremium ? 85 : 60,
+          marginBottom: isPremium ? 0 : AD_BANNER_HEIGHT,
           zIndex: 10,
         },
       }}
@@ -97,18 +96,15 @@ function TabLayoutInner() {
       />
     </Tabs>
   );
-}
 
-export default function TabLayout() {
-  const { isPremium, loading } = useUserProfile();
-  const effectivePremium = loading ? true : isPremium;
-  console.log('[Tab Layout iOS] Initializing AdBannerProvider, isPremium:', effectivePremium, 'loading:', loading);
+  if (isPremium) {
+    return tabs;
+  }
+
   return (
-    <AdBannerProvider isPremium={effectivePremium}>
-      <View style={{ flex: 1 }}>
-        <TabLayoutInner />
-        <AdBannerFooter isPremium={effectivePremium} />
-      </View>
-    </AdBannerProvider>
+    <View style={{ flex: 1 }}>
+      {tabs}
+      <AdBannerFooter isPremium={false} />
+    </View>
   );
 }

@@ -1,37 +1,36 @@
 
 import React from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AdBannerProvider, useAdBanner } from '@/components/AdBannerContext';
-import { AdBannerFooter } from '@/components/AdBannerFooter';
+import { AdBannerFooter, AD_BANNER_HEIGHT } from '@/components/AdBannerFooter';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
-function TabLayoutInner() {
+export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { adBannerHeight } = useAdBanner();
-  const hasAd = adBannerHeight > 0;
+  const { isPremium } = useUserProfile();
 
-  console.log('[Tab Layout] Rendering tab layout for platform:', Platform.OS, 'hasAd:', hasAd);
+  console.log('[Tab Layout] Rendering tab layout, isPremium:', isPremium);
 
-  const tabBarHeight = Platform.OS === 'ios' ? (hasAd ? 60 : 85) : 60;
-  const tabBarPaddingBottom = Platform.OS === 'ios' ? (hasAd ? 8 : 20) : 5;
+  const tabBarInactiveTintColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
+  const tabBarBackgroundColor = isDark ? colors.cardDark : colors.card;
+  const tabBarBorderColor = isDark ? colors.borderDark : colors.border;
 
-  return (
+  const tabs = (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: isDark ? colors.textSecondaryDark : colors.textSecondary,
+        tabBarInactiveTintColor: tabBarInactiveTintColor,
         tabBarStyle: {
-          backgroundColor: isDark ? colors.cardDark : colors.card,
-          borderTopColor: isDark ? colors.borderDark : colors.border,
-          paddingBottom: tabBarPaddingBottom,
-          height: tabBarHeight,
-          marginBottom: hasAd ? adBannerHeight : 0,
+          backgroundColor: tabBarBackgroundColor,
+          borderTopColor: tabBarBorderColor,
+          paddingBottom: isPremium ? 20 : 8,
+          height: isPremium ? 85 : 60,
+          marginBottom: isPremium ? 0 : AD_BANNER_HEIGHT,
         },
       }}
     >
@@ -96,19 +95,15 @@ function TabLayoutInner() {
       />
     </Tabs>
   );
-}
 
-export default function TabLayout() {
-  const { isPremium, loading } = useUserProfile();
-  // While premium status is loading, treat as non-premium so no async hang blocks render.
-  const effectivePremium = loading ? true : isPremium;
-  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium (from Supabase user_type):', effectivePremium, 'loading:', loading);
+  if (isPremium) {
+    return tabs;
+  }
+
   return (
-    <AdBannerProvider isPremium={effectivePremium}>
-      <View style={{ flex: 1 }}>
-        <TabLayoutInner />
-        <AdBannerFooter isPremium={effectivePremium} />
-      </View>
-    </AdBannerProvider>
+    <View style={{ flex: 1 }}>
+      {tabs}
+      <AdBannerFooter isPremium={false} />
+    </View>
   );
 }
