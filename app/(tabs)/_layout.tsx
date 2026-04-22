@@ -17,10 +17,8 @@ function TabLayoutInner() {
 
   console.log('[Tab Layout] Rendering tab layout for platform:', Platform.OS, 'hasAd:', hasAd);
 
-  // When ad is showing, shift the tab bar up by the banner height so it sits above the banner.
   const tabBarHeight = Platform.OS === 'ios' ? (hasAd ? 60 : 85) : 60;
   const tabBarPaddingBottom = Platform.OS === 'ios' ? (hasAd ? 8 : 20) : 5;
-  const tabBarMarginBottom = hasAd ? adBannerHeight : 0;
 
   return (
     <Tabs
@@ -33,7 +31,6 @@ function TabLayoutInner() {
           borderTopColor: isDark ? colors.borderDark : colors.border,
           paddingBottom: tabBarPaddingBottom,
           height: tabBarHeight,
-          marginBottom: tabBarMarginBottom,
         },
       }}
     >

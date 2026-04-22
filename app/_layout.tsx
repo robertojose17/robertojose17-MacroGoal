@@ -18,7 +18,6 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
-import { AdBannerProvider } from "@/components/AdBannerContext";
 import { initializeFoodDatabase } from "@/utils/foodDatabase";
 import { supabase } from "@/lib/supabase/client";
 import type { Session } from "@supabase/supabase-js";
@@ -472,8 +471,7 @@ export default function RootLayout() {
         <StatusBar style="dark" animated />
         <ThemeProvider value={CustomDefaultTheme}>
           <WidgetProvider>
-            <AdBannerProvider isPremium={true}>
-              <Stack screenOptions={{ headerShown: false }}>
+            <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
 
                 <Stack.Screen
@@ -584,7 +582,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-            </AdBannerProvider>
           </WidgetProvider>
         </ThemeProvider>
       </SafeAreaProvider>
