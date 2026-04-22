@@ -31,6 +31,8 @@ function TabLayoutInner() {
           borderTopColor: isDark ? colors.borderDark : colors.border,
           paddingBottom: tabBarPaddingBottom,
           height: tabBarHeight,
+          marginBottom: hasAd ? adBannerHeight : 0,
+          zIndex: 10,
         },
       }}
     >
