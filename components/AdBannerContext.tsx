@@ -1,8 +1,10 @@
 import React from 'react';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AD_BANNER_HEIGHT } from '@/constants/adBanner';
 import { isAdsAvailable } from '@/utils/mobileAds';
+
+// Inline the constant to avoid any module-evaluation-order issues in Hermes production builds.
+const AD_BANNER_HEIGHT = 60;
 
 interface AdBannerContextValue {
   isPremium: boolean;

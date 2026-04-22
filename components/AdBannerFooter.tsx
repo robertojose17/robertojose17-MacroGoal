@@ -44,7 +44,8 @@ import { View, useColorScheme, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BannerAd, BannerAdSize, TestIds, isBannerAdAvailable } from '@/utils/bannerAd';
 
-export { AD_BANNER_HEIGHT } from '@/constants/adBanner';
+// Inline the constant to avoid module-evaluation-order issues in Hermes production builds.
+export const AD_BANNER_HEIGHT: number = 60;
 
 // Production Ad Unit ID (also used as test ID per user config):
 const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-5592015069000241/7688730087';

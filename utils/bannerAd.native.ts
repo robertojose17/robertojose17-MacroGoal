@@ -7,7 +7,7 @@ let TestIds: any = { ADAPTIVE_BANNER: 'test-banner', BANNER: 'test-banner' };
 export let isBannerAdAvailable = false;
 
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require('react-native-google-mobile-ads');
   BannerAd = mod.BannerAd;
   BannerAdSize = mod.BannerAdSize;
