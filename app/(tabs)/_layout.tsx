@@ -101,7 +101,7 @@ function TabLayoutInner() {
 export default function TabLayout() {
   const { isPremium, loading } = useUserProfile();
   // While premium status is loading, treat as non-premium so no async hang blocks render.
-  const effectivePremium = loading ? false : isPremium;
+  const effectivePremium = loading ? true : isPremium;
   console.log('[Tab Layout] Initializing AdBannerProvider, isPremium (from Supabase user_type):', effectivePremium, 'loading:', loading);
   return (
     <AdBannerProvider isPremium={effectivePremium}>

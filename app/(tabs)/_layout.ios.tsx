@@ -101,7 +101,7 @@ function TabLayoutInner() {
 
 export default function TabLayout() {
   const { isPremium, loading } = useUserProfile();
-  const effectivePremium = loading ? false : isPremium;
+  const effectivePremium = loading ? true : isPremium;
   console.log('[Tab Layout iOS] Initializing AdBannerProvider, isPremium:', effectivePremium, 'loading:', loading);
   return (
     <AdBannerProvider isPremium={effectivePremium}>
