@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AD_BANNER_HEIGHT } from '@/constants/adBanner';
 import { isAdsAvailable } from '@/utils/mobileAds';
 
-const adsAvailable = isAdsAvailable;
-
 interface AdBannerContextValue {
   isPremium: boolean;
   adBannerHeight: number; // total bottom offset screens should use
@@ -26,7 +24,7 @@ export function AdBannerProvider({
   // useSafeAreaInsets is safe here — SafeAreaProvider is always an ancestor
   // (mounted in app/_layout.tsx via expo-router's built-in SafeAreaProvider).
   const insets = useSafeAreaInsets();
-  const shouldShowAd = !isPremium && Platform.OS === 'ios' && adsAvailable;
+  const shouldShowAd = !isPremium && Platform.OS === 'ios' && isAdsAvailable;
   const adBannerHeight = shouldShowAd ? AD_BANNER_HEIGHT + insets.bottom : 0;
 
   return (

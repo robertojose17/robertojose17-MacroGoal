@@ -7,7 +7,7 @@ import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AdBannerProvider, useAdBanner } from '@/components/AdBannerContext';
 import { AdBannerFooter } from '@/components/AdBannerFooter';
-import { usePremium } from '@/hooks/usePremium';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 function TabLayoutInner() {
   const colorScheme = useColorScheme();
@@ -101,10 +101,10 @@ function TabLayoutInner() {
 }
 
 export default function TabLayout() {
-  const { isPremium, loading } = usePremium();
+  const { isPremium, loading } = useUserProfile();
   // While premium status is loading, treat as non-premium so no async hang blocks render.
   const effectivePremium = loading ? false : isPremium;
-  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium:', effectivePremium, 'loading:', loading);
+  console.log('[Tab Layout] Initializing AdBannerProvider, isPremium (from Supabase user_type):', effectivePremium, 'loading:', loading);
   return (
     <AdBannerProvider isPremium={effectivePremium}>
       <View style={{ flex: 1 }}>
