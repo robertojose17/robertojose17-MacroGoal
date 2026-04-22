@@ -17,7 +17,7 @@ import { useTheme } from '@react-navigation/native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import { useAdBanner } from '@/components/AdBannerContext';
+import { AD_BANNER_HEIGHT } from '@/components/AdBannerFooter';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -30,6 +30,7 @@ export interface TabBarItem {
 
 interface FloatingTabBarProps {
   tabs: TabBarItem[];
+  isPremium: boolean;
   containerWidth?: number;
   borderRadius?: number;
   bottomMargin?: number;
@@ -37,6 +38,7 @@ interface FloatingTabBarProps {
 
 export default function FloatingTabBar({
   tabs,
+  isPremium,
   containerWidth = screenWidth / 2.5,
   borderRadius = 35,
   bottomMargin,
@@ -45,8 +47,6 @@ export default function FloatingTabBar({
   const pathname = usePathname();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { adBannerHeight } = useAdBanner();
-  const hasAd = adBannerHeight > 0;
 
   const animatedValue = React.useRef(new Animated.Value(0)).current;
 
@@ -131,9 +131,9 @@ export default function FloatingTabBar({
   };
 
   const resolvedBottomMargin = bottomMargin ?? 20;
-  const containerBottom = hasAd
-    ? adBannerHeight + resolvedBottomMargin
-    : insets.bottom + resolvedBottomMargin;
+  const containerBottom = isPremium
+    ? insets.bottom + resolvedBottomMargin
+    : AD_BANNER_HEIGHT + insets.bottom + resolvedBottomMargin;
 
   return (
     <View style={[styles.safeArea, { bottom: containerBottom }]}>
