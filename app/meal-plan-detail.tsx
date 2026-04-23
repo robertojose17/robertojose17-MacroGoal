@@ -60,6 +60,7 @@ export default function MealPlanDetailScreen() {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingGrams, setEditingGrams] = useState<string>('');
+  const [editingServings, setEditingServings] = useState<string>('');
 
   const bgColor = isDark ? colors.backgroundDark : colors.background;
   const textColor = isDark ? colors.textDark : colors.text;
@@ -129,15 +130,17 @@ export default function MealPlanDetailScreen() {
 
   const handleStartEdit = (item: MealPlanItem) => {
     const gramsValue = item.grams != null ? item.grams : item.quantity * 100;
-    console.log('[MealPlanDetail] Start editing item:', item.id, 'food:', item.food_name, 'grams:', gramsValue);
+    console.log('[MealPlanDetail] Start editing item:', item.id, 'food:', item.food_name, 'grams:', gramsValue, 'quantity:', item.quantity);
     setEditingItemId(item.id);
     setEditingGrams(String(Math.round(gramsValue)));
+    setEditingServings(String(item.quantity));
   };
 
   const handleCancelEdit = () => {
     console.log('[MealPlanDetail] Cancel editing item:', editingItemId);
     setEditingItemId(null);
     setEditingGrams('');
+    setEditingServings('');
   };
 
   const handleConfirmEdit = async (item: MealPlanItem) => {
@@ -153,9 +156,11 @@ export default function MealPlanDetailScreen() {
     const newProtein = Math.round((Number(item.protein) || 0) * ratio * 10) / 10;
     const newCarbs = Math.round((Number(item.carbs) || 0) * ratio * 10) / 10;
     const newFats = Math.round((Number(item.fats) || 0) * ratio * 10) / 10;
-    console.log('[MealPlanDetail] Confirm edit item:', item.id, 'oldGrams:', oldGrams, 'newGrams:', newGrams, 'newCalories:', newCalories);
+    const newQuantity = parseFloat(editingServings) || item.quantity;
+    console.log('[MealPlanDetail] Confirm edit item:', item.id, 'oldGrams:', oldGrams, 'newGrams:', newGrams, 'newCalories:', newCalories, 'newQuantity:', newQuantity);
     setEditingItemId(null);
     setEditingGrams('');
+    setEditingServings('');
     try {
       await updateMealPlanItem(planId, item.id, {
         grams: newGrams,
@@ -163,6 +168,7 @@ export default function MealPlanDetailScreen() {
         protein: newProtein,
         carbs: newCarbs,
         fats: newFats,
+        quantity: newQuantity,
       });
       // Update all items with same food_name+meal_type in local state
       setPlan(prev => {
@@ -174,6 +180,7 @@ export default function MealPlanDetailScreen() {
             return {
               ...i,
               grams: newGrams,
+              quantity: newQuantity,
               calories: Math.round((Number(i.calories) || 0) * iRatio),
               protein: Math.round((Number(i.protein) || 0) * iRatio * 10) / 10,
               carbs: Math.round((Number(i.carbs) || 0) * iRatio * 10) / 10,
@@ -382,11 +389,23 @@ export default function MealPlanDetailScreen() {
                           <View style={styles.editRow}>
                             <TextInput
                               style={[styles.gramsInput, { color: textColor, borderColor: colors.primary }]}
-                              value={editingGrams}
-                              onChangeText={setEditingGrams}
+                              value={editingServings}
+                              onChangeText={setEditingServings}
                               keyboardType="decimal-pad"
                               autoFocus
                               selectTextOnFocus
+                              placeholder="qty"
+                              placeholderTextColor={secondaryColor}
+                            />
+                            <Text style={[styles.gramsLabel, { color: secondaryColor }]}>srv</Text>
+                            <TextInput
+                              style={[styles.gramsInput, { color: textColor, borderColor: colors.primary }]}
+                              value={editingGrams}
+                              onChangeText={setEditingGrams}
+                              keyboardType="decimal-pad"
+                              selectTextOnFocus
+                              placeholder="g"
+                              placeholderTextColor={secondaryColor}
                             />
                             <Text style={[styles.gramsLabel, { color: secondaryColor }]}>g</Text>
                             <TouchableOpacity
@@ -417,6 +436,9 @@ export default function MealPlanDetailScreen() {
                               size={11}
                               color={secondaryColor}
                             />
+                            <Text style={[styles.macroMiniText, { color: secondaryColor }]}>
+                              {'P: ' + Math.round(Number(item.protein) || 0) + 'g · C: ' + Math.round(Number(item.carbs) || 0) + 'g · F: ' + Math.round(Number(item.fats) || 0) + 'g'}
+                            </Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -567,7 +589,7 @@ const styles = StyleSheet.create({
   deleteButton: { padding: spacing.xs, minWidth: 32, alignItems: 'center' },
 
   // Inline edit
-  servingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  servingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   editRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   gramsInput: {
     borderWidth: 1,
@@ -575,12 +597,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     fontSize: 12,
-    minWidth: 52,
+    minWidth: 44,
+    maxWidth: 56,
     textAlign: 'center',
   },
   gramsLabel: { fontSize: 12 },
   editActionBtn: { padding: 4 },
   editActionText: { fontSize: 16, fontWeight: '700' },
+  macroMiniText: { fontSize: 11, opacity: 0.8 },
 
   bottomSpacer: { height: 40 },
 });
