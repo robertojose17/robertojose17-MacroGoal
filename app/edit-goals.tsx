@@ -30,6 +30,7 @@ export default function EditGoalsScreen() {
   
   // Goal data
   const [goalType, setGoalType] = useState<GoalType>('lose');
+  const [existingStartDate, setExistingStartDate] = useState<string | null>(null);
   const [lossRateLbsPerWeek, setLossRateLbsPerWeek] = useState<number>(1.0);
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate');
   
@@ -98,6 +99,7 @@ export default function EditGoalsScreen() {
       if (goalData) {
         console.log('[EditGoals] Goal data loaded:', goalData);
         setGoalType(goalData.goal_type);
+        setExistingStartDate(goalData.start_date || null);
         if (goalData.loss_rate_lbs_per_week) {
           setLossRateLbsPerWeek(goalData.loss_rate_lbs_per_week);
         }
@@ -220,6 +222,7 @@ export default function EditGoalsScreen() {
         fats_g: macros.fats,
         fiber_g: macros.fiber,
         is_active: true,
+        start_date: existingStartDate || null,
       };
 
       if (goalType === 'lose') {
