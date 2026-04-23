@@ -254,18 +254,10 @@ export default function MealPlanDetailScreen() {
   const dayCarbs = dedupedItems.reduce((s, i) => s + (Number(i.carbs) || 0), 0);
   const dayFats = dedupedItems.reduce((s, i) => s + (Number(i.fats) || 0), 0);
 
-  const totalCalories = Math.round(dayCalories * numDays);
-  const totalProtein = Math.round(dayProtein * numDays);
-  const totalCarbs = Math.round(dayCarbs * numDays);
-  const totalFats = Math.round(dayFats * numDays);
-
   const dayCaloriesDisplay = Math.round(dayCalories);
   const dayProteinDisplay = Math.round(dayProtein);
   const dayCarbsDisplay = Math.round(dayCarbs);
   const dayFatsDisplay = Math.round(dayFats);
-
-  const daysLabel = numDays === 1 ? '1 day' : `${numDays} days`;
-  const repeatSubtitle = `Repeats for ${daysLabel}`;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
@@ -293,7 +285,7 @@ export default function MealPlanDetailScreen() {
         <View style={[styles.macroCard, { backgroundColor: cardBg, borderColor: cardBorderColor }]}>
           <View style={styles.macroCardHeader}>
             <Text style={[styles.macroCardTitle, { color: textColor }]}>Weekly Summary</Text>
-            <Text style={[styles.macroCardSubtitle, { color: secondaryColor }]}>{repeatSubtitle}</Text>
+            <Text style={[styles.macroCardSubtitle, { color: secondaryColor }]}>Per day</Text>
           </View>
 
           {/* Per day row */}
@@ -319,33 +311,6 @@ export default function MealPlanDetailScreen() {
             </View>
           </View>
 
-          <View style={[styles.macroDivider, { backgroundColor: borderColor }]} />
-
-          {/* Total row */}
-          <View style={styles.macroRow}>
-            <Text style={[styles.macroRowLabel, { color: secondaryColor }]}>
-              {'For '}
-              {daysLabel}
-            </Text>
-            <View style={styles.macroPills}>
-              <View style={[styles.macroPill, { backgroundColor: colors.calories + '22' }]}>
-                <Text style={[styles.macroPillValue, { color: colors.calories }]}>{totalCalories}</Text>
-                <Text style={[styles.macroPillUnit, { color: colors.calories }]}>kcal</Text>
-              </View>
-              <View style={[styles.macroPill, { backgroundColor: colors.protein + '22' }]}>
-                <Text style={[styles.macroPillValue, { color: colors.protein }]}>{totalProtein}</Text>
-                <Text style={[styles.macroPillUnit, { color: colors.protein }]}>P</Text>
-              </View>
-              <View style={[styles.macroPill, { backgroundColor: colors.carbs + '22' }]}>
-                <Text style={[styles.macroPillValue, { color: colors.carbs }]}>{totalCarbs}</Text>
-                <Text style={[styles.macroPillUnit, { color: colors.carbs }]}>C</Text>
-              </View>
-              <View style={[styles.macroPill, { backgroundColor: colors.fats + '22' }]}>
-                <Text style={[styles.macroPillValue, { color: colors.fats }]}>{totalFats}</Text>
-                <Text style={[styles.macroPillUnit, { color: colors.fats }]}>F</Text>
-              </View>
-            </View>
-          </View>
         </View>
 
         {/* Meal Sections */}
