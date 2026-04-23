@@ -530,6 +530,28 @@ export default function HomeScreen() {
 
     return (
       <View>
+        {/* AI Meal Planner card */}
+        <View style={[styles.aiCard, { backgroundColor: isDark ? '#1E1535' : '#F0EEFF' }]}>
+          <View style={styles.aiCardHeader}>
+            <View style={[styles.aiIconCircle, { backgroundColor: isDark ? '#2D1F5E' : '#DDD6FE' }]}>
+              <IconSymbol ios_icon_name="sparkles" android_material_icon_name="auto-awesome" size={22} color="#7C3AED" />
+            </View>
+            <View style={styles.aiCardText}>
+              <Text style={[styles.aiCardTitle, { color: isDark ? '#E9D5FF' : '#4C1D95' }]}>
+                Generate with AI
+              </Text>
+              <Text style={[styles.aiCardSubtitle, { color: isDark ? '#A78BFA' : '#7C3AED' }]}>
+                Tell us your preferences and we'll build your meal plan automatically
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.aiComingSoonBadge, { backgroundColor: isDark ? '#2D1F5E' : '#DDD6FE' }]}>
+            <Text style={[styles.aiComingSoonText, { color: isDark ? '#C4B5FD' : '#5B21B6' }]}>
+              Coming Soon
+            </Text>
+          </View>
+        </View>
+
         {plans.length === 0 ? (
           <View style={[styles.plansEmptyCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={40} color={isDark ? colors.textSecondaryDark : colors.textSecondary} />
@@ -578,50 +600,11 @@ export default function HomeScreen() {
     );
   };
 
+  const todayLabel = isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' });
+  const dateDisplay = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
-      {/* Sticky date navigation header */}
-      <View style={[styles.stickyHeader, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderBottomColor: isDark ? colors.borderDark : colors.border }]}>
-        <TouchableOpacity
-          onPress={goToPreviousDay}
-          style={styles.dateButton}
-          disabled={leftArrowDisabled}
-          activeOpacity={leftArrowDisabled ? 1 : 0.7}
-        >
-          <IconSymbol
-            ios_icon_name="arrow.left"
-            android_material_icon_name="arrow-back"
-            size={22}
-            color={isDark ? colors.textDark : colors.text}
-            style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.dateCenter} onPress={goToToday} activeOpacity={0.7}>
-          <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-            {isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' })}
-          </Text>
-          <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
-            {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={goToNextDay}
-          style={styles.dateButton}
-          disabled={rightArrowDisabled}
-          activeOpacity={rightArrowDisabled ? 1 : 0.7}
-        >
-          <IconSymbol
-            ios_icon_name="arrow.right"
-            android_material_icon_name="arrow-forward"
-            size={22}
-            color={isDark ? colors.textDark : colors.text}
-            style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
-          />
-        </TouchableOpacity>
-      </View>
-
       {/* Segmented control */}
       <View style={[styles.segmentedControlWrapper, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]}>
         <View style={[styles.segmentedControl, { backgroundColor: isDark ? colors.cardDark : '#E8EAF0' }]}>
@@ -645,6 +628,50 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Date navigation — only visible in Tracking mode */}
+      {activeTab === 'tracking' && (
+        <View style={[styles.stickyHeader, { backgroundColor: isDark ? colors.backgroundDark : colors.background, borderBottomColor: isDark ? colors.borderDark : colors.border }]}>
+          <TouchableOpacity
+            onPress={goToPreviousDay}
+            style={styles.dateButton}
+            disabled={leftArrowDisabled}
+            activeOpacity={leftArrowDisabled ? 1 : 0.7}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.left"
+              android_material_icon_name="arrow-back"
+              size={22}
+              color={isDark ? colors.textDark : colors.text}
+              style={{ opacity: leftArrowDisabled ? 0.4 : 1 }}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.dateCenter} onPress={goToToday} activeOpacity={0.7}>
+            <Text style={[styles.dateLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {todayLabel}
+            </Text>
+            <Text style={[styles.dateText, { color: isDark ? colors.textDark : colors.text }]}>
+              {dateDisplay}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={goToNextDay}
+            style={styles.dateButton}
+            disabled={rightArrowDisabled}
+            activeOpacity={rightArrowDisabled ? 1 : 0.7}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.right"
+              android_material_icon_name="arrow-forward"
+              size={22}
+              color={isDark ? colors.textDark : colors.text}
+              style={{ opacity: rightArrowDisabled ? 0.4 : 1 }}
+            />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <FlatList
         data={[{ key: 'content' }]}
@@ -806,4 +833,35 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   createPlanButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  // AI card styles
+  aiCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    boxShadow: '0px 2px 12px rgba(124, 58, 237, 0.15)',
+    elevation: 3,
+  },
+  aiCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  aiIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiCardText: { flex: 1 },
+  aiCardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  aiCardSubtitle: { fontSize: 13, lineHeight: 18 },
+  aiComingSoonBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: borderRadius.full,
+  },
+  aiComingSoonText: { fontSize: 12, fontWeight: '600' },
 });
