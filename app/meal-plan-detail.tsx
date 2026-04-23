@@ -61,6 +61,10 @@ export default function MealPlanDetailScreen() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingGrams, setEditingGrams] = useState<string>('');
   const [editingServings, setEditingServings] = useState<string>('');
+  const [showServingOptions, setShowServingOptions] = useState(false);
+  const [editingServingOptions, setEditingServingOptions] = useState<{ key: string; label: string; gramsPerUnit: number }[]>([]);
+  const [editingSelectedOptionKey, setEditingSelectedOptionKey] = useState('default');
+  const [editingGramsPerUnit, setEditingGramsPerUnit] = useState(100);
 
   const bgColor = isDark ? colors.backgroundDark : colors.background;
   const textColor = isDark ? colors.textDark : colors.text;
@@ -130,10 +134,24 @@ export default function MealPlanDetailScreen() {
 
   const handleStartEdit = (item: MealPlanItem) => {
     const gramsValue = item.grams != null ? item.grams : item.quantity * 100;
-    console.log('[MealPlanDetail] Start editing item:', item.id, 'food:', item.food_name, 'grams:', gramsValue, 'quantity:', item.quantity);
+    const gramsPerServing = item.quantity > 0 ? gramsValue / item.quantity : gramsValue;
+    const defaultLabel = item.serving_description
+      ? item.serving_description
+      : `${Math.round(gramsPerServing)}g`;
+    const options = [
+      { key: 'default', label: defaultLabel, gramsPerUnit: gramsPerServing },
+      { key: 'g', label: '1 g', gramsPerUnit: 1 },
+      { key: 'oz', label: '1 oz', gramsPerUnit: 28.35 },
+      { key: 'lb', label: '1 lb', gramsPerUnit: 453.592 },
+    ];
+    console.log('[MealPlanDetail] Start editing item:', item.id, 'food:', item.food_name, 'grams:', gramsValue, 'quantity:', item.quantity, 'gramsPerServing:', gramsPerServing);
     setEditingItemId(item.id);
-    setEditingGrams(String(Math.round(gramsValue)));
     setEditingServings(String(item.quantity));
+    setEditingGrams(String(Math.round(gramsValue)));
+    setEditingServingOptions(options);
+    setEditingSelectedOptionKey('default');
+    setEditingGramsPerUnit(gramsPerServing);
+    setShowServingOptions(false);
   };
 
   const handleCancelEdit = () => {
@@ -141,10 +159,14 @@ export default function MealPlanDetailScreen() {
     setEditingItemId(null);
     setEditingGrams('');
     setEditingServings('');
+    setShowServingOptions(false);
+    setEditingServingOptions([]);
+    setEditingSelectedOptionKey('default');
+    setEditingGramsPerUnit(100);
   };
 
   const handleConfirmEdit = async (item: MealPlanItem) => {
-    const newGrams = parseFloat(editingGrams);
+    const newGrams = editingGramsPerUnit * (parseFloat(editingServings) || 0);
     if (isNaN(newGrams) || newGrams <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid number greater than 0.');
       return;
@@ -386,42 +408,80 @@ export default function MealPlanDetailScreen() {
                           <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>{item.brand}</Text>
                         )}
                         {isEditing ? (
-                          <View style={styles.editRow}>
-                            <TextInput
-                              style={[styles.gramsInput, { color: textColor, borderColor: colors.primary }]}
-                              value={editingServings}
-                              onChangeText={setEditingServings}
-                              keyboardType="decimal-pad"
-                              autoFocus
-                              selectTextOnFocus
-                              placeholder="qty"
-                              placeholderTextColor={secondaryColor}
-                            />
-                            <Text style={[styles.gramsLabel, { color: secondaryColor }]}>srv</Text>
-                            <TextInput
-                              style={[styles.gramsInput, { color: textColor, borderColor: colors.primary }]}
-                              value={editingGrams}
-                              onChangeText={setEditingGrams}
-                              keyboardType="decimal-pad"
-                              selectTextOnFocus
-                              placeholder="g"
-                              placeholderTextColor={secondaryColor}
-                            />
-                            <Text style={[styles.gramsLabel, { color: secondaryColor }]}>g</Text>
-                            <TouchableOpacity
-                              style={styles.editActionBtn}
-                              onPress={() => handleConfirmEdit(item)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.editActionText, { color: colors.primary }]}>✓</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.editActionBtn}
-                              onPress={handleCancelEdit}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.editActionText, { color: colors.error }]}>✗</Text>
-                            </TouchableOpacity>
+                          <View>
+                            <View style={styles.editServingRow}>
+                              <TextInput
+                                style={[styles.servingQtyInput, { color: textColor, borderColor: colors.primary }]}
+                                value={editingServings}
+                                onChangeText={(val) => {
+                                  setEditingServings(val);
+                                  setEditingGrams(String(Math.round(editingGramsPerUnit * (parseFloat(val) || 0))));
+                                }}
+                                keyboardType="decimal-pad"
+                                autoFocus
+                                selectTextOnFocus
+                                placeholder="1"
+                                placeholderTextColor={secondaryColor}
+                              />
+                              <TouchableOpacity
+                                style={[styles.servingDropdownBtn, { borderColor: colors.primary, backgroundColor: cardBg }]}
+                                onPress={() => {
+                                  console.log('[MealPlanDetail] Serving dropdown toggled, item:', item.id, 'showServingOptions:', !showServingOptions);
+                                  setShowServingOptions(prev => !prev);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.servingDropdownText, { color: textColor }]} numberOfLines={1}>
+                                  {editingServingOptions.find(o => o.key === editingSelectedOptionKey)?.label ?? ''}
+                                </Text>
+                                <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand-more" size={12} color={textColor} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.editActionBtn}
+                                onPress={() => {
+                                  console.log('[MealPlanDetail] Confirm edit pressed, item:', item.id, 'servings:', editingServings, 'gramsPerUnit:', editingGramsPerUnit);
+                                  handleConfirmEdit(item);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.editActionText, { color: colors.primary }]}>✓</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.editActionBtn}
+                                onPress={handleCancelEdit}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.editActionText, { color: colors.error }]}>✗</Text>
+                              </TouchableOpacity>
+                            </View>
+                            {showServingOptions && (
+                              <View style={[styles.servingOptionsList, { backgroundColor: cardBg, borderColor }]}>
+                                {editingServingOptions.map((option, optIdx) => {
+                                  const isSelected = option.key === editingSelectedOptionKey;
+                                  const isLastOpt = optIdx === editingServingOptions.length - 1;
+                                  return (
+                                    <TouchableOpacity
+                                      key={option.key}
+                                      style={[
+                                        styles.servingOptionItem,
+                                        { borderBottomColor: borderColor, backgroundColor: isSelected ? (isDark ? '#2a2a2a' : '#f0f0f0') : undefined },
+                                        isLastOpt && { borderBottomWidth: 0 },
+                                      ]}
+                                      onPress={() => {
+                                        console.log('[MealPlanDetail] Serving option selected:', option.key, option.label, 'gramsPerUnit:', option.gramsPerUnit);
+                                        setEditingGramsPerUnit(option.gramsPerUnit);
+                                        setEditingSelectedOptionKey(option.key);
+                                        setEditingGrams(String(Math.round(option.gramsPerUnit * (parseFloat(editingServings) || 1))));
+                                        setShowServingOptions(false);
+                                      }}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={[styles.servingOptionText, { color: textColor }]}>{option.label}</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            )}
                           </View>
                         ) : (
                           <TouchableOpacity
@@ -590,18 +650,41 @@ const styles = StyleSheet.create({
 
   // Inline edit
   servingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  editRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  gramsInput: {
+  editServingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  servingQtyInput: {
     borderWidth: 1,
     borderRadius: borderRadius.sm,
     paddingHorizontal: 6,
     paddingVertical: 2,
     fontSize: 12,
-    minWidth: 44,
-    maxWidth: 56,
+    minWidth: 36,
+    maxWidth: 48,
     textAlign: 'center',
   },
-  gramsLabel: { fontSize: 12 },
+  servingDropdownBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 24,
+  },
+  servingDropdownText: { fontSize: 11, flex: 1 },
+  servingOptionsList: {
+    borderRadius: borderRadius.sm,
+    overflow: 'hidden',
+    marginTop: 2,
+    borderWidth: 1,
+  },
+  servingOptionItem: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  servingOptionText: { fontSize: 12 },
   editActionBtn: { padding: 4 },
   editActionText: { fontSize: 16, fontWeight: '700' },
   macroMiniText: { fontSize: 11, opacity: 0.8 },
