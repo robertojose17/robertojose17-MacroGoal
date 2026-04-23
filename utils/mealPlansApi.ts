@@ -166,6 +166,19 @@ export async function addMealPlanItem(planId: string, body: AddMealPlanItemBody)
   return data;
 }
 
+export async function updateMealPlanItem(planId: string, itemId: string, body: { grams?: number; quantity?: number; calories?: number; protein?: number; carbs?: number; fats?: number }): Promise<void> {
+  console.log('[MealPlansApi] updateMealPlanItem()', planId, itemId, body);
+  const { error } = await supabase
+    .from('meal_plan_items')
+    .update(body)
+    .eq('id', itemId)
+    .eq('plan_id', planId);
+  if (error) {
+    console.error('[MealPlansApi] updateMealPlanItem error:', error.message);
+    throw new Error(error.message);
+  }
+}
+
 export async function deleteMealPlanItem(planId: string, itemId: string): Promise<void> {
   console.log('[MealPlansApi] deleteMealPlanItem()', planId, itemId);
   const { error } = await supabase
@@ -200,7 +213,7 @@ export async function getGroceryList(planId: string): Promise<GroceryListRespons
   const userId = await getCurrentUserId();
   const { data: plan, error: planError } = await supabase
     .from('meal_plans')
-    .select('name')
+    .select('name, start_date, end_date')
     .eq('id', planId)
     .eq('user_id', userId)
     .single();
@@ -208,28 +221,50 @@ export async function getGroceryList(planId: string): Promise<GroceryListRespons
 
   const { data: items, error: itemsError } = await supabase
     .from('meal_plan_items')
-    .select('food_name, brand, grams, quantity')
+    .select('food_name, brand, grams, quantity, meal_type')
     .eq('plan_id', planId);
   if (itemsError) throw new Error(itemsError.message);
 
-  const grouped: Record<string, { name: string; brand: string | null; total_grams: number }> = {};
+  // Deduplicate items by food_name+meal_type (same as frontend dedup)
+  const seen = new Set<string>();
+  const uniqueItems: typeof items = [];
   for (const item of (items || [])) {
-    const key = item.food_name.toLowerCase().trim();
-    if (!grouped[key]) {
-      grouped[key] = { name: item.food_name, brand: item.brand || null, total_grams: 0 };
+    const key = (item.food_name as string).toLowerCase().trim() + '|' + item.meal_type;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueItems.push(item);
     }
-    grouped[key].total_grams += item.grams || (item.quantity * 100);
+  }
+
+  // Calculate numDays from plan dates
+  const start = new Date(plan.start_date + 'T00:00:00');
+  const end = new Date(plan.end_date + 'T00:00:00');
+  const numDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+  console.log('[MealPlansApi] getGroceryList numDays:', numDays, 'uniqueItems:', uniqueItems.length);
+
+  // Aggregate with numDays multiplier
+  const grouped: Record<string, { name: string; brand: string | null; total_grams: number }> = {};
+  for (const item of uniqueItems) {
+    const key = (item.food_name as string).toLowerCase().trim();
+    if (!grouped[key]) {
+      grouped[key] = { name: item.food_name as string, brand: (item.brand as string) || null, total_grams: 0 };
+    }
+    grouped[key].total_grams += ((item.grams as number) || ((item.quantity as number) * 100)) * numDays;
   }
 
   const categoryMap: Record<string, GroceryCategory> = {};
   for (const entry of Object.values(grouped)) {
     const { category, emoji } = categorizeFood(entry.name);
     if (!categoryMap[category]) categoryMap[category] = { category, emoji, items: [] };
+    const totalGrams = Math.round(entry.total_grams);
+    const displayAmount = totalGrams >= 1000
+      ? `${(totalGrams / 1000).toFixed(1)} kg`
+      : `${totalGrams} g`;
     categoryMap[category].items.push({
       name: entry.name,
       brand: entry.brand || undefined,
-      total_grams: Math.round(entry.total_grams),
-      display_amount: `${Math.round(entry.total_grams)} g`,
+      total_grams: totalGrams,
+      display_amount: displayAmount,
     });
   }
 

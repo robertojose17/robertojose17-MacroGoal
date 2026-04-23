@@ -9,13 +9,14 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getMealPlan, deleteMealPlanItem, type MealPlanDetail, type MealPlanItem } from '@/utils/mealPlansApi';
+import { getMealPlan, deleteMealPlanItem, updateMealPlanItem, type MealPlanDetail, type MealPlanItem } from '@/utils/mealPlansApi';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -57,6 +58,8 @@ export default function MealPlanDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingGrams, setEditingGrams] = useState<string>('');
 
   const bgColor = isDark ? colors.backgroundDark : colors.background;
   const textColor = isDark ? colors.textDark : colors.text;
@@ -122,6 +125,71 @@ export default function MealPlanDetailScreen() {
         },
       },
     ]);
+  };
+
+  const handleStartEdit = (item: MealPlanItem) => {
+    const gramsValue = item.grams != null ? item.grams : item.quantity * 100;
+    console.log('[MealPlanDetail] Start editing item:', item.id, 'food:', item.food_name, 'grams:', gramsValue);
+    setEditingItemId(item.id);
+    setEditingGrams(String(Math.round(gramsValue)));
+  };
+
+  const handleCancelEdit = () => {
+    console.log('[MealPlanDetail] Cancel editing item:', editingItemId);
+    setEditingItemId(null);
+    setEditingGrams('');
+  };
+
+  const handleConfirmEdit = async (item: MealPlanItem) => {
+    const newGrams = parseFloat(editingGrams);
+    if (isNaN(newGrams) || newGrams <= 0) {
+      Alert.alert('Invalid amount', 'Please enter a valid number greater than 0.');
+      return;
+    }
+    const oldGrams = item.grams != null ? item.grams : item.quantity * 100;
+    if (oldGrams === 0) return;
+    const ratio = newGrams / oldGrams;
+    const newCalories = Math.round((Number(item.calories) || 0) * ratio);
+    const newProtein = Math.round((Number(item.protein) || 0) * ratio * 10) / 10;
+    const newCarbs = Math.round((Number(item.carbs) || 0) * ratio * 10) / 10;
+    const newFats = Math.round((Number(item.fats) || 0) * ratio * 10) / 10;
+    console.log('[MealPlanDetail] Confirm edit item:', item.id, 'oldGrams:', oldGrams, 'newGrams:', newGrams, 'newCalories:', newCalories);
+    setEditingItemId(null);
+    setEditingGrams('');
+    try {
+      await updateMealPlanItem(planId, item.id, {
+        grams: newGrams,
+        calories: newCalories,
+        protein: newProtein,
+        carbs: newCarbs,
+        fats: newFats,
+      });
+      // Update all items with same food_name+meal_type in local state
+      setPlan(prev => {
+        if (!prev) return prev;
+        const updatedItems = prev.items.map(i => {
+          if (i.food_name.toLowerCase().trim() === item.food_name.toLowerCase().trim() && i.meal_type === item.meal_type) {
+            const iOldGrams = i.grams != null ? i.grams : i.quantity * 100;
+            const iRatio = iOldGrams > 0 ? newGrams / iOldGrams : 1;
+            return {
+              ...i,
+              grams: newGrams,
+              calories: Math.round((Number(i.calories) || 0) * iRatio),
+              protein: Math.round((Number(i.protein) || 0) * iRatio * 10) / 10,
+              carbs: Math.round((Number(i.carbs) || 0) * iRatio * 10) / 10,
+              fats: Math.round((Number(i.fats) || 0) * iRatio * 10) / 10,
+            };
+          }
+          return i;
+        });
+        return { ...prev, items: updatedItems };
+      });
+      console.log('[MealPlanDetail] Item updated successfully');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[MealPlanDetail] Error updating item:', msg);
+      Alert.alert('Error', 'Failed to update quantity. Please try again.');
+    }
   };
 
   const handleAddFood = (mealType: MealType) => {
@@ -321,6 +389,7 @@ export default function MealPlanDetailScreen() {
               ) : (
                 mealItems.map((item, idx) => {
                   const isDeleting = deletingItemId === item.id;
+                  const isEditing = editingItemId === item.id;
                   const servingText = item.serving_description
                     ? item.serving_description
                     : item.grams
@@ -344,7 +413,47 @@ export default function MealPlanDetailScreen() {
                         {!!item.brand && (
                           <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>{item.brand}</Text>
                         )}
-                        <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>{servingText}</Text>
+                        {isEditing ? (
+                          <View style={styles.editRow}>
+                            <TextInput
+                              style={[styles.gramsInput, { color: textColor, borderColor: colors.primary }]}
+                              value={editingGrams}
+                              onChangeText={setEditingGrams}
+                              keyboardType="decimal-pad"
+                              autoFocus
+                              selectTextOnFocus
+                            />
+                            <Text style={[styles.gramsLabel, { color: secondaryColor }]}>g</Text>
+                            <TouchableOpacity
+                              style={styles.editActionBtn}
+                              onPress={() => handleConfirmEdit(item)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.editActionText, { color: colors.primary }]}>✓</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.editActionBtn}
+                              onPress={handleCancelEdit}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.editActionText, { color: colors.error }]}>✗</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.servingRow}
+                            onPress={() => handleStartEdit(item)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>{servingText}</Text>
+                            <IconSymbol
+                              ios_icon_name="pencil"
+                              android_material_icon_name="edit"
+                              size={11}
+                              color={secondaryColor}
+                            />
+                          </TouchableOpacity>
+                        )}
                       </View>
                       <View style={styles.foodItemRight}>
                         <Text style={[styles.foodItemCalories, { color: textColor }]}>{itemCalories}</Text>
@@ -353,7 +462,7 @@ export default function MealPlanDetailScreen() {
                       <TouchableOpacity
                         style={styles.deleteButton}
                         onPress={() => handleDeleteItem(item.id)}
-                        disabled={isDeleting}
+                        disabled={isDeleting || isEditing}
                         activeOpacity={0.7}
                       >
                         {isDeleting ? (
@@ -363,7 +472,7 @@ export default function MealPlanDetailScreen() {
                             ios_icon_name="trash"
                             android_material_icon_name="delete"
                             size={17}
-                            color={colors.error}
+                            color={isEditing ? borderColor : colors.error}
                           />
                         )}
                       </TouchableOpacity>
@@ -491,6 +600,22 @@ const styles = StyleSheet.create({
   foodItemCalories: { fontSize: 15, fontWeight: '700' },
   foodItemKcal: { fontSize: 11 },
   deleteButton: { padding: spacing.xs, minWidth: 32, alignItems: 'center' },
+
+  // Inline edit
+  servingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  gramsInput: {
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    fontSize: 12,
+    minWidth: 52,
+    textAlign: 'center',
+  },
+  gramsLabel: { fontSize: 12 },
+  editActionBtn: { padding: 4 },
+  editActionText: { fontSize: 16, fontWeight: '700' },
 
   bottomSpacer: { height: 40 },
 });
