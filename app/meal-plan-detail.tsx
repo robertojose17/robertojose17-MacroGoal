@@ -346,6 +346,10 @@ export default function MealPlanDetailScreen() {
         {MEAL_TYPES.map((mealDef, mealIdx) => {
           const mealItems = dedupedItems.filter(i => i.meal_type === mealDef.type);
           const isLast = mealIdx === MEAL_TYPES.length - 1;
+          const mealCalories = Math.round(mealItems.reduce((s, i) => s + (Number(i.calories) || 0), 0));
+          const mealProtein = Math.round(mealItems.reduce((s, i) => s + (Number(i.protein) || 0), 0));
+          const mealCarbs = Math.round(mealItems.reduce((s, i) => s + (Number(i.carbs) || 0), 0));
+          const mealFats = Math.round(mealItems.reduce((s, i) => s + (Number(i.fats) || 0), 0));
 
           return (
             <View
@@ -377,6 +381,28 @@ export default function MealPlanDetailScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Meal macro summary */}
+              {mealItems.length > 0 && (
+                <View style={styles.mealMacroRow}>
+                  <View style={[styles.macroPill, { backgroundColor: colors.calories + '22' }]}>
+                    <Text style={[styles.macroPillValue, { color: colors.calories }]}>{mealCalories}</Text>
+                    <Text style={[styles.macroPillUnit, { color: colors.calories }]}>kcal</Text>
+                  </View>
+                  <View style={[styles.macroPill, { backgroundColor: colors.protein + '22' }]}>
+                    <Text style={[styles.macroPillValue, { color: colors.protein }]}>{mealProtein}g</Text>
+                    <Text style={[styles.macroPillUnit, { color: colors.protein }]}>P</Text>
+                  </View>
+                  <View style={[styles.macroPill, { backgroundColor: colors.carbs + '22' }]}>
+                    <Text style={[styles.macroPillValue, { color: colors.carbs }]}>{mealCarbs}g</Text>
+                    <Text style={[styles.macroPillUnit, { color: colors.carbs }]}>C</Text>
+                  </View>
+                  <View style={[styles.macroPill, { backgroundColor: colors.fats + '22' }]}>
+                    <Text style={[styles.macroPillValue, { color: colors.fats }]}>{mealFats}g</Text>
+                    <Text style={[styles.macroPillUnit, { color: colors.fats }]}>F</Text>
+                  </View>
+                </View>
+              )}
+
               {/* Items */}
               {mealItems.length === 0 ? (
                 <Text style={[styles.emptyMealText, { color: secondaryColor }]}>No foods added yet</Text>
@@ -397,6 +423,7 @@ export default function MealPlanDetailScreen() {
                       key={item.id}
                       style={[
                         styles.foodItem,
+                        idx === 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: borderColor },
                         !isLastItem && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
                       ]}
                     >
@@ -688,6 +715,14 @@ const styles = StyleSheet.create({
   editActionBtn: { padding: 4 },
   editActionText: { fontSize: 16, fontWeight: '700' },
   macroMiniText: { fontSize: 11, opacity: 0.8 },
+
+  mealMacroRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    flexWrap: 'wrap',
+  },
 
   bottomSpacer: { height: 40 },
 });
