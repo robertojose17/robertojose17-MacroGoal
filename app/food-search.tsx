@@ -148,6 +148,7 @@ export default function FoodSearchScreen() {
   const context = params.context as string;
   const returnTo = params.returnTo as string;
   const targetMealId = params.mealId as string;
+  const planId = params.planId as string;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -455,9 +456,10 @@ export default function FoodSearchScreen() {
         context: context,
         returnTo: returnTo,
         mealId: targetMealId,
+        planId: planId,
       },
     });
-  }, [mealType, date, mode, context, returnTo, targetMealId, router]);
+  }, [mealType, date, mode, context, returnTo, targetMealId, planId, router]);
 
   // OPTIMIZATION: Memoize renderItem to prevent recreation
   const renderResultItem = useCallback(({ item }: { item: SearchResultItem }) => {
