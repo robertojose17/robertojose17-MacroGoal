@@ -29,8 +29,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: tabBarBackgroundColor,
           borderTopColor: tabBarBorderColor,
-          paddingBottom: isPremium ? 20 : 8,
-          height: isPremium ? 85 : 60,
+          paddingBottom: isPremium ? 20 : 0,
+          height: isPremium ? 85 : 50,
         },
       }}
     >
