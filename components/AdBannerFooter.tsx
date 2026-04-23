@@ -42,6 +42,7 @@
 import React, { useState } from 'react';
 import { View, useColorScheme, Platform } from 'react-native';
 import { BannerAd, BannerAdSize, TestIds, isBannerAdAvailable } from '@/utils/bannerAd';
+import { usePremium } from '@/hooks/usePremium';
 
 // Inline the constant to avoid module-evaluation-order issues in Hermes production builds.
 export const AD_BANNER_HEIGHT: number = 60;
@@ -52,8 +53,10 @@ const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-5592015069000241/7688730087';
 export function AdBannerFooter() {
   const colorScheme = useColorScheme();
   const [adLoaded, setAdLoaded] = useState(false);
+  const { isPremium } = usePremium();
 
   if (Platform.OS !== 'ios' || !isBannerAdAvailable) return null;
+  if (isPremium) return null;
 
   const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
