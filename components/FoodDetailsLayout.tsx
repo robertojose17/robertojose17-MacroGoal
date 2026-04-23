@@ -34,7 +34,20 @@ interface FoodDetailsLayoutProps {
   context?: string;
   returnTo?: string;
   itemId?: string;
+  planId?: string;
   onSaveComplete?: () => void;
+  onMealPlanSave?: (foodData: {
+    food_name: string;
+    brand?: string;
+    quantity: number;
+    grams?: number;
+    serving_description?: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+    fiber?: number;
+  }) => Promise<void>;
 }
 
 const UNIT_CONVERSIONS: Record<ServingUnit, number> = {
@@ -229,7 +242,9 @@ export default function FoodDetailsLayout({
   context,
   returnTo,
   itemId,
+  planId,
   onSaveComplete,
+  onMealPlanSave,
 }: FoodDetailsLayoutProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -481,7 +496,7 @@ export default function FoodDetailsLayout({
   };
 
   const handleSave = async () => {
-    console.log('[FoodDetails] Add to Meal button pressed, mode=', mode, 'context=', context, 'mealType=', mealType, 'date=', date);
+    console.log('[FoodDetails] Add to Meal button pressed, mode=', mode, 'context=', context, 'mealType=', mealType, 'date=', date, 'planId=', planId);
     if (!product) {
       console.log('[FoodDetails] handleSave: no product, aborting');
       return;
@@ -501,6 +516,33 @@ export default function FoodDetailsLayout({
       const servingInfo = extractServingSize(product);
 
       const servingDescription = `${servingAmount % 1 === 0 ? servingAmount : servingAmount.toFixed(2)} g`;
+
+      // Meal-plan mode: delegate to onMealPlanSave callback
+      if (onMealPlanSave) {
+        const foodName = (product.product_name || product.generic_name || 'Unknown Product').trim();
+        const foodBrand = (product.brands || '').trim() || undefined;
+        const safeMacros = {
+          calories: safeNum(macros.calories),
+          protein: safeNum(macros.protein),
+          carbs: safeNum(macros.carbs),
+          fats: safeNum(macros.fats),
+          fiber: safeNum(macros.fiber),
+        };
+        console.log('[FoodDetails] handleSave: delegating to onMealPlanSave, food=', foodName);
+        await onMealPlanSave({
+          food_name: foodName,
+          brand: foodBrand,
+          quantity: parseFloat(numberOfServings) || 1,
+          grams: totalGrams,
+          serving_description: servingDescription,
+          calories: safeMacros.calories,
+          protein: safeMacros.protein,
+          carbs: safeMacros.carbs,
+          fats: safeMacros.fats,
+          fiber: safeMacros.fiber,
+        });
+        return;
+      }
 
       // Ensure all macro values sent to DB are finite numbers, never NaN/null
       const safeMacros = {
