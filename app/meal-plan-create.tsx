@@ -7,7 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { apiRequest } from '@/utils/api';
+import { createMealPlan } from '@/utils/mealPlansApi';
 
 const formatDateForStorage = (date: Date): string => {
   const year = date.getFullYear();
@@ -81,21 +81,9 @@ export default function MealPlanCreateScreen() {
         start_date: formatDateForStorage(startDate),
         end_date: formatDateForStorage(endDate),
       };
-      console.log('[MealPlanCreate] POST /api/meal-plans body:', body);
+      console.log('[MealPlanCreate] POST meal-plans body:', body);
 
-      const response = await apiRequest('/api/meal-plans', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[MealPlanCreate] Failed to create plan:', response.status, text);
-        Alert.alert('Error', 'Failed to create meal plan. Please try again.');
-        return;
-      }
-
-      const newPlan = await response.json();
+      const newPlan = await createMealPlan(body);
       console.log('[MealPlanCreate] Plan created successfully:', newPlan.id);
 
       router.replace({ pathname: '/meal-plan-detail', params: { planId: newPlan.id } });

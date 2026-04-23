@@ -8,7 +8,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
-import { apiRequest } from '@/utils/api';
+import { listMealPlans, type MealPlan as ApiMealPlan } from '@/utils/mealPlansApi';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -216,14 +216,7 @@ export default function HomeScreen() {
     setPlansLoading(true);
     setPlansError(null);
     try {
-      const response = await apiRequest('/api/meal-plans');
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[Home Android] Failed to load meal plans:', response.status, text);
-        setPlansError('Failed to load meal plans.');
-        return;
-      }
-      const data = await response.json();
+      const data = await listMealPlans();
       console.log('[Home Android] Meal plans loaded:', data.plans?.length || 0);
       setPlans(data.plans || []);
     } catch (err: any) {

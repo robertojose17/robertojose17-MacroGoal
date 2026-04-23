@@ -6,35 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { apiRequest } from '@/utils/api';
+import { getMealPlan, deleteMealPlanItem, type MealPlanDetail, type MealPlanItem } from '@/utils/mealPlansApi';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
-
-interface MealPlanItem {
-  id: string;
-  plan_id: string;
-  date: string;
-  meal_type: MealType;
-  food_name: string;
-  brand?: string;
-  quantity: number;
-  grams?: number;
-  serving_description?: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
-  fiber?: number;
-}
-
-interface MealPlanDetail {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  created_at: string;
-  items: MealPlanItem[];
-}
 
 const MEAL_TYPES: { type: MealType; label: string }[] = [
   { type: 'breakfast', label: 'Breakfast' },
@@ -84,14 +58,7 @@ export default function MealPlanDetailScreen() {
     if (!planId) return;
     console.log('[MealPlanDetail] Loading plan:', planId);
     try {
-      const response = await apiRequest(`/api/meal-plans/${planId}`);
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[MealPlanDetail] Failed to load plan:', response.status, text);
-        setError('Failed to load meal plan.');
-        return;
-      }
-      const data = await response.json();
+      const data = await getMealPlan(planId);
       console.log('[MealPlanDetail] Plan loaded:', data.name, 'items:', data.items?.length || 0);
       setPlan(data);
       setError(null);
@@ -127,14 +94,8 @@ export default function MealPlanDetailScreen() {
         onPress: async () => {
           setDeletingItemId(itemId);
           try {
-            console.log('[MealPlanDetail] DELETE /api/meal-plans/:id/items/:itemId', planId, itemId);
-            const response = await apiRequest(`/api/meal-plans/${planId}/items/${itemId}`, { method: 'DELETE' });
-            if (!response.ok) {
-              const text = await response.text();
-              console.error('[MealPlanDetail] Failed to delete item:', response.status, text);
-              Alert.alert('Error', 'Failed to remove item. Please try again.');
-              return;
-            }
+            console.log('[MealPlanDetail] DELETE item:', itemId, 'from plan:', planId);
+            await deleteMealPlanItem(planId, itemId);
             console.log('[MealPlanDetail] Item deleted successfully');
             setPlan(prev => prev ? { ...prev, items: prev.items.filter(i => i.id !== itemId) } : prev);
           } catch (err: any) {

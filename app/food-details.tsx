@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 import FoodDetailsLayout from '@/components/FoodDetailsLayout';
 import { toLocalDateString } from '@/utils/dateUtils';
-import { apiRequest } from '@/utils/api';
+import { addMealPlanItem } from '@/utils/mealPlansApi';
 
 export default function FoodDetailsScreen() {
   const params = useLocalSearchParams();
@@ -46,19 +46,7 @@ export default function FoodDetailsScreen() {
           ...foodData,
         };
 
-        const response = await apiRequest(`/api/meal-plans/${planId}/items`, {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          console.error('[FoodDetails] Failed to add to meal plan:', response.status, text);
-          Alert.alert('Error', 'Failed to add food to meal plan. Please try again.');
-          return;
-        }
-
-        const newItem = await response.json();
+        const newItem = await addMealPlanItem(planId, body);
         console.log('[FoodDetails] Food added to meal plan successfully:', newItem.id);
         Alert.alert('Added to meal plan', '', [
           {

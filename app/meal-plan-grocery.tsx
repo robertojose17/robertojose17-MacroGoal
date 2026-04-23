@@ -6,25 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { apiRequest } from '@/utils/api';
-
-interface GroceryItem {
-  name: string;
-  brand?: string;
-  total_grams: number;
-  display_amount: string;
-}
-
-interface GroceryCategory {
-  category: string;
-  emoji: string;
-  items: GroceryItem[];
-}
-
-interface GroceryListResponse {
-  plan_name: string;
-  categories: GroceryCategory[];
-}
+import { getGroceryList, type GroceryListResponse } from '@/utils/mealPlansApi';
 
 export default function MealPlanGroceryScreen() {
   const router = useRouter();
@@ -48,14 +30,7 @@ export default function MealPlanGroceryScreen() {
     if (!planId) return;
     console.log('[MealPlanGrocery] Loading grocery list for plan:', planId);
     try {
-      const response = await apiRequest(`/api/meal-plans/${planId}/grocery-list`);
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[MealPlanGrocery] Failed to load grocery list:', response.status, text);
-        setError('Failed to load grocery list.');
-        return;
-      }
-      const data: GroceryListResponse = await response.json();
+      const data = await getGroceryList(planId);
       console.log('[MealPlanGrocery] Grocery list loaded, categories:', data.categories?.length || 0);
       setGroceryData(data);
       setError(null);
