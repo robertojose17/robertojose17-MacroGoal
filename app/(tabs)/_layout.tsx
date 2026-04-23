@@ -6,15 +6,10 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AdBannerFooter } from '@/components/AdBannerFooter';
-import { useUserProfile } from '@/hooks/useUserProfile';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { isPremium, loading } = useUserProfile();
-  console.log('[Tab Layout] Rendering tab layout, isPremium:', isPremium, 'loading:', loading);
-
-  if (loading) return null;
 
   const tabBarInactiveTintColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
   const tabBarBackgroundColor = isDark ? colors.cardDark : colors.card;
@@ -29,8 +24,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: tabBarBackgroundColor,
           borderTopColor: tabBarBorderColor,
-          paddingBottom: isPremium ? 20 : 0,
-          height: isPremium ? 85 : 50,
+          paddingBottom: 0,
+          height: 50,
         },
       }}
     >
@@ -96,14 +91,10 @@ export default function TabLayout() {
     </Tabs>
   );
 
-  if (isPremium) {
-    return tabs;
-  }
-
   return (
     <View style={{ flex: 1 }}>
       {tabs}
-      <AdBannerFooter isPremium={false} />
+      <AdBannerFooter />
     </View>
   );
 }

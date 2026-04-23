@@ -49,16 +49,11 @@ export const AD_BANNER_HEIGHT: number = 60;
 // Production Ad Unit ID (also used as test ID per user config):
 const PRODUCTION_AD_UNIT_ID = 'ca-app-pub-5592015069000241/7688730087';
 
-interface AdBannerFooterProps {
-  isPremium: boolean;
-}
-
-export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
+export function AdBannerFooter() {
   const colorScheme = useColorScheme();
   const [adLoaded, setAdLoaded] = useState(false);
 
-  // Only render on iOS, only for free users, only if package is available
-  if (isPremium || Platform.OS !== 'ios' || !isBannerAdAvailable) return null;
+  if (Platform.OS !== 'ios' || !isBannerAdAvailable) return null;
 
   const adUnitId = __DEV__ ? TestIds?.ADAPTIVE_BANNER : PRODUCTION_AD_UNIT_ID;
   const bgColor = colorScheme === 'dark' ? '#000000' : '#ffffff';
@@ -76,9 +71,9 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
   return (
     <View
       style={{
-        height: 94,
+        height: 60,
         backgroundColor: bgColor,
-        paddingBottom: 34,
+        paddingBottom: 0,
         alignItems: 'center',
         justifyContent: 'center',
       }}
@@ -96,7 +91,7 @@ export function AdBannerFooter({ isPremium }: AdBannerFooterProps) {
   );
 }
 
-export function useAdBannerHeight(isPremium: boolean): number {
-  if (isPremium || Platform.OS !== 'ios' || !isBannerAdAvailable) return 0;
-  return 94;
+export function useAdBannerHeight(): number {
+  if (Platform.OS !== 'ios' || !isBannerAdAvailable) return 0;
+  return 60;
 }

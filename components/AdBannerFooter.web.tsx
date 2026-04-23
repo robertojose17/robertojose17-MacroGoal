@@ -6,10 +6,10 @@
 
 export const AD_BANNER_HEIGHT = 0;
 
-export function AdBannerFooter(_props: { isPremium: boolean }) {
+export function AdBannerFooter() {
   return null;
 }
 
-export function useAdBannerHeight(_isPremium: boolean): number {
+export function useAdBannerHeight(): number {
   return 0;
 }

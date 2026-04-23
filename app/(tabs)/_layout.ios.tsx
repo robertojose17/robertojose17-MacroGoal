@@ -5,17 +5,11 @@ import { Tabs } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AdBannerFooter, AD_BANNER_HEIGHT } from '@/components/AdBannerFooter';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { AdBannerFooter } from '@/components/AdBannerFooter';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { isPremium, loading } = useUserProfile();
-
-  console.log('[Tab Layout iOS] Rendering tab layout, isPremium:', isPremium, 'loading:', loading);
-
-  if (loading) return null;
 
   const tabBarInactiveTintColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
   const tabBarBackgroundColor = isDark ? colors.cardDark : colors.card;
@@ -30,10 +24,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: tabBarBackgroundColor,
           borderTopColor: tabBarBorderColor,
-          paddingBottom: isPremium ? 20 : 8,
-          height: isPremium ? 85 : 60,
-          marginBottom: isPremium ? 0 : AD_BANNER_HEIGHT,
-          zIndex: 10,
+          paddingBottom: 0,
+          height: 50,
         },
       }}
     >
@@ -99,14 +91,10 @@ export default function TabLayout() {
     </Tabs>
   );
 
-  if (isPremium) {
-    return tabs;
-  }
-
   return (
     <View style={{ flex: 1 }}>
       {tabs}
-      <AdBannerFooter isPremium={false} />
+      <AdBannerFooter />
     </View>
   );
 }
