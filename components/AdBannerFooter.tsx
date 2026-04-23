@@ -71,9 +71,10 @@ export function AdBannerFooter() {
   return (
     <View
       style={{
-        height: 60,
+        height: 80,
         backgroundColor: bgColor,
-        paddingBottom: 0,
+        paddingTop: 8,
+        paddingBottom: 12,
         alignItems: 'center',
         justifyContent: 'center',
       }}
