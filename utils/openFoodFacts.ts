@@ -645,10 +645,10 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsS
   // Retry logic: up to 3 attempts for 503/network errors
   let lastResult: OpenFoodFactsSearchResult = { products: [], count: 0, page: 1, status: 0 };
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
     try {
-      console.log(`[OpenFoodFacts] Attempt ${attempt}/3`);
-      const response = await fetchWithTimeout(url, {}, 10000); // 10 second timeout
+      console.log(`[OpenFoodFacts] Attempt ${attempt}/5`);
+      const response = await fetchWithTimeout(url, {}, 15000); // 15 second timeout
 
       console.log(`[OpenFoodFacts] Response status: ${response.status}`);
 
@@ -678,9 +678,9 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsS
       }
 
       // 503: retry with exponential backoff
-      if (response.status === 503 && attempt < 3) {
-        const delay = attempt * 500;
-        console.log(`[OpenFoodFacts] ⚠️ 503 received, retrying in ${delay}ms (attempt ${attempt}/3)`);
+      if (response.status === 503 && attempt < 5) {
+        const delay = attempt * 1000;
+        console.log(`[OpenFoodFacts] ⚠️ 503 received, retrying in ${delay}ms (attempt ${attempt}/5)`);
         await new Promise(resolve => setTimeout(resolve, delay));
         lastResult = { products: [], count: 0, page: 1, status: 503 };
         continue;
@@ -694,8 +694,8 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsS
       if (error instanceof Error) {
         console.error('[OpenFoodFacts] Error message:', error.message);
       }
-      if (attempt < 3) {
-        const delay = attempt * 500;
+      if (attempt < 5) {
+        const delay = attempt * 1000;
         console.log(`[OpenFoodFacts] Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -706,7 +706,7 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsS
   }
 
   // All retries exhausted (only reached after 3x 503)
-  console.log('[OpenFoodFacts] ❌ All 3 attempts failed (503)');
+  console.log('[OpenFoodFacts] ❌ All 5 attempts failed (503)');
   return lastResult;
 }
 
