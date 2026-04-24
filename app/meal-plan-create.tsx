@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -32,8 +32,7 @@ export default function MealPlanCreateScreen() {
   const [planName, setPlanName] = useState('');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(nextWeek);
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'start' | 'end' | null>(null);
   const [saving, setSaving] = useState(false);
 
   const bgColor = isDark ? colors.backgroundDark : colors.background;
@@ -42,9 +41,9 @@ export default function MealPlanCreateScreen() {
   const cardBg = isDark ? colors.cardDark : colors.card;
   const borderColor = isDark ? colors.borderDark : colors.border;
 
-  const handleStartDateChange = (_: any, date?: Date) => {
-    if (Platform.OS === 'android') setShowStartPicker(false);
-    if (date) {
+  const handlePickerChange = (_: any, date?: Date) => {
+    if (!date) return;
+    if (pickerMode === 'start') {
       console.log('[MealPlanCreate] Start date changed:', formatDateForStorage(date));
       setStartDate(date);
       if (date > endDate) {
@@ -52,16 +51,14 @@ export default function MealPlanCreateScreen() {
         newEnd.setDate(date.getDate() + 6);
         setEndDate(newEnd);
       }
-    }
-  };
-
-  const handleEndDateChange = (_: any, date?: Date) => {
-    if (Platform.OS === 'android') setShowEndPicker(false);
-    if (date) {
+    } else if (pickerMode === 'end') {
       console.log('[MealPlanCreate] End date changed:', formatDateForStorage(date));
       setEndDate(date);
     }
   };
+
+  const pickerValue = pickerMode === 'start' ? startDate : endDate;
+  const pickerMinDate = pickerMode === 'end' ? startDate : new Date();
 
   const handleCreate = async () => {
     console.log('[MealPlanCreate] Create Plan button pressed, name:', planName);
@@ -131,8 +128,7 @@ export default function MealPlanCreateScreen() {
             style={[styles.dateButton, { backgroundColor: cardBg, borderColor }]}
             onPress={() => {
               console.log('[MealPlanCreate] Start date picker opened');
-              setShowStartPicker(true);
-              setShowEndPicker(false);
+              setPickerMode('start');
             }}
             activeOpacity={0.7}
           >
@@ -140,15 +136,6 @@ export default function MealPlanCreateScreen() {
             <Text style={[styles.dateButtonText, { color: textColor }]}>{formatDateDisplay(startDate)}</Text>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={secondaryColor} />
           </TouchableOpacity>
-          {showStartPicker && (
-            <DateTimePicker
-              value={startDate}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              onChange={handleStartDateChange}
-              minimumDate={new Date()}
-            />
-          )}
         </View>
 
         {/* End Date */}
@@ -158,8 +145,7 @@ export default function MealPlanCreateScreen() {
             style={[styles.dateButton, { backgroundColor: cardBg, borderColor }]}
             onPress={() => {
               console.log('[MealPlanCreate] End date picker opened');
-              setShowEndPicker(true);
-              setShowStartPicker(false);
+              setPickerMode('end');
             }}
             activeOpacity={0.7}
           >
@@ -167,15 +153,6 @@ export default function MealPlanCreateScreen() {
             <Text style={[styles.dateButtonText, { color: textColor }]}>{formatDateDisplay(endDate)}</Text>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={secondaryColor} />
           </TouchableOpacity>
-          {showEndPicker && (
-            <DateTimePicker
-              value={endDate}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              onChange={handleEndDateChange}
-              minimumDate={startDate}
-            />
-          )}
         </View>
 
         {/* Duration hint */}
@@ -199,6 +176,52 @@ export default function MealPlanCreateScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={pickerMode !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          console.log('[MealPlanCreate] Date picker modal dismissed');
+          setPickerMode(null);
+        }}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => {
+            console.log('[MealPlanCreate] Date picker backdrop tapped, closing');
+            setPickerMode(null);
+          }}
+        />
+        <View style={[styles.modalSheet, { backgroundColor: isDark ? colors.cardDark : '#fff' }]}>
+          <View style={styles.modalSheetHeader}>
+            <Text style={[styles.modalSheetTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              {pickerMode === 'start' ? 'Start Date' : 'End Date'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('[MealPlanCreate] Date picker Done pressed, mode:', pickerMode);
+                setPickerMode(null);
+              }}
+              style={styles.modalDoneButton}
+            >
+              <Text style={styles.modalDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          {pickerMode !== null && (
+            <DateTimePicker
+              value={pickerValue}
+              mode="date"
+              display="inline"
+              onChange={handlePickerChange}
+              minimumDate={pickerMinDate}
+              style={styles.inlinePicker}
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -250,4 +273,30 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   createButtonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalSheet: {
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    paddingBottom: 34,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  modalSheetTitle: { fontSize: 17, fontWeight: '600' },
+  modalDoneButton: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
+  modalDoneText: { fontSize: 17, fontWeight: '600', color: colors.primary },
+  inlinePicker: { alignSelf: 'stretch' },
 });

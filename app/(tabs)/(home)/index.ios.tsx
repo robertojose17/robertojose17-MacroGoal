@@ -9,7 +9,7 @@ import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
-import { listMealPlans, type MealPlan as ApiMealPlan } from '@/utils/mealPlansApi';
+import { listMealPlans, deleteMealPlan, type MealPlan as ApiMealPlan } from '@/utils/mealPlansApi';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -569,24 +569,52 @@ export default function HomeScreen() {
           plans.map((plan) => {
             const dateRange = formatDateRange(plan.start_date, plan.end_date);
             return (
-              <TouchableOpacity
+              <SwipeToDeleteRow
                 key={plan.id}
-                style={[styles.planCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-                onPress={() => handlePlanPress(plan)}
-                activeOpacity={0.7}
+                onDelete={() => {
+                  console.log('[Home iOS] Delete plan button swiped, plan:', plan.id);
+                  Alert.alert(
+                    'Delete Plan',
+                    'Are you sure?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          console.log('[Home iOS] Confirming delete for plan:', plan.id);
+                          try {
+                            await deleteMealPlan(plan.id);
+                            console.log('[Home iOS] Plan deleted:', plan.id);
+                            setPlans((prev) => prev.filter((p) => p.id !== plan.id));
+                          } catch (err: any) {
+                            console.error('[Home iOS] Error deleting plan:', err);
+                            Alert.alert('Error', 'Failed to delete meal plan. Please try again.');
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
               >
-                <View style={styles.planCardContent}>
-                  <View style={styles.planCardLeft}>
-                    <Text style={[styles.planName, { color: isDark ? colors.textDark : colors.text }]}>
-                      {plan.name}
-                    </Text>
-                    <Text style={[styles.planDateRange, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                      {dateRange}
-                    </Text>
+                <TouchableOpacity
+                  style={[styles.planCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+                  onPress={() => handlePlanPress(plan)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.planCardContent}>
+                    <View style={styles.planCardLeft}>
+                      <Text style={[styles.planName, { color: isDark ? colors.textDark : colors.text }]}>
+                        {plan.name}
+                      </Text>
+                      <Text style={[styles.planDateRange, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                        {dateRange}
+                      </Text>
+                    </View>
+                    <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={18} color={isDark ? colors.textSecondaryDark : colors.textSecondary} />
                   </View>
-                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={18} color={isDark ? colors.textSecondaryDark : colors.textSecondary} />
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              </SwipeToDeleteRow>
             );
           })
         )}
