@@ -27,6 +27,18 @@ const MEAL_TYPES: { type: MealType; label: string; emoji: string }[] = [
   { type: 'snack', label: 'Snack', emoji: '🍎' },
 ];
 
+type ItemEditState = {
+  servings: string;
+  selectedOptionKey: string;
+  gramsPerUnit: number;
+  servingOptions: { key: string; label: string; gramsPerUnit: number }[];
+  showOptions: boolean;
+  baseCaloriesPerGram: number;
+  baseProteinPerGram: number;
+  baseCarbsPerGram: number;
+  baseFatsPerGram: number;
+};
+
 function getNumDays(startDate: string, endDate: string): number {
   const start = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
@@ -47,6 +59,33 @@ function deduplicateItems(items: MealPlanItem[]): MealPlanItem[] {
   return result;
 }
 
+function buildInitialStates(items: MealPlanItem[]): Record<string, ItemEditState> {
+  const deduped = deduplicateItems(items);
+  const initialStates: Record<string, ItemEditState> = {};
+  for (const item of deduped) {
+    const totalGrams = item.grams != null ? item.grams : item.quantity * 100;
+    const gramsPerServing = item.quantity > 0 ? totalGrams / item.quantity : totalGrams;
+    const defaultLabel = item.serving_description ? item.serving_description : `${Math.round(gramsPerServing)}g`;
+    initialStates[item.id] = {
+      servings: String(item.quantity),
+      selectedOptionKey: 'default',
+      gramsPerUnit: gramsPerServing,
+      servingOptions: [
+        { key: 'default', label: defaultLabel, gramsPerUnit: gramsPerServing },
+        { key: 'g', label: '1 g', gramsPerUnit: 1 },
+        { key: 'oz', label: '1 oz', gramsPerUnit: 28.35 },
+        { key: 'lb', label: '1 lb', gramsPerUnit: 453.592 },
+      ],
+      showOptions: false,
+      baseCaloriesPerGram: totalGrams > 0 ? (Number(item.calories) || 0) / totalGrams : 0,
+      baseProteinPerGram: totalGrams > 0 ? (Number(item.protein) || 0) / totalGrams : 0,
+      baseCarbsPerGram: totalGrams > 0 ? (Number(item.carbs) || 0) / totalGrams : 0,
+      baseFatsPerGram: totalGrams > 0 ? (Number(item.fats) || 0) / totalGrams : 0,
+    };
+  }
+  return initialStates;
+}
+
 export default function MealPlanDetailScreen() {
   const router = useRouter();
   const { planId } = useLocalSearchParams<{ planId: string }>();
@@ -58,13 +97,7 @@ export default function MealPlanDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingGrams, setEditingGrams] = useState<string>('');
-  const [editingServings, setEditingServings] = useState<string>('');
-  const [showServingOptions, setShowServingOptions] = useState(false);
-  const [editingServingOptions, setEditingServingOptions] = useState<{ key: string; label: string; gramsPerUnit: number }[]>([]);
-  const [editingSelectedOptionKey, setEditingSelectedOptionKey] = useState('default');
-  const [editingGramsPerUnit, setEditingGramsPerUnit] = useState(100);
+  const [itemEditStates, setItemEditStates] = useState<Record<string, ItemEditState>>({});
 
   const bgColor = isDark ? colors.backgroundDark : colors.background;
   const textColor = isDark ? colors.textDark : colors.text;
@@ -80,6 +113,7 @@ export default function MealPlanDetailScreen() {
       const data = await getMealPlan(planId);
       console.log('[MealPlanDetail] Plan loaded:', data.name, 'items:', data.items?.length ?? 0);
       setPlan(data);
+      setItemEditStates(buildInitialStates(data.items));
       setError(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -120,6 +154,11 @@ export default function MealPlanDetailScreen() {
             setPlan(prev =>
               prev ? { ...prev, items: prev.items.filter(i => i.id !== itemId) } : prev
             );
+            setItemEditStates(prev => {
+              const next = { ...prev };
+              delete next[itemId];
+              return next;
+            });
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Unknown error';
             console.error('[MealPlanDetail] Error deleting item:', msg);
@@ -132,57 +171,20 @@ export default function MealPlanDetailScreen() {
     ]);
   };
 
-  const handleStartEdit = (item: MealPlanItem) => {
-    const gramsValue = item.grams != null ? item.grams : item.quantity * 100;
-    const gramsPerServing = item.quantity > 0 ? gramsValue / item.quantity : gramsValue;
-    const defaultLabel = item.serving_description
-      ? item.serving_description
-      : `${Math.round(gramsPerServing)}g`;
-    const options = [
-      { key: 'default', label: defaultLabel, gramsPerUnit: gramsPerServing },
-      { key: 'g', label: '1 g', gramsPerUnit: 1 },
-      { key: 'oz', label: '1 oz', gramsPerUnit: 28.35 },
-      { key: 'lb', label: '1 lb', gramsPerUnit: 453.592 },
-    ];
-    console.log('[MealPlanDetail] Start editing item:', item.id, 'food:', item.food_name, 'grams:', gramsValue, 'quantity:', item.quantity, 'gramsPerServing:', gramsPerServing);
-    setEditingItemId(item.id);
-    setEditingServings(String(item.quantity));
-    setEditingGrams(String(Math.round(gramsValue)));
-    setEditingServingOptions(options);
-    setEditingSelectedOptionKey('default');
-    setEditingGramsPerUnit(gramsPerServing);
-    setShowServingOptions(false);
-  };
-
-  const handleCancelEdit = () => {
-    console.log('[MealPlanDetail] Cancel editing item:', editingItemId);
-    setEditingItemId(null);
-    setEditingGrams('');
-    setEditingServings('');
-    setShowServingOptions(false);
-    setEditingServingOptions([]);
-    setEditingSelectedOptionKey('default');
-    setEditingGramsPerUnit(100);
-  };
-
-  const handleConfirmEdit = async (item: MealPlanItem) => {
-    const newGrams = editingGramsPerUnit * (parseFloat(editingServings) || 0);
+  const handleSaveItem = async (item: MealPlanItem) => {
+    const state = itemEditStates[item.id];
+    if (!state) return;
+    const newGrams = state.gramsPerUnit * (parseFloat(state.servings) || 0);
     if (isNaN(newGrams) || newGrams <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid number greater than 0.');
       return;
     }
-    const oldGrams = item.grams != null ? item.grams : item.quantity * 100;
-    if (oldGrams === 0) return;
-    const ratio = newGrams / oldGrams;
-    const newCalories = Math.round((Number(item.calories) || 0) * ratio);
-    const newProtein = Math.round((Number(item.protein) || 0) * ratio * 10) / 10;
-    const newCarbs = Math.round((Number(item.carbs) || 0) * ratio * 10) / 10;
-    const newFats = Math.round((Number(item.fats) || 0) * ratio * 10) / 10;
-    const newQuantity = parseFloat(editingServings) || item.quantity;
-    console.log('[MealPlanDetail] Confirm edit item:', item.id, 'oldGrams:', oldGrams, 'newGrams:', newGrams, 'newCalories:', newCalories, 'newQuantity:', newQuantity);
-    setEditingItemId(null);
-    setEditingGrams('');
-    setEditingServings('');
+    const newCalories = Math.round(state.baseCaloriesPerGram * newGrams);
+    const newProtein = Math.round(state.baseProteinPerGram * newGrams * 10) / 10;
+    const newCarbs = Math.round(state.baseCarbsPerGram * newGrams * 10) / 10;
+    const newFats = Math.round(state.baseFatsPerGram * newGrams * 10) / 10;
+    const newQuantity = parseFloat(state.servings) || item.quantity;
+    console.log('[MealPlanDetail] Save item pressed:', item.id, 'food:', item.food_name, 'newGrams:', newGrams, 'newCalories:', newCalories, 'newQuantity:', newQuantity);
     try {
       await updateMealPlanItem(planId, item.id, {
         grams: newGrams,
@@ -192,32 +194,22 @@ export default function MealPlanDetailScreen() {
         fats: newFats,
         quantity: newQuantity,
       });
-      // Update all items with same food_name+meal_type in local state
+      console.log('[MealPlanDetail] Item updated successfully:', item.id);
       setPlan(prev => {
         if (!prev) return prev;
-        const updatedItems = prev.items.map(i => {
-          if (i.food_name.toLowerCase().trim() === item.food_name.toLowerCase().trim() && i.meal_type === item.meal_type) {
-            const iOldGrams = i.grams != null ? i.grams : i.quantity * 100;
-            const iRatio = iOldGrams > 0 ? newGrams / iOldGrams : 1;
-            return {
-              ...i,
-              grams: newGrams,
-              quantity: newQuantity,
-              calories: Math.round((Number(i.calories) || 0) * iRatio),
-              protein: Math.round((Number(i.protein) || 0) * iRatio * 10) / 10,
-              carbs: Math.round((Number(i.carbs) || 0) * iRatio * 10) / 10,
-              fats: Math.round((Number(i.fats) || 0) * iRatio * 10) / 10,
-            };
-          }
-          return i;
-        });
-        return { ...prev, items: updatedItems };
+        return {
+          ...prev,
+          items: prev.items.map(i =>
+            i.id === item.id
+              ? { ...i, grams: newGrams, quantity: newQuantity, calories: newCalories, protein: newProtein, carbs: newCarbs, fats: newFats }
+              : i
+          ),
+        };
       });
-      console.log('[MealPlanDetail] Item updated successfully');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[MealPlanDetail] Error updating item:', msg);
       Alert.alert('Error', 'Failed to update quantity. Please try again.');
+      console.error('[MealPlanDetail] Error updating item:', msg);
     }
   };
 
@@ -275,18 +267,32 @@ export default function MealPlanDetailScreen() {
     );
   }
 
-  const numDays = getNumDays(plan.start_date, plan.end_date);
   const dedupedItems = deduplicateItems(plan.items);
 
-  const dayCalories = dedupedItems.reduce((s, i) => s + (Number(i.calories) || 0), 0);
-  const dayProtein = dedupedItems.reduce((s, i) => s + (Number(i.protein) || 0), 0);
-  const dayCarbs = dedupedItems.reduce((s, i) => s + (Number(i.carbs) || 0), 0);
-  const dayFats = dedupedItems.reduce((s, i) => s + (Number(i.fats) || 0), 0);
+  // Live totals computed from itemEditStates
+  const dayCaloriesDisplay = Math.round(dedupedItems.reduce((s, i) => {
+    const es = itemEditStates[i.id];
+    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+    return s + (es ? es.baseCaloriesPerGram * g : (Number(i.calories) || 0));
+  }, 0));
+  const dayProteinDisplay = Math.round(dedupedItems.reduce((s, i) => {
+    const es = itemEditStates[i.id];
+    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+    return s + (es ? es.baseProteinPerGram * g : (Number(i.protein) || 0));
+  }, 0));
+  const dayCarbsDisplay = Math.round(dedupedItems.reduce((s, i) => {
+    const es = itemEditStates[i.id];
+    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+    return s + (es ? es.baseCarbsPerGram * g : (Number(i.carbs) || 0));
+  }, 0));
+  const dayFatsDisplay = Math.round(dedupedItems.reduce((s, i) => {
+    const es = itemEditStates[i.id];
+    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+    return s + (es ? es.baseFatsPerGram * g : (Number(i.fats) || 0));
+  }, 0));
 
-  const dayCaloriesDisplay = Math.round(dayCalories);
-  const dayProteinDisplay = Math.round(dayProtein);
-  const dayCarbsDisplay = Math.round(dayCarbs);
-  const dayFatsDisplay = Math.round(dayFats);
+  // Suppress unused variable warning
+  void getNumDays(plan.start_date, plan.end_date);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
@@ -346,10 +352,28 @@ export default function MealPlanDetailScreen() {
         {MEAL_TYPES.map((mealDef, mealIdx) => {
           const mealItems = dedupedItems.filter(i => i.meal_type === mealDef.type);
           const isLast = mealIdx === MEAL_TYPES.length - 1;
-          const mealCalories = Math.round(mealItems.reduce((s, i) => s + (Number(i.calories) || 0), 0));
-          const mealProtein = Math.round(mealItems.reduce((s, i) => s + (Number(i.protein) || 0), 0));
-          const mealCarbs = Math.round(mealItems.reduce((s, i) => s + (Number(i.carbs) || 0), 0));
-          const mealFats = Math.round(mealItems.reduce((s, i) => s + (Number(i.fats) || 0), 0));
+
+          // Live meal totals
+          const mealCalories = Math.round(mealItems.reduce((s, i) => {
+            const es = itemEditStates[i.id];
+            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+            return s + (es ? es.baseCaloriesPerGram * g : (Number(i.calories) || 0));
+          }, 0));
+          const mealProtein = Math.round(mealItems.reduce((s, i) => {
+            const es = itemEditStates[i.id];
+            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+            return s + (es ? es.baseProteinPerGram * g : (Number(i.protein) || 0));
+          }, 0));
+          const mealCarbs = Math.round(mealItems.reduce((s, i) => {
+            const es = itemEditStates[i.id];
+            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+            return s + (es ? es.baseCarbsPerGram * g : (Number(i.carbs) || 0));
+          }, 0));
+          const mealFats = Math.round(mealItems.reduce((s, i) => {
+            const es = itemEditStates[i.id];
+            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
+            return s + (es ? es.baseFatsPerGram * g : (Number(i.fats) || 0));
+          }, 0));
 
           return (
             <View
@@ -409,14 +433,33 @@ export default function MealPlanDetailScreen() {
               ) : (
                 mealItems.map((item, idx) => {
                   const isDeleting = deletingItemId === item.id;
-                  const isEditing = editingItemId === item.id;
-                  const servingText = item.serving_description
-                    ? item.serving_description
-                    : item.grams
-                    ? `${Math.round(item.grams)}g`
-                    : `${item.quantity} serving`;
-                  const itemCalories = Math.round(Number(item.calories) || 0);
                   const isLastItem = idx === mealItems.length - 1;
+                  const editState = itemEditStates[item.id];
+
+                  // Live macro values computed from edit state
+                  const liveGrams = editState
+                    ? editState.gramsPerUnit * (parseFloat(editState.servings) || 0)
+                    : (item.grams ?? item.quantity * 100);
+                  const liveCalories = editState
+                    ? Math.round(editState.baseCaloriesPerGram * liveGrams)
+                    : Math.round(Number(item.calories) || 0);
+                  const liveProtein = editState
+                    ? Math.round(editState.baseProteinPerGram * liveGrams * 10) / 10
+                    : Math.round(Number(item.protein) || 0);
+                  const liveCarbs = editState
+                    ? Math.round(editState.baseCarbsPerGram * liveGrams * 10) / 10
+                    : Math.round(Number(item.carbs) || 0);
+                  const liveFats = editState
+                    ? Math.round(editState.baseFatsPerGram * liveGrams * 10) / 10
+                    : Math.round(Number(item.fats) || 0);
+
+                  const selectedOptionLabel = editState
+                    ? (editState.servingOptions.find(o => o.key === editState.selectedOptionKey)?.label ?? '')
+                    : '';
+
+                  const proteinText = liveProtein + 'g';
+                  const carbsText = liveCarbs + 'g';
+                  const fatsText = liveFats + 'g';
 
                   return (
                     <View
@@ -434,109 +477,119 @@ export default function MealPlanDetailScreen() {
                         {!!item.brand && (
                           <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>{item.brand}</Text>
                         )}
-                        {isEditing ? (
-                          <View>
-                            <View style={styles.editServingRow}>
-                              <TextInput
-                                style={[styles.servingQtyInput, { color: textColor, borderColor: colors.primary }]}
-                                value={editingServings}
-                                onChangeText={(val) => {
-                                  setEditingServings(val);
-                                  setEditingGrams(String(Math.round(editingGramsPerUnit * (parseFloat(val) || 0))));
-                                }}
-                                keyboardType="decimal-pad"
-                                autoFocus
-                                selectTextOnFocus
-                                placeholder="1"
-                                placeholderTextColor={secondaryColor}
-                              />
-                              <TouchableOpacity
-                                style={[styles.servingDropdownBtn, { borderColor: colors.primary, backgroundColor: cardBg }]}
-                                onPress={() => {
-                                  console.log('[MealPlanDetail] Serving dropdown toggled, item:', item.id, 'showServingOptions:', !showServingOptions);
-                                  setShowServingOptions(prev => !prev);
-                                }}
-                                activeOpacity={0.7}
-                              >
-                                <Text style={[styles.servingDropdownText, { color: textColor }]} numberOfLines={1}>
-                                  {editingServingOptions.find(o => o.key === editingSelectedOptionKey)?.label ?? ''}
-                                </Text>
-                                <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand-more" size={12} color={textColor} />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.editActionBtn}
-                                onPress={() => {
-                                  console.log('[MealPlanDetail] Confirm edit pressed, item:', item.id, 'servings:', editingServings, 'gramsPerUnit:', editingGramsPerUnit);
-                                  handleConfirmEdit(item);
-                                }}
-                                activeOpacity={0.7}
-                              >
-                                <Text style={[styles.editActionText, { color: colors.primary }]}>✓</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.editActionBtn}
-                                onPress={handleCancelEdit}
-                                activeOpacity={0.7}
-                              >
-                                <Text style={[styles.editActionText, { color: colors.error }]}>✗</Text>
-                              </TouchableOpacity>
-                            </View>
-                            {showServingOptions && (
-                              <View style={[styles.servingOptionsList, { backgroundColor: cardBg, borderColor }]}>
-                                {editingServingOptions.map((option, optIdx) => {
-                                  const isSelected = option.key === editingSelectedOptionKey;
-                                  const isLastOpt = optIdx === editingServingOptions.length - 1;
-                                  return (
-                                    <TouchableOpacity
-                                      key={option.key}
-                                      style={[
-                                        styles.servingOptionItem,
-                                        { borderBottomColor: borderColor, backgroundColor: isSelected ? (isDark ? '#2a2a2a' : '#f0f0f0') : undefined },
-                                        isLastOpt && { borderBottomWidth: 0 },
-                                      ]}
-                                      onPress={() => {
-                                        console.log('[MealPlanDetail] Serving option selected:', option.key, option.label, 'gramsPerUnit:', option.gramsPerUnit);
-                                        setEditingGramsPerUnit(option.gramsPerUnit);
-                                        setEditingSelectedOptionKey(option.key);
-                                        setEditingGrams(String(Math.round(option.gramsPerUnit * (parseFloat(editingServings) || 1))));
-                                        setShowServingOptions(false);
-                                      }}
-                                      activeOpacity={0.7}
-                                    >
-                                      <Text style={[styles.servingOptionText, { color: textColor }]}>{option.label}</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                            )}
-                          </View>
-                        ) : (
+
+                        {/* Always-visible serving editor */}
+                        <View style={styles.editServingRow}>
+                          <TextInput
+                            style={[styles.servingQtyInput, { color: textColor, borderColor: colors.primary }]}
+                            value={editState ? editState.servings : String(item.quantity)}
+                            onChangeText={(val) => {
+                              console.log('[MealPlanDetail] Serving qty changed, item:', item.id, 'val:', val);
+                              setItemEditStates(prev => ({
+                                ...prev,
+                                [item.id]: { ...prev[item.id], servings: val },
+                              }));
+                            }}
+                            keyboardType="decimal-pad"
+                            selectTextOnFocus
+                            placeholder="1"
+                            placeholderTextColor={secondaryColor}
+                          />
                           <TouchableOpacity
-                            style={styles.servingRow}
-                            onPress={() => handleStartEdit(item)}
+                            style={[styles.servingDropdownBtn, { borderColor: colors.primary, backgroundColor: cardBg }]}
+                            onPress={() => {
+                              console.log('[MealPlanDetail] Serving dropdown toggled, item:', item.id);
+                              setItemEditStates(prev => ({
+                                ...prev,
+                                [item.id]: { ...prev[item.id], showOptions: !prev[item.id].showOptions },
+                              }));
+                            }}
                             activeOpacity={0.7}
                           >
-                            <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>{servingText}</Text>
-                            <IconSymbol
-                              ios_icon_name="pencil"
-                              android_material_icon_name="edit"
-                              size={11}
-                              color={secondaryColor}
-                            />
-                            <Text style={[styles.macroMiniText, { color: secondaryColor }]}>
-                              {'P: ' + Math.round(Number(item.protein) || 0) + 'g · C: ' + Math.round(Number(item.carbs) || 0) + 'g · F: ' + Math.round(Number(item.fats) || 0) + 'g'}
+                            <Text style={[styles.servingDropdownText, { color: textColor }]} numberOfLines={1}>
+                              {selectedOptionLabel}
                             </Text>
+                            <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand-more" size={12} color={textColor} />
                           </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.editActionBtn}
+                            onPress={() => {
+                              console.log('[MealPlanDetail] Save item pressed, item:', item.id, 'servings:', editState?.servings, 'gramsPerUnit:', editState?.gramsPerUnit);
+                              handleSaveItem(item);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.editActionText, { color: colors.primary }]}>✓</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Serving options dropdown */}
+                        {editState?.showOptions && (
+                          <View style={[styles.servingOptionsList, { backgroundColor: cardBg, borderColor }]}>
+                            {editState.servingOptions.map((option, optIdx) => {
+                              const isSelected = option.key === editState.selectedOptionKey;
+                              const isLastOpt = optIdx === editState.servingOptions.length - 1;
+                              return (
+                                <TouchableOpacity
+                                  key={option.key}
+                                  style={[
+                                    styles.servingOptionItem,
+                                    { borderBottomColor: borderColor, backgroundColor: isSelected ? (isDark ? '#2a2a2a' : '#f0f0f0') : undefined },
+                                    isLastOpt && { borderBottomWidth: 0 },
+                                  ]}
+                                  onPress={() => {
+                                    console.log('[MealPlanDetail] Serving option selected, item:', item.id, 'option:', option.key, option.label, 'gramsPerUnit:', option.gramsPerUnit);
+                                    setItemEditStates(prev => ({
+                                      ...prev,
+                                      [item.id]: {
+                                        ...prev[item.id],
+                                        selectedOptionKey: option.key,
+                                        gramsPerUnit: option.gramsPerUnit,
+                                        showOptions: false,
+                                      },
+                                    }));
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={[styles.servingOptionText, { color: textColor }]}>{option.label}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
                         )}
+
+                        {/* Live P/C/F row */}
+                        <View style={styles.macroPcfRow}>
+                          <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>
+                            {'P: '}
+                          </Text>
+                          <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>
+                            {proteinText}
+                          </Text>
+                          <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>
+                            {' · C: '}
+                          </Text>
+                          <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>
+                            {carbsText}
+                          </Text>
+                          <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>
+                            {' · F: '}
+                          </Text>
+                          <Text style={[styles.foodItemMeta, { color: secondaryColor }]}>
+                            {fatsText}
+                          </Text>
+                        </View>
                       </View>
+
                       <View style={styles.foodItemRight}>
-                        <Text style={[styles.foodItemCalories, { color: textColor }]}>{itemCalories}</Text>
+                        <Text style={[styles.foodItemCalories, { color: textColor }]}>{liveCalories}</Text>
                         <Text style={[styles.foodItemKcal, { color: secondaryColor }]}>kcal</Text>
                       </View>
+
                       <TouchableOpacity
                         style={styles.deleteButton}
                         onPress={() => handleDeleteItem(item.id)}
-                        disabled={isDeleting || isEditing}
+                        disabled={isDeleting}
                         activeOpacity={0.7}
                       >
                         {isDeleting ? (
@@ -546,7 +599,7 @@ export default function MealPlanDetailScreen() {
                             ios_icon_name="trash"
                             android_material_icon_name="delete"
                             size={17}
-                            color={isEditing ? borderColor : colors.error}
+                            color={colors.error}
                           />
                         )}
                       </TouchableOpacity>
@@ -662,7 +715,7 @@ const styles = StyleSheet.create({
   // Food item
   foodItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
@@ -670,13 +723,12 @@ const styles = StyleSheet.create({
   foodItemInfo: { flex: 1 },
   foodItemName: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   foodItemMeta: { fontSize: 12, lineHeight: 16 },
-  foodItemRight: { alignItems: 'flex-end' },
+  foodItemRight: { alignItems: 'flex-end', paddingTop: 2 },
   foodItemCalories: { fontSize: 15, fontWeight: '700' },
   foodItemKcal: { fontSize: 11 },
-  deleteButton: { padding: spacing.xs, minWidth: 32, alignItems: 'center' },
+  deleteButton: { padding: spacing.xs, minWidth: 32, alignItems: 'center', paddingTop: 6 },
 
   // Inline edit
-  servingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   editServingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   servingQtyInput: {
     borderWidth: 1,
@@ -714,7 +766,8 @@ const styles = StyleSheet.create({
   servingOptionText: { fontSize: 12 },
   editActionBtn: { padding: 4 },
   editActionText: { fontSize: 16, fontWeight: '700' },
-  macroMiniText: { fontSize: 11, opacity: 0.8 },
+
+  macroPcfRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 2 },
 
   mealMacroRow: {
     flexDirection: 'row',
