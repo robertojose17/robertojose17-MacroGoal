@@ -166,6 +166,20 @@ export async function addMealPlanItem(planId: string, body: AddMealPlanItemBody)
   return data;
 }
 
+export async function updateMealPlan(planId: string, body: { name?: string; start_date?: string; end_date?: string }): Promise<void> {
+  console.log('[MealPlansApi] updateMealPlan()', planId, body);
+  const userId = await getCurrentUserId();
+  const { error } = await supabase
+    .from('meal_plans')
+    .update(body)
+    .eq('id', planId)
+    .eq('user_id', userId);
+  if (error) {
+    console.error('[MealPlansApi] updateMealPlan error:', error.message);
+    throw new Error(error.message);
+  }
+}
+
 export async function updateMealPlanItem(planId: string, itemId: string, body: { grams?: number; quantity?: number; calories?: number; protein?: number; carbs?: number; fats?: number }): Promise<void> {
   console.log('[MealPlansApi] updateMealPlanItem()', planId, itemId, body);
   const { error } = await supabase

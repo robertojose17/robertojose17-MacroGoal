@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getMealPlan, deleteMealPlanItem, updateMealPlanItem, type MealPlanDetail, type MealPlanItem } from '@/utils/mealPlansApi';
+import { getMealPlan, deleteMealPlanItem, updateMealPlanItem, updateMealPlan, type MealPlanDetail, type MealPlanItem } from '@/utils/mealPlansApi';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -93,6 +93,7 @@ export default function MealPlanDetailScreen() {
   const isDark = colorScheme === 'dark';
 
   const [plan, setPlan] = useState<MealPlanDetail | null>(null);
+  const [planName, setPlanName] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +114,7 @@ export default function MealPlanDetailScreen() {
       const data = await getMealPlan(planId);
       console.log('[MealPlanDetail] Plan loaded:', data.name, 'items:', data.items?.length ?? 0);
       setPlan(data);
+      setPlanName(data.name);
       setItemEditStates(buildInitialStates(data.items));
       setError(null);
     } catch (err: unknown) {
@@ -215,9 +217,9 @@ export default function MealPlanDetailScreen() {
 
   const handleAddFood = (mealType: MealType) => {
     if (!plan) return;
-    console.log('[MealPlanDetail] Add food pressed, meal:', mealType, 'date:', plan.start_date, 'planId:', planId);
+    console.log('[MealPlanDetail] Add food pressed, meal:', mealType, 'planId:', planId);
     router.push({
-      pathname: '/food-search',
+      pathname: '/add-food',
       params: {
         meal: mealType,
         date: plan.start_date,
@@ -302,9 +304,24 @@ export default function MealPlanDetailScreen() {
           <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow-back" size={24} color={textColor} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
-            {plan.name}
-          </Text>
+          <TextInput
+            style={[styles.headerTitle, { color: textColor, flex: 1, borderWidth: 0, padding: 0 }]}
+            value={planName}
+            onChangeText={(val) => setPlanName(val)}
+            onBlur={async () => {
+              const trimmed = planName.trim();
+              if (!plan || trimmed === plan.name) return;
+              console.log('[MealPlanDetail] Plan name changed:', trimmed);
+              try {
+                await updateMealPlan(planId, { name: trimmed });
+                setPlan(prev => prev ? { ...prev, name: trimmed } : prev);
+              } catch (err) {
+                console.error('[MealPlanDetail] Failed to update plan name:', err);
+                setPlanName(plan.name);
+              }
+            }}
+            selectTextOnFocus
+          />
         </View>
         <TouchableOpacity style={styles.groceryButton} onPress={handleGroceryList} activeOpacity={0.7}>
           <Text style={styles.groceryButtonText}>🛒</Text>
