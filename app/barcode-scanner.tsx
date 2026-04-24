@@ -32,6 +32,7 @@ export default function BarcodeScannerScreen() {
   const date = (params.date as string) || toLocalDateString();
   const returnTo = (params.returnTo as string) || undefined;
   const myMealId = (params.mealId as string) || undefined;
+  const planId = (params.planId as string) || undefined;
 
   const [permission, requestPermission] = useCameraPermissions();
   
@@ -41,14 +42,14 @@ export default function BarcodeScannerScreen() {
 
   useEffect(() => {
     console.log('[BarcodeScanner] ========== COMPONENT MOUNTED ==========');
-    console.log('[BarcodeScanner] Params:', { mode, context, mealType, date, returnTo, myMealId });
+    console.log('[BarcodeScanner] Params:', { mode, context, mealType, date, returnTo, myMealId, planId });
     isMountedRef.current = true;
 
     return () => {
       console.log('[BarcodeScanner] ========== COMPONENT UNMOUNTED ==========');
       isMountedRef.current = false;
     };
-  }, [mode, context, mealType, date, returnTo, myMealId]);
+  }, [mode, context, mealType, date, returnTo, myMealId, planId]);
 
   // Reset state when screen gains focus
   useFocusEffect(
@@ -108,6 +109,7 @@ export default function BarcodeScannerScreen() {
             context: context,
             returnTo: returnTo,
             mealId: myMealId || '',
+            planId: planId || '',
           },
         });
       } else {
@@ -123,6 +125,7 @@ export default function BarcodeScannerScreen() {
             context: context,
             returnTo: returnTo,
             mealId: myMealId || '',
+            planId: planId || '',
           },
         });
       }
@@ -139,11 +142,12 @@ export default function BarcodeScannerScreen() {
           context: context,
           returnTo: returnTo,
           mealId: myMealId || '',
+          planId: planId || '',
           error: error.message || 'Lookup failed',
         },
       });
     }
-  }, [router, mealType, date, mode, context, returnTo, myMealId]);
+  }, [router, mealType, date, mode, context, returnTo, myMealId, planId]);
 
   /**
    * Handle barcode scan

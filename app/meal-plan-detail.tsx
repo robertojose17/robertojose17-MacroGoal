@@ -102,7 +102,7 @@ function buildInitialStates(items: MealPlanItem[]): Record<string, ItemEditState
     }
 
     initialStates[item.id] = {
-      servings: String(qty),
+      servings: item.serving_description ? '1' : String(qty),
       selectedOptionKey: 'default',
       gramsPerUnit: gramsPerServing ?? 0,
       servingOptions,
