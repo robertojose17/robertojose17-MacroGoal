@@ -51,11 +51,15 @@ export default function AddFoodScreen() {
   const context = params.context as string | undefined;
   const mealType = params.mealType ?? params.meal ?? "breakfast";
   const returnTo = params.returnTo as string | undefined;
+  const mode = (params.mode as string) || '';
+  const planId = (params.planId as string) || '';
   
   console.log('[AddFood] ========== SCREEN LOADED ==========');
   console.log('[AddFood] Context:', context);
   console.log('[AddFood] Meal Type:', mealType);
   console.log('[AddFood] Return To:', returnTo);
+  console.log('[AddFood] Mode:', mode);
+  console.log('[AddFood] Plan ID:', planId);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -538,6 +542,8 @@ export default function AddFoodScreen() {
     console.log('[AddFood] ========== OPENING SEARCH RESULT DETAILS ==========');
     console.log('[AddFood] Product:', product.product_name);
     console.log('[AddFood] Context:', context);
+    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Plan ID:', planId);
     console.log('[AddFood] CRITICAL: Passing context to Food Details');
 
     router.push({
@@ -548,9 +554,11 @@ export default function AddFoodScreen() {
         date: date,
         context: context || '',
         returnTo: returnTo || '',
+        mode: mode || '',
+        planId: planId || '',
       },
     });
-  }, [router, mealType, date, context, returnTo]);
+  }, [router, mealType, date, context, returnTo, mode, planId]);
 
   /**
    * FAST ADD: Add search result directly to My Meal draft
@@ -647,6 +655,8 @@ export default function AddFoodScreen() {
   const handleCopyFromPrevious = useCallback(() => {
     console.log('[AddFood] Navigating to copy-from-previous');
     console.log('[AddFood] Context:', context);
+    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Plan ID:', planId);
     
     router.push({
       pathname: '/copy-from-previous',
@@ -655,9 +665,11 @@ export default function AddFoodScreen() {
         date: date,
         context: context || '',
         returnTo: returnTo,
+        mode: mode || '',
+        planId: planId || '',
       },
     });
-  }, [router, mealType, date, context, returnTo]);
+  }, [router, mealType, date, context, returnTo, mode, planId]);
 
   const handleAIMealEstimator = useCallback(() => {
     console.log('[AddFood] ========== NAVIGATING TO AI MEAL ESTIMATOR ==========');
@@ -671,6 +683,8 @@ export default function AddFoodScreen() {
     }
 
     console.log('[AddFood] CRITICAL: Passing context to AI Meal Estimator');
+    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Plan ID:', planId);
     router.push({
       pathname: '/chatbot',
       params: {
@@ -678,9 +692,11 @@ export default function AddFoodScreen() {
         date: date,
         context: context || '',
         returnTo: returnTo,
+        mode: mode || '',
+        planId: planId || '',
       },
     });
-  }, [router, mealType, date, context, returnTo, isPremium]);
+  }, [router, mealType, date, context, returnTo, isPremium, mode, planId]);
 
   const handleCreateMeal = useCallback(() => {
     console.log('[AddFood] Navigating to create meal');
@@ -737,6 +753,8 @@ export default function AddFoodScreen() {
   const handleBarcodeScanner = useCallback(() => {
     console.log('[AddFood] ========== NAVIGATING TO BARCODE SCANNER ==========');
     console.log('[AddFood] Context:', context);
+    console.log('[AddFood] Mode:', mode);
+    console.log('[AddFood] Plan ID:', planId);
     console.log('[AddFood] CRITICAL: Passing context to Barcode Scanner');
     
     router.push({
@@ -746,9 +764,11 @@ export default function AddFoodScreen() {
         date: date,
         context: context || '',
         returnTo: returnTo,
+        mode: mode || '',
+        planId: planId || '',
       },
     });
-  }, [router, mealType, date, context, returnTo]);
+  }, [router, mealType, date, context, returnTo, mode, planId]);
 
   /**
    * Open food details for a recent food
@@ -793,6 +813,8 @@ export default function AddFoodScreen() {
         },
       };
 
+      console.log('[AddFood] Mode:', mode);
+      console.log('[AddFood] Plan ID:', planId);
       router.push({
         pathname: '/food-details',
         params: {
@@ -801,6 +823,8 @@ export default function AddFoodScreen() {
           date: date,
           context: context || '',
           returnTo: returnTo || '',
+          mode: mode || '',
+          planId: planId || '',
         },
       });
 
@@ -809,7 +833,7 @@ export default function AddFoodScreen() {
       console.error('[AddFood] Error opening recent food details:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     }
-  }, [router, mealType, date, context, returnTo]);
+  }, [router, mealType, date, context, returnTo, mode, planId]);
 
   /**
    * FAST ADD: Add recent food directly to My Meal draft
