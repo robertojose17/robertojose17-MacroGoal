@@ -313,7 +313,7 @@ export default function MealPlanDetailScreen() {
         {/* Macros Summary Card */}
         <View style={[styles.macroCard, { backgroundColor: cardBg, borderColor: cardBorderColor }]}>
           <View style={styles.macroCardHeader}>
-            <Text style={[styles.macroCardTitle, { color: textColor }]}>Weekly Summary</Text>
+            <Text style={[styles.macroCardTitle, { color: textColor }]}>Plan Summary</Text>
             <Text style={[styles.macroCardSubtitle, { color: secondaryColor }]}>Per day</Text>
           </View>
 
