@@ -31,8 +31,12 @@ type ItemEditState = {
   servings: string;
   selectedOptionKey: string;
   gramsPerUnit: number;
-  servingOptions: { key: string; label: string; gramsPerUnit: number }[];
+  servingOptions: { key: string; label: string; gramsPerUnit: number; isDefault: boolean }[];
   showOptions: boolean;
+  baseCaloriesPerServing: number;
+  baseProteinPerServing: number;
+  baseCarbsPerServing: number;
+  baseFatsPerServing: number;
   baseCaloriesPerGram: number;
   baseProteinPerGram: number;
   baseCarbsPerGram: number;
@@ -63,27 +67,80 @@ function buildInitialStates(items: MealPlanItem[]): Record<string, ItemEditState
   const deduped = deduplicateItems(items);
   const initialStates: Record<string, ItemEditState> = {};
   for (const item of deduped) {
-    const totalGrams = item.grams != null ? item.grams : item.quantity * 100;
-    const gramsPerServing = item.quantity > 0 ? totalGrams / item.quantity : totalGrams;
-    const defaultLabel = item.serving_description ? item.serving_description : `${Math.round(gramsPerServing)}g`;
+    const qty = item.quantity > 0 ? item.quantity : 1;
+    // Per-serving base (always accurate — DB stores totals for qty servings)
+    const baseCaloriesPerServing = (Number(item.calories) || 0) / qty;
+    const baseProteinPerServing = (Number(item.protein) || 0) / qty;
+    const baseCarbsPerServing = (Number(item.carbs) || 0) / qty;
+    const baseFatsPerServing = (Number(item.fats) || 0) / qty;
+
+    // Per-gram base (only accurate when grams is known)
+    const totalGrams = item.grams != null ? item.grams : null;
+    const gramsPerServing = totalGrams != null ? totalGrams / qty : null;
+    const baseCaloriesPerGram = totalGrams != null && totalGrams > 0 ? (Number(item.calories) || 0) / totalGrams : 0;
+    const baseProteinPerGram = totalGrams != null && totalGrams > 0 ? (Number(item.protein) || 0) / totalGrams : 0;
+    const baseCarbsPerGram = totalGrams != null && totalGrams > 0 ? (Number(item.carbs) || 0) / totalGrams : 0;
+    const baseFatsPerGram = totalGrams != null && totalGrams > 0 ? (Number(item.fats) || 0) / totalGrams : 0;
+
+    // Default serving label
+    const defaultLabel = item.serving_description
+      ? item.serving_description
+      : gramsPerServing != null
+        ? `${Math.round(gramsPerServing)}g`
+        : 'serving';
+
+    // Serving options: always include default; only include g/oz/lb if grams are known
+    const servingOptions: ItemEditState['servingOptions'] = [
+      { key: 'default', label: defaultLabel, gramsPerUnit: gramsPerServing ?? 0, isDefault: true },
+    ];
+    if (gramsPerServing != null) {
+      servingOptions.push(
+        { key: 'g', label: '1 g', gramsPerUnit: 1, isDefault: false },
+        { key: 'oz', label: '1 oz', gramsPerUnit: 28.35, isDefault: false },
+        { key: 'lb', label: '1 lb', gramsPerUnit: 453.592, isDefault: false },
+      );
+    }
+
     initialStates[item.id] = {
-      servings: String(item.quantity),
+      servings: String(qty),
       selectedOptionKey: 'default',
-      gramsPerUnit: gramsPerServing,
-      servingOptions: [
-        { key: 'default', label: defaultLabel, gramsPerUnit: gramsPerServing },
-        { key: 'g', label: '1 g', gramsPerUnit: 1 },
-        { key: 'oz', label: '1 oz', gramsPerUnit: 28.35 },
-        { key: 'lb', label: '1 lb', gramsPerUnit: 453.592 },
-      ],
+      gramsPerUnit: gramsPerServing ?? 0,
+      servingOptions,
       showOptions: false,
-      baseCaloriesPerGram: totalGrams > 0 ? (Number(item.calories) || 0) / totalGrams : 0,
-      baseProteinPerGram: totalGrams > 0 ? (Number(item.protein) || 0) / totalGrams : 0,
-      baseCarbsPerGram: totalGrams > 0 ? (Number(item.carbs) || 0) / totalGrams : 0,
-      baseFatsPerGram: totalGrams > 0 ? (Number(item.fats) || 0) / totalGrams : 0,
+      baseCaloriesPerServing,
+      baseProteinPerServing,
+      baseCarbsPerServing,
+      baseFatsPerServing,
+      baseCaloriesPerGram,
+      baseProteinPerGram,
+      baseCarbsPerGram,
+      baseFatsPerGram,
     };
   }
   return initialStates;
+}
+
+function computeLiveMacros(es: ItemEditState, servingsStr: string) {
+  const servings = parseFloat(servingsStr) || 0;
+  const isDefaultOption = es.selectedOptionKey === 'default';
+  if (isDefaultOption) {
+    return {
+      calories: Math.round(es.baseCaloriesPerServing * servings),
+      protein: Math.round(es.baseProteinPerServing * servings * 10) / 10,
+      carbs: Math.round(es.baseCarbsPerServing * servings * 10) / 10,
+      fats: Math.round(es.baseFatsPerServing * servings * 10) / 10,
+      grams: es.gramsPerUnit * servings,
+    };
+  } else {
+    const grams = es.gramsPerUnit * servings;
+    return {
+      calories: Math.round(es.baseCaloriesPerGram * grams),
+      protein: Math.round(es.baseProteinPerGram * grams * 10) / 10,
+      carbs: Math.round(es.baseCarbsPerGram * grams * 10) / 10,
+      fats: Math.round(es.baseFatsPerGram * grams * 10) / 10,
+      grams,
+    };
+  }
 }
 
 export default function MealPlanDetailScreen() {
@@ -176,24 +233,22 @@ export default function MealPlanDetailScreen() {
   const handleSaveItem = async (item: MealPlanItem) => {
     const state = itemEditStates[item.id];
     if (!state) return;
-    const newGrams = state.gramsPerUnit * (parseFloat(state.servings) || 0);
-    if (isNaN(newGrams) || newGrams <= 0) {
+    const servings = parseFloat(state.servings) || 0;
+    if (servings <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid number greater than 0.');
       return;
     }
-    const newCalories = Math.round(state.baseCaloriesPerGram * newGrams);
-    const newProtein = Math.round(state.baseProteinPerGram * newGrams * 10) / 10;
-    const newCarbs = Math.round(state.baseCarbsPerGram * newGrams * 10) / 10;
-    const newFats = Math.round(state.baseFatsPerGram * newGrams * 10) / 10;
-    const newQuantity = parseFloat(state.servings) || item.quantity;
-    console.log('[MealPlanDetail] Save item pressed:', item.id, 'food:', item.food_name, 'newGrams:', newGrams, 'newCalories:', newCalories, 'newQuantity:', newQuantity);
+    const m = computeLiveMacros(state, state.servings);
+    const newQuantity = servings;
+    const newGrams = m.grams > 0 ? m.grams : null;
+    console.log('[MealPlanDetail] Save item pressed:', item.id, 'food:', item.food_name, 'newGrams:', newGrams, 'newCalories:', m.calories, 'newQuantity:', newQuantity);
     try {
       await updateMealPlanItem(planId, item.id, {
-        grams: newGrams,
-        calories: newCalories,
-        protein: newProtein,
-        carbs: newCarbs,
-        fats: newFats,
+        grams: newGrams ?? undefined,
+        calories: m.calories,
+        protein: m.protein,
+        carbs: m.carbs,
+        fats: m.fats,
         quantity: newQuantity,
       });
       console.log('[MealPlanDetail] Item updated successfully:', item.id);
@@ -203,7 +258,7 @@ export default function MealPlanDetailScreen() {
           ...prev,
           items: prev.items.map(i =>
             i.id === item.id
-              ? { ...i, grams: newGrams, quantity: newQuantity, calories: newCalories, protein: newProtein, carbs: newCarbs, fats: newFats }
+              ? { ...i, grams: newGrams ?? undefined, quantity: newQuantity, calories: m.calories, protein: m.protein, carbs: m.carbs, fats: m.fats }
               : i
           ),
         };
@@ -274,23 +329,23 @@ export default function MealPlanDetailScreen() {
   // Live totals computed from itemEditStates
   const dayCaloriesDisplay = Math.round(dedupedItems.reduce((s, i) => {
     const es = itemEditStates[i.id];
-    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-    return s + (es ? es.baseCaloriesPerGram * g : (Number(i.calories) || 0));
+    if (es) return s + computeLiveMacros(es, es.servings).calories;
+    return s + (Number(i.calories) || 0);
   }, 0));
   const dayProteinDisplay = Math.round(dedupedItems.reduce((s, i) => {
     const es = itemEditStates[i.id];
-    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-    return s + (es ? es.baseProteinPerGram * g : (Number(i.protein) || 0));
+    if (es) return s + computeLiveMacros(es, es.servings).protein;
+    return s + (Number(i.protein) || 0);
   }, 0));
   const dayCarbsDisplay = Math.round(dedupedItems.reduce((s, i) => {
     const es = itemEditStates[i.id];
-    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-    return s + (es ? es.baseCarbsPerGram * g : (Number(i.carbs) || 0));
+    if (es) return s + computeLiveMacros(es, es.servings).carbs;
+    return s + (Number(i.carbs) || 0);
   }, 0));
   const dayFatsDisplay = Math.round(dedupedItems.reduce((s, i) => {
     const es = itemEditStates[i.id];
-    const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-    return s + (es ? es.baseFatsPerGram * g : (Number(i.fats) || 0));
+    if (es) return s + computeLiveMacros(es, es.servings).fats;
+    return s + (Number(i.fats) || 0);
   }, 0));
 
   // Suppress unused variable warning
@@ -372,23 +427,23 @@ export default function MealPlanDetailScreen() {
           // Live meal totals
           const mealCalories = Math.round(mealItems.reduce((s, i) => {
             const es = itemEditStates[i.id];
-            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-            return s + (es ? es.baseCaloriesPerGram * g : (Number(i.calories) || 0));
+            if (es) return s + computeLiveMacros(es, es.servings).calories;
+            return s + (Number(i.calories) || 0);
           }, 0));
           const mealProtein = Math.round(mealItems.reduce((s, i) => {
             const es = itemEditStates[i.id];
-            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-            return s + (es ? es.baseProteinPerGram * g : (Number(i.protein) || 0));
+            if (es) return s + computeLiveMacros(es, es.servings).protein;
+            return s + (Number(i.protein) || 0);
           }, 0));
           const mealCarbs = Math.round(mealItems.reduce((s, i) => {
             const es = itemEditStates[i.id];
-            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-            return s + (es ? es.baseCarbsPerGram * g : (Number(i.carbs) || 0));
+            if (es) return s + computeLiveMacros(es, es.servings).carbs;
+            return s + (Number(i.carbs) || 0);
           }, 0));
           const mealFats = Math.round(mealItems.reduce((s, i) => {
             const es = itemEditStates[i.id];
-            const g = es ? es.gramsPerUnit * (parseFloat(es.servings) || 0) : (i.grams ?? i.quantity * 100);
-            return s + (es ? es.baseFatsPerGram * g : (Number(i.fats) || 0));
+            if (es) return s + computeLiveMacros(es, es.servings).fats;
+            return s + (Number(i.fats) || 0);
           }, 0));
 
           return (
@@ -453,21 +508,13 @@ export default function MealPlanDetailScreen() {
                   const editState = itemEditStates[item.id];
 
                   // Live macro values computed from edit state
-                  const liveGrams = editState
-                    ? editState.gramsPerUnit * (parseFloat(editState.servings) || 0)
-                    : (item.grams ?? item.quantity * 100);
-                  const liveCalories = editState
-                    ? Math.round(editState.baseCaloriesPerGram * liveGrams)
-                    : Math.round(Number(item.calories) || 0);
-                  const liveProtein = editState
-                    ? Math.round(editState.baseProteinPerGram * liveGrams * 10) / 10
-                    : Math.round(Number(item.protein) || 0);
-                  const liveCarbs = editState
-                    ? Math.round(editState.baseCarbsPerGram * liveGrams * 10) / 10
-                    : Math.round(Number(item.carbs) || 0);
-                  const liveFats = editState
-                    ? Math.round(editState.baseFatsPerGram * liveGrams * 10) / 10
-                    : Math.round(Number(item.fats) || 0);
+                  const liveMacros = editState
+                    ? computeLiveMacros(editState, editState.servings)
+                    : { calories: Math.round(Number(item.calories) || 0), protein: Math.round(Number(item.protein) || 0), carbs: Math.round(Number(item.carbs) || 0), fats: Math.round(Number(item.fats) || 0), grams: 0 };
+                  const liveCalories = liveMacros.calories;
+                  const liveProtein = liveMacros.protein;
+                  const liveCarbs = liveMacros.carbs;
+                  const liveFats = liveMacros.fats;
 
                   const selectedOptionLabel = editState
                     ? (editState.servingOptions.find(o => o.key === editState.selectedOptionKey)?.label ?? '')
@@ -552,6 +599,7 @@ export default function MealPlanDetailScreen() {
                                         ...prev[item.id],
                                         selectedOptionKey: option.key,
                                         gramsPerUnit: option.gramsPerUnit,
+                                        servings: '1',
                                         showOptions: false,
                                       },
                                     }));
