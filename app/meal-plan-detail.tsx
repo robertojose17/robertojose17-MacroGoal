@@ -320,7 +320,6 @@ export default function MealPlanDetailScreen() {
         <View style={[styles.macroCard, { backgroundColor: cardBg, borderColor: cardBorderColor }]}>
           <View style={styles.macroCardHeader}>
             <Text style={[styles.macroCardTitle, { color: textColor }]}>Plan Summary</Text>
-            <Text style={[styles.macroCardSubtitle, { color: secondaryColor }]}>Per day</Text>
           </View>
 
           {/* Per day row */}
@@ -511,16 +510,7 @@ export default function MealPlanDetailScreen() {
                             </Text>
                             <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand-more" size={12} color={textColor} />
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.editActionBtn}
-                            onPress={() => {
-                              console.log('[MealPlanDetail] Save item pressed, item:', item.id, 'servings:', editState?.servings, 'gramsPerUnit:', editState?.gramsPerUnit);
-                              handleSaveItem(item);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={[styles.editActionText, { color: colors.primary }]}>✓</Text>
-                          </TouchableOpacity>
+
                         </View>
 
                         {/* Serving options dropdown */}
@@ -741,7 +731,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   servingDropdownBtn: {
-    flex: 1,
+    maxWidth: 110,
     borderWidth: 1,
     borderRadius: borderRadius.sm,
     paddingHorizontal: 6,
