@@ -515,7 +515,14 @@ export default function FoodDetailsLayout({
       const nutrition = extractNutrition(product);
       const servingInfo = extractServingSize(product);
 
-      const servingDescription = `${servingAmount % 1 === 0 ? servingAmount : servingAmount.toFixed(2)} g`;
+      // Build a human-readable serving description
+      // For the default option, use the product's serving description (e.g. "1 slice", "1 cookie")
+      // For g/oz/lb options, use the gram amount
+      const defaultServingDesc = extractServingSize(product).description;
+      const servingDescription = selectedServingOptionKey === 'default' && defaultServingDesc
+        ? defaultServingDesc
+        : `${servingAmount % 1 === 0 ? servingAmount : servingAmount.toFixed(2)} g`;
+      console.log('[FoodDetailsLayout] handleSave serving_description:', servingDescription, '| selectedServingOptionKey:', selectedServingOptionKey);
 
       // Meal-plan mode: delegate to onMealPlanSave callback
       if (onMealPlanSave) {
