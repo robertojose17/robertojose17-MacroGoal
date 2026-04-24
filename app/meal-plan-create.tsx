@@ -214,10 +214,9 @@ export default function MealPlanCreateScreen() {
             <DateTimePicker
               value={pickerValue}
               mode="date"
-              display="inline"
+              display="spinner"
               onChange={handlePickerChange}
               minimumDate={pickerMinDate}
-              style={styles.inlinePicker}
             />
           )}
         </View>
@@ -298,5 +297,5 @@ const styles = StyleSheet.create({
   modalSheetTitle: { fontSize: 17, fontWeight: '600' },
   modalDoneButton: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
   modalDoneText: { fontSize: 17, fontWeight: '600', color: colors.primary },
-  inlinePicker: { alignSelf: 'stretch' },
+
 });
