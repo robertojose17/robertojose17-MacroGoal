@@ -176,6 +176,14 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  // Navigation readiness guard — prevents 'Cannot read property route of null'
+  // on the first render cycle before the navigation context is initialized.
+  const [navReady, setNavReady] = useState(false);
+  useEffect(() => {
+    console.log('[HomeScreen] Navigation context ready');
+    setNavReady(true);
+  }, []);
+
   // Segmented control
   const [activeTab, setActiveTab] = useState<'tracking' | 'planning'>('tracking');
 
@@ -534,6 +542,8 @@ export default function HomeScreen() {
   const calMonthLabel = `${MONTH_NAMES[calMonth]} ${calYear}`;
 
   // ── Render helpers ──
+
+  if (!navReady) return null;
 
   if (loading) {
     return (
