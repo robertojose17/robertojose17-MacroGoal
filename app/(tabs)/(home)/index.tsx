@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Platform,
   RefreshControl, Alert, ActivityIndicator, Modal, ScrollView, Dimensions,
@@ -15,6 +15,7 @@ import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
 import {
   listMealPlans,
+  deleteMealPlan,
   getMealPlan,
   getMonthAssignments,
   getRangeAssignments,
@@ -1175,6 +1176,31 @@ export default function HomeScreen() {
                 key={plan.id}
                 style={[styles.planCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
                 onPress={() => handlePlanPress(plan)}
+                onLongPress={() => {
+                  console.log('[Home] Plan long-pressed for delete:', plan.id, plan.name);
+                  Alert.alert(
+                    'Delete Plan',
+                    `Delete "${plan.name}"?`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          console.log('[Home] Confirming delete for plan:', plan.id);
+                          try {
+                            await deleteMealPlan(plan.id);
+                            console.log('[Home] Plan deleted:', plan.id);
+                            setPlans(prev => prev.filter(p => p.id !== plan.id));
+                          } catch (err: any) {
+                            console.error('[Home] Error deleting plan:', err);
+                            Alert.alert('Error', 'Failed to delete meal plan. Please try again.');
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.planCardContent}>
@@ -1202,113 +1228,6 @@ export default function HomeScreen() {
           <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
           <Text style={styles.createPlanButtonText}>Create New Plan</Text>
         </TouchableOpacity>
-
-        {/* ── Day assignment bottom sheet ── */}
-        <Modal
-          visible={daySheetVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setDaySheetVisible(false)}
-        >
-          <TouchableOpacity
-            style={styles.sheetOverlay}
-            activeOpacity={1}
-            onPress={() => {
-              console.log('[Home] Day sheet dismissed via overlay');
-              setDaySheetVisible(false);
-            }}
-          >
-            <TouchableOpacity
-              activeOpacity={1}
-              style={[styles.sheetContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-              onPress={() => {}}
-            >
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
-              <Text style={[styles.sheetTitle, { color: isDark ? colors.textDark : colors.text }]}>
-                {daySheetTitle}
-              </Text>
-
-              {currentDayAssignment && (
-                <View style={[styles.sheetCurrentBadge, { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' }]}>
-                  <View style={[styles.sheetCurrentDot, { backgroundColor: planColorMap[currentDayAssignment.meal_plan_id] || colors.primary }]} />
-                  <Text style={[styles.sheetCurrentText, { color: isDark ? colors.textDark : colors.text }]}>
-                    Currently: {currentDayAssignment.plan_name || 'Assigned'}
-                  </Text>
-                </View>
-              )}
-
-              <Text style={[styles.sheetSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                Assign a plan
-              </Text>
-
-              <ScrollView style={styles.sheetPlanList} showsVerticalScrollIndicator={false}>
-                {plans.length === 0 ? (
-                  <Text style={[styles.sheetEmptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                    No plans available. Create one first.
-                  </Text>
-                ) : (
-                  plans.map((plan, idx) => {
-                    const dotColor = PLAN_COLORS[idx % PLAN_COLORS.length];
-                    const isActive = currentDayAssignment?.meal_plan_id === plan.id;
-                    return (
-                      <TouchableOpacity
-                        key={plan.id}
-                        style={[
-                          styles.sheetPlanRow,
-                          { borderBottomColor: isDark ? colors.borderDark : colors.border },
-                          isActive && { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' },
-                        ]}
-                        onPress={() => {
-                          console.log('[Home] Plan row pressed in sheet:', plan.id, plan.name);
-                          handleAssignPlan(plan.id);
-                        }}
-                        activeOpacity={0.7}
-                        disabled={dayAssigning}
-                      >
-                        <View style={[styles.sheetPlanDot, { backgroundColor: dotColor }]} />
-                        <Text style={[styles.sheetPlanName, { color: isDark ? colors.textDark : colors.text }]}>
-                          {plan.name}
-                        </Text>
-                        {isActive && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color={colors.primary} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
-              </ScrollView>
-
-              {currentDayAssignment && (
-                <TouchableOpacity
-                  style={[styles.sheetRemoveBtn, { borderColor: colors.error }]}
-                  onPress={() => {
-                    console.log('[Home] Remove assignment pressed for day:', selectedDayStr);
-                    handleRemoveAssignment();
-                  }}
-                  activeOpacity={0.7}
-                  disabled={dayAssigning}
-                >
-                  <Text style={[styles.sheetRemoveText, { color: colors.error }]}>Remove assignment</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={[styles.sheetCancelBtn, { backgroundColor: isDark ? colors.backgroundDark : '#F3F4F6' }]}
-                onPress={() => {
-                  console.log('[Home] Day sheet cancel pressed');
-                  setDaySheetVisible(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.sheetCancelText, { color: isDark ? colors.textDark : colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-
-              {dayAssigning && (
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.sm }} />
-              )}
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
       </View>
     );
   };
@@ -1396,6 +1315,113 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.scrollContent}
       />
+
+      {/* ── Day assignment bottom sheet Modal (root level to avoid ScrollView nesting) ── */}
+      <Modal
+        visible={daySheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDaySheetVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            console.log('[Home] Day sheet dismissed via overlay');
+            setDaySheetVisible(false);
+          }}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.sheetContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+            onPress={() => {}}
+          >
+            <View style={[styles.sheetHandle, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
+            <Text style={[styles.sheetTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              {daySheetTitle}
+            </Text>
+
+            {currentDayAssignment && (
+              <View style={[styles.sheetCurrentBadge, { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' }]}>
+                <View style={[styles.sheetCurrentDot, { backgroundColor: planColorMap[currentDayAssignment.meal_plan_id] || colors.primary }]} />
+                <Text style={[styles.sheetCurrentText, { color: isDark ? colors.textDark : colors.text }]}>
+                  Currently: {currentDayAssignment.plan_name || 'Assigned'}
+                </Text>
+              </View>
+            )}
+
+            <Text style={[styles.sheetSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Assign a plan
+            </Text>
+
+            <ScrollView style={styles.sheetPlanList} showsVerticalScrollIndicator={false}>
+              {plans.length === 0 ? (
+                <Text style={[styles.sheetEmptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                  No plans available. Create one first.
+                </Text>
+              ) : (
+                plans.map((plan, idx) => {
+                  const dotColor = PLAN_COLORS[idx % PLAN_COLORS.length];
+                  const isActive = currentDayAssignment?.meal_plan_id === plan.id;
+                  return (
+                    <TouchableOpacity
+                      key={plan.id}
+                      style={[
+                        styles.sheetPlanRow,
+                        { borderBottomColor: isDark ? colors.borderDark : colors.border },
+                        isActive && { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' },
+                      ]}
+                      onPress={() => {
+                        console.log('[Home] Plan row pressed in sheet:', plan.id, plan.name);
+                        handleAssignPlan(plan.id);
+                      }}
+                      activeOpacity={0.7}
+                      disabled={dayAssigning}
+                    >
+                      <View style={[styles.sheetPlanDot, { backgroundColor: dotColor }]} />
+                      <Text style={[styles.sheetPlanName, { color: isDark ? colors.textDark : colors.text }]}>
+                        {plan.name}
+                      </Text>
+                      {isActive && (
+                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {currentDayAssignment && (
+              <TouchableOpacity
+                style={[styles.sheetRemoveBtn, { borderColor: colors.error }]}
+                onPress={() => {
+                  console.log('[Home] Remove assignment pressed for day:', selectedDayStr);
+                  handleRemoveAssignment();
+                }}
+                activeOpacity={0.7}
+                disabled={dayAssigning}
+              >
+                <Text style={[styles.sheetRemoveText, { color: colors.error }]}>Remove assignment</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.sheetCancelBtn, { backgroundColor: isDark ? colors.backgroundDark : '#F3F4F6' }]}
+              onPress={() => {
+                console.log('[Home] Day sheet cancel pressed');
+                setDaySheetVisible(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sheetCancelText, { color: isDark ? colors.textDark : colors.text }]}>Cancel</Text>
+            </TouchableOpacity>
+
+            {dayAssigning && (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.sm }} />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
