@@ -79,6 +79,97 @@ const getServingDisplayText = (item: FoodItem): string => {
   return `${quantity}x ${servingAmount} ${servingUnit}`;
 };
 
+// ─── Calendar ─────────────────────────────────────────────────────────────────
+
+const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+interface CalendarProps {
+  year: number;
+  month: number;
+  assignments: DayAssignment[];
+  plans: MealPlan[];
+  isDark: boolean;
+  onDayPress: (dateStr: string) => void;
+}
+
+function SimpleCalendar({ year, month, assignments, plans, isDark, onDayPress }: CalendarProps) {
+  const bg = isDark ? '#1C1C1E' : '#FFFFFF';
+  const textColor = isDark ? '#FFFFFF' : '#000000';
+  const subColor = isDark ? '#8E8E93' : '#6B7280';
+
+  const todayD = new Date();
+  const todayStr = `${todayD.getFullYear()}-${String(todayD.getMonth() + 1).padStart(2, '0')}-${String(todayD.getDate()).padStart(2, '0')}`;
+
+  const assignmentMap: Record<string, DayAssignment> = {};
+  for (const a of assignments) assignmentMap[a.date] = a;
+
+  const planColorMap: Record<string, string> = {};
+  (plans ?? []).forEach((p, i) => { planColorMap[p.id] = PLAN_COLORS[i % PLAN_COLORS.length]; });
+
+  const firstDow = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  return (
+    <View style={{ backgroundColor: bg, borderRadius: 16, padding: 12, marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+        {WEEK_DAYS.map((d, i) => (
+          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: subColor }}>{d}</Text>
+          </View>
+        ))}
+      </View>
+      {weeks.map((week, ri) => (
+        <View key={ri} style={{ flexDirection: 'row' }}>
+          {week.map((day, ci) => {
+            if (!day) return <View key={ci} style={{ flex: 1, height: 52 }} />;
+            const mm = String(month + 1).padStart(2, '0');
+            const dd = String(day).padStart(2, '0');
+            const dateStr = `${year}-${mm}-${dd}`;
+            const isToday = dateStr === todayStr;
+            const assignment = assignmentMap[dateStr];
+            const dotColor = assignment ? (planColorMap[assignment.meal_plan_id] || '#14B8A6') : null;
+            const label = assignment?.plan_name ? assignment.plan_name.slice(0, 5) : null;
+            const circleStyle = {
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: 'center' as const,
+              justifyContent: 'center' as const,
+              backgroundColor: isToday ? '#14B8A6' : 'transparent',
+            };
+            const dayTextColor = isToday ? '#fff' : textColor;
+            return (
+              <TouchableOpacity
+                key={ci}
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 4, height: 52 }}
+                onPress={() => onDayPress(dateStr)}
+                activeOpacity={0.7}
+              >
+                <View style={circleStyle}>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: dayTextColor }}>
+                    {day}
+                  </Text>
+                </View>
+                {dotColor ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor, marginTop: 2 }} /> : null}
+                {label ? <Text style={{ fontSize: 8, color: dotColor ?? subColor, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>{label}</Text> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
@@ -121,6 +212,11 @@ export default function HomeScreen() {
   const [daySheetVisible, setDaySheetVisible] = useState(false);
   const [selectedDayStr, setSelectedDayStr] = useState('');
   const [dayAssigning, setDayAssigning] = useState(false);
+
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [monthLoading, setMonthLoading] = useState(false);
 
   // ── Load tracking data ──
   const loadData = useCallback(async () => {
@@ -272,11 +368,13 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // ── Load month assignments (current month only, loaded lazily on day press) ──
-  const loadMonthAssignments = useCallback(async () => {
-    const now = new Date();
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // ── Load month assignments ──
+  const loadMonthAssignments = useCallback(async (year?: number, month?: number) => {
+    const y = year ?? new Date().getFullYear();
+    const m = month ?? new Date().getMonth();
+    const yearMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
     console.log('[Home iOS] Loading month assignments for:', yearMonth);
+    setMonthLoading(true);
     try {
       const data = await getMonthAssignments(yearMonth);
       console.log('[Home iOS] Month assignments loaded:', data.length);
@@ -284,6 +382,8 @@ export default function HomeScreen() {
     } catch (err: any) {
       console.error('[Home iOS] Error loading month assignments:', err);
       setMonthAssignments([]);
+    } finally {
+      setMonthLoading(false);
     }
   }, []);
 
@@ -294,6 +394,11 @@ export default function HomeScreen() {
       loadPlans();
     }, [loadData, loadPlans])
   );
+
+  useEffect(() => {
+    if (activeTab !== 'planning') return;
+    loadMonthAssignments(calYear, calMonth);
+  }, [calYear, calMonth, activeTab, loadMonthAssignments]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -403,10 +508,22 @@ export default function HomeScreen() {
   };
 
   // ── Planning handlers ──
+  const handlePrevMonth = () => {
+    console.log('[Home iOS] Calendar prev month pressed');
+    if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); }
+    else { setCalMonth(m => m - 1); }
+  };
+
+  const handleNextMonth = () => {
+    console.log('[Home iOS] Calendar next month pressed');
+    if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); }
+    else { setCalMonth(m => m + 1); }
+  };
+
   const handleDayPress = (dateStr: string) => {
     console.log('[Home iOS] Day sheet opening for:', dateStr);
     setSelectedDayStr(dateStr);
-    loadMonthAssignments();
+    loadMonthAssignments(calYear, calMonth);
     setDaySheetVisible(true);
   };
 
@@ -566,8 +683,40 @@ export default function HomeScreen() {
         </View>
       );
     }
+    const monthLabel = `${MONTH_NAMES[calMonth]} ${calYear}`;
+    const chevronColor = isDark ? '#fff' : '#000';
+    const monthLabelColor = isDark ? '#fff' : '#000';
     return (
       <View>
+        {/* Month navigation */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <TouchableOpacity onPress={handlePrevMonth} style={{ padding: 8 }} activeOpacity={0.7}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={20} color={chevronColor} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: monthLabelColor }}>
+            {monthLabel}
+          </Text>
+          <TouchableOpacity onPress={handleNextMonth} style={{ padding: 8 }} activeOpacity={0.7}>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={chevronColor} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Calendar */}
+        {monthLoading ? (
+          <View style={{ height: 200, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#1C1C1E' : '#fff', borderRadius: 16, marginBottom: 16 }}>
+            <ActivityIndicator size="small" color="#14B8A6" />
+          </View>
+        ) : (
+          <SimpleCalendar
+            year={calYear}
+            month={calMonth}
+            assignments={monthAssignments}
+            plans={plans}
+            isDark={isDark}
+            onDayPress={handleDayPress}
+          />
+        )}
+
         {plans.length === 0 ? (
           <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#fff' : '#000', marginBottom: 8 }}>No meal plans yet</Text>
@@ -763,7 +912,7 @@ export default function HomeScreen() {
                           await assignPlanToDay(selectedDayStr, plan.id);
                           console.log('[Home iOS] Plan assigned successfully');
                           setDaySheetVisible(false);
-                          await loadMonthAssignments();
+                          await loadMonthAssignments(calYear, calMonth);
                         } catch {
                           Alert.alert('Error', 'Failed to assign plan.');
                         } finally {
@@ -796,7 +945,7 @@ export default function HomeScreen() {
                     await removePlanFromDay(selectedDayStr);
                     console.log('[Home iOS] Assignment removed successfully');
                     setDaySheetVisible(false);
-                    await loadMonthAssignments();
+                    await loadMonthAssignments(calYear, calMonth);
                   } catch {
                     Alert.alert('Error', 'Failed to remove assignment.');
                   } finally {
