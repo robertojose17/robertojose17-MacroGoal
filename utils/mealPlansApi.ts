@@ -286,3 +286,130 @@ export async function getGroceryList(planId: string): Promise<GroceryListRespons
   const categories = categoryOrder.filter(c => categoryMap[c]).map(c => categoryMap[c]);
   return { plan_name: plan.name, categories };
 }
+
+export interface DayAssignment {
+  id: string;
+  date: string; // 'YYYY-MM-DD'
+  meal_plan_id: string;
+  plan_name?: string;
+}
+
+/** Assign (or replace) a plan to a specific day. Uses upsert on (user_id, date). */
+export async function assignPlanToDay(date: string, mealPlanId: string): Promise<void> {
+  console.log('[MealPlansApi] assignPlanToDay()', date, mealPlanId);
+  const userId = await getCurrentUserId();
+  const { error } = await supabase
+    .from('day_plan_assignments')
+    .upsert({ user_id: userId, date, meal_plan_id: mealPlanId }, { onConflict: 'user_id,date' });
+  if (error) throw new Error(error.message);
+}
+
+/** Remove the plan assignment for a specific day. */
+export async function removePlanFromDay(date: string): Promise<void> {
+  console.log('[MealPlansApi] removePlanFromDay()', date);
+  const userId = await getCurrentUserId();
+  const { error } = await supabase
+    .from('day_plan_assignments')
+    .delete()
+    .eq('user_id', userId)
+    .eq('date', date);
+  if (error) throw new Error(error.message);
+}
+
+/** Get all assignments for a given month (YYYY-MM). */
+export async function getMonthAssignments(yearMonth: string): Promise<DayAssignment[]> {
+  console.log('[MealPlansApi] getMonthAssignments()', yearMonth);
+  const userId = await getCurrentUserId();
+  const startDate = `${yearMonth}-01`;
+  const endDate = `${yearMonth}-31`;
+  const { data, error } = await supabase
+    .from('day_plan_assignments')
+    .select('id, date, meal_plan_id, meal_plans(name)')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (error) throw new Error(error.message);
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    date: row.date,
+    meal_plan_id: row.meal_plan_id,
+    plan_name: row.meal_plans?.name,
+  }));
+}
+
+/** Get all assignments within a date range (inclusive). */
+export async function getRangeAssignments(startDate: string, endDate: string): Promise<DayAssignment[]> {
+  console.log('[MealPlansApi] getRangeAssignments()', startDate, endDate);
+  const userId = await getCurrentUserId();
+  const { data, error } = await supabase
+    .from('day_plan_assignments')
+    .select('id, date, meal_plan_id, meal_plans(name)')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (error) throw new Error(error.message);
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    date: row.date,
+    meal_plan_id: row.meal_plan_id,
+    plan_name: row.meal_plans?.name,
+  }));
+}
+
+/** Consolidated grocery list for multiple plans with per-plan day counts. */
+export async function getMultiPlanGroceryList(
+  planCounts: { planId: string; count: number }[],
+  rangeLabel: string
+): Promise<GroceryListResponse> {
+  console.log('[MealPlansApi] getMultiPlanGroceryList()', planCounts, rangeLabel);
+  await getCurrentUserId();
+  const planIds = planCounts.map(p => p.planId);
+
+  const { data: items, error } = await supabase
+    .from('meal_plan_items')
+    .select('plan_id, food_name, brand, grams, quantity, meal_type')
+    .in('plan_id', planIds);
+  if (error) throw new Error(error.message);
+
+  const perPlanSeen: Record<string, Set<string>> = {};
+  const uniqueItems: typeof items = [];
+  for (const item of (items || [])) {
+    const pid = item.plan_id as string;
+    if (!perPlanSeen[pid]) perPlanSeen[pid] = new Set();
+    const key = (item.food_name as string).toLowerCase().trim() + '|' + item.meal_type;
+    if (!perPlanSeen[pid].has(key)) {
+      perPlanSeen[pid].add(key);
+      uniqueItems.push(item);
+    }
+  }
+
+  const grouped: Record<string, { name: string; brand: string | null; total_grams: number }> = {};
+  for (const item of uniqueItems) {
+    const planCount = planCounts.find(p => p.planId === item.plan_id)?.count || 1;
+    const key = (item.food_name as string).toLowerCase().trim();
+    if (!grouped[key]) {
+      grouped[key] = { name: item.food_name as string, brand: (item.brand as string) || null, total_grams: 0 };
+    }
+    grouped[key].total_grams += ((item.grams as number) || ((item.quantity as number) * 100)) * planCount;
+  }
+
+  const categoryMap: Record<string, GroceryCategory> = {};
+  for (const entry of Object.values(grouped)) {
+    const { category, emoji } = categorizeFood(entry.name);
+    if (!categoryMap[category]) categoryMap[category] = { category, emoji, items: [] };
+    const totalGrams = Math.round(entry.total_grams);
+    const displayAmount = totalGrams >= 1000
+      ? `${(totalGrams / 1000).toFixed(1)} kg`
+      : `${totalGrams} g`;
+    categoryMap[category].items.push({
+      name: entry.name,
+      brand: entry.brand || undefined,
+      total_grams: totalGrams,
+      display_amount: displayAmount,
+    });
+  }
+
+  const categoryOrder = ['Proteins', 'Vegetables', 'Fruits', 'Dairy', 'Grains', 'Other'];
+  const categories = categoryOrder.filter(c => categoryMap[c]).map(c => categoryMap[c]);
+  return { plan_name: rangeLabel, categories };
+}

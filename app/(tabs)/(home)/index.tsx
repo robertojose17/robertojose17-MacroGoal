@@ -1,15 +1,39 @@
 
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, RefreshControl, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Platform,
+  RefreshControl, Alert, ActivityIndicator, Modal, ScrollView, Dimensions,
+} from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
-import { listMealPlans, type MealPlan as ApiMealPlan } from '@/utils/mealPlansApi';
+import {
+  listMealPlans,
+  getMealPlan,
+  getMonthAssignments,
+  getRangeAssignments,
+  assignPlanToDay,
+  removePlanFromDay,
+  type MealPlan as ApiMealPlan,
+  type DayAssignment,
+} from '@/utils/mealPlansApi';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const PLAN_COLORS = ['#14B8A6', '#8B5CF6', '#F59E0B', '#EF4444', '#3B82F6', '#10B981'];
+const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -51,6 +75,16 @@ interface MealPlan {
   created_at: string;
 }
 
+interface AvgMacros {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  assignedDays: number;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const formatDateForStorage = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -75,6 +109,172 @@ const formatDateRange = (start: string, end: string): string => {
   return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', opts)}`;
 };
 
+const formatShortDate = (date: Date): string =>
+  date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+const getMonday = (d: Date): Date => {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date;
+};
+
+const getSunday = (d: Date): Date => {
+  const monday = getMonday(d);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return sunday;
+};
+
+const formatDayHeader = (dateStr: string): string => {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+};
+
+// ─── Calendar Component ───────────────────────────────────────────────────────
+
+interface CalendarProps {
+  year: number;
+  month: number; // 0-indexed
+  assignments: DayAssignment[];
+  plans: MealPlan[];
+  isDark: boolean;
+  onDayPress: (dateStr: string) => void;
+}
+
+function WeekPlannerCalendar({ year, month, assignments, plans, isDark, onDayPress }: CalendarProps) {
+  const textColor = isDark ? colors.textDark : colors.text;
+  const secondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
+  const cardBg = isDark ? colors.cardDark : colors.card;
+  const borderColor = isDark ? colors.borderDark : colors.border;
+
+  const today = new Date();
+  const todayStr = formatDateForStorage(today);
+
+  // Build assignment map: dateStr -> DayAssignment
+  const assignmentMap: Record<string, DayAssignment> = {};
+  for (const a of assignments) {
+    assignmentMap[a.date] = a;
+  }
+
+  // Build plan color map: planId -> color
+  const planColorMap: Record<string, string> = {};
+  plans.forEach((p, i) => {
+    planColorMap[p.id] = PLAN_COLORS[i % PLAN_COLORS.length];
+  });
+
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDow = firstDay.getDay(); // 0=Sun
+  const totalDays = lastDay.getDate();
+
+  // Cells: null = empty padding, number = day
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+  // Pad to complete last row
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const screenWidth = Dimensions.get('window').width;
+  const cellSize = Math.floor((screenWidth - spacing.md * 2 - spacing.sm * 2) / 7);
+
+  return (
+    <View style={[calStyles.calendarCard, { backgroundColor: cardBg }]}>
+      {/* Day-of-week headers */}
+      <View style={calStyles.dowRow}>
+        {WEEK_DAYS.map(d => (
+          <View key={d} style={[calStyles.dowCell, { width: cellSize }]}>
+            <Text style={[calStyles.dowText, { color: secondaryColor }]}>{d}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Day grid */}
+      {Array.from({ length: cells.length / 7 }, (_, rowIdx) => (
+        <View key={rowIdx} style={calStyles.weekRow}>
+          {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
+            if (day === null) {
+              return <View key={colIdx} style={[calStyles.dayCell, { width: cellSize }]} />;
+            }
+            const monthStr = String(month + 1).padStart(2, '0');
+            const dayStr = String(day).padStart(2, '0');
+            const dateStr = `${year}-${monthStr}-${dayStr}`;
+            const isToday = dateStr === todayStr;
+            const assignment = assignmentMap[dateStr];
+            const dotColor = assignment ? (planColorMap[assignment.meal_plan_id] || colors.primary) : null;
+            const planLabel = assignment?.plan_name
+              ? assignment.plan_name.slice(0, 8)
+              : null;
+
+            return (
+              <TouchableOpacity
+                key={colIdx}
+                style={[calStyles.dayCell, { width: cellSize }]}
+                onPress={() => {
+                  console.log('[Calendar] Day pressed:', dateStr);
+                  onDayPress(dateStr);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  calStyles.dayNumber,
+                  isToday && { backgroundColor: colors.primary },
+                ]}>
+                  <Text style={[
+                    calStyles.dayText,
+                    { color: isToday ? '#fff' : textColor },
+                  ]}>
+                    {day}
+                  </Text>
+                </View>
+                {dotColor && (
+                  <View style={[calStyles.planDot, { backgroundColor: dotColor }]} />
+                )}
+                {planLabel && (
+                  <Text
+                    style={[calStyles.planLabel, { color: dotColor || secondaryColor }]}
+                    numberOfLines={1}
+                  >
+                    {planLabel}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const calStyles = StyleSheet.create({
+  calendarCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    elevation: 2,
+  },
+  dowRow: { flexDirection: 'row', marginBottom: 4 },
+  dowCell: { alignItems: 'center', paddingVertical: 4 },
+  dowText: { fontSize: 11, fontWeight: '600' },
+  weekRow: { flexDirection: 'row' },
+  dayCell: { alignItems: 'center', paddingVertical: 4, minHeight: 52 },
+  dayNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayText: { fontSize: 13, fontWeight: '500' },
+  planDot: { width: 6, height: 6, borderRadius: 3, marginTop: 2 },
+  planLabel: { fontSize: 9, fontWeight: '600', marginTop: 1, textAlign: 'center' },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -82,6 +282,7 @@ export default function HomeScreen() {
 
   const [activeTab, setActiveTab] = useState<'tracking' | 'planning'>('tracking');
 
+  // ── Tracking state ──
   const [goal, setGoal] = useState<any>(null);
   const [meals, setMeals] = useState<MealData[]>([
     { type: 'breakfast', label: 'Breakfast', items: [], totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFats: 0 },
@@ -96,10 +297,37 @@ export default function HomeScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [error, setError] = useState<string | null>(null);
 
+  // ── Planning state ──
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
 
+  // Calendar
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [monthAssignments, setMonthAssignments] = useState<DayAssignment[]>([]);
+  const [monthLoading, setMonthLoading] = useState(false);
+
+  // Day assignment bottom sheet
+  const [daySheetVisible, setDaySheetVisible] = useState(false);
+  const [selectedDayStr, setSelectedDayStr] = useState<string>('');
+  const [dayAssigning, setDayAssigning] = useState(false);
+
+  // Date range
+  const [rangeStart, setRangeStart] = useState<Date>(getMonday(today));
+  const [rangeEnd, setRangeEnd] = useState<Date>(getSunday(today));
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [iosStartTemp, setIosStartTemp] = useState<Date>(getMonday(today));
+  const [iosEndTemp, setIosEndTemp] = useState<Date>(getSunday(today));
+
+  // Avg macros
+  const [avgMacros, setAvgMacros] = useState<AvgMacros | null>(null);
+  const [avgLoading, setAvgLoading] = useState(false);
+  const [rangeAssignments, setRangeAssignments] = useState<DayAssignment[]>([]);
+
+  // ── Load tracking data ──
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -217,15 +445,16 @@ export default function HomeScreen() {
         setTotalCalories(totalCals);
         setTotalMacros({ protein: totalP, carbs: totalC, fats: totalF, fiber: totalFib });
       }
-    } catch (error: any) {
-      console.error('[Home] Error in loadData:', error);
-      setError(error?.message || 'An unexpected error occurred. Please try again.');
+    } catch (err: any) {
+      console.error('[Home] Error in loadData:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [selectedDate]);
 
+  // ── Load plans ──
   const loadPlans = useCallback(async () => {
     console.log('[Home] Loading meal plans');
     setPlansLoading(true);
@@ -248,6 +477,89 @@ export default function HomeScreen() {
     }
   }, []);
 
+  // ── Load month assignments ──
+  const loadMonthAssignments = useCallback(async (year: number, month: number) => {
+    const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
+    console.log('[Home] Loading month assignments for:', yearMonth);
+    setMonthLoading(true);
+    try {
+      const data = await getMonthAssignments(yearMonth);
+      console.log('[Home] Month assignments loaded:', data.length);
+      setMonthAssignments(data);
+    } catch (err: any) {
+      console.error('[Home] Error loading month assignments:', err);
+      setMonthAssignments([]);
+    } finally {
+      setMonthLoading(false);
+    }
+  }, []);
+
+  // ── Load range avg macros ──
+  const loadRangeData = useCallback(async (start: Date, end: Date) => {
+    const startStr = formatDateForStorage(start);
+    const endStr = formatDateForStorage(end);
+    console.log('[Home] Loading range assignments:', startStr, '->', endStr);
+    setAvgLoading(true);
+    try {
+      const assignments = await getRangeAssignments(startStr, endStr);
+      console.log('[Home] Range assignments:', assignments.length);
+      setRangeAssignments(assignments);
+
+      if (assignments.length === 0) {
+        setAvgMacros({ calories: 0, protein: 0, carbs: 0, fats: 0, assignedDays: 0 });
+        setAvgLoading(false);
+        return;
+      }
+
+      // Unique plan IDs in range
+      const uniquePlanIds = [...new Set(assignments.map(a => a.meal_plan_id))];
+      console.log('[Home] Fetching details for', uniquePlanIds.length, 'unique plans');
+
+      const planDetails = await Promise.all(uniquePlanIds.map(id => getMealPlan(id).catch(() => null)));
+      const planMacroMap: Record<string, { calories: number; protein: number; carbs: number; fats: number }> = {};
+
+      planDetails.forEach(detail => {
+        if (!detail) return;
+        const totals = detail.items.reduce(
+          (acc, item) => ({
+            calories: acc.calories + (item.calories || 0),
+            protein: acc.protein + (item.protein || 0),
+            carbs: acc.carbs + (item.carbs || 0),
+            fats: acc.fats + (item.fats || 0),
+          }),
+          { calories: 0, protein: 0, carbs: 0, fats: 0 }
+        );
+        planMacroMap[detail.id] = totals;
+      });
+
+      // Sum macros across all assigned days
+      let sumCal = 0, sumP = 0, sumC = 0, sumF = 0;
+      for (const a of assignments) {
+        const macros = planMacroMap[a.meal_plan_id];
+        if (macros) {
+          sumCal += macros.calories;
+          sumP += macros.protein;
+          sumC += macros.carbs;
+          sumF += macros.fats;
+        }
+      }
+
+      const count = assignments.length;
+      setAvgMacros({
+        calories: Math.round(sumCal / count),
+        protein: Math.round(sumP / count),
+        carbs: Math.round(sumC / count),
+        fats: Math.round(sumF / count),
+        assignedDays: count,
+      });
+    } catch (err: any) {
+      console.error('[Home] Error loading range data:', err);
+      setAvgMacros(null);
+    } finally {
+      setAvgLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       console.log('[Home] Screen focused, loading data');
@@ -256,12 +568,31 @@ export default function HomeScreen() {
     }, [loadData, loadPlans])
   );
 
+  // Load month assignments when calendar month changes
+  useEffect(() => {
+    if (activeTab === 'planning') {
+      loadMonthAssignments(calYear, calMonth);
+    }
+  }, [calYear, calMonth, activeTab, loadMonthAssignments]);
+
+  // Load range data when range changes
+  useEffect(() => {
+    if (activeTab === 'planning') {
+      loadRangeData(rangeStart, rangeEnd);
+    }
+  }, [rangeStart, rangeEnd, activeTab, loadRangeData]);
+
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
     loadPlans();
+    if (activeTab === 'planning') {
+      loadMonthAssignments(calYear, calMonth);
+      loadRangeData(rangeStart, rangeEnd);
+    }
   };
 
+  // ── Tracking handlers ──
   const handleAddFood = (mealType: MealType) => {
     console.log('[Home] Opening add food for meal:', mealType);
     const dateString = formatDateForStorage(selectedDate);
@@ -325,9 +656,9 @@ export default function HomeScreen() {
         throw error;
       }
       console.log('[Home] Successfully deleted from database');
-    } catch (error: any) {
-      console.error('[Home] Error in handleDeleteFood:', error);
-      Alert.alert('Delete Failed', error?.message || 'Failed to delete food entry. Please try again.', [{ text: 'OK' }]);
+    } catch (err: any) {
+      console.error('[Home] Error in handleDeleteFood:', err);
+      Alert.alert('Delete Failed', err?.message || 'Failed to delete food entry. Please try again.', [{ text: 'OK' }]);
       loadData();
     }
   }, [loadData]);
@@ -354,11 +685,11 @@ export default function HomeScreen() {
   const isToday = () => selectedDate.toDateString() === new Date().toDateString();
 
   const isTodayOrFuture = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected >= today;
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    const s = new Date(selectedDate);
+    s.setHours(0, 0, 0, 0);
+    return s >= t;
   };
 
   const handleTabPress = (tab: 'tracking' | 'planning') => {
@@ -366,6 +697,7 @@ export default function HomeScreen() {
     setActiveTab(tab);
   };
 
+  // ── Planning handlers ──
   const handlePlanPress = (plan: MealPlan) => {
     console.log('[Home] Meal plan pressed:', plan.id, plan.name);
     router.push({ pathname: '/meal-plan-detail', params: { planId: plan.id } });
@@ -375,6 +707,91 @@ export default function HomeScreen() {
     console.log('[Home] Create new meal plan pressed');
     router.push('/meal-plan-create');
   };
+
+  const handlePrevMonth = () => {
+    console.log('[Home] Calendar: previous month');
+    if (calMonth === 0) {
+      setCalMonth(11);
+      setCalYear(y => y - 1);
+    } else {
+      setCalMonth(m => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    console.log('[Home] Calendar: next month');
+    if (calMonth === 11) {
+      setCalMonth(0);
+      setCalYear(y => y + 1);
+    } else {
+      setCalMonth(m => m + 1);
+    }
+  };
+
+  const handleDayPress = (dateStr: string) => {
+    console.log('[Home] Day sheet opening for:', dateStr);
+    setSelectedDayStr(dateStr);
+    setDaySheetVisible(true);
+  };
+
+  const handleAssignPlan = async (planId: string) => {
+    console.log('[Home] Assigning plan', planId, 'to day', selectedDayStr);
+    setDayAssigning(true);
+    try {
+      await assignPlanToDay(selectedDayStr, planId);
+      console.log('[Home] Plan assigned successfully');
+      setDaySheetVisible(false);
+      await loadMonthAssignments(calYear, calMonth);
+      await loadRangeData(rangeStart, rangeEnd);
+    } catch (err: any) {
+      console.error('[Home] Error assigning plan:', err);
+      Alert.alert('Error', err?.message || 'Failed to assign plan.');
+    } finally {
+      setDayAssigning(false);
+    }
+  };
+
+  const handleRemoveAssignment = async () => {
+    console.log('[Home] Removing assignment from day:', selectedDayStr);
+    setDayAssigning(true);
+    try {
+      await removePlanFromDay(selectedDayStr);
+      console.log('[Home] Assignment removed successfully');
+      setDaySheetVisible(false);
+      await loadMonthAssignments(calYear, calMonth);
+      await loadRangeData(rangeStart, rangeEnd);
+    } catch (err: any) {
+      console.error('[Home] Error removing assignment:', err);
+      Alert.alert('Error', err?.message || 'Failed to remove assignment.');
+    } finally {
+      setDayAssigning(false);
+    }
+  };
+
+  const handleViewGroceryList = () => {
+    const planIds = rangeAssignments.map(a => a.meal_plan_id).join(',');
+    const rangeLabel = `${formatShortDate(rangeStart)} – ${formatShortDate(rangeEnd)}`;
+    console.log('[Home] View grocery list pressed, planIds:', planIds, 'rangeLabel:', rangeLabel);
+    router.push({ pathname: '/meal-plan-grocery', params: { planIds, rangeLabel } });
+  };
+
+  // ── Derived values ──
+  const currentDayAssignment = monthAssignments.find(a => a.date === selectedDayStr);
+  const planColorMap: Record<string, string> = {};
+  plans.forEach((p, i) => { planColorMap[p.id] = PLAN_COLORS[i % PLAN_COLORS.length]; });
+
+  const rangeStartLabel = formatShortDate(rangeStart);
+  const rangeEndLabel = formatShortDate(rangeEnd);
+  const rangeLabel = `${rangeStartLabel} – ${rangeEndLabel}`;
+  const assignedDaysCount = rangeAssignments.length;
+  const calMonthLabel = `${MONTH_NAMES[calMonth]} ${calYear}`;
+  const daySheetTitle = selectedDayStr ? formatDayHeader(selectedDayStr) : '';
+  const leftArrowDisabled = false;
+  const rightArrowDisabled = isTodayOrFuture();
+  const todayLabel = isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' });
+  const dateDisplay = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  // ── Render helpers ──
 
   if (loading) {
     return (
@@ -399,10 +816,6 @@ export default function HomeScreen() {
       </SafeAreaView>
     );
   }
-
-  const caloriesRemaining = (goal?.daily_calories || 2000) - totalCalories;
-  const leftArrowDisabled = false;
-  const rightArrowDisabled = isTodayOrFuture();
 
   const renderFoodItem = ({ item }: { item: FoodItem }) => (
     <SwipeToDeleteRow onDelete={() => handleDeleteFood(item.id)}>
@@ -529,7 +942,198 @@ export default function HomeScreen() {
 
     return (
       <View>
-        {/* AI Meal Planner card */}
+        {/* ── Calendar header ── */}
+        <View style={styles.calendarHeader}>
+          <TouchableOpacity onPress={handlePrevMonth} style={styles.calNavBtn} activeOpacity={0.7}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={20} color={isDark ? colors.textDark : colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.calMonthLabel, { color: isDark ? colors.textDark : colors.text }]}>
+            {calMonthLabel}
+          </Text>
+          <TouchableOpacity onPress={handleNextMonth} style={styles.calNavBtn} activeOpacity={0.7}>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={isDark ? colors.textDark : colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Calendar grid ── */}
+        {monthLoading ? (
+          <View style={[styles.calLoadingBox, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : (
+          <WeekPlannerCalendar
+            year={calYear}
+            month={calMonth}
+            assignments={monthAssignments}
+            plans={plans}
+            isDark={isDark}
+            onDayPress={handleDayPress}
+          />
+        )}
+
+        {/* ── Date range selector ── */}
+        <View style={[styles.rangeCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <Text style={[styles.rangeSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+            Date Range
+          </Text>
+          <View style={styles.rangeRow}>
+            <TouchableOpacity
+              style={[styles.rangeBtn, { borderColor: isDark ? colors.borderDark : colors.border }]}
+              onPress={() => {
+                console.log('[Home] Start date picker opened');
+                setIosStartTemp(rangeStart);
+                setShowStartPicker(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.rangeBtnLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>Start</Text>
+              <Text style={[styles.rangeBtnDate, { color: isDark ? colors.textDark : colors.text }]}>{rangeStartLabel}</Text>
+            </TouchableOpacity>
+
+            <View style={[styles.rangeDivider, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
+
+            <TouchableOpacity
+              style={[styles.rangeBtn, { borderColor: isDark ? colors.borderDark : colors.border }]}
+              onPress={() => {
+                console.log('[Home] End date picker opened');
+                setIosEndTemp(rangeEnd);
+                setShowEndPicker(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.rangeBtnLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>End</Text>
+              <Text style={[styles.rangeBtnDate, { color: isDark ? colors.textDark : colors.text }]}>{rangeEndLabel}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* iOS date pickers in modals */}
+        {Platform.OS === 'ios' && showStartPicker && (
+          <Modal transparent animationType="slide" visible={showStartPicker}>
+            <View style={styles.pickerModalOverlay}>
+              <View style={[styles.pickerModalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                <View style={styles.pickerModalHeader}>
+                  <Text style={[styles.pickerModalTitle, { color: isDark ? colors.textDark : colors.text }]}>Start Date</Text>
+                  <TouchableOpacity onPress={() => {
+                    console.log('[Home] Start date confirmed:', iosStartTemp);
+                    setRangeStart(iosStartTemp);
+                    setShowStartPicker(false);
+                  }}>
+                    <Text style={[styles.pickerDoneText, { color: colors.primary }]}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={iosStartTemp}
+                  mode="date"
+                  display="spinner"
+                  onChange={(_e, date) => { if (date) setIosStartTemp(date); }}
+                  textColor={isDark ? '#fff' : '#000'}
+                />
+              </View>
+            </View>
+          </Modal>
+        )}
+        {Platform.OS === 'ios' && showEndPicker && (
+          <Modal transparent animationType="slide" visible={showEndPicker}>
+            <View style={styles.pickerModalOverlay}>
+              <View style={[styles.pickerModalContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+                <View style={styles.pickerModalHeader}>
+                  <Text style={[styles.pickerModalTitle, { color: isDark ? colors.textDark : colors.text }]}>End Date</Text>
+                  <TouchableOpacity onPress={() => {
+                    console.log('[Home] End date confirmed:', iosEndTemp);
+                    setRangeEnd(iosEndTemp);
+                    setShowEndPicker(false);
+                  }}>
+                    <Text style={[styles.pickerDoneText, { color: colors.primary }]}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={iosEndTemp}
+                  mode="date"
+                  display="spinner"
+                  onChange={(_e, date) => { if (date) setIosEndTemp(date); }}
+                  textColor={isDark ? '#fff' : '#000'}
+                />
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* Android inline pickers */}
+        {Platform.OS === 'android' && showStartPicker && (
+          <DateTimePicker
+            value={rangeStart}
+            mode="date"
+            display="default"
+            onChange={(_e, date) => {
+              setShowStartPicker(false);
+              if (date) {
+                console.log('[Home] Android start date selected:', date);
+                setRangeStart(date);
+              }
+            }}
+          />
+        )}
+        {Platform.OS === 'android' && showEndPicker && (
+          <DateTimePicker
+            value={rangeEnd}
+            mode="date"
+            display="default"
+            onChange={(_e, date) => {
+              setShowEndPicker(false);
+              if (date) {
+                console.log('[Home] Android end date selected:', date);
+                setRangeEnd(date);
+              }
+            }}
+          />
+        )}
+
+        {/* ── Avg Macros Card ── */}
+        <View style={[styles.avgCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+          <View style={styles.avgCardHeader}>
+            <Text style={[styles.avgCardTitle, { color: isDark ? colors.textDark : colors.text }]}>
+              Avg Daily Macros
+            </Text>
+            <Text style={[styles.avgCardSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              {assignedDaysCount > 0 ? `${assignedDaysCount} day${assignedDaysCount !== 1 ? 's' : ''} assigned in range` : 'No plans assigned in this range'}
+            </Text>
+          </View>
+
+          {avgLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.sm }} />
+          ) : avgMacros && avgMacros.assignedDays > 0 ? (
+            <View style={styles.avgMacroRow}>
+              <AvgMacroCell label="Calories" value={avgMacros.calories} unit="kcal" color={colors.calories} isDark={isDark} />
+              <AvgMacroCell label="Protein" value={avgMacros.protein} unit="g" color={colors.protein} isDark={isDark} />
+              <AvgMacroCell label="Carbs" value={avgMacros.carbs} unit="g" color={colors.carbs} isDark={isDark} />
+              <AvgMacroCell label="Fats" value={avgMacros.fats} unit="g" color={colors.fats} isDark={isDark} />
+            </View>
+          ) : (
+            <Text style={[styles.avgEmptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              Assign plans to days in this range to see averages.
+            </Text>
+          )}
+        </View>
+
+        {/* ── View Grocery List button ── */}
+        {assignedDaysCount > 0 && (
+          <TouchableOpacity
+            style={[styles.groceryBtn, { backgroundColor: colors.primary }]}
+            onPress={handleViewGroceryList}
+            activeOpacity={0.8}
+          >
+            <IconSymbol ios_icon_name="cart.fill" android_material_icon_name="shopping-cart" size={18} color="#fff" />
+            <Text style={styles.groceryBtnText}>
+              View Grocery List ({assignedDaysCount} day{assignedDaysCount !== 1 ? 's' : ''})
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ── Divider ── */}
+        <View style={[styles.sectionDivider, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
+
+        {/* ── AI card ── */}
         <View style={[styles.aiCard, { backgroundColor: isDark ? '#1E1535' : '#F0EEFF' }]}>
           <View style={styles.aiCardHeader}>
             <View style={[styles.aiIconCircle, { backgroundColor: isDark ? '#2D1F5E' : '#DDD6FE' }]}>
@@ -551,6 +1155,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* ── Plan list ── */}
         {plans.length === 0 ? (
           <View style={[styles.plansEmptyCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={40} color={isDark ? colors.textSecondaryDark : colors.textSecondary} />
@@ -562,8 +1167,9 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          plans.map((plan) => {
+          plans.map((plan, idx) => {
             const dateRange = formatDateRange(plan.start_date, plan.end_date);
+            const dotColor = PLAN_COLORS[idx % PLAN_COLORS.length];
             return (
               <TouchableOpacity
                 key={plan.id}
@@ -572,6 +1178,7 @@ export default function HomeScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.planCardContent}>
+                  <View style={[styles.planColorDot, { backgroundColor: dotColor }]} />
                   <View style={styles.planCardLeft}>
                     <Text style={[styles.planName, { color: isDark ? colors.textDark : colors.text }]}>
                       {plan.name}
@@ -595,12 +1202,116 @@ export default function HomeScreen() {
           <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
           <Text style={styles.createPlanButtonText}>Create New Plan</Text>
         </TouchableOpacity>
+
+        {/* ── Day assignment bottom sheet ── */}
+        <Modal
+          visible={daySheetVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDaySheetVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.sheetOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              console.log('[Home] Day sheet dismissed via overlay');
+              setDaySheetVisible(false);
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.sheetContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+              onPress={() => {}}
+            >
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
+              <Text style={[styles.sheetTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                {daySheetTitle}
+              </Text>
+
+              {currentDayAssignment && (
+                <View style={[styles.sheetCurrentBadge, { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' }]}>
+                  <View style={[styles.sheetCurrentDot, { backgroundColor: planColorMap[currentDayAssignment.meal_plan_id] || colors.primary }]} />
+                  <Text style={[styles.sheetCurrentText, { color: isDark ? colors.textDark : colors.text }]}>
+                    Currently: {currentDayAssignment.plan_name || 'Assigned'}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={[styles.sheetSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                Assign a plan
+              </Text>
+
+              <ScrollView style={styles.sheetPlanList} showsVerticalScrollIndicator={false}>
+                {plans.length === 0 ? (
+                  <Text style={[styles.sheetEmptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+                    No plans available. Create one first.
+                  </Text>
+                ) : (
+                  plans.map((plan, idx) => {
+                    const dotColor = PLAN_COLORS[idx % PLAN_COLORS.length];
+                    const isActive = currentDayAssignment?.meal_plan_id === plan.id;
+                    return (
+                      <TouchableOpacity
+                        key={plan.id}
+                        style={[
+                          styles.sheetPlanRow,
+                          { borderBottomColor: isDark ? colors.borderDark : colors.border },
+                          isActive && { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' },
+                        ]}
+                        onPress={() => {
+                          console.log('[Home] Plan row pressed in sheet:', plan.id, plan.name);
+                          handleAssignPlan(plan.id);
+                        }}
+                        activeOpacity={0.7}
+                        disabled={dayAssigning}
+                      >
+                        <View style={[styles.sheetPlanDot, { backgroundColor: dotColor }]} />
+                        <Text style={[styles.sheetPlanName, { color: isDark ? colors.textDark : colors.text }]}>
+                          {plan.name}
+                        </Text>
+                        {isActive && (
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color={colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </ScrollView>
+
+              {currentDayAssignment && (
+                <TouchableOpacity
+                  style={[styles.sheetRemoveBtn, { borderColor: colors.error }]}
+                  onPress={() => {
+                    console.log('[Home] Remove assignment pressed for day:', selectedDayStr);
+                    handleRemoveAssignment();
+                  }}
+                  activeOpacity={0.7}
+                  disabled={dayAssigning}
+                >
+                  <Text style={[styles.sheetRemoveText, { color: colors.error }]}>Remove assignment</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.sheetCancelBtn, { backgroundColor: isDark ? colors.backgroundDark : '#F3F4F6' }]}
+                onPress={() => {
+                  console.log('[Home] Day sheet cancel pressed');
+                  setDaySheetVisible(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.sheetCancelText, { color: isDark ? colors.textDark : colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              {dayAssigning && (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.sm }} />
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </View>
     );
   };
-
-  const todayLabel = isToday() ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'short' });
-  const dateDisplay = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
@@ -689,6 +1400,8 @@ export default function HomeScreen() {
   );
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function MacroSummaryRowCompact({ label, eaten, goal, color, isDark }: any) {
   const percentage = Math.min((eaten / goal) * 100, 100);
   return (
@@ -707,6 +1420,18 @@ function MacroSummaryRowCompact({ label, eaten, goal, color, isDark }: any) {
     </View>
   );
 }
+
+function AvgMacroCell({ label, value, unit, color, isDark }: { label: string; value: number; unit: string; color: string; isDark: boolean }) {
+  return (
+    <View style={styles.avgMacroCell}>
+      <Text style={[styles.avgMacroValue, { color }]}>{value}</Text>
+      <Text style={[styles.avgMacroUnit, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>{unit}</Text>
+      <Text style={[styles.avgMacroLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -796,7 +1521,8 @@ const styles = StyleSheet.create({
   foodCaloriesValue: { ...typography.bodyBold, fontSize: 18 },
   foodCaloriesLabel: { ...typography.caption },
   bottomSpacer: { height: 40 },
-  // Planning styles
+
+  // ── Planning ──
   plansLoadingContainer: { paddingVertical: spacing.xxl, alignItems: 'center' },
   plansEmptyCard: {
     borderRadius: borderRadius.lg,
@@ -818,6 +1544,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   planCardContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  planColorDot: { width: 10, height: 10, borderRadius: 5, marginRight: spacing.sm },
   planCardLeft: { flex: 1 },
   planName: { ...typography.bodyBold, marginBottom: 2 },
   planDateRange: { ...typography.caption },
@@ -832,7 +1559,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   createPlanButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  // AI card styles
+
+  // AI card
   aiCard: {
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
@@ -863,4 +1591,146 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
   },
   aiComingSoonText: { fontSize: 12, fontWeight: '600' },
+
+  // Calendar header
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  calNavBtn: { padding: spacing.sm, minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  calMonthLabel: { fontSize: 17, fontWeight: '700' },
+  calLoadingBox: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+
+  // Date range
+  rangeCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    elevation: 2,
+  },
+  rangeSectionLabel: { fontSize: 12, fontWeight: '600', marginBottom: spacing.sm, textTransform: 'uppercase', letterSpacing: 0.5 },
+  rangeRow: { flexDirection: 'row', alignItems: 'center' },
+  rangeBtn: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
+  rangeBtnLabel: { fontSize: 11, fontWeight: '500', marginBottom: 2 },
+  rangeBtnDate: { fontSize: 15, fontWeight: '700' },
+  rangeDivider: { width: 1, height: 32, marginHorizontal: spacing.sm },
+
+  // iOS date picker modal
+  pickerModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  pickerModalContent: {
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    paddingBottom: 32,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  pickerModalTitle: { fontSize: 16, fontWeight: '600' },
+  pickerDoneText: { fontSize: 16, fontWeight: '700' },
+
+  // Avg macros card
+  avgCard: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    elevation: 2,
+  },
+  avgCardHeader: { marginBottom: spacing.md },
+  avgCardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  avgCardSubtitle: { fontSize: 13 },
+  avgMacroRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  avgMacroCell: { alignItems: 'center', gap: 2 },
+  avgMacroValue: { fontSize: 22, fontWeight: '700' },
+  avgMacroUnit: { fontSize: 11, fontWeight: '500' },
+  avgMacroLabel: { fontSize: 11, fontWeight: '500' },
+  avgEmptyText: { ...typography.caption, textAlign: 'center', paddingVertical: spacing.sm },
+
+  // Grocery button
+  groceryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  groceryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // Section divider
+  sectionDivider: { height: 1, marginBottom: spacing.md },
+
+  // Day assignment bottom sheet
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheetContent: {
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.lg,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: '700', marginBottom: spacing.md },
+  sheetCurrentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sheetCurrentDot: { width: 10, height: 10, borderRadius: 5 },
+  sheetCurrentText: { fontSize: 14, fontWeight: '500' },
+  sheetSectionLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm },
+  sheetPlanList: { maxHeight: 240 },
+  sheetEmptyText: { ...typography.caption, textAlign: 'center', paddingVertical: spacing.md },
+  sheetPlanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
+  },
+  sheetPlanDot: { width: 12, height: 12, borderRadius: 6 },
+  sheetPlanName: { flex: 1, fontSize: 15, fontWeight: '500' },
+  sheetRemoveBtn: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  sheetRemoveText: { fontSize: 15, fontWeight: '600' },
+  sheetCancelBtn: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  sheetCancelText: { fontSize: 15, fontWeight: '600' },
 });

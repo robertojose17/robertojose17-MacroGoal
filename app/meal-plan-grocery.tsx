@@ -1,23 +1,26 @@
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getGroceryList, type GroceryListResponse } from '@/utils/mealPlansApi';
+import { getGroceryList, getMultiPlanGroceryList, type GroceryListResponse } from '@/utils/mealPlansApi';
 
 export default function MealPlanGroceryScreen() {
   const router = useRouter();
-  const { planId } = useLocalSearchParams<{ planId: string }>();
+  const { planId, planIds, rangeLabel } = useLocalSearchParams<{
+    planId?: string;
+    planIds?: string;
+    rangeLabel?: string;
+  }>();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const [groceryData, setGroceryData] = useState<GroceryListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Local checked state: Set of "category:itemName" keys
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
 
   const bgColor = isDark ? colors.backgroundDark : colors.background;
@@ -26,25 +29,56 @@ export default function MealPlanGroceryScreen() {
   const cardBg = isDark ? colors.cardDark : colors.card;
   const borderColor = isDark ? colors.borderDark : colors.border;
 
+  // Determine mode: multi-plan or single-plan
+  const isMultiMode = Boolean(planIds && planIds.length > 0);
+
   const loadGroceryList = useCallback(async () => {
-    if (!planId) return;
-    console.log('[MealPlanGrocery] Loading grocery list for plan:', planId);
-    try {
-      const data = await getGroceryList(planId);
-      console.log('[MealPlanGrocery] Grocery list loaded, categories:', data.categories?.length || 0);
-      setGroceryData(data);
-      setError(null);
-    } catch (err: any) {
-      console.error('[MealPlanGrocery] Error loading grocery list:', err);
-      setError('Failed to load grocery list.');
-    } finally {
-      setLoading(false);
+    if (!planId && !planIds) return;
+
+    if (isMultiMode && planIds) {
+      // Multi-plan mode
+      const ids = planIds.split(',').filter(Boolean);
+      console.log('[MealPlanGrocery] Multi-plan mode, ids:', ids, 'rangeLabel:', rangeLabel);
+
+      // Count occurrences of each planId
+      const countMap: Record<string, number> = {};
+      for (const id of ids) {
+        countMap[id] = (countMap[id] || 0) + 1;
+      }
+      const planCounts = Object.entries(countMap).map(([id, count]) => ({ planId: id, count }));
+      console.log('[MealPlanGrocery] Plan counts:', planCounts);
+
+      try {
+        const data = await getMultiPlanGroceryList(planCounts, rangeLabel || '');
+        console.log('[MealPlanGrocery] Multi-plan grocery list loaded, categories:', data.categories?.length || 0);
+        setGroceryData(data);
+        setError(null);
+      } catch (err: any) {
+        console.error('[MealPlanGrocery] Error loading multi-plan grocery list:', err);
+        setError('Failed to load grocery list.');
+      } finally {
+        setLoading(false);
+      }
+    } else if (planId) {
+      // Single-plan mode (backward compatible)
+      console.log('[MealPlanGrocery] Single-plan mode, planId:', planId);
+      try {
+        const data = await getGroceryList(planId);
+        console.log('[MealPlanGrocery] Grocery list loaded, categories:', data.categories?.length || 0);
+        setGroceryData(data);
+        setError(null);
+      } catch (err: any) {
+        console.error('[MealPlanGrocery] Error loading grocery list:', err);
+        setError('Failed to load grocery list.');
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [planId]);
+  }, [planId, planIds, rangeLabel]);
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[MealPlanGrocery] Screen focused');
+      console.log('[MealPlanGrocery] Screen focused, isMultiMode:', isMultiMode);
       loadGroceryList();
     }, [loadGroceryList])
   );
@@ -69,7 +103,11 @@ export default function MealPlanGroceryScreen() {
     console.log('[MealPlanGrocery] Share button pressed');
     if (!groceryData) return;
 
-    let text = `🛒 Grocery List: ${groceryData.plan_name}\n\n`;
+    const titleLine = isMultiMode && rangeLabel
+      ? `🛒 Grocery List: ${rangeLabel}`
+      : `🛒 Grocery List: ${groceryData.plan_name}`;
+
+    let text = `${titleLine}\n\n`;
     groceryData.categories.forEach(cat => {
       text += `${cat.emoji} ${cat.category}\n`;
       cat.items.forEach(item => {
@@ -82,11 +120,16 @@ export default function MealPlanGroceryScreen() {
     });
 
     try {
-      await Share.share({ message: text, title: `Grocery List: ${groceryData.plan_name}` });
+      await Share.share({ message: text, title: titleLine });
     } catch (err: any) {
       console.error('[MealPlanGrocery] Share error:', err);
     }
   };
+
+  // Subtitle shown in header
+  const headerSubtitle = isMultiMode && rangeLabel
+    ? rangeLabel
+    : groceryData?.plan_name || '';
 
   if (loading) {
     return (
@@ -140,14 +183,26 @@ export default function MealPlanGroceryScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: textColor }]}>Grocery List</Text>
-          <Text style={[styles.headerSubtitle, { color: secondaryColor }]} numberOfLines={1}>
-            {groceryData.plan_name}
-          </Text>
+          {headerSubtitle.length > 0 && (
+            <Text style={[styles.headerSubtitle, { color: secondaryColor }]} numberOfLines={1}>
+              {headerSubtitle}
+            </Text>
+          )}
         </View>
         <TouchableOpacity style={styles.shareButton} onPress={handleShare} activeOpacity={0.7}>
           <IconSymbol ios_icon_name="square.and.arrow.up" android_material_icon_name="share" size={22} color={colors.primary} />
         </TouchableOpacity>
       </View>
+
+      {/* Multi-plan badge */}
+      {isMultiMode && rangeLabel && (
+        <View style={[styles.multiPlanBadge, { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' }]}>
+          <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={14} color={colors.primary} />
+          <Text style={[styles.multiPlanBadgeText, { color: colors.primary }]}>
+            Combined list for {rangeLabel}
+          </Text>
+        </View>
+      )}
 
       {/* Progress bar */}
       {totalItems > 0 && (
@@ -250,6 +305,14 @@ const styles = StyleSheet.create({
   headerSubtitle: { ...typography.caption },
   headerRight: { width: 40 },
   shareButton: { padding: spacing.xs, minWidth: 40, alignItems: 'center' },
+  multiPlanBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  multiPlanBadgeText: { fontSize: 13, fontWeight: '600' },
   progressBar: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
