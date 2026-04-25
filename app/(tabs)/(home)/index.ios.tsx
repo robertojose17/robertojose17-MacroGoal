@@ -845,19 +845,14 @@ export default function HomeScreen() {
         </View>
       )}
 
-      <FlatList
-        data={[{ key: 'content' }]}
-        renderItem={() => (
-          <View>
-            {activeTab === 'tracking' ? renderTrackingContent() : renderPlanningContent()}
-            <View style={styles.bottomSpacer} />
-          </View>
-        )}
-        keyExtractor={(item) => item.key}
+      <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.scrollContent}
-      />
+      >
+        {activeTab === 'tracking' ? renderTrackingContent() : renderPlanningContent()}
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
 
       {/* ── Day assignment bottom sheet Modal ── */}
       <Modal
