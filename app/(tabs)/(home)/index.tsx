@@ -145,109 +145,113 @@ interface CalendarProps {
 }
 
 function WeekPlannerCalendar({ year, month, assignments, plans, isDark, onDayPress }: CalendarProps) {
-  const textColor = isDark ? colors.textDark : colors.text;
-  const secondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
-  const cardBg = isDark ? colors.cardDark : colors.card;
-  const borderColor = isDark ? colors.borderDark : colors.border;
+  try {
+    const textColor = isDark ? colors.textDark : colors.text;
+    const secondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
+    const cardBg = isDark ? colors.cardDark : colors.card;
 
-  const today = new Date();
-  const todayStr = formatDateForStorage(today);
+    const today = new Date();
+    const todayStr = formatDateForStorage(today);
 
-  // Build assignment map: dateStr -> DayAssignment
-  const assignmentMap: Record<string, DayAssignment> = {};
-  for (const a of assignments) {
-    assignmentMap[a.date] = a;
-  }
+    // Build assignment map: dateStr -> DayAssignment
+    const assignmentMap: Record<string, DayAssignment> = {};
+    for (const a of (assignments ?? [])) {
+      assignmentMap[a.date] = a;
+    }
 
-  // Build plan color map: planId -> color
-  const planColorMap: Record<string, string> = {};
-  plans.forEach((p, i) => {
-    planColorMap[p.id] = PLAN_COLORS[i % PLAN_COLORS.length];
-  });
+    // Build plan color map: planId -> color
+    const planColorMap: Record<string, string> = {};
+    (plans ?? []).forEach((p, i) => {
+      planColorMap[p.id] = PLAN_COLORS[i % PLAN_COLORS.length];
+    });
 
-  // Build calendar grid
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startDow = firstDay.getDay(); // 0=Sun
-  const totalDays = lastDay.getDate();
+    // Build calendar grid
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDow = firstDay.getDay(); // 0=Sun
+    const totalDays = lastDay.getDate();
 
-  // Cells: null = empty padding, number = day
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < startDow; i++) cells.push(null);
-  for (let d = 1; d <= totalDays; d++) cells.push(d);
-  // Pad to complete last row
-  while (cells.length % 7 !== 0) cells.push(null);
+    // Cells: null = empty padding, number = day
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < startDow; i++) cells.push(null);
+    for (let d = 1; d <= totalDays; d++) cells.push(d);
+    // Pad to complete last row
+    while (cells.length % 7 !== 0) cells.push(null);
 
-  const screenWidth = Dimensions.get('window').width;
-  const cellSize = Math.floor((screenWidth - spacing.md * 2 - spacing.sm * 2) / 7);
+    const screenWidth = Dimensions.get('window').width;
+    const cellSize = Math.floor((screenWidth - spacing.md * 2 - spacing.sm * 2) / 7);
 
-  return (
-    <View style={[calStyles.calendarCard, { backgroundColor: cardBg }]}>
-      {/* Day-of-week headers */}
-      <View style={calStyles.dowRow}>
-        {WEEK_DAYS.map(d => (
-          <View key={d} style={[calStyles.dowCell, { width: cellSize }]}>
-            <Text style={[calStyles.dowText, { color: secondaryColor }]}>{d}</Text>
+    return (
+      <View style={[calStyles.calendarCard, { backgroundColor: cardBg }]}>
+        {/* Day-of-week headers */}
+        <View style={calStyles.dowRow}>
+          {WEEK_DAYS.map(d => (
+            <View key={d} style={[calStyles.dowCell, { width: cellSize }]}>
+              <Text style={[calStyles.dowText, { color: secondaryColor }]}>{d}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Day grid */}
+        {Array.from({ length: cells.length / 7 }, (_, rowIdx) => (
+          <View key={rowIdx} style={calStyles.weekRow}>
+            {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
+              if (day === null) {
+                return <View key={colIdx} style={[calStyles.dayCell, { width: cellSize }]} />;
+              }
+              const monthStr = String(month + 1).padStart(2, '0');
+              const dayStr = String(day).padStart(2, '0');
+              const dateStr = `${year}-${monthStr}-${dayStr}`;
+              const isToday = dateStr === todayStr;
+              const assignment = assignmentMap[dateStr];
+              const dotColor = assignment ? (planColorMap[assignment.meal_plan_id] || colors.primary) : null;
+              const planLabel = assignment?.plan_name
+                ? assignment.plan_name.slice(0, 8)
+                : null;
+
+              return (
+                <TouchableOpacity
+                  key={colIdx}
+                  style={[calStyles.dayCell, { width: cellSize }]}
+                  onPress={() => {
+                    console.log('[Calendar] Day pressed:', dateStr);
+                    onDayPress(dateStr);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    calStyles.dayNumber,
+                    isToday && { backgroundColor: colors.primary },
+                  ]}>
+                    <Text style={[
+                      calStyles.dayText,
+                      { color: isToday ? '#fff' : textColor },
+                    ]}>
+                      {day}
+                    </Text>
+                  </View>
+                  {dotColor && (
+                    <View style={[calStyles.planDot, { backgroundColor: dotColor }]} />
+                  )}
+                  {planLabel && (
+                    <Text
+                      style={[calStyles.planLabel, { color: dotColor || secondaryColor }]}
+                      numberOfLines={1}
+                    >
+                      {planLabel}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         ))}
       </View>
-
-      {/* Day grid */}
-      {Array.from({ length: cells.length / 7 }, (_, rowIdx) => (
-        <View key={rowIdx} style={calStyles.weekRow}>
-          {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
-            if (day === null) {
-              return <View key={colIdx} style={[calStyles.dayCell, { width: cellSize }]} />;
-            }
-            const monthStr = String(month + 1).padStart(2, '0');
-            const dayStr = String(day).padStart(2, '0');
-            const dateStr = `${year}-${monthStr}-${dayStr}`;
-            const isToday = dateStr === todayStr;
-            const assignment = assignmentMap[dateStr];
-            const dotColor = assignment ? (planColorMap[assignment.meal_plan_id] || colors.primary) : null;
-            const planLabel = assignment?.plan_name
-              ? assignment.plan_name.slice(0, 8)
-              : null;
-
-            return (
-              <TouchableOpacity
-                key={colIdx}
-                style={[calStyles.dayCell, { width: cellSize }]}
-                onPress={() => {
-                  console.log('[Calendar] Day pressed:', dateStr);
-                  onDayPress(dateStr);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[
-                  calStyles.dayNumber,
-                  isToday && { backgroundColor: colors.primary },
-                ]}>
-                  <Text style={[
-                    calStyles.dayText,
-                    { color: isToday ? '#fff' : textColor },
-                  ]}>
-                    {day}
-                  </Text>
-                </View>
-                {dotColor && (
-                  <View style={[calStyles.planDot, { backgroundColor: dotColor }]} />
-                )}
-                {planLabel && (
-                  <Text
-                    style={[calStyles.planLabel, { color: dotColor || secondaryColor }]}
-                    numberOfLines={1}
-                  >
-                    {planLabel}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ))}
-    </View>
-  );
+    );
+  } catch (e) {
+    console.error('[WeekPlannerCalendar] Render error:', e);
+    return <View style={{ padding: 16 }}><Text style={{ color: 'red' }}>Calendar error</Text></View>;
+  }
 }
 
 const calStyles = StyleSheet.create({
@@ -556,6 +560,7 @@ export default function HomeScreen() {
     } catch (err: any) {
       console.error('[Home] Error loading range data:', err);
       setAvgMacros(null);
+      setRangeAssignments([]);
     } finally {
       setAvgLoading(false);
     }
@@ -571,16 +576,14 @@ export default function HomeScreen() {
 
   // Load month assignments when calendar month changes
   useEffect(() => {
-    if (activeTab === 'planning') {
-      loadMonthAssignments(calYear, calMonth);
-    }
+    if (activeTab !== 'planning') return;
+    loadMonthAssignments(calYear, calMonth).catch(() => setMonthAssignments([]));
   }, [calYear, calMonth, activeTab, loadMonthAssignments]);
 
   // Load range data when range changes
   useEffect(() => {
-    if (activeTab === 'planning') {
-      loadRangeData(rangeStart, rangeEnd);
-    }
+    if (activeTab !== 'planning') return;
+    loadRangeData(rangeStart, rangeEnd).catch(() => { setAvgMacros(null); setRangeAssignments([]); });
   }, [rangeStart, rangeEnd, activeTab, loadRangeData]);
 
   const onRefresh = () => {
