@@ -67,14 +67,6 @@ interface MealData {
   totalFats: number;
 }
 
-interface MealPlan {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  created_at: string;
-}
-
 interface AvgMacros {
   calories: number;
   protein: number;
@@ -138,7 +130,7 @@ interface CalendarProps {
   year: number;
   month: number; // 0-indexed
   assignments: DayAssignment[];
-  plans: MealPlan[];
+  plans: ApiMealPlan[];
   isDark: boolean;
   onDayPress: (dateStr: string) => void;
 }
@@ -293,7 +285,7 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // ── Planning state ──
-  const [plans, setPlans] = useState<MealPlan[]>([]);
+  const [plans, setPlans] = useState<ApiMealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
 
@@ -688,7 +680,7 @@ export default function HomeScreen() {
   };
 
   // ── Planning handlers ──
-  const handlePlanPress = (plan: MealPlan) => {
+  const handlePlanPress = (plan: ApiMealPlan) => {
     console.log('[Home iOS] Meal plan pressed:', plan.id, plan.name);
     router.push({ pathname: '/meal-plan-detail', params: { planId: plan.id } });
   };
