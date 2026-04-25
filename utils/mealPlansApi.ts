@@ -324,16 +324,25 @@ export async function getMonthAssignments(yearMonth: string): Promise<DayAssignm
   const endDate = `${yearMonth}-31`;
   const { data, error } = await supabase
     .from('day_plan_assignments')
-    .select('id, date, meal_plan_id, meal_plans(name)')
+    .select('id, date, meal_plan_id')
     .eq('user_id', userId)
     .gte('date', startDate)
     .lte('date', endDate);
   if (error) throw new Error(error.message);
-  return (data || []).map((row: any) => ({
+  const rows = data || [];
+  if (rows.length === 0) return [];
+  const planIds = [...new Set(rows.map((r: any) => r.meal_plan_id))];
+  const { data: plans } = await supabase
+    .from('meal_plans')
+    .select('id, name')
+    .in('id', planIds);
+  const planMap: Record<string, string> = {};
+  for (const p of (plans || [])) planMap[(p as any).id] = (p as any).name;
+  return rows.map((row: any) => ({
     id: row.id,
     date: row.date,
     meal_plan_id: row.meal_plan_id,
-    plan_name: row.meal_plans?.name,
+    plan_name: planMap[row.meal_plan_id],
   }));
 }
 
@@ -343,16 +352,25 @@ export async function getRangeAssignments(startDate: string, endDate: string): P
   const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from('day_plan_assignments')
-    .select('id, date, meal_plan_id, meal_plans(name)')
+    .select('id, date, meal_plan_id')
     .eq('user_id', userId)
     .gte('date', startDate)
     .lte('date', endDate);
   if (error) throw new Error(error.message);
-  return (data || []).map((row: any) => ({
+  const rows = data || [];
+  if (rows.length === 0) return [];
+  const planIds = [...new Set(rows.map((r: any) => r.meal_plan_id))];
+  const { data: plans } = await supabase
+    .from('meal_plans')
+    .select('id, name')
+    .in('id', planIds);
+  const planMap: Record<string, string> = {};
+  for (const p of (plans || [])) planMap[(p as any).id] = (p as any).name;
+  return rows.map((row: any) => ({
     id: row.id,
     date: row.date,
     meal_plan_id: row.meal_plan_id,
-    plan_name: row.meal_plans?.name,
+    plan_name: planMap[row.meal_plan_id],
   }));
 }
 

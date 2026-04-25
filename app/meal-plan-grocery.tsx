@@ -74,13 +74,13 @@ export default function MealPlanGroceryScreen() {
         setLoading(false);
       }
     }
-  }, [planId, planIds, rangeLabel]);
+  }, [planId, planIds, rangeLabel, isMultiMode]);
 
   useFocusEffect(
     useCallback(() => {
       console.log('[MealPlanGrocery] Screen focused, isMultiMode:', isMultiMode);
       loadGroceryList();
-    }, [loadGroceryList])
+    }, [loadGroceryList, isMultiMode])
   );
 
   const getItemKey = (category: string, itemName: string) => `${category}:${itemName}`;
