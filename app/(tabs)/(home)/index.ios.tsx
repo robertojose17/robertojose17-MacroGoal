@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Platform,
   RefreshControl, Alert, ActivityIndicator, Modal, ScrollView,
@@ -136,8 +136,6 @@ interface CalendarProps {
 }
 
 function WeekPlannerCalendar({ year, month, assignments, plans, isDark, onDayPress }: CalendarProps) {
-  const [containerWidth, setContainerWidth] = React.useState(0);
-
   const textColor = isDark ? colors.textDark : colors.text;
   const secondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
   const cardBg = isDark ? colors.cardDark : colors.card;
@@ -165,72 +163,57 @@ function WeekPlannerCalendar({ year, month, assignments, plans, isDark, onDayPre
   for (let d = 1; d <= totalDays; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const cellSize = containerWidth > 0 ? Math.floor(containerWidth / 7) : 0;
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    weeks.push(cells.slice(i, i + 7));
+  }
 
   return (
-    <View
-      style={[calStyles.calendarCard, { backgroundColor: cardBg }]}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-    >
-      {containerWidth === 0 ? (
-        <View style={{ height: 200 }} />
-      ) : (
-        <>
-          <View style={calStyles.dowRow}>
-            {WEEK_DAYS.map(d => (
-              <View key={d} style={[calStyles.dowCell, { width: cellSize }]}>
-                <Text style={[calStyles.dowText, { color: secondaryColor }]}>{d}</Text>
-              </View>
-            ))}
+    <View style={[calStyles.calendarCard, { backgroundColor: cardBg }]}>
+      <View style={calStyles.dowRow}>
+        {WEEK_DAYS.map(d => (
+          <View key={d} style={calStyles.dowCell}>
+            <Text style={[calStyles.dowText, { color: secondaryColor }]}>{d}</Text>
           </View>
+        ))}
+      </View>
+      {weeks.map((week, rowIdx) => (
+        <View key={rowIdx} style={calStyles.weekRow}>
+          {week.map((day, colIdx) => {
+            if (day === null) {
+              return <View key={colIdx} style={calStyles.dayCell} />;
+            }
+            const monthStr = String(month + 1).padStart(2, '0');
+            const dayStr = String(day).padStart(2, '0');
+            const dateStr = `${year}-${monthStr}-${dayStr}`;
+            const isToday = dateStr === todayStr;
+            const assignment = assignmentMap[dateStr];
+            const dotColor = assignment ? (planColorMap[assignment.meal_plan_id] || colors.primary) : null;
+            const planLabel = assignment?.plan_name ? assignment.plan_name.slice(0, 6) : null;
 
-          {Array.from({ length: cells.length / 7 }, (_, rowIdx) => (
-            <View key={rowIdx} style={calStyles.weekRow}>
-              {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
-                if (day === null) {
-                  return <View key={colIdx} style={[calStyles.dayCell, { width: cellSize }]} />;
-                }
-                const monthStr = String(month + 1).padStart(2, '0');
-                const dayStr = String(day).padStart(2, '0');
-                const dateStr = `${year}-${monthStr}-${dayStr}`;
-                const isToday = dateStr === todayStr;
-                const assignment = assignmentMap[dateStr];
-                const dotColor = assignment ? (planColorMap[assignment.meal_plan_id] || colors.primary) : null;
-                const planLabel = assignment?.plan_name ? assignment.plan_name.slice(0, 8) : null;
-
-                return (
-                  <TouchableOpacity
-                    key={colIdx}
-                    style={[calStyles.dayCell, { width: cellSize }]}
-                    onPress={() => {
-                      console.log('[Home iOS] Calendar day pressed:', dateStr);
-                      onDayPress(dateStr);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[
-                      calStyles.dayNumber,
-                      isToday && { backgroundColor: colors.primary },
-                    ]}>
-                      <Text style={[calStyles.dayText, { color: isToday ? '#fff' : textColor }]}>
-                        {day}
-                      </Text>
-                    </View>
-                    {dotColor && (
-                      <View style={[calStyles.planDot, { backgroundColor: dotColor }]} />
-                    )}
-                    {planLabel && (
-                      <Text style={[calStyles.planLabel, { color: dotColor || secondaryColor }]} numberOfLines={1}>
-                        {planLabel}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-        </>
-      )}
+            return (
+              <TouchableOpacity
+                key={colIdx}
+                style={calStyles.dayCell}
+                onPress={() => onDayPress(dateStr)}
+                activeOpacity={0.7}
+              >
+                <View style={[calStyles.dayNumber, isToday && { backgroundColor: colors.primary }]}>
+                  <Text style={[calStyles.dayText, { color: isToday ? '#fff' : textColor }]}>
+                    {day}
+                  </Text>
+                </View>
+                {dotColor ? <View style={[calStyles.planDot, { backgroundColor: dotColor }]} /> : null}
+                {planLabel ? (
+                  <Text style={[calStyles.planLabel, { color: dotColor ?? secondaryColor }]} numberOfLines={1}>
+                    {planLabel}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 }
@@ -240,13 +223,12 @@ const calStyles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.sm,
     marginBottom: spacing.md,
-    elevation: 2,
   },
-  dowRow: { flexDirection: 'row', marginBottom: 4 },
-  dowCell: { alignItems: 'center', paddingVertical: 4 },
+  dowRow: { flexDirection: 'row', marginBottom: 2 },
+  dowCell: { flex: 1, alignItems: 'center', paddingVertical: 4 },
   dowText: { fontSize: 11, fontWeight: '600' },
   weekRow: { flexDirection: 'row' },
-  dayCell: { alignItems: 'center', paddingVertical: 4, minHeight: 52 },
+  dayCell: { flex: 1, alignItems: 'center', paddingVertical: 4, minHeight: 48 },
   dayNumber: {
     width: 28,
     height: 28,
