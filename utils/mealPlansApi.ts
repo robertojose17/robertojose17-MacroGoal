@@ -321,7 +321,9 @@ export async function getMonthAssignments(yearMonth: string): Promise<DayAssignm
   console.log('[MealPlansApi] getMonthAssignments()', yearMonth);
   const userId = await getCurrentUserId();
   const startDate = `${yearMonth}-01`;
-  const endDate = `${yearMonth}-31`;
+  const [year, month] = yearMonth.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate(); // last day of the month
+  const endDate = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
   const { data, error } = await supabase
     .from('day_plan_assignments')
     .select('id, date, meal_plan_id')
