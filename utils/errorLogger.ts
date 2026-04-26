@@ -324,7 +324,12 @@ export const setupErrorLogging = () => {
     const message = stringifyArgs(args);
     if (shouldMuteMessage(message)) return;
 
-    const source = getCallerInfo();
+    let source = '';
+    try {
+      source = getCallerInfo();
+    } catch (_e) {
+      // navigation context not available during early render
+    }
     queueLog('warn', message, source);
 
     // Auto-reconnect when Metro disconnects (only reloads if bundle compiles)
@@ -342,7 +347,12 @@ export const setupErrorLogging = () => {
     // Always call original first
     originalConsoleError.apply(console, args);
 
-    const source = getCallerInfo();
+    let source = '';
+    try {
+      source = getCallerInfo();
+    } catch (_e) {
+      // navigation context not available during early render
+    }
     queueLog('error', message, source);
 
     // Also send to parent window for web iframe mode
