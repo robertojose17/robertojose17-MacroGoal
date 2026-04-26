@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, Alert, ActivityIndicator, ScrollView,
+  RefreshControl, Alert, ActivityIndicator, ScrollView, ActionSheetIOS,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,14 +10,18 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import PureCalendar from '@/components/PureCalendar';
 
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
 import {
   listMealPlans,
   deleteMealPlan,
+  assignPlanToDay,
+  removePlanFromDay,
+  getMonthAssignments,
   type MealPlan,
+  type DayAssignment,
 } from '@/utils/mealPlansApi';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -114,7 +118,8 @@ export default function HomeScreen() {
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [dayAssignments, setDayAssignments] = useState<Record<string, string>>({}); // { 'YYYY-MM-DD': planId }
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
   // ── Load tracking data ──
   const loadData = useCallback(async () => {
@@ -266,18 +271,38 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const loadAssignments = useCallback(async () => {
+    try {
+      setAssignmentsLoading(true);
+      const now = new Date();
+      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      console.log('[Home iOS] Loading assignments for month:', yearMonth);
+      const data = await getMonthAssignments(yearMonth);
+      const map: Record<string, string> = {};
+      data.forEach((a: DayAssignment) => { map[a.date] = a.meal_plan_id; });
+      setDayAssignments(map);
+      console.log('[Home iOS] Assignments loaded:', Object.keys(map).length);
+    } catch (err) {
+      console.error('[Home iOS] loadAssignments error:', err);
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       console.log('[Home iOS] Screen focused, loading data');
       loadData();
       loadPlans();
-    }, [loadData, loadPlans])
+      loadAssignments();
+    }, [loadData, loadPlans, loadAssignments])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
     loadPlans();
+    loadAssignments();
   };
 
   // ── Tracking handlers ──
@@ -379,6 +404,52 @@ export default function HomeScreen() {
   const handleTabPress = (tab: 'tracking' | 'planning') => {
     console.log('[Home iOS] Segmented control pressed:', tab);
     setActiveTab(tab);
+  };
+
+  const handleDayPress = (dateStr: string) => {
+    console.log('[Home iOS] Calendar day pressed:', dateStr);
+    if (plans.length === 0) {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel'], cancelButtonIndex: 0, title: dateStr, message: 'No plans yet. Create a plan first.' },
+        () => {}
+      );
+      return;
+    }
+    const currentPlanId = dayAssignments[dateStr];
+    const planOptions = plans.map(p => p.name);
+    const options = [...planOptions, currentPlanId ? 'Remove plan' : null, 'Cancel'].filter(Boolean) as string[];
+    const cancelIndex = options.length - 1;
+    const destructiveIndex = currentPlanId ? options.length - 2 : undefined;
+
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options,
+        cancelButtonIndex: cancelIndex,
+        destructiveButtonIndex: destructiveIndex,
+        title: dateStr,
+        message: currentPlanId
+          ? `Currently: ${plans.find(p => p.id === currentPlanId)?.name || 'Unknown'}`
+          : 'Select a plan for this day',
+      },
+      async (buttonIndex) => {
+        if (buttonIndex === cancelIndex) return;
+        if (destructiveIndex !== undefined && buttonIndex === destructiveIndex) {
+          console.log('[Home iOS] Removing plan from day:', dateStr);
+          try {
+            await removePlanFromDay(dateStr);
+            setDayAssignments(prev => { const next = { ...prev }; delete next[dateStr]; return next; });
+          } catch (err) { console.error('[Home iOS] removePlanFromDay error:', err); }
+          return;
+        }
+        const selectedPlan = plans[buttonIndex];
+        if (!selectedPlan) return;
+        console.log('[Home iOS] Assigning plan', selectedPlan.id, 'to day:', dateStr);
+        try {
+          await assignPlanToDay(dateStr, selectedPlan.id);
+          setDayAssignments(prev => ({ ...prev, [dateStr]: selectedPlan.id }));
+        } catch (err) { console.error('[Home iOS] assignPlanToDay error:', err); }
+      }
+    );
   };
 
   // ── Derived values ──
@@ -517,7 +588,7 @@ export default function HomeScreen() {
   );
 
   const renderPlanningContent = () => {
-    if (plansLoading) {
+    if (plansLoading || assignmentsLoading) {
       return (
         <View style={{ paddingVertical: 40, alignItems: 'center' }}>
           <ActivityIndicator size="large" color="#14B8A6" />
@@ -537,20 +608,18 @@ export default function HomeScreen() {
         </View>
       );
     }
+
+    const planColors: Record<string, string> = {};
+    plans.forEach((plan, idx) => { planColors[plan.id] = PLAN_COLORS[idx % PLAN_COLORS.length]; });
+
     return (
       <View>
-        {/* Inline calendar display */}
-        <View style={{ marginBottom: 16 }}>
-          <DateTimePicker
-            value={calendarDate}
-            mode="date"
-            display="inline"
-            onChange={(_: any, date?: Date) => { if (date) setCalendarDate(date); }}
-            themeVariant={isDark ? 'dark' : 'light'}
-            accentColor="#14B8A6"
-            style={{ width: '100%' }}
-          />
-        </View>
+        <PureCalendar
+          assignments={dayAssignments}
+          planColors={planColors}
+          onDayPress={handleDayPress}
+          isDark={isDark}
+        />
 
         {/* rest of existing content below unchanged */}
         {plans.length === 0 ? (
