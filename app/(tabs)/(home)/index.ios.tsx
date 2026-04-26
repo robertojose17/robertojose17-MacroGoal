@@ -588,6 +588,7 @@ export default function HomeScreen() {
   );
 
   const renderPlanningContent = () => {
+    if (!navReady) return null;
     if (plansLoading || assignmentsLoading) {
       return (
         <View style={{ paddingVertical: 40, alignItems: 'center' }}>
@@ -614,12 +615,14 @@ export default function HomeScreen() {
 
     return (
       <View>
-        <PureCalendar
-          assignments={dayAssignments}
-          planColors={planColors}
-          onDayPress={handleDayPress}
-          isDark={isDark}
-        />
+        {navReady && (
+          <PureCalendar
+            assignments={dayAssignments}
+            planColors={planColors}
+            onDayPress={handleDayPress}
+            isDark={isDark}
+          />
+        )}
 
         {/* rest of existing content below unchanged */}
         {plans.length === 0 ? (
