@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, ScrollView, ActionSheetIOS,
@@ -10,7 +10,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
-const PureCalendar = React.lazy(() => import('@/components/PureCalendar'));
+import PureCalendar from '@/components/PureCalendar';
 
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
@@ -616,14 +616,12 @@ export default function HomeScreen() {
     return (
       <View>
         {navReady && (
-          <React.Suspense fallback={<ActivityIndicator size="small" color="#14B8A6" />}>
-            <PureCalendar
-              assignments={dayAssignments}
-              planColors={planColors}
-              onDayPress={handleDayPress}
-              isDark={isDark}
-            />
-          </React.Suspense>
+          <PureCalendar
+            assignments={dayAssignments}
+            planColors={planColors}
+            onDayPress={handleDayPress}
+            isDark={isDark}
+          />
         )}
 
         {/* rest of existing content below unchanged */}
