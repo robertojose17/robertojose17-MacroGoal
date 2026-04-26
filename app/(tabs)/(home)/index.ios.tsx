@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, Alert, ActivityIndicator, Modal, ScrollView,
+  RefreshControl, Alert, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,8 +15,6 @@ import { supabase } from '@/lib/supabase/client';
 import {
   listMealPlans,
   deleteMealPlan,
-  assignPlanToDay,
-  removePlanFromDay,
   type MealPlan,
 } from '@/utils/mealPlansApi';
 
@@ -210,11 +208,6 @@ export default function HomeScreen() {
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
-
-  const [monthAssignments, setMonthAssignments] = useState<{ date: string; meal_plan_id: string; plan_name?: string }[]>([]);
-  const [daySheetVisible, setDaySheetVisible] = useState(false);
-  const [selectedDayStr, setSelectedDayStr] = useState('');
-  const [dayAssigning, setDayAssigning] = useState(false);
 
   // ── Load tracking data ──
   const loadData = useCallback(async () => {
@@ -783,123 +776,6 @@ export default function HomeScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* ── Day assignment bottom sheet Modal ── */}
-      <Modal
-        visible={daySheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDaySheetVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => {
-            console.log('[Home iOS] Day sheet dismissed via overlay');
-            setDaySheetVisible(false);
-          }}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.sheetContent, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
-            onPress={() => {}}
-          >
-            <View style={[styles.sheetHandle, { backgroundColor: isDark ? colors.borderDark : colors.border }]} />
-            <Text style={[styles.sheetTitle, { color: isDark ? colors.textDark : colors.text }]}>
-              {selectedDayStr ? new Date(selectedDayStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : ''}
-            </Text>
-
-            <Text style={[styles.sheetSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-              Assign a plan
-            </Text>
-
-            <ScrollView style={styles.sheetPlanList} showsVerticalScrollIndicator={false}>
-              {plans.length === 0 ? (
-                <Text style={[styles.sheetEmptyText, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
-                  No plans available. Create one first.
-                </Text>
-              ) : (
-                plans.map((plan, idx) => {
-                  const dotColor = PLAN_COLORS[idx % PLAN_COLORS.length];
-                  const currentAssignment = monthAssignments.find(a => a.date === selectedDayStr);
-                  const isActive = currentAssignment?.meal_plan_id === plan.id;
-                  return (
-                    <TouchableOpacity
-                      key={plan.id}
-                      style={[
-                        styles.sheetPlanRow,
-                        { borderBottomColor: isDark ? colors.borderDark : colors.border },
-                        isActive && { backgroundColor: isDark ? '#1A2A2A' : '#E6FAF8' },
-                      ]}
-                      onPress={async () => {
-                        console.log('[Home iOS] Plan row pressed in sheet:', plan.id, plan.name);
-                        setDayAssigning(true);
-                        try {
-                          await assignPlanToDay(selectedDayStr, plan.id);
-                          console.log('[Home iOS] Plan assigned successfully');
-                          setDaySheetVisible(false);
-                        } catch {
-                          Alert.alert('Error', 'Failed to assign plan.');
-                        } finally {
-                          setDayAssigning(false);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                      disabled={dayAssigning}
-                    >
-                      <View style={[styles.sheetPlanDot, { backgroundColor: dotColor }]} />
-                      <Text style={[styles.sheetPlanName, { color: isDark ? colors.textDark : colors.text }]}>
-                        {plan.name}
-                      </Text>
-                      {isActive && (
-                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color={colors.primary} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </ScrollView>
-
-            {monthAssignments.find(a => a.date === selectedDayStr) ? (
-              <TouchableOpacity
-                style={[styles.sheetRemoveBtn, { borderColor: colors.error }]}
-                onPress={async () => {
-                  console.log('[Home iOS] Remove assignment pressed for day:', selectedDayStr);
-                  setDayAssigning(true);
-                  try {
-                    await removePlanFromDay(selectedDayStr);
-                    console.log('[Home iOS] Assignment removed successfully');
-                    setDaySheetVisible(false);
-                    setMonthAssignments([]);
-                  } catch {
-                    Alert.alert('Error', 'Failed to remove assignment.');
-                  } finally {
-                    setDayAssigning(false);
-                  }
-                }}
-                activeOpacity={0.7}
-                disabled={dayAssigning}
-              >
-                <Text style={[styles.sheetRemoveText, { color: colors.error }]}>Remove assignment</Text>
-              </TouchableOpacity>
-            ) : null}
-
-            <TouchableOpacity
-              style={[styles.sheetCancelBtn, { backgroundColor: isDark ? colors.backgroundDark : '#F3F4F6' }]}
-              onPress={() => {
-                console.log('[Home iOS] Day sheet cancel pressed');
-                setDaySheetVisible(false);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.sheetCancelText, { color: isDark ? colors.textDark : colors.text }]}>Cancel</Text>
-            </TouchableOpacity>
-
-            {dayAssigning && (
-              <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.sm }} />
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1015,53 +891,4 @@ const styles = StyleSheet.create({
   foodCaloriesValue: { ...typography.bodyBold, fontSize: 18 },
   foodCaloriesLabel: { ...typography.caption },
   bottomSpacer: { height: 40 },
-
-  // Day assignment bottom sheet
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  sheetContent: {
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    padding: spacing.lg,
-    paddingBottom: 40,
-    maxHeight: '80%',
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: spacing.md,
-  },
-  sheetTitle: { fontSize: 17, fontWeight: '700', marginBottom: spacing.md },
-  sheetSectionLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm },
-  sheetPlanList: { maxHeight: 240 },
-  sheetEmptyText: { ...typography.caption, textAlign: 'center', paddingVertical: spacing.md },
-  sheetPlanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing.sm,
-  },
-  sheetPlanDot: { width: 12, height: 12, borderRadius: 6 },
-  sheetPlanName: { flex: 1, fontSize: 15, fontWeight: '500' },
-  sheetRemoveBtn: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  sheetRemoveText: { fontSize: 15, fontWeight: '600' },
-  sheetCancelBtn: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  sheetCancelText: { fontSize: 15, fontWeight: '600' },
 });
