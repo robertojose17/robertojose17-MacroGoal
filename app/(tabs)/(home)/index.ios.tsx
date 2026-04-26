@@ -10,7 +10,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
-import PureCalendar from '@/components/PureCalendar';
+
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
 import {
@@ -537,9 +537,6 @@ export default function HomeScreen() {
     }
     return (
       <View>
-        {/* Pure visual calendar */}
-        <PureCalendar isDark={isDark} />
-
         {plans.length === 0 ? (
           <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#fff' : '#000', marginBottom: 8 }}>No meal plans yet</Text>
