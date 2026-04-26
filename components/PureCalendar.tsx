@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
 
 interface Props {
   assignments: Record<string, string>;
@@ -8,7 +8,10 @@ interface Props {
   isDark: boolean;
 }
 
-// Web/fallback stub — full implementation lives in PureCalendar.native.tsx
 export default function PureCalendar(_props: Props) {
-  return <View />;
+  return (
+    <View>
+      <Text>Calendar not available on this platform.</Text>
+    </View>
+  );
 }
