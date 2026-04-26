@@ -10,18 +10,12 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
-import PureCalendar from '@/components/PureCalendar';
-
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
 import {
   listMealPlans,
   deleteMealPlan,
-  assignPlanToDay,
-  removePlanFromDay,
-  getMonthAssignments,
   type MealPlan,
-  type DayAssignment,
 } from '@/utils/mealPlansApi';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -115,11 +109,16 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // ── Planning state ──
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+  type DayKey = typeof DAYS[number];
+
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [dayAssignments, setDayAssignments] = useState<Record<string, string>>({}); // { 'YYYY-MM-DD': planId }
-  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [weekPlan, setWeekPlan] = useState<Record<DayKey, string | null>>({
+    Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null,
+  });
+  const [planMacros, setPlanMacros] = useState<Record<string, { calories: number; protein: number; carbs: number; fats: number }>>({});
 
   // ── Load tracking data ──
   const loadData = useCallback(async () => {
@@ -271,38 +270,41 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const loadAssignments = useCallback(async () => {
+  const fetchPlanMacros = async (planId: string) => {
+    if (planMacros[planId]) return;
     try {
-      setAssignmentsLoading(true);
-      const now = new Date();
-      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      console.log('[Home iOS] Loading assignments for month:', yearMonth);
-      const data = await getMonthAssignments(yearMonth);
-      const map: Record<string, string> = {};
-      data.forEach((a: DayAssignment) => { map[a.date] = a.meal_plan_id; });
-      setDayAssignments(map);
-      console.log('[Home iOS] Assignments loaded:', Object.keys(map).length);
-    } catch (err) {
-      console.error('[Home iOS] loadAssignments error:', err);
-    } finally {
-      setAssignmentsLoading(false);
+      const { data, error } = await supabase
+        .from('meal_plan_items')
+        .select('calories, protein, carbs, fats')
+        .eq('plan_id', planId);
+      if (error || !data) return;
+      const totals = data.reduce(
+        (acc, item) => ({
+          calories: acc.calories + (item.calories || 0),
+          protein: acc.protein + (item.protein || 0),
+          carbs: acc.carbs + (item.carbs || 0),
+          fats: acc.fats + (item.fats || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fats: 0 }
+      );
+      setPlanMacros(prev => ({ ...prev, [planId]: totals }));
+    } catch (e) {
+      console.error('[Home iOS] fetchPlanMacros error:', e);
     }
-  }, []);
+  };
 
   useFocusEffect(
     useCallback(() => {
       console.log('[Home iOS] Screen focused, loading data');
       loadData();
       loadPlans();
-      loadAssignments();
-    }, [loadData, loadPlans, loadAssignments])
+    }, [loadData, loadPlans])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
     loadPlans();
-    loadAssignments();
   };
 
   // ── Tracking handlers ──
@@ -406,51 +408,66 @@ export default function HomeScreen() {
     setActiveTab(tab);
   };
 
-  const handleDayPress = (dateStr: string) => {
-    console.log('[Home iOS] Calendar day pressed:', dateStr);
-    if (plans.length === 0) {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel'], cancelButtonIndex: 0, title: dateStr, message: 'No plans yet. Create a plan first.' },
-        () => {}
-      );
-      return;
-    }
-    const currentPlanId = dayAssignments[dateStr];
+  const handleDayPlanPress = (day: DayKey) => {
+    console.log('[Home iOS] Day plan pressed:', day);
+    const currentPlanId = weekPlan[day];
     const planOptions = plans.map(p => p.name);
-    const options = [...planOptions, currentPlanId ? 'Remove plan' : null, 'Cancel'].filter(Boolean) as string[];
+    const hasAssigned = currentPlanId != null;
+    const options = [...planOptions, hasAssigned ? 'Remove plan' : null, 'Cancel'].filter(Boolean) as string[];
     const cancelIndex = options.length - 1;
-    const destructiveIndex = currentPlanId ? options.length - 2 : undefined;
+    const destructiveIndex = hasAssigned ? options.length - 2 : undefined;
 
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options,
         cancelButtonIndex: cancelIndex,
         destructiveButtonIndex: destructiveIndex,
-        title: dateStr,
-        message: currentPlanId
-          ? `Currently: ${plans.find(p => p.id === currentPlanId)?.name || 'Unknown'}`
-          : 'Select a plan for this day',
+        title: day,
+        message: hasAssigned
+          ? `Current: ${plans.find(p => p.id === currentPlanId)?.name || ''}`
+          : 'Assign a plan to this day',
       },
-      async (buttonIndex) => {
+      (buttonIndex) => {
         if (buttonIndex === cancelIndex) return;
         if (destructiveIndex !== undefined && buttonIndex === destructiveIndex) {
-          console.log('[Home iOS] Removing plan from day:', dateStr);
-          try {
-            await removePlanFromDay(dateStr);
-            setDayAssignments(prev => { const next = { ...prev }; delete next[dateStr]; return next; });
-          } catch (err) { console.error('[Home iOS] removePlanFromDay error:', err); }
+          console.log('[Home iOS] Removing plan from day:', day);
+          setWeekPlan(prev => ({ ...prev, [day]: null }));
           return;
         }
-        const selectedPlan = plans[buttonIndex];
-        if (!selectedPlan) return;
-        console.log('[Home iOS] Assigning plan', selectedPlan.id, 'to day:', dateStr);
-        try {
-          await assignPlanToDay(dateStr, selectedPlan.id);
-          setDayAssignments(prev => ({ ...prev, [dateStr]: selectedPlan.id }));
-        } catch (err) { console.error('[Home iOS] assignPlanToDay error:', err); }
+        const selected = plans[buttonIndex];
+        if (!selected) return;
+        console.log('[Home iOS] Assigning plan', selected.id, 'to day:', day);
+        setWeekPlan(prev => ({ ...prev, [day]: selected.id }));
+        fetchPlanMacros(selected.id);
       }
     );
   };
+
+  // ── Planning derived values ──
+  const assignedDays = DAYS.filter(d => weekPlan[d] != null);
+  const avgMacros = assignedDays.length === 0 ? null : (() => {
+    const totals = assignedDays.reduce(
+      (acc, day) => {
+        const m = planMacros[weekPlan[day]!];
+        if (!m) return acc;
+        return {
+          calories: acc.calories + m.calories,
+          protein: acc.protein + m.protein,
+          carbs: acc.carbs + m.carbs,
+          fats: acc.fats + m.fats,
+          count: acc.count + 1,
+        };
+      },
+      { calories: 0, protein: 0, carbs: 0, fats: 0, count: 0 }
+    );
+    if (totals.count === 0) return null;
+    return {
+      calories: Math.round(totals.calories / totals.count),
+      protein: Math.round(totals.protein / totals.count),
+      carbs: Math.round(totals.carbs / totals.count),
+      fats: Math.round(totals.fats / totals.count),
+    };
+  })();
 
   // ── Derived values ──
   const leftArrowDisabled = false;
@@ -588,8 +605,7 @@ export default function HomeScreen() {
   );
 
   const renderPlanningContent = () => {
-    if (!navReady) return null;
-    if (plansLoading || assignmentsLoading) {
+    if (plansLoading) {
       return (
         <View style={{ paddingVertical: 40, alignItems: 'center' }}>
           <ActivityIndicator size="large" color="#14B8A6" />
@@ -600,35 +616,124 @@ export default function HomeScreen() {
       return (
         <View style={{ paddingVertical: 40, alignItems: 'center' }}>
           <Text style={{ color: isDark ? '#fff' : '#000', marginBottom: 12 }}>{plansError}</Text>
-          <TouchableOpacity
-            onPress={loadPlans}
-            style={{ backgroundColor: '#14B8A6', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 }}
-          >
+          <TouchableOpacity onPress={loadPlans} style={{ backgroundColor: '#14B8A6', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 }}>
             <Text style={{ color: '#fff', fontWeight: '600' }}>Retry</Text>
           </TouchableOpacity>
         </View>
       );
     }
 
-    const planColors: Record<string, string> = {};
-    plans.forEach((plan, idx) => { planColors[plan.id] = PLAN_COLORS[idx % PLAN_COLORS.length]; });
+    const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
+    const textPrimary = isDark ? '#FFFFFF' : '#000000';
+    const textSecondary = isDark ? '#8E8E93' : '#6B7280';
+    const borderColor = isDark ? '#2C2C2E' : '#F0F0F0';
+
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    const weekLabel = `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
     return (
       <View>
-        {navReady && (
-          <PureCalendar
-            assignments={dayAssignments}
-            planColors={planColors}
-            onDayPress={handleDayPress}
-            isDark={isDark}
-          />
-        )}
+        {/* Week macro summary card */}
+        <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, marginBottom: 12 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Week of {weekLabel}
+          </Text>
+          {avgMacros == null ? (
+            <Text style={{ fontSize: 14, color: textSecondary, marginTop: 4 }}>
+              Assign plans to days to see your weekly averages
+            </Text>
+          ) : (
+            <View style={{ marginTop: 8, gap: 10 }}>
+              <View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Avg Calories</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: textPrimary }}>{avgMacros.calories} kcal</Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${Math.min((avgMacros.calories / (goal?.daily_calories || 2000)) * 100, 100)}%`, backgroundColor: '#14B8A6', borderRadius: 3 }} />
+                </View>
+              </View>
+              <View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Protein</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#3B82F6' }}>{avgMacros.protein}g</Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${Math.min((avgMacros.protein / (goal?.protein_g || 150)) * 100, 100)}%`, backgroundColor: '#3B82F6', borderRadius: 3 }} />
+                </View>
+              </View>
+              <View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Carbs</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#F59E0B' }}>{avgMacros.carbs}g</Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${Math.min((avgMacros.carbs / (goal?.carbs_g || 200)) * 100, 100)}%`, backgroundColor: '#F59E0B', borderRadius: 3 }} />
+                </View>
+              </View>
+              <View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Fats</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#EF4444' }}>{avgMacros.fats}g</Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${Math.min((avgMacros.fats / (goal?.fats_g || 65)) * 100, 100)}%`, backgroundColor: '#EF4444', borderRadius: 3 }} />
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
 
-        {/* rest of existing content below unchanged */}
+        {/* Weekly plan card */}
+        <View style={{ backgroundColor: cardBg, borderRadius: 16, marginBottom: 12, overflow: 'hidden' }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Weekly Plan</Text>
+          </View>
+          {DAYS.map((day, idx) => {
+            const assignedId = weekPlan[day];
+            const assignedPlan = plans.find(p => p.id === assignedId);
+            const planColor = assignedPlan ? PLAN_COLORS[plans.indexOf(assignedPlan) % PLAN_COLORS.length] : null;
+            const isLast = idx === DAYS.length - 1;
+            return (
+              <TouchableOpacity
+                key={day}
+                onPress={() => {
+                  console.log('[Home iOS] Weekly day row pressed:', day);
+                  if (plans.length > 0) { handleDayPlanPress(day); } else { router.push('/meal-plan-create'); }
+                }}
+                activeOpacity={0.7}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
+                  borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+                  borderBottomColor: borderColor,
+                }}
+              >
+                <Text style={{ width: 36, fontSize: 14, fontWeight: '600', color: textPrimary }}>{day}</Text>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {planColor && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: planColor }} />}
+                  <Text style={{ fontSize: 14, color: assignedPlan ? textPrimary : textSecondary, fontWeight: assignedPlan ? '500' : '400' }}>
+                    {assignedPlan ? assignedPlan.name : 'No plan'}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 18, color: textSecondary, fontWeight: '300' }}>›</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* My Plans section */}
+        <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 }}>My Plans</Text>
         {plans.length === 0 ? (
-          <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#fff' : '#000', marginBottom: 8 }}>No meal plans yet</Text>
-            <Text style={{ fontSize: 14, color: isDark ? '#8E8E93' : '#6B7280', textAlign: 'center' }}>Create your first plan to assign it to days.</Text>
+          <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: textPrimary, marginBottom: 8 }}>No meal plans yet</Text>
+            <Text style={{ fontSize: 14, color: textSecondary, textAlign: 'center' }}>Create your first plan to start planning your week.</Text>
           </View>
         ) : (
           plans.map((plan, idx) => {
@@ -647,6 +752,11 @@ export default function HomeScreen() {
                           await deleteMealPlan(plan.id);
                           console.log('[Home iOS] Plan deleted:', plan.id);
                           setPlans(prev => prev.filter(p => p.id !== plan.id));
+                          setWeekPlan(prev => {
+                            const next = { ...prev };
+                            DAYS.forEach(d => { if (next[d] === plan.id) next[d] = null; });
+                            return next;
+                          });
                         } catch {
                           Alert.alert('Error', 'Failed to delete plan.');
                         }
@@ -656,7 +766,7 @@ export default function HomeScreen() {
                 }}
               >
                 <TouchableOpacity
-                  style={{ backgroundColor: isDark ? '#1C1C1E' : '#fff', borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center' }}
+                  style={{ backgroundColor: cardBg, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center' }}
                   onPress={() => {
                     console.log('[Home iOS] Meal plan pressed:', plan.id, plan.name);
                     router.push({ pathname: '/meal-plan-detail', params: { planId: plan.id } });
@@ -664,14 +774,15 @@ export default function HomeScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginRight: 12 }} />
-                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: isDark ? '#fff' : '#000' }}>{plan.name}</Text>
-                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={isDark ? '#8E8E93' : '#6B7280'} />
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: textPrimary }}>{plan.name}</Text>
+                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={textSecondary} />
                 </TouchableOpacity>
               </SwipeToDeleteRow>
             );
           })
         )}
 
+        {/* Create plan button */}
         <TouchableOpacity
           style={{ backgroundColor: '#14B8A6', borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8, marginBottom: 16 }}
           onPress={() => {
