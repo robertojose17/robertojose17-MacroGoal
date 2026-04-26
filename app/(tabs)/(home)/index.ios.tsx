@@ -10,6 +10,7 @@ import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles
 import { useColorScheme } from '@/hooks/useColorScheme';
 import ProgressCircle from '@/components/ProgressCircle';
 import { IconSymbol } from '@/components/IconSymbol';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import SwipeToDeleteRow from '@/components/SwipeToDeleteRow';
 import { supabase } from '@/lib/supabase/client';
@@ -113,6 +114,7 @@ export default function HomeScreen() {
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
+  const [calendarDate, setCalendarDate] = useState(new Date());
 
   // ── Load tracking data ──
   const loadData = useCallback(async () => {
@@ -537,6 +539,20 @@ export default function HomeScreen() {
     }
     return (
       <View>
+        {/* Inline calendar display */}
+        <View style={{ marginBottom: 16 }}>
+          <DateTimePicker
+            value={calendarDate}
+            mode="date"
+            display="inline"
+            onChange={(_: any, date?: Date) => { if (date) setCalendarDate(date); }}
+            themeVariant={isDark ? 'dark' : 'light'}
+            accentColor="#14B8A6"
+            style={{ width: '100%' }}
+          />
+        </View>
+
+        {/* rest of existing content below unchanged */}
         {plans.length === 0 ? (
           <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#fff' : '#000', marginBottom: 8 }}>No meal plans yet</Text>
