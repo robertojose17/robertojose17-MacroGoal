@@ -68,39 +68,44 @@ export default function PureCalendar({ assignments, planColors, onDayPress, isDa
       {/* Grid */}
       {Array.from({ length: cells.length / 7 }, (_, rowIdx) => (
         <View key={rowIdx} style={s.row}>
-          {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
-            if (!day) return <View key={colIdx} style={s.cell} />;
-            const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
-            const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
-            const assignedPlanId = assignments[dateStr];
-            const highlightColor = assignedPlanId ? planColors[assignedPlanId] : null;
+          {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) =>
+            day == null ? (
+              <View key={`empty-${rowIdx}-${colIdx}`} style={s.cell} />
+            ) : (
+              (() => {
+                const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+                const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+                const assignedPlanId = assignments[dateStr];
+                const highlightColor = assignedPlanId ? (planColors[assignedPlanId] ?? null) : null;
 
-            const circleStyle = [
-              s.dayCircle,
-              isToday && !highlightColor ? { backgroundColor: '#14B8A620', borderWidth: 1.5, borderColor: '#14B8A6' } : null,
-              highlightColor ? { backgroundColor: highlightColor } : null,
-            ];
+                const circleStyle = [
+                  s.dayCircle,
+                  isToday && !highlightColor ? { backgroundColor: '#14B8A620', borderWidth: 1.5, borderColor: '#14B8A6' } : null,
+                  highlightColor ? { backgroundColor: highlightColor } : null,
+                ];
 
-            const dayTextColor = highlightColor ? '#FFFFFF' : isToday ? '#14B8A6' : textColor;
+                const dayTextColor = highlightColor ? '#FFFFFF' : isToday ? '#14B8A6' : textColor;
 
-            return (
-              <TouchableOpacity
-                key={colIdx}
-                style={s.cell}
-                onPress={() => {
-                  console.log('[PureCalendar] Day pressed:', dateStr);
-                  onDayPress(dateStr);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={circleStyle}>
-                  <Text style={[s.dayText, { color: dayTextColor }]}>
-                    {day}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                return (
+                  <TouchableOpacity
+                    key={`day-${rowIdx}-${colIdx}`}
+                    style={s.cell}
+                    onPress={() => {
+                      console.log('[PureCalendar] Day pressed:', dateStr);
+                      onDayPress(dateStr);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={circleStyle}>
+                      <Text style={[s.dayText, { color: dayTextColor }]}>
+                        {day}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })()
+            )
+          )}
         </View>
       ))}
     </View>
