@@ -861,9 +861,22 @@ export default function HomeScreen() {
           })
         )}
 
+        {/* Generate with AI button */}
+        <TouchableOpacity
+          style={{ backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8, marginBottom: 8, borderWidth: 1.5, borderColor: '#14B8A6' }}
+          onPress={() => {
+            console.log('[Home iOS] Generate plan with AI pressed');
+            router.push('/ai-meal-planner');
+          }}
+          activeOpacity={0.8}
+        >
+          <IconSymbol ios_icon_name="sparkles" android_material_icon_name="auto_awesome" size={20} color="#14B8A6" />
+          <Text style={{ color: '#14B8A6', fontSize: 16, fontWeight: '600' }}>Generate Plan with AI</Text>
+        </TouchableOpacity>
+
         {/* Create plan button */}
         <TouchableOpacity
-          style={{ backgroundColor: '#14B8A6', borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8, marginBottom: 16 }}
+          style={{ backgroundColor: '#14B8A6', borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 0, marginBottom: 16 }}
           onPress={() => {
             console.log('[Home iOS] Create new meal plan pressed');
             setNewPlanName('');
