@@ -86,14 +86,21 @@ export default function AIMealPlannerScreen() {
         return;
       }
       const { data } = await supabase
-        .from('user_goals')
-        .select('daily_calories, daily_protein, daily_carbs, daily_fats')
+        .from('goals')
+        .select('daily_calories, protein_g, carbs_g, fats_g')
         .eq('user_id', user.id)
+        .eq('is_active', true)
         .maybeSingle();
       if (data && isMounted.current) {
         console.log('[AIMealPlanner] loadUserGoals success:', data);
-        setUserGoals(data);
-        sendToAI([], data, true);
+        const goals = {
+          daily_calories: data.daily_calories,
+          daily_protein: data.protein_g,
+          daily_carbs: data.carbs_g,
+          daily_fats: data.fats_g,
+        };
+        setUserGoals(goals);
+        sendToAI([], goals, true);
       } else {
         console.log('[AIMealPlanner] loadUserGoals: no goals found');
       }
