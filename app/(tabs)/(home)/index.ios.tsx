@@ -115,8 +115,9 @@ export default function HomeScreen() {
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [weekPlan, setWeekPlan] = useState<Record<DayKey, string | null>>({
-    Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null,
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekPlans, setWeekPlans] = useState<Record<number, Record<DayKey, string | null>>>({
+    0: { Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null },
   });
   const [planMacros, setPlanMacros] = useState<Record<string, { calories: number; protein: number; carbs: number; fats: number }>>({});
 
@@ -408,9 +409,22 @@ export default function HomeScreen() {
     setActiveTab(tab);
   };
 
+  // ── Planning helpers ──
+  const currentWeekPlan = weekPlans[weekOffset] ?? { Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null };
+
+  const setCurrentDayPlan = (day: DayKey, planId: string | null) => {
+    setWeekPlans(prev => ({
+      ...prev,
+      [weekOffset]: {
+        ...(prev[weekOffset] ?? { Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null }),
+        [day]: planId,
+      },
+    }));
+  };
+
   const handleDayPlanPress = (day: DayKey) => {
     console.log('[Home iOS] Day plan pressed:', day);
-    const currentPlanId = weekPlan[day];
+    const currentPlanId = currentWeekPlan[day];
     const planOptions = plans.map(p => p.name);
     const hasAssigned = currentPlanId != null;
     const options = [...planOptions, hasAssigned ? 'Remove plan' : null, 'Cancel'].filter(Boolean) as string[];
@@ -431,24 +445,24 @@ export default function HomeScreen() {
         if (buttonIndex === cancelIndex) return;
         if (destructiveIndex !== undefined && buttonIndex === destructiveIndex) {
           console.log('[Home iOS] Removing plan from day:', day);
-          setWeekPlan(prev => ({ ...prev, [day]: null }));
+          setCurrentDayPlan(day, null);
           return;
         }
         const selected = plans[buttonIndex];
         if (!selected) return;
         console.log('[Home iOS] Assigning plan', selected.id, 'to day:', day);
-        setWeekPlan(prev => ({ ...prev, [day]: selected.id }));
+        setCurrentDayPlan(day, selected.id);
         fetchPlanMacros(selected.id);
       }
     );
   };
 
   // ── Planning derived values ──
-  const assignedDays = DAYS.filter(d => weekPlan[d] != null);
+  const assignedDays = DAYS.filter(d => currentWeekPlan[d] != null);
   const avgMacros = assignedDays.length === 0 ? null : (() => {
     const totals = assignedDays.reduce(
       (acc, day) => {
-        const m = planMacros[weekPlan[day]!];
+        const m = planMacros[currentWeekPlan[day]!];
         if (!m) return acc;
         return {
           calories: acc.calories + m.calories,
@@ -626,106 +640,147 @@ export default function HomeScreen() {
     const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
     const textPrimary = isDark ? '#FFFFFF' : '#000000';
     const textSecondary = isDark ? '#8E8E93' : '#6B7280';
-    const borderColor = isDark ? '#2C2C2E' : '#F0F0F0';
+    const surfaceBg = isDark ? '#2C2C2E' : '#F5F5F5';
 
+    // Compute week start/end for selected weekOffset
     const now = new Date();
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
-    const weekLabel = `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    const weekLabel = weekOffset === 0
+      ? 'This Week'
+      : weekOffset === 1
+      ? 'Next Week'
+      : weekOffset === -1
+      ? 'Last Week'
+      : `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    const weekDateRange = `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+    // Grocery list for this week
+    const assignedPlanIds = [...new Set(DAYS.map(d => currentWeekPlan[d]).filter(Boolean))] as string[];
 
     return (
       <View>
-        {/* Week macro summary card */}
+        {/* Week selector + macro card */}
         <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, marginBottom: 12 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Week of {weekLabel}
-          </Text>
+          {/* Week navigation */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('[Home iOS] Week selector: previous week');
+                setWeekOffset(w => w - 1);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ fontSize: 22, color: '#14B8A6', fontWeight: '300' }}>‹</Text>
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: textPrimary }}>{weekLabel}</Text>
+              <Text style={{ fontSize: 12, color: textSecondary, marginTop: 1 }}>{weekDateRange}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('[Home iOS] Week selector: next week');
+                setWeekOffset(w => w + 1);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ fontSize: 22, color: '#14B8A6', fontWeight: '300' }}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Horizontal day grid */}
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
+            {DAYS.map(day => {
+              const assignedId = currentWeekPlan[day];
+              const assignedPlan = plans.find(p => p.id === assignedId);
+              const planColor = assignedPlan ? PLAN_COLORS[plans.indexOf(assignedPlan) % PLAN_COLORS.length] : null;
+              return (
+                <TouchableOpacity
+                  key={day}
+                  onPress={() => {
+                    console.log('[Home iOS] Day cell pressed:', day);
+                    if (plans.length > 0) { handleDayPlanPress(day); } else { router.push('/meal-plan-create'); }
+                  }}
+                  activeOpacity={0.7}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    backgroundColor: planColor ? planColor + '22' : surfaceBg,
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    borderWidth: planColor ? 1.5 : 0,
+                    borderColor: planColor ?? 'transparent',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: textSecondary, marginBottom: 6 }}>{day}</Text>
+                  {planColor
+                    ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: planColor }} />
+                    : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isDark ? '#3C3C3E' : '#D1D5DB' }} />
+                  }
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Macro averages */}
           {avgMacros == null ? (
-            <Text style={{ fontSize: 14, color: textSecondary, marginTop: 4 }}>
-              Assign plans to days to see your weekly averages
+            <Text style={{ fontSize: 13, color: textSecondary, textAlign: 'center', paddingVertical: 4 }}>
+              Tap a day to assign a plan
             </Text>
           ) : (
-            <View style={{ marginTop: 8, gap: 10 }}>
-              <View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Avg Calories</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: textPrimary }}>{avgMacros.calories} kcal</Text>
-                </View>
-                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
-                  <View style={{ height: '100%', width: `${Math.min((avgMacros.calories / (goal?.daily_calories || 2000)) * 100, 100)}%`, backgroundColor: '#14B8A6', borderRadius: 3 }} />
-                </View>
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: textSecondary, textTransform: 'uppercase', letterSpacing: 0.4 }}>Daily Avg</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary }}>{avgMacros.calories} kcal</Text>
               </View>
-              <View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Protein</Text>
+              <View style={{ height: 5, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
+                <View style={{ height: '100%', width: `${Math.min((avgMacros.calories / (goal?.daily_calories || 2000)) * 100, 100)}%`, backgroundColor: '#14B8A6', borderRadius: 3 }} />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <View style={{ flex: 1, backgroundColor: surfaceBg, borderRadius: 8, padding: 8, alignItems: 'center' }}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#3B82F6' }}>{avgMacros.protein}g</Text>
+                  <Text style={{ fontSize: 11, color: textSecondary, marginTop: 2 }}>Protein</Text>
                 </View>
-                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
-                  <View style={{ height: '100%', width: `${Math.min((avgMacros.protein / (goal?.protein_g || 150)) * 100, 100)}%`, backgroundColor: '#3B82F6', borderRadius: 3 }} />
-                </View>
-              </View>
-              <View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Carbs</Text>
+                <View style={{ flex: 1, backgroundColor: surfaceBg, borderRadius: 8, padding: 8, alignItems: 'center' }}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#F59E0B' }}>{avgMacros.carbs}g</Text>
+                  <Text style={{ fontSize: 11, color: textSecondary, marginTop: 2 }}>Carbs</Text>
                 </View>
-                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
-                  <View style={{ height: '100%', width: `${Math.min((avgMacros.carbs / (goal?.carbs_g || 200)) * 100, 100)}%`, backgroundColor: '#F59E0B', borderRadius: 3 }} />
-                </View>
-              </View>
-              <View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: textSecondary }}>Fats</Text>
+                <View style={{ flex: 1, backgroundColor: surfaceBg, borderRadius: 8, padding: 8, alignItems: 'center' }}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#EF4444' }}>{avgMacros.fats}g</Text>
-                </View>
-                <View style={{ height: 6, backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
-                  <View style={{ height: '100%', width: `${Math.min((avgMacros.fats / (goal?.fats_g || 65)) * 100, 100)}%`, backgroundColor: '#EF4444', borderRadius: 3 }} />
+                  <Text style={{ fontSize: 11, color: textSecondary, marginTop: 2 }}>Fats</Text>
                 </View>
               </View>
             </View>
           )}
-        </View>
 
-        {/* Weekly plan card */}
-        <View style={{ backgroundColor: cardBg, borderRadius: 16, marginBottom: 12, overflow: 'hidden' }}>
-          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Weekly Plan</Text>
-          </View>
-          {DAYS.map((day, idx) => {
-            const assignedId = weekPlan[day];
-            const assignedPlan = plans.find(p => p.id === assignedId);
-            const planColor = assignedPlan ? PLAN_COLORS[plans.indexOf(assignedPlan) % PLAN_COLORS.length] : null;
-            const isLast = idx === DAYS.length - 1;
-            return (
-              <TouchableOpacity
-                key={day}
-                onPress={() => {
-                  console.log('[Home iOS] Weekly day row pressed:', day);
-                  if (plans.length > 0) { handleDayPlanPress(day); } else { router.push('/meal-plan-create'); }
-                }}
-                activeOpacity={0.7}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 16,
-                  paddingVertical: 13,
-                  borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
-                  borderBottomColor: borderColor,
-                }}
-              >
-                <Text style={{ width: 36, fontSize: 14, fontWeight: '600', color: textPrimary }}>{day}</Text>
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  {planColor && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: planColor }} />}
-                  <Text style={{ fontSize: 14, color: assignedPlan ? textPrimary : textSecondary, fontWeight: assignedPlan ? '500' : '400' }}>
-                    {assignedPlan ? assignedPlan.name : 'No plan'}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 18, color: textSecondary, fontWeight: '300' }}>›</Text>
-              </TouchableOpacity>
-            );
-          })}
+          {/* Grocery list button */}
+          {assignedPlanIds.length > 0 && (
+            <TouchableOpacity
+              onPress={() => {
+                const firstPlanId = assignedPlanIds[0];
+                console.log('[Home iOS] Grocery list button pressed, planId:', firstPlanId);
+                router.push({ pathname: '/meal-plan-grocery', params: { planId: firstPlanId } });
+              }}
+              activeOpacity={0.8}
+              style={{
+                marginTop: 14,
+                backgroundColor: '#14B8A6',
+                borderRadius: 10,
+                paddingVertical: 11,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>🛒</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>Grocery List</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* My Plans section */}
@@ -752,9 +807,11 @@ export default function HomeScreen() {
                           await deleteMealPlan(plan.id);
                           console.log('[Home iOS] Plan deleted:', plan.id);
                           setPlans(prev => prev.filter(p => p.id !== plan.id));
-                          setWeekPlan(prev => {
+                          setWeekPlans(prev => {
                             const next = { ...prev };
-                            DAYS.forEach(d => { if (next[d] === plan.id) next[d] = null; });
+                            Object.keys(next).forEach(wk => {
+                              DAYS.forEach(d => { if (next[Number(wk)][d] === plan.id) next[Number(wk)][d] = null; });
+                            });
                             return next;
                           });
                         } catch {
