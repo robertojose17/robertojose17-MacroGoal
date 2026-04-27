@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, ScrollView, ActionSheetIOS,
+  Modal, TextInput,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import { supabase } from '@/lib/supabase/client';
 import {
   listMealPlans,
   deleteMealPlan,
+  createMealPlan,
   type MealPlan,
 } from '@/utils/mealPlansApi';
 
@@ -120,6 +122,9 @@ export default function HomeScreen() {
     0: { Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null },
   });
   const [planMacros, setPlanMacros] = useState<Record<string, { calories: number; protein: number; carbs: number; fats: number }>>({});
+  const [newPlanModalVisible, setNewPlanModalVisible] = useState(false);
+  const [newPlanName, setNewPlanName] = useState('');
+  const [newPlanSaving, setNewPlanSaving] = useState(false);
 
   // ── Load tracking data ──
   const loadData = useCallback(async () => {
@@ -422,6 +427,23 @@ export default function HomeScreen() {
     }));
   };
 
+  const handleCreateNewPlan = async () => {
+    if (!newPlanName.trim()) return;
+    console.log('[Home iOS] Creating new meal plan:', newPlanName.trim());
+    setNewPlanSaving(true);
+    try {
+      const newPlan = await createMealPlan({ name: newPlanName.trim() });
+      setPlans(prev => [...prev, newPlan]);
+      setNewPlanModalVisible(false);
+      setNewPlanName('');
+      router.push({ pathname: '/meal-plan-detail', params: { planId: newPlan.id } });
+    } catch {
+      Alert.alert('Error', 'Failed to create plan. Please try again.');
+    } finally {
+      setNewPlanSaving(false);
+    }
+  };
+
   const handleDayPlanPress = (day: DayKey) => {
     console.log('[Home iOS] Day plan pressed:', day);
     const currentPlanId = currentWeekPlan[day];
@@ -703,7 +725,7 @@ export default function HomeScreen() {
                   key={day}
                   onPress={() => {
                     console.log('[Home iOS] Day cell pressed:', day);
-                    if (plans.length > 0) { handleDayPlanPress(day); } else { router.push('/meal-plan-create'); }
+                    if (plans.length > 0) { handleDayPlanPress(day); } else { setNewPlanName(''); setNewPlanModalVisible(true); }
                   }}
                   activeOpacity={0.7}
                   style={{
@@ -844,7 +866,8 @@ export default function HomeScreen() {
           style={{ backgroundColor: '#14B8A6', borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8, marginBottom: 16 }}
           onPress={() => {
             console.log('[Home iOS] Create new meal plan pressed');
-            router.push('/meal-plan-create');
+            setNewPlanName('');
+            setNewPlanModalVisible(true);
           }}
           activeOpacity={0.8}
         >
@@ -933,6 +956,79 @@ export default function HomeScreen() {
         {activeTab === 'tracking' ? renderTrackingContent() : renderPlanningContent()}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* New Plan Modal */}
+      <Modal
+        visible={newPlanModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNewPlanModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
+          activeOpacity={1}
+          onPress={() => setNewPlanModalVisible(false)}
+        />
+        <View style={{
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          paddingHorizontal: 24,
+          paddingTop: 20,
+          paddingBottom: 40,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+        }}>
+          {/* Handle bar */}
+          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? '#3C3C3E' : '#D1D5DB', alignSelf: 'center', marginBottom: 20 }} />
+
+          <Text style={{ fontSize: 20, fontWeight: '700', color: isDark ? '#FFFFFF' : '#000000', marginBottom: 20 }}>
+            New Plan
+          </Text>
+
+          <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? '#8E8E93' : '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            PLAN NAME
+          </Text>
+          <TextInput
+            style={{
+              backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+              borderRadius: 12,
+              paddingVertical: 14,
+              paddingHorizontal: 16,
+              fontSize: 16,
+              color: isDark ? '#FFFFFF' : '#000000',
+              marginBottom: 24,
+            }}
+            value={newPlanName}
+            onChangeText={setNewPlanName}
+            placeholder="e.g. Week 1 Bulk"
+            placeholderTextColor={isDark ? '#8E8E93' : '#9CA3AF'}
+            returnKeyType="done"
+            onSubmitEditing={handleCreateNewPlan}
+            autoFocus
+          />
+
+          <TouchableOpacity
+            onPress={handleCreateNewPlan}
+            disabled={newPlanSaving || !newPlanName.trim()}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor: '#14B8A6',
+              borderRadius: 14,
+              paddingVertical: 16,
+              alignItems: 'center',
+              opacity: (newPlanSaving || !newPlanName.trim()) ? 0.5 : 1,
+            }}
+          >
+            {newPlanSaving
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={{ fontSize: 17, fontWeight: '600', color: '#fff' }}>Save</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
     </SafeAreaView>
   );
