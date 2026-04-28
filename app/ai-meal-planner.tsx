@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
@@ -235,7 +234,7 @@ export default function AIMealPlannerScreen() {
     console.log('[AIMealPlanner] Generate My Plan pressed, foodPrefs:', foodPrefs, 'restrictions:', dietaryRestrictions);
     setStep('generating');
 
-    const parts: string[] = ['Please create a meal plan for me based on my goals.'];
+    const parts: string[] = ['GENERATE_PLAN: Please create a complete meal plan for me.'];
     if (foodPrefs.trim()) parts.push(`Food preferences: ${foodPrefs.trim()}`);
     if (dietaryRestrictions.trim()) parts.push(`Dietary restrictions: ${dietaryRestrictions.trim()}`);
     const prompt = parts.join(' ');
@@ -473,94 +472,87 @@ export default function AIMealPlannerScreen() {
 
       {/* Step: Preferences */}
       {step === 'preferences' && (
-        <KeyboardAvoidingView
+        <ScrollView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={90}
+          contentContainerStyle={styles.prefsContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
-          <ScrollView
-            style={styles.flex}
-            contentContainerStyle={styles.prefsContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Hero */}
-            <View style={styles.heroSection}>
-              <Text style={styles.heroEmoji}>✨</Text>
-              <Text style={[styles.heroTitle, { color: textColor }]}>Let's build your meal plan</Text>
-              <Text style={[styles.heroSubtitle, { color: secondaryColor }]}>
-                Tell us a bit about your preferences so we can create something you'll actually enjoy.
-              </Text>
-            </View>
+          {/* Hero */}
+          <View style={styles.heroSection}>
+            <Text style={styles.heroEmoji}>✨</Text>
+            <Text style={[styles.heroTitle, { color: textColor }]}>Let's build your meal plan</Text>
+            <Text style={[styles.heroSubtitle, { color: secondaryColor }]}>
+              Tell us a bit about your preferences so we can create something you'll actually enjoy.
+            </Text>
+          </View>
 
-            {/* Goals chips */}
-            {userGoals && (
-              <View style={[styles.goalsCard, { backgroundColor: cardBg }]}>
-                <Text style={[styles.goalsLabel, { color: secondaryColor }]}>YOUR DAILY GOALS</Text>
-                <View style={styles.goalsRow}>
-                  <View style={[styles.goalChip, { backgroundColor: isDark ? '#2C1F4A' : '#EDE9FE' }]}>
-                    <Text style={[styles.goalChipText, { color: colors.calories }]}>{userGoals.daily_calories}</Text>
-                    <Text style={[styles.goalChipUnit, { color: colors.calories }]}>kcal</Text>
-                  </View>
-                  <View style={[styles.goalChip, { backgroundColor: isDark ? '#3B1F1F' : '#FEE2E2' }]}>
-                    <Text style={[styles.goalChipText, { color: colors.protein }]}>{userGoals.daily_protein}g</Text>
-                    <Text style={[styles.goalChipUnit, { color: colors.protein }]}>protein</Text>
-                  </View>
-                  <View style={[styles.goalChip, { backgroundColor: isDark ? '#1F2E4A' : '#DBEAFE' }]}>
-                    <Text style={[styles.goalChipText, { color: colors.carbs }]}>{userGoals.daily_carbs}g</Text>
-                    <Text style={[styles.goalChipUnit, { color: colors.carbs }]}>carbs</Text>
-                  </View>
-                  <View style={[styles.goalChip, { backgroundColor: isDark ? '#3B2E1F' : '#FEF3C7' }]}>
-                    <Text style={[styles.goalChipText, { color: colors.fats }]}>{userGoals.daily_fats}g</Text>
-                    <Text style={[styles.goalChipUnit, { color: colors.fats }]}>fats</Text>
-                  </View>
+          {/* Goals chips */}
+          {userGoals && (
+            <View style={[styles.goalsCard, { backgroundColor: cardBg }]}>
+              <Text style={[styles.goalsLabel, { color: secondaryColor }]}>YOUR DAILY GOALS</Text>
+              <View style={styles.goalsRow}>
+                <View style={[styles.goalChip, { backgroundColor: isDark ? '#2C1F4A' : '#EDE9FE' }]}>
+                  <Text style={[styles.goalChipText, { color: colors.calories }]}>{userGoals.daily_calories}</Text>
+                  <Text style={[styles.goalChipUnit, { color: colors.calories }]}>kcal</Text>
+                </View>
+                <View style={[styles.goalChip, { backgroundColor: isDark ? '#3B1F1F' : '#FEE2E2' }]}>
+                  <Text style={[styles.goalChipText, { color: colors.protein }]}>{userGoals.daily_protein}g</Text>
+                  <Text style={[styles.goalChipUnit, { color: colors.protein }]}>protein</Text>
+                </View>
+                <View style={[styles.goalChip, { backgroundColor: isDark ? '#1F2E4A' : '#DBEAFE' }]}>
+                  <Text style={[styles.goalChipText, { color: colors.carbs }]}>{userGoals.daily_carbs}g</Text>
+                  <Text style={[styles.goalChipUnit, { color: colors.carbs }]}>carbs</Text>
+                </View>
+                <View style={[styles.goalChip, { backgroundColor: isDark ? '#3B2E1F' : '#FEF3C7' }]}>
+                  <Text style={[styles.goalChipText, { color: colors.fats }]}>{userGoals.daily_fats}g</Text>
+                  <Text style={[styles.goalChipUnit, { color: colors.fats }]}>fats</Text>
                 </View>
               </View>
-            )}
-
-            {/* Inputs */}
-            <View style={styles.inputsSection}>
-              <Text style={[styles.inputLabel, { color: secondaryColor }]}>FOOD PREFERENCES</Text>
-              <TextInput
-                style={[styles.prefInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
-                placeholder="e.g. I love chicken, no seafood"
-                placeholderTextColor={secondaryColor}
-                value={foodPrefs}
-                onChangeText={setFoodPrefs}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-                maxLength={300}
-              />
-
-              <Text style={[styles.inputLabel, { color: secondaryColor, marginTop: spacing.md }]}>DIETARY RESTRICTIONS</Text>
-              <TextInput
-                style={[styles.prefInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
-                placeholder="e.g. lactose intolerant, vegetarian"
-                placeholderTextColor={secondaryColor}
-                value={dietaryRestrictions}
-                onChangeText={setDietaryRestrictions}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-                maxLength={300}
-              />
             </View>
-          </ScrollView>
+          )}
 
-          {/* Generate button */}
-          <View style={[styles.generateBtnContainer, { backgroundColor: bgColor, borderTopColor: borderColor }]}>
-            <TouchableOpacity
-              style={[styles.generateBtn, { opacity: userGoals ? 1 : 0.5 }]}
-              onPress={handleGenerate}
-              disabled={!userGoals}
-              activeOpacity={0.85}
-            >
-              <IconSymbol ios_icon_name="sparkles" android_material_icon_name="auto_awesome" size={20} color="#fff" />
-              <Text style={styles.generateBtnText}>Generate My Plan</Text>
-            </TouchableOpacity>
+          {/* Inputs */}
+          <View style={styles.inputsSection}>
+            <Text style={[styles.inputLabel, { color: secondaryColor }]}>FOOD PREFERENCES</Text>
+            <TextInput
+              style={[styles.prefInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
+              placeholder="e.g. I love chicken, no seafood"
+              placeholderTextColor={secondaryColor}
+              value={foodPrefs}
+              onChangeText={setFoodPrefs}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              maxLength={300}
+            />
+
+            <Text style={[styles.inputLabel, { color: secondaryColor, marginTop: spacing.md }]}>DIETARY RESTRICTIONS</Text>
+            <TextInput
+              style={[styles.prefInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
+              placeholder="e.g. lactose intolerant, vegetarian"
+              placeholderTextColor={secondaryColor}
+              value={dietaryRestrictions}
+              onChangeText={setDietaryRestrictions}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              maxLength={300}
+            />
           </View>
-        </KeyboardAvoidingView>
+
+          {/* Generate button — inside scroll view */}
+          <TouchableOpacity
+            style={[styles.generateBtn, { opacity: userGoals ? 1 : 0.5, marginTop: 24 }]}
+            onPress={handleGenerate}
+            disabled={!userGoals}
+            activeOpacity={0.85}
+          >
+            <IconSymbol ios_icon_name="sparkles" android_material_icon_name="auto_awesome" size={20} color="#fff" />
+            <Text style={styles.generateBtnText}>Generate My Plan</Text>
+          </TouchableOpacity>
+        </ScrollView>
       )}
 
       {/* Step: Generating */}
@@ -929,7 +921,7 @@ const styles = StyleSheet.create({
   // Preferences step
   prefsContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingBottom: 48,
   },
   heroSection: {
     alignItems: 'center',
@@ -980,11 +972,6 @@ const styles = StyleSheet.create({
     minHeight: 80,
   },
 
-  generateBtnContainer: {
-    padding: spacing.md,
-    paddingBottom: Platform.OS === 'ios' ? spacing.lg : spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
   generateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
