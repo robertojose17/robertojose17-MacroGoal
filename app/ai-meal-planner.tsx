@@ -67,7 +67,7 @@ const MEAL_SECTIONS: { key: MealType; label: string; emoji: string }[] = [
   { key: 'snack', label: 'Snack', emoji: '🍎' },
 ];
 
-const REPLACE_SUGGESTIONS = ['More protein', 'Lower calories', 'Vegetarian', 'Something lighter'];
+const REPLACE_SUGGESTIONS = ['Something lighter', 'More protein', 'Vegetarian', 'Mediterranean', 'High fiber', 'Low carb'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -193,9 +193,9 @@ export default function AIMealPlannerScreen() {
   const [planName, setPlanName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Replace sheet
+  // Replace sheet — now meal-level
   const [replaceSheetVisible, setReplaceSheetVisible] = useState(false);
-  const [replaceTarget, setReplaceTarget] = useState<{ food: PlanFood; mealType: MealType } | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<{ mealType: MealType; mealLabel: string } | null>(null);
   const [replaceText, setReplaceText] = useState('');
   const [replacing, setReplacing] = useState(false);
 
@@ -364,22 +364,22 @@ export default function AIMealPlannerScreen() {
     }
   }, [generatedPlan, showToast]);
 
-  // ── Replace food ────────────────────────────────────────────────────────────
+  // ── Replace meal ────────────────────────────────────────────────────────────
 
-  const handleOpenReplace = useCallback((food: PlanFood, mealType: MealType) => {
-    console.log('[AIMealPlanner] Replace button pressed for:', food.name, 'in', mealType);
-    setReplaceTarget({ food, mealType });
+  const handleOpenReplace = useCallback((mealType: MealType, mealLabel: string) => {
+    console.log('[AIMealPlanner] Replace Meal button pressed for:', mealLabel, '(', mealType, ')');
+    setReplaceTarget({ mealType, mealLabel });
     setReplaceText('');
     setReplaceSheetVisible(true);
   }, []);
 
   const handleReplace = useCallback(async () => {
     if (!replaceTarget || !replaceText.trim() || !userGoals) return;
-    const { food, mealType } = replaceTarget;
-    console.log('[AIMealPlanner] Replace submit pressed, food:', food.name, 'with:', replaceText.trim());
+    const { mealType } = replaceTarget;
+    console.log('[AIMealPlanner] Replace submit pressed, mealType:', mealType, 'preference:', replaceText.trim());
     setReplacing(true);
 
-    const prompt = `Replace ${food.name} in ${mealType} with: ${replaceText.trim()}. Return the updated full plan in the same JSON format.`;
+    const prompt = `REPLACE_MEAL: Replace the ${mealType} meal with something different. User preference: ${replaceText.trim()}. Return the COMPLETE updated plan in the same JSON format, keeping all other meals exactly the same, only replacing the ${mealType} items and dish_description.`;
     try {
       console.log('[AIMealPlanner] invoking generate-meal-plan for replace, prompt:', prompt);
       const { data, error } = await supabase.functions.invoke('generate-meal-plan', {
@@ -393,13 +393,13 @@ export default function AIMealPlannerScreen() {
       if (data?.readyToSave && data?.planData) {
         setGeneratedPlan(data.planData);
         setReplaceSheetVisible(false);
-        showToast('Food replaced ✓');
+        showToast('Meal replaced ✓');
       } else {
-        throw new Error('Could not replace food. Please try again.');
+        throw new Error('Could not replace meal. Please try again.');
       }
     } catch (e: any) {
       console.error('[AIMealPlanner] handleReplace error:', e?.message || e);
-      Alert.alert('Error', e?.message || 'Failed to replace food.');
+      Alert.alert('Error', e?.message || 'Failed to replace meal.');
     } finally {
       if (isMounted.current) setReplacing(false);
     }
@@ -467,6 +467,8 @@ export default function AIMealPlannerScreen() {
     : null;
 
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  const replaceTitleText = replaceTarget ? `Replace ${replaceTarget.mealLabel}` : 'Replace Meal';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
@@ -628,7 +630,7 @@ export default function AIMealPlannerScreen() {
                   cardBg={cardBg}
                   borderColor={borderColor}
                   onAddFood={handleAddFood}
-                  onReplaceFood={handleOpenReplace}
+                  onReplaceMeal={handleOpenReplace}
                   onAddAll={handleAddAllToMeal}
                 />
               );
@@ -731,16 +733,16 @@ export default function AIMealPlannerScreen() {
           <View style={[styles.bottomSheet, { backgroundColor: isDark ? '#1C1C1E' : '#fff' }]}>
             <View style={styles.sheetHandle} />
             <Text style={[styles.sheetTitle, { color: textColor }]}>
-              Replace {replaceTarget?.food.name ?? ''}
+              {replaceTitleText}
             </Text>
             <Text style={[styles.sheetSubtitle, { color: secondaryColor }]}>
-              What would you like instead?
+              Describe what kind of meal you'd like instead
             </Text>
             <TextInput
               style={[styles.sheetInput, { backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5', color: textColor }]}
               value={replaceText}
               onChangeText={setReplaceText}
-              placeholder="e.g. something with more protein"
+              placeholder="e.g. something lighter, more protein, Mediterranean style"
               placeholderTextColor={secondaryColor}
               autoFocus
               returnKeyType="done"
@@ -813,39 +815,48 @@ interface MealSectionCardProps {
   cardBg: string;
   borderColor: string;
   onAddFood: (food: PlanFood, mealType: MealType) => void;
-  onReplaceFood: (food: PlanFood, mealType: MealType) => void;
+  onReplaceMeal: (mealType: MealType, mealLabel: string) => void;
   onAddAll: (mealType: MealType) => void;
 }
 
 function MealSectionCard({
   section, foods, dishDescription, sectionCalories, isDark, textColor, secondaryColor, cardBg, borderColor,
-  onAddFood, onReplaceFood, onAddAll,
+  onAddFood, onReplaceMeal, onAddAll,
 }: MealSectionCardProps) {
   const [descExpanded, setDescExpanded] = useState(false);
   const calRounded = Math.round(sectionCalories);
 
-  const TRUNCATE_LENGTH = 60;
+  const TRUNCATE_LENGTH = 55;
   const isTruncatable = dishDescription !== null && dishDescription.length > TRUNCATE_LENGTH;
-  const truncatedDesc = isTruncatable ? dishDescription!.slice(0, TRUNCATE_LENGTH) + '...' : dishDescription;
+  const truncatedDesc = isTruncatable ? dishDescription!.slice(0, TRUNCATE_LENGTH) : dishDescription;
   const displayDesc = descExpanded ? dishDescription : truncatedDesc;
 
   return (
     <View style={[styles.mealCard, { backgroundColor: cardBg, borderColor }]}>
-      {/* Section header */}
+      {/* 1. Meal header */}
       <View style={styles.mealCardHeader}>
         <View style={styles.mealCardHeaderLeft}>
           <Text style={styles.mealEmoji}>{section.emoji}</Text>
           <Text style={[styles.mealLabel, { color: textColor }]}>{section.label}</Text>
         </View>
-        <View style={[styles.mealCalBadge, { backgroundColor: isDark ? '#2C2C2E' : '#F0F2F7' }]}>
-          <Text style={[styles.mealCalBadgeText, { color: colors.calories }]}>{calRounded} kcal</Text>
+        <View style={styles.mealCardHeaderRight}>
+          <View style={[styles.mealCalBadge, { backgroundColor: isDark ? '#2C2C2E' : '#F0F2F7' }]}>
+            <Text style={[styles.mealCalBadgeText, { color: colors.calories }]}>{calRounded} kcal</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.replaceMealBtn}
+            onPress={() => {
+              console.log('[AIMealPlanner] Replace Meal button pressed for:', section.label);
+              onReplaceMeal(section.key, section.label);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.replaceMealBtnText}>↺ Replace</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Divider */}
-      <View style={[styles.mealDivider, { backgroundColor: borderColor }]} />
-
-      {/* Dish description */}
+      {/* 2. Dish description (between header and divider) */}
       {dishDescription !== null && (
         <View style={styles.dishDescContainer}>
           <Text style={[styles.dishDescText, { color: secondaryColor }]}>
@@ -858,7 +869,8 @@ function MealSectionCard({
                   setDescExpanded(true);
                 }}
               >
-                {' '}[more]
+                {'... '}
+                <Text style={styles.dishDescToggle}>more</Text>
               </Text>
             )}
             {isTruncatable && descExpanded && (
@@ -869,14 +881,17 @@ function MealSectionCard({
                   setDescExpanded(false);
                 }}
               >
-                {' '}[less]
+                {' less'}
               </Text>
             )}
           </Text>
         </View>
       )}
 
-      {/* Food rows */}
+      {/* 3. Divider */}
+      <View style={[styles.mealDivider, { backgroundColor: borderColor }]} />
+
+      {/* 4. Food rows */}
       {foods.map((food, idx) => (
         <FoodRow
           key={`${food.name}-${idx}`}
@@ -888,11 +903,10 @@ function MealSectionCard({
           borderColor={borderColor}
           isLast={idx === foods.length - 1}
           onAdd={onAddFood}
-          onReplace={onReplaceFood}
         />
       ))}
 
-      {/* Add all button */}
+      {/* 5. Add all button */}
       <TouchableOpacity
         style={[styles.addAllBtn, { borderColor: TEAL }]}
         onPress={() => {
@@ -919,22 +933,24 @@ interface FoodRowProps {
   borderColor: string;
   isLast: boolean;
   onAdd: (food: PlanFood, mealType: MealType) => void;
-  onReplace: (food: PlanFood, mealType: MealType) => void;
 }
 
-function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, isLast, onAdd, onReplace }: FoodRowProps) {
+function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, isLast, onAdd }: FoodRowProps) {
   const calVal = Math.round(Number(food.calories) || 0);
   const protVal = Math.round(Number(food.protein) || 0);
   const carbVal = Math.round(Number(food.carbs) || 0);
   const fatVal = Math.round(Number(food.fats) || 0);
+
+  const quantityDisplay = String(food.quantity || '');
+  const servingDisplay = food.serving_description ? `${quantityDisplay} ${food.serving_description}`.trim() : quantityDisplay;
 
   return (
     <View style={[styles.foodRow, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor }]}>
       {/* Left: name + serving + macros */}
       <View style={styles.foodRowLeft}>
         <Text style={[styles.foodName, { color: textColor }]} numberOfLines={2}>{food.name}</Text>
-        {!!food.serving_description && (
-          <Text style={[styles.foodServing, { color: secondaryColor }]} numberOfLines={1}>{food.serving_description}</Text>
+        {!!servingDisplay && (
+          <Text style={[styles.foodServing, { color: secondaryColor }]} numberOfLines={1}>{servingDisplay}</Text>
         )}
         <View style={styles.foodMacrosRow}>
           <Text style={[styles.foodMacroText, { color: colors.calories }]}>{calVal} kcal</Text>
@@ -947,7 +963,7 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
         </View>
       </View>
 
-      {/* Right: action buttons */}
+      {/* Right: add button only */}
       <View style={styles.foodRowActions}>
         <TouchableOpacity
           style={styles.addFoodBtn}
@@ -958,13 +974,6 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
           activeOpacity={0.8}
         >
           <Text style={styles.addFoodBtnText}>✓ Add</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.replaceFoodBtn, { backgroundColor: isDark ? '#3A3A3C' : '#E5E7EB' }]}
-          onPress={() => onReplace(food, mealType)}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.replaceFoodBtnText, { color: secondaryColor }]}>↺ Replace</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1107,17 +1116,30 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   mealCardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mealCardHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mealEmoji: { fontSize: 20 },
   mealLabel: { fontSize: 17, fontWeight: '700' },
   mealCalBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   mealCalBadgeText: { fontSize: 13, fontWeight: '600' },
+  replaceMealBtn: {
+    borderWidth: 1,
+    borderColor: TEAL,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  replaceMealBtnText: {
+    fontSize: 12,
+    color: TEAL,
+    fontWeight: '600',
+  },
   mealDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: spacing.md },
 
-  // Dish description
+  // Dish description — between header and divider
   dishDescContainer: {
     paddingHorizontal: spacing.md,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 0,
+    paddingBottom: 10,
   },
   dishDescText: {
     fontSize: 12,
@@ -1153,12 +1175,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   addFoodBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  replaceFoodBtn: {
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  replaceFoodBtnText: { fontSize: 12, fontWeight: '600' },
 
   // Add all button
   addAllBtn: {
