@@ -12,6 +12,7 @@ import {
   Modal,
   Animated,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -181,6 +182,19 @@ export default function AIMealPlannerScreen() {
 
   // Screen state
   const [step, setStep] = useState<ScreenStep>('preferences');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => {
+      console.log('[AIMealPlanner] Keyboard shown');
+      setKeyboardVisible(true);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      console.log('[AIMealPlanner] Keyboard hidden');
+      setKeyboardVisible(false);
+    });
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [userGoals, setUserGoals] = useState<UserGoals | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedPlan | null>(null);
 
@@ -504,14 +518,16 @@ export default function AIMealPlannerScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Hero */}
-          <View style={styles.heroSection}>
-            <Text style={styles.heroEmoji}>✨</Text>
-            <Text style={[styles.heroTitle, { color: textColor }]}>Let's build your meal plan</Text>
-            <Text style={[styles.heroSubtitle, { color: secondaryColor }]}>
-              Tell us a bit about your preferences so we can create something you'll actually enjoy.
-            </Text>
-          </View>
+          {/* Hero — hidden when keyboard is visible to give inputs room */}
+          {!keyboardVisible && (
+            <View style={styles.heroSection}>
+              <Text style={styles.heroEmoji}>✨</Text>
+              <Text style={[styles.heroTitle, { color: textColor }]}>Let's build your meal plan</Text>
+              <Text style={[styles.heroSubtitle, { color: secondaryColor }]}>
+                Tell us a bit about your preferences so we can create something you'll actually enjoy.
+              </Text>
+            </View>
+          )}
 
           {/* Goals chips */}
           {userGoals && (
@@ -548,7 +564,7 @@ export default function AIMealPlannerScreen() {
               value={foodPrefs}
               onChangeText={setFoodPrefs}
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
               textAlignVertical="top"
               maxLength={300}
             />
@@ -561,7 +577,7 @@ export default function AIMealPlannerScreen() {
               value={dietaryRestrictions}
               onChangeText={setDietaryRestrictions}
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
               textAlignVertical="top"
               maxLength={300}
             />
@@ -1009,7 +1025,7 @@ const styles = StyleSheet.create({
   // Preferences step
   prefsContent: {
     padding: spacing.md,
-    paddingBottom: 48,
+    paddingBottom: 32,
   },
   heroSection: {
     alignItems: 'center',
@@ -1057,7 +1073,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    minHeight: 80,
+    minHeight: 60,
   },
 
   generateBtn: {
