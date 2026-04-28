@@ -45,22 +45,12 @@ MEAL PLANNING RULES:
 6. Keep responses friendly and encouraging — this is for everyday people, not athletes
 7. When asked to replace a single food item, return the COMPLETE updated plan in JSON format keeping all other meals exactly the same, only adjusting macros for the replaced item
 
-SAVE TRIGGER: When the user is satisfied (says "save", "guardar", "listo", "looks good", "perfect", "save it", "save this", or similar), OR when the message starts with "GENERATE_PLAN:", respond ONLY with a JSON code block in this exact format and nothing else:
+SAVE TRIGGER: When the user is satisfied (says "save", "guardar", "listo", "looks good", "perfect", "save it", "save this", or similar), OR when the message starts with "GENERATE_PLAN:", you MUST respond with ONLY a raw JSON object (no markdown, no backticks, no explanation text). The JSON must have this exact structure:
+{"ready_to_save":true,"plan":{"breakfast":[...],"lunch":[...],"dinner":[...],"snack":[...]},"summary":"..."}
 
-\`\`\`json
-{
-  "ready_to_save": true,
-  "plan": {
-    "breakfast": [{ "name": "...", "calories": 0, "protein": 0, "carbs": 0, "fats": 0, "fiber": 0, "quantity": 1, "serving_description": "..." }],
-    "lunch": [],
-    "dinner": [],
-    "snack": []
-  },
-  "summary": "Brief summary of total macros"
-}
-\`\`\`
+Each food item must have: name, calories, protein, carbs, fats, fiber, quantity, serving_description.
 
-When the message starts with "GENERATE_PLAN:", treat it as the initial plan generation request — immediately return the full plan in the JSON format above (with ready_to_save: true). No conversational text, just the JSON block.
+When the message starts with "GENERATE_PLAN:", treat it as the initial plan generation request — immediately return the full plan in the JSON format above (with ready_to_save: true). No conversational text, just the raw JSON object.
 
 Start by proposing a complete meal plan that hits the user's targets. Be specific with food names, portions, and cooking methods.`;
 }
@@ -71,22 +61,42 @@ function parseMealPlanResponse(content: string): {
   readyToSave: boolean;
   summary: string | null;
 } {
-  const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-  if (jsonBlockMatch && jsonBlockMatch[1]) {
+  // Try fenced code block first (case-insensitive, optional "json" label)
+  const jsonBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = jsonBlockMatch ? jsonBlockMatch[1].trim() : content.trim();
+
+  // Try to parse the candidate (or the full content as fallback)
+  const attempts = [candidate, content.trim()];
+  for (const attempt of attempts) {
     try {
-      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+      const parsed = JSON.parse(attempt);
       if (parsed.ready_to_save === true && parsed.plan) {
         return {
-          message: parsed.summary || "Your meal plan is ready to save!",
+          message: parsed.summary || "Your meal plan is ready!",
           planData: parsed.plan,
           readyToSave: true,
           summary: parsed.summary || null
         };
       }
-    } catch (e) {
-      console.log("[MealPlan] Failed to parse JSON block:", e);
-    }
+    } catch (_) {}
   }
+
+  // Last resort: find a JSON object anywhere in the content
+  const jsonObjectMatch = content.match(/\{[\s\S]*"ready_to_save"[\s\S]*\}/);
+  if (jsonObjectMatch) {
+    try {
+      const parsed = JSON.parse(jsonObjectMatch[0]);
+      if (parsed.ready_to_save === true && parsed.plan) {
+        return {
+          message: parsed.summary || "Your meal plan is ready!",
+          planData: parsed.plan,
+          readyToSave: true,
+          summary: parsed.summary || null
+        };
+      }
+    } catch (_) {}
+  }
+
   return {
     message: content,
     planData: null,
