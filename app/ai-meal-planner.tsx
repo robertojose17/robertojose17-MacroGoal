@@ -492,6 +492,11 @@ export default function AIMealPlannerScreen() {
 
       {/* Step: Preferences */}
       {step === 'preferences' && (
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.prefsContent}
@@ -573,6 +578,7 @@ export default function AIMealPlannerScreen() {
             <Text style={styles.generateBtnText}>Generate My Plan</Text>
           </TouchableOpacity>
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
       {/* Step: Generating */}
