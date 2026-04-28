@@ -387,6 +387,18 @@ export default function AIMealPlannerScreen() {
     setReplaceSheetVisible(true);
   }, []);
 
+  const handleQuantityChange = useCallback((mealType: MealType, foodIndex: number, newQty: number) => {
+    console.log('[AIMealPlanner] handleQuantityChange:', mealType, 'index:', foodIndex, 'newQty:', newQty);
+    if (!generatedPlan) return;
+    const meal = generatedPlan[mealType];
+    const items = getMealItems(meal);
+    const updatedItems = items.map((f, i) => i === foodIndex ? { ...f, quantity: newQty } : f);
+    const updatedMeal = Array.isArray(meal)
+      ? updatedItems
+      : { ...(meal as any), items: updatedItems };
+    setGeneratedPlan({ ...generatedPlan, [mealType]: updatedMeal });
+  }, [generatedPlan]);
+
   const handleReplace = useCallback(async () => {
     if (!replaceTarget || !replaceText.trim() || !userGoals) return;
     const { mealType } = replaceTarget;
@@ -651,9 +663,11 @@ export default function AIMealPlannerScreen() {
                   secondaryColor={secondaryColor}
                   cardBg={cardBg}
                   borderColor={borderColor}
+                  inputBg={inputBg}
                   onAddFood={handleAddFood}
                   onReplaceMeal={handleOpenReplace}
                   onAddAll={handleAddAllToMeal}
+                  onQuantityChange={handleQuantityChange}
                 />
               );
             })}
@@ -836,14 +850,16 @@ interface MealSectionCardProps {
   secondaryColor: string;
   cardBg: string;
   borderColor: string;
+  inputBg: string;
   onAddFood: (food: PlanFood, mealType: MealType) => void;
   onReplaceMeal: (mealType: MealType, mealLabel: string) => void;
   onAddAll: (mealType: MealType) => void;
+  onQuantityChange: (mealType: MealType, foodIndex: number, newQty: number) => void;
 }
 
 function MealSectionCard({
-  section, foods, dishDescription, sectionCalories, isDark, textColor, secondaryColor, cardBg, borderColor,
-  onAddFood, onReplaceMeal, onAddAll,
+  section, foods, dishDescription, sectionCalories, isDark, textColor, secondaryColor, cardBg, borderColor, inputBg,
+  onAddFood, onReplaceMeal, onAddAll, onQuantityChange,
 }: MealSectionCardProps) {
   const [descExpanded, setDescExpanded] = useState(false);
   const calRounded = Math.round(sectionCalories);
@@ -923,8 +939,13 @@ function MealSectionCard({
           textColor={textColor}
           secondaryColor={secondaryColor}
           borderColor={borderColor}
+          inputBg={inputBg}
           isLast={idx === foods.length - 1}
           onAdd={onAddFood}
+          onQuantityChange={(newQty) => {
+            console.log('[AIMealPlanner] Quantity changed for', food.name, 'in', section.key, ':', newQty);
+            onQuantityChange(section.key, idx, newQty);
+          }}
         />
       ))}
 
@@ -953,27 +974,65 @@ interface FoodRowProps {
   textColor: string;
   secondaryColor: string;
   borderColor: string;
+  inputBg: string;
   isLast: boolean;
   onAdd: (food: PlanFood, mealType: MealType) => void;
+  onQuantityChange: (newQty: number) => void;
 }
 
-function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, isLast, onAdd }: FoodRowProps) {
+function cleanServingDescription(foodName: string, servingDesc: string): string {
+  if (!servingDesc) return '';
+  const nameLower = foodName.toLowerCase().trim();
+  const descLower = servingDesc.toLowerCase().trim();
+  if (descLower.startsWith(nameLower)) {
+    return servingDesc.slice(foodName.length).trim();
+  }
+  const nameSingular = nameLower.endsWith('s') ? nameLower.slice(0, -1) : nameLower;
+  if (descLower.startsWith(nameSingular)) {
+    return servingDesc.slice(nameSingular.length).trim();
+  }
+  return servingDesc;
+}
+
+function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, inputBg, isLast, onAdd, onQuantityChange }: FoodRowProps) {
+  const [localQty, setLocalQty] = useState(String(food.quantity || ''));
+
   const calVal = Math.round(Number(food.calories) || 0);
   const protVal = Math.round(Number(food.protein) || 0);
   const carbVal = Math.round(Number(food.carbs) || 0);
   const fatVal = Math.round(Number(food.fats) || 0);
 
-  const quantityDisplay = String(food.quantity || '');
-  const servingDisplay = food.serving_description ? `${quantityDisplay} ${food.serving_description}`.trim() : quantityDisplay;
+  const cleanedServing = food.serving_description
+    ? cleanServingDescription(food.name, food.serving_description)
+    : '';
 
   return (
     <View style={[styles.foodRow, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor }]}>
       {/* Left: name + serving + macros */}
       <View style={styles.foodRowLeft}>
         <Text style={[styles.foodName, { color: textColor }]} numberOfLines={2}>{food.name}</Text>
-        {!!servingDisplay && (
-          <Text style={[styles.foodServing, { color: secondaryColor }]} numberOfLines={1}>{servingDisplay}</Text>
-        )}
+        <View style={[styles.servingRow]}>
+          <TextInput
+            style={[styles.qtyInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
+            value={localQty}
+            onChangeText={(t) => {
+              setLocalQty(t);
+            }}
+            onBlur={() => {
+              const n = parseFloat(localQty);
+              if (!isNaN(n) && n > 0) onQuantityChange(n);
+              else setLocalQty(String(food.quantity));
+            }}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            maxLength={6}
+          />
+          {!!cleanedServing && (
+            <Text style={[styles.servingUnit, { color: secondaryColor }]} numberOfLines={1}>
+              {cleanedServing}
+            </Text>
+          )}
+        </View>
         <View style={styles.foodMacrosRow}>
           <Text style={[styles.foodMacroText, { color: colors.calories }]}>{calVal} kcal</Text>
           <Text style={[styles.foodMacroDot, { color: secondaryColor }]}>·</Text>
@@ -1186,6 +1245,27 @@ const styles = StyleSheet.create({
   foodRowLeft: { flex: 1 },
   foodName: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
   foodServing: { fontSize: 12, marginBottom: 4 },
+  servingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+    flexShrink: 1,
+  },
+  qtyInput: {
+    width: 52,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  servingUnit: {
+    fontSize: 12,
+    flex: 1,
+  },
   foodMacrosRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   foodMacroText: { fontSize: 12, fontWeight: '600' },
   foodMacroDot: { fontSize: 12 },
