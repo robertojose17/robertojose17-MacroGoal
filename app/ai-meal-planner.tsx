@@ -1108,6 +1108,7 @@ interface FoodRowProps {
 function FoodRow({ food, isDark, textColor, secondaryColor, borderColor, inputBg, isLast, onServingChange }: FoodRowProps) {
   const [localSize, setLocalSize] = useState(String(food.serving_size ?? 1));
   const [unitPickerVisible, setUnitPickerVisible] = useState(false);
+  const [noteModalVisible, setNoteModalVisible] = useState(false);
 
   // Keep localSize in sync when parent recalculates serving_size after a unit change
   useEffect(() => {
@@ -1211,7 +1212,29 @@ function FoodRow({ food, isDark, textColor, secondaryColor, borderColor, inputBg
           {showServingDesc && (
             <>
               <Text style={[styles.servingDot, { color: secondaryColor }]}>·</Text>
-              <Text style={[styles.servingDesc, { color: secondaryColor }]} numberOfLines={1}>{servingDesc}</Text>
+              <TouchableOpacity onPress={() => { console.log('[AIMealPlanner] serving_description tapped for', food.name); setNoteModalVisible(true); }} activeOpacity={0.7}>
+                <Text style={[styles.servingDesc, { color: secondaryColor }]} numberOfLines={1}>{servingDesc}</Text>
+              </TouchableOpacity>
+              <Modal
+                visible={noteModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setNoteModalVisible(false)}
+              >
+                <TouchableOpacity
+                  style={styles.unitPickerOverlay}
+                  activeOpacity={1}
+                  onPress={() => setNoteModalVisible(false)}
+                >
+                  <View style={[styles.noteModalBox, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor }]}>
+                    <Text style={[styles.noteModalTitle, { color: textColor }]}>{food.name}</Text>
+                    <Text style={[styles.noteModalBody, { color: secondaryColor }]}>{servingDesc}</Text>
+                    <TouchableOpacity onPress={() => { console.log('[AIMealPlanner] Note modal closed for', food.name); setNoteModalVisible(false); }} style={styles.noteModalClose}>
+                      <Text style={{ color: TEAL, fontWeight: '600', fontSize: 15 }}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Modal>
             </>
           )}
         </View>
@@ -1606,4 +1629,29 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   suggestionChipText: { fontSize: 13, fontWeight: '500' },
+
+  // Note modal
+  noteModalBox: {
+    margin: 32,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  noteModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  noteModalBody: {
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  noteModalClose: {
+    alignSelf: 'flex-end',
+  },
 });
