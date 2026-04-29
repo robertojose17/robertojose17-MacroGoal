@@ -31,7 +31,6 @@ interface PlanFood {
   carbs: number;
   fats: number;
   fiber: number;
-  quantity: number;
   serving_size: number;
   serving_unit: 'g' | 'oz' | 'lb';
   serving_description: string;
@@ -330,7 +329,7 @@ export default function AIMealPlannerScreen() {
         carbs: Math.round(Number(food.carbs) || 0),
         fats: Math.round(Number(food.fats) || 0),
         fiber: Math.round(Number(food.fiber) || 0),
-        quantity: Number(food.quantity) || 1,
+        quantity: 1,
         serving_description: food.serving_description || '1 serving',
       });
       if (error) throw new Error(error.message);
@@ -363,7 +362,7 @@ export default function AIMealPlannerScreen() {
         carbs: Math.round(Number(food.carbs) || 0),
         fats: Math.round(Number(food.fats) || 0),
         fiber: Math.round(Number(food.fiber) || 0),
-        quantity: Number(food.quantity) || 1,
+        quantity: 1,
         serving_description: food.serving_description || '1 serving',
       }));
 
@@ -392,7 +391,7 @@ export default function AIMealPlannerScreen() {
   const handleFoodServingChange = useCallback((
     mealType: MealType,
     foodIndex: number,
-    field: 'quantity' | 'serving_size' | 'serving_unit',
+    field: 'serving_size' | 'serving_unit',
     value: string | number,
   ) => {
     console.log('[AIMealPlanner] handleFoodServingChange:', mealType, 'index:', foodIndex, 'field:', field, 'value:', value);
@@ -403,7 +402,6 @@ export default function AIMealPlannerScreen() {
     const updatedItems = items.map((f, i) => {
       if (i !== foodIndex) return f;
 
-      const currentQty = Number(f.quantity) || 1;
       const currentSize = Number(f.serving_size) || 100;
       const currentUnit = f.serving_unit || 'g';
 
@@ -413,7 +411,7 @@ export default function AIMealPlannerScreen() {
         if (unit === 'lb') return size * 453.592;
         return size;
       };
-      const currentGrams = toGrams(currentSize, currentUnit) * currentQty;
+      const currentGrams = toGrams(currentSize, currentUnit);
       const perGram = currentGrams > 0
         ? {
             calories: (Number(f.calories) || 0) / currentGrams,
@@ -424,13 +422,10 @@ export default function AIMealPlannerScreen() {
           }
         : { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 };
 
-      let newQty = currentQty;
       let newSize = currentSize;
       let newUnit = currentUnit as 'g' | 'oz' | 'lb';
 
-      if (field === 'quantity') {
-        newQty = Number(value) || 1;
-      } else if (field === 'serving_size') {
+      if (field === 'serving_size') {
         newSize = Number(value) || currentSize;
       } else if (field === 'serving_unit') {
         newUnit = value as 'g' | 'oz' | 'lb';
@@ -442,10 +437,9 @@ export default function AIMealPlannerScreen() {
         newSize = Math.round(newSize * 10) / 10;
       }
 
-      const newGrams = toGrams(newSize, newUnit) * newQty;
+      const newGrams = toGrams(newSize, newUnit);
       return {
         ...f,
-        quantity: newQty,
         serving_size: newSize,
         serving_unit: newUnit,
         calories: Math.round(perGram.calories * newGrams),
@@ -521,7 +515,7 @@ export default function AIMealPlannerScreen() {
             date: dateStr,
             meal_type: mealType,
             food_name: food.name,
-            quantity: Number(food.quantity) || 1,
+            quantity: 1,
             serving_description: food.serving_description || '1 serving',
             calories: Math.round(Number(food.calories) || 0),
             protein: Math.round(Number(food.protein) || 0),
@@ -917,7 +911,7 @@ interface MealSectionCardProps {
   onAddFood: (food: PlanFood, mealType: MealType) => void;
   onReplaceMeal: (mealType: MealType, mealLabel: string) => void;
   onAddAll: (mealType: MealType) => void;
-  onServingChange: (mealType: MealType, foodIndex: number, field: 'quantity' | 'serving_size' | 'serving_unit', value: string | number) => void;
+  onServingChange: (mealType: MealType, foodIndex: number, field: 'serving_size' | 'serving_unit', value: string | number) => void;
 }
 
 function MealSectionCard({
@@ -1042,11 +1036,10 @@ interface FoodRowProps {
   inputBg: string;
   isLast: boolean;
   onAdd: (food: PlanFood, mealType: MealType) => void;
-  onServingChange: (field: 'quantity' | 'serving_size' | 'serving_unit', value: string | number) => void;
+  onServingChange: (field: 'serving_size' | 'serving_unit', value: string | number) => void;
 }
 
 function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, inputBg, isLast, onAdd, onServingChange }: FoodRowProps) {
-  const [localQty, setLocalQty] = useState(String(food.quantity ?? 1));
   const [localSize, setLocalSize] = useState(String(food.serving_size ?? 100));
 
   const currentUnit = food.serving_unit || 'g';
@@ -1071,29 +1064,8 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
       <View style={styles.foodRowLeft}>
         <Text style={[styles.foodName, { color: textColor }]} numberOfLines={2}>{food.name}</Text>
 
-        {/* Serving row: [qty] × [size] [unit▾] · description */}
+        {/* Serving row: [size] [unit▾] · description */}
         <View style={styles.servingRow}>
-          {/* Quantity input */}
-          <TextInput
-            style={[styles.servingInput, styles.qtyInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
-            value={localQty}
-            onChangeText={(t) => setLocalQty(t)}
-            onBlur={() => {
-              const n = parseFloat(localQty);
-              if (!isNaN(n) && n > 0) {
-                console.log('[AIMealPlanner] Quantity committed for', food.name, ':', n);
-                onServingChange('quantity', n);
-              } else {
-                setLocalQty(String(food.quantity ?? 1));
-              }
-            }}
-            keyboardType="decimal-pad"
-            selectTextOnFocus
-            maxLength={6}
-          />
-
-          <Text style={[styles.servingMultiplier, { color: secondaryColor }]}>×</Text>
-
           {/* Serving size input */}
           <TextInput
             style={[styles.servingInput, styles.sizeInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
@@ -1363,15 +1335,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  qtyInput: {
-    width: 44,
-  },
   sizeInput: {
-    width: 52,
-  },
-  servingMultiplier: {
-    fontSize: 13,
-    fontWeight: '500',
+    width: 60,
   },
   unitBtn: {
     flexDirection: 'row',
