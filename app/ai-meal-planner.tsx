@@ -557,7 +557,11 @@ export default function AIMealPlannerScreen() {
       console.log('[AIMealPlanner] replace response, readyToSave:', data?.readyToSave);
 
       if (data?.readyToSave && data?.planData) {
-        setGeneratedPlan(normalizePlan(data.planData));
+        const normalized = normalizePlan(data.planData);
+        setGeneratedPlan(prev => ({
+          ...prev!,
+          [mealType]: normalized[mealType],
+        }));
         setReplaceSheetVisible(false);
         showToast('Meal replaced ✓');
       } else {
