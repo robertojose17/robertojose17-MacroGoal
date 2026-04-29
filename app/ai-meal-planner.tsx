@@ -344,7 +344,11 @@ export default function AIMealPlannerScreen() {
       console.log('[AIMealPlanner] generate-meal-plan response, readyToSave:', data?.readyToSave);
 
       if (data?.readyToSave && data?.planData) {
-        setGeneratedPlan(normalizePlan(data.planData));
+        const normalized = normalizePlan(data.planData);
+        setGeneratedPlan({
+          ...generatedPlan!,
+          [mealType]: normalized[mealType],
+        });
         setStep('plan');
       } else {
         throw new Error('Plan data not returned. Please try again.');
@@ -568,7 +572,7 @@ export default function AIMealPlannerScreen() {
     } finally {
       if (isMounted.current) setReplacing(false);
     }
-  }, [replaceTarget, replaceText, userGoals, showToast]);
+  }, [replaceTarget, replaceText, userGoals, showToast, generatedPlan]);
 
   // ── Save plan ───────────────────────────────────────────────────────────────
 
@@ -1123,7 +1127,7 @@ function FoodRow({ food, isDark, textColor, secondaryColor, borderColor, inputBg
     ? [...SERVING_UNITS_BASE]
     : [currentUnit, ...SERVING_UNITS_BASE];
 
-  const showServingDesc = !!servingDesc && ['g', 'oz', 'lb'].includes(currentUnit);
+  const showServingDesc = !!servingDesc;
 
   return (
     <View style={[styles.foodRow, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor }]}>
