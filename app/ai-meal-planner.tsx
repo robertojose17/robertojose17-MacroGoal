@@ -803,9 +803,7 @@ export default function AIMealPlannerScreen() {
                   cardBg={cardBg}
                   borderColor={borderColor}
                   inputBg={inputBg}
-                  onAddFood={handleAddFood}
                   onReplaceMeal={handleOpenReplace}
-                  onAddAll={handleAddAllToMeal}
                   onServingChange={handleFoodServingChange}
                 />
               );
@@ -990,15 +988,13 @@ interface MealSectionCardProps {
   cardBg: string;
   borderColor: string;
   inputBg: string;
-  onAddFood: (food: PlanFood, mealType: MealType) => void;
   onReplaceMeal: (mealType: MealType, mealLabel: string) => void;
-  onAddAll: (mealType: MealType) => void;
   onServingChange: (mealType: MealType, foodIndex: number, field: 'serving_size' | 'serving_unit', value: string | number) => void;
 }
 
 function MealSectionCard({
   section, foods, dishDescription, sectionCalories, isDark, textColor, secondaryColor, cardBg, borderColor, inputBg,
-  onAddFood, onReplaceMeal, onAddAll, onServingChange,
+  onReplaceMeal, onServingChange,
 }: MealSectionCardProps) {
   const [descExpanded, setDescExpanded] = useState(false);
   const calRounded = Math.round(sectionCalories);
@@ -1073,33 +1069,18 @@ function MealSectionCard({
         <FoodRow
           key={`${food.name}-${idx}`}
           food={food}
-          mealType={section.key}
           isDark={isDark}
           textColor={textColor}
           secondaryColor={secondaryColor}
           borderColor={borderColor}
           inputBg={inputBg}
           isLast={idx === foods.length - 1}
-          onAdd={onAddFood}
           onServingChange={(field, value) => {
             console.log('[AIMealPlanner] Serving changed for', food.name, 'in', section.key, '- field:', field, 'value:', value);
             onServingChange(section.key, idx, field, value);
           }}
         />
       ))}
-
-      {/* 5. Add all button */}
-      <TouchableOpacity
-        style={[styles.addAllBtn, { borderColor: TEAL }]}
-        onPress={() => {
-          console.log('[AIMealPlanner] Add all to', section.label, 'pressed');
-          onAddAll(section.key);
-        }}
-        activeOpacity={0.8}
-      >
-        <IconSymbol ios_icon_name="plus.circle" android_material_icon_name="add_circle_outline" size={15} color={TEAL} />
-        <Text style={styles.addAllBtnText}>Add all to {section.label}</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -1110,19 +1091,18 @@ const SERVING_UNITS_BASE = ['g', 'oz', 'lb', 'slice', 'cup', 'tbsp', 'tsp', 'pie
 
 interface FoodRowProps {
   food: PlanFood;
-  mealType: MealType;
   isDark: boolean;
   textColor: string;
   secondaryColor: string;
   borderColor: string;
   inputBg: string;
   isLast: boolean;
-  onAdd: (food: PlanFood, mealType: MealType) => void;
   onServingChange: (field: 'serving_size' | 'serving_unit', value: string | number) => void;
 }
 
-function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, inputBg, isLast, onAdd, onServingChange }: FoodRowProps) {
+function FoodRow({ food, isDark, textColor, secondaryColor, borderColor, inputBg, isLast, onServingChange }: FoodRowProps) {
   const [localSize, setLocalSize] = useState(String(food.serving_size ?? 1));
+  const [unitPickerVisible, setUnitPickerVisible] = useState(false);
 
   // Keep localSize in sync when parent recalculates serving_size after a unit change
   useEffect(() => {
@@ -1143,12 +1123,7 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
     ? [...SERVING_UNITS_BASE]
     : [currentUnit, ...SERVING_UNITS_BASE];
 
-  const handleCycleUnit = () => {
-    const currentIdx = cycleList.indexOf(currentUnit);
-    const nextUnit = cycleList[(currentIdx + 1) % cycleList.length];
-    console.log('[AIMealPlanner] Unit cycled for', food.name, ':', currentUnit, '->', nextUnit);
-    onServingChange('serving_unit', nextUnit);
-  };
+  const showServingDesc = !!servingDesc && ['g', 'oz', 'lb'].includes(currentUnit);
 
   return (
     <View style={[styles.foodRow, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor }]}>
@@ -1177,17 +1152,58 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
             maxLength={7}
           />
 
-          {/* Unit cycle button */}
+          {/* Unit dropdown button */}
           <TouchableOpacity
             style={[styles.unitBtn, { borderColor }]}
-            onPress={handleCycleUnit}
+            onPress={() => {
+              console.log('[AIMealPlanner] Unit picker opened for', food.name, 'current unit:', currentUnit);
+              setUnitPickerVisible(true);
+            }}
             activeOpacity={0.7}
           >
             <Text style={[styles.unitBtnText, { color: textColor }]}>{currentUnit}</Text>
             <Text style={[styles.unitChevron, { color: secondaryColor }]}>▾</Text>
           </TouchableOpacity>
 
-          {!!servingDesc && (
+          <Modal
+            visible={unitPickerVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setUnitPickerVisible(false)}
+          >
+            <TouchableOpacity
+              style={styles.unitPickerOverlay}
+              activeOpacity={1}
+              onPress={() => setUnitPickerVisible(false)}
+            >
+              <View style={[styles.unitPickerMenu, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor }]}>
+                {cycleList.map((unit) => (
+                  <TouchableOpacity
+                    key={unit}
+                    style={[
+                      styles.unitPickerItem,
+                      unit === currentUnit && { backgroundColor: isDark ? '#2C2C2E' : '#F0F9F7' },
+                    ]}
+                    onPress={() => {
+                      console.log('[AIMealPlanner] Unit selected for', food.name, ':', currentUnit, '->', unit);
+                      onServingChange('serving_unit', unit);
+                      setUnitPickerVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.unitPickerItemText, { color: textColor }, unit === currentUnit && { color: TEAL, fontWeight: '600' }]}>
+                      {unit}
+                    </Text>
+                    {unit === currentUnit && (
+                      <Text style={{ color: TEAL, fontSize: 14 }}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableOpacity>
+          </Modal>
+
+          {showServingDesc && (
             <>
               <Text style={[styles.servingDot, { color: secondaryColor }]}>·</Text>
               <Text style={[styles.servingDesc, { color: secondaryColor }]} numberOfLines={1}>{servingDesc}</Text>
@@ -1213,20 +1229,6 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
           <Text style={[styles.foodMacroText, { color: colors.fats }]}>F: </Text>
           <Text style={[styles.foodMacroText, { color: colors.fats }]}>{fatVal}g</Text>
         </View>
-      </View>
-
-      {/* Right: add button */}
-      <View style={styles.foodRowActions}>
-        <TouchableOpacity
-          style={styles.addFoodBtn}
-          onPress={() => {
-            console.log('[AIMealPlanner] Add single food pressed:', food.name, 'to', mealType);
-            onAdd(food, mealType);
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.addFoodBtnText}>✓ Add</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -1468,28 +1470,34 @@ const styles = StyleSheet.create({
   foodMacrosRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   foodMacroText: { fontSize: 12, fontWeight: '600' },
   foodMacroDot: { fontSize: 12 },
-  foodRowActions: { flexDirection: 'column', gap: 6, alignItems: 'flex-end' },
-  addFoodBtn: {
-    backgroundColor: TEAL,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  // Unit picker modal
+  unitPickerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  addFoodBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-  // Add all button
-  addAllBtn: {
+  unitPickerMenu: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  unitPickerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    margin: spacing.md,
-    marginTop: 8,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 13,
   },
-  addAllBtnText: { fontSize: 14, fontWeight: '600', color: TEAL },
+  unitPickerItemText: {
+    fontSize: 15,
+  },
 
   planBottomSpacer: { height: 20 },
 
