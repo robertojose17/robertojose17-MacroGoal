@@ -345,10 +345,7 @@ export default function AIMealPlannerScreen() {
 
       if (data?.readyToSave && data?.planData) {
         const normalized = normalizePlan(data.planData);
-        setGeneratedPlan({
-          ...generatedPlan!,
-          [mealType]: normalized[mealType],
-        });
+        setGeneratedPlan(normalized);
         setStep('plan');
       } else {
         throw new Error('Plan data not returned. Please try again.');
