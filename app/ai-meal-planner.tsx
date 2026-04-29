@@ -33,7 +33,8 @@ interface PlanFood {
   fiber: number;
   serving_size: number;
   serving_unit: string;
-  serving_description: string;
+  serving_description: string;  // cooking method only: "grilled", "steamed", "raw"
+  note?: string;                 // optional extra context for this ingredient
   // Hidden per-gram bases — set once so unit cycling stays accurate
   _base_calories_per_gram?: number;
   _base_protein_per_gram?: number;
@@ -1140,6 +1141,11 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
           )}
         </View>
 
+        {/* Note row (optional per-ingredient context from AI) */}
+        {!!food.note && (
+          <Text style={[styles.foodNote, { color: secondaryColor }]}>{food.note}</Text>
+        )}
+
         {/* Macros row */}
         <View style={styles.foodMacrosRow}>
           <Text style={[styles.foodMacroText, { color: colors.calories }]}>{calVal} kcal</Text>
@@ -1398,6 +1404,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     flex: 1,
+  },
+  foodNote: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 2,
+    marginBottom: 2,
   },
   foodMacrosRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   foodMacroText: { fontSize: 12, fontWeight: '600' },
