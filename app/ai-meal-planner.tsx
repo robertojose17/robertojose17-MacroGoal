@@ -98,6 +98,60 @@ function getMealDescription(meal: MealSection | PlanFood[] | undefined): string 
   return meal?.dish_description || null;
 }
 
+function normalizeServingDescription(food: PlanFood): PlanFood {
+  const desc = (food.serving_description || '').trim();
+  const currentSize = Number(food.serving_size) || 1;
+
+  // Only normalize if serving_size is 1 or 0 (AI put everything in description)
+  if (currentSize > 1) return food;
+
+  // Pattern: number, optional unit word(s), rest is description
+  // Matches: "150g grilled" | "3 large eggs scrambled" | "2 slices whole wheat"
+  const match = desc.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+(?:\s+[a-zA-Z]+)?)?\s+(.*)$/);
+  if (!match) return food;
+
+  const extractedSize = parseFloat(match[1]);
+  const extractedUnit = (match[2] || '').trim().toLowerCase();
+  const cleanDesc = (match[3] || '').trim();
+
+  if (isNaN(extractedSize) || extractedSize <= 0) return food;
+
+  const unitMap: Record<string, string> = {
+    'g': 'g', 'gram': 'g', 'grams': 'g',
+    'oz': 'oz', 'ounce': 'oz', 'ounces': 'oz',
+    'lb': 'lb', 'pound': 'lb', 'pounds': 'lb',
+    'slice': 'slice', 'slices': 'slice',
+    'cup': 'cup', 'cups': 'cup',
+    'tbsp': 'tbsp', 'tablespoon': 'tbsp', 'tablespoons': 'tbsp',
+    'tsp': 'tsp', 'teaspoon': 'tsp', 'teaspoons': 'tsp',
+    'piece': 'piece', 'pieces': 'piece',
+    'large': 'large', 'medium': 'medium', 'small': 'small',
+  };
+
+  const mappedUnit = unitMap[extractedUnit] || extractedUnit || food.serving_unit || 'g';
+
+  return {
+    ...food,
+    serving_size: extractedSize,
+    serving_unit: mappedUnit,
+    serving_description: cleanDesc || food.serving_description,
+  };
+}
+
+function normalizePlan(plan: GeneratedPlan): GeneratedPlan {
+  const normalizeSection = (section: MealSection | PlanFood[] | undefined): MealSection | PlanFood[] => {
+    if (!section) return [];
+    if (Array.isArray(section)) return section.map(normalizeServingDescription);
+    return { ...section, items: section.items.map(normalizeServingDescription) };
+  };
+  return {
+    breakfast: normalizeSection(plan.breakfast),
+    lunch: normalizeSection(plan.lunch),
+    dinner: normalizeSection(plan.dinner),
+    snack: normalizeSection(plan.snack),
+  };
+}
+
 function sumMacros(foods: PlanFood[]) {
   return foods.reduce(
     (acc, f) => ({
@@ -290,7 +344,7 @@ export default function AIMealPlannerScreen() {
       console.log('[AIMealPlanner] generate-meal-plan response, readyToSave:', data?.readyToSave);
 
       if (data?.readyToSave && data?.planData) {
-        setGeneratedPlan(data.planData);
+        setGeneratedPlan(normalizePlan(data.planData));
         setStep('plan');
       } else {
         throw new Error('Plan data not returned. Please try again.');
@@ -502,7 +556,7 @@ export default function AIMealPlannerScreen() {
       console.log('[AIMealPlanner] replace response, readyToSave:', data?.readyToSave);
 
       if (data?.readyToSave && data?.planData) {
-        setGeneratedPlan(data.planData);
+        setGeneratedPlan(normalizePlan(data.planData));
         setReplaceSheetVisible(false);
         showToast('Meal replaced ✓');
       } else {
