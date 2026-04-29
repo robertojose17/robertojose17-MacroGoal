@@ -32,8 +32,14 @@ interface PlanFood {
   fats: number;
   fiber: number;
   serving_size: number;
-  serving_unit: 'g' | 'oz' | 'lb';
+  serving_unit: string;
   serving_description: string;
+  // Hidden per-gram bases — set once so unit cycling stays accurate
+  _base_calories_per_gram?: number;
+  _base_protein_per_gram?: number;
+  _base_carbs_per_gram?: number;
+  _base_fats_per_gram?: number;
+  _base_fiber_per_gram?: number;
 }
 
 interface MealSection {
@@ -402,51 +408,72 @@ export default function AIMealPlannerScreen() {
     const updatedItems = items.map((f, i) => {
       if (i !== foodIndex) return f;
 
-      const currentSize = Number(f.serving_size) || 100;
+      const currentSize = Number(f.serving_size) || 1;
       const currentUnit = f.serving_unit || 'g';
 
-      // Compute per-gram macro basis from current state
-      const toGrams = (size: number, unit: 'g' | 'oz' | 'lb') => {
-        if (unit === 'oz') return size * 28.3495;
-        if (unit === 'lb') return size * 453.592;
-        return size;
+      // Convert any unit to grams
+      const unitToGrams = (unit: string): number => {
+        switch (unit) {
+          case 'g':     return 1;
+          case 'oz':    return 28.3495;
+          case 'lb':    return 453.592;
+          case 'slice': return 30;
+          case 'cup':   return 240;
+          case 'tbsp':  return 15;
+          case 'tsp':   return 5;
+          case 'piece': return 100;
+          case 'medium':return 120;
+          default:      return 1; // unknown unit — treat as 1g equivalent (no conversion)
+        }
       };
-      const currentGrams = toGrams(currentSize, currentUnit);
-      const perGram = currentGrams > 0
-        ? {
-            calories: (Number(f.calories) || 0) / currentGrams,
-            protein: (Number(f.protein) || 0) / currentGrams,
-            carbs: (Number(f.carbs) || 0) / currentGrams,
-            fats: (Number(f.fats) || 0) / currentGrams,
-            fiber: (Number(f.fiber) || 0) / currentGrams,
-          }
-        : { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 };
+
+      // Resolve or initialise per-gram bases (set once, never overwritten)
+      const currentGrams = currentSize * unitToGrams(currentUnit);
+      const baseCalPerG = f._base_calories_per_gram !== undefined
+        ? f._base_calories_per_gram
+        : currentGrams > 0 ? (Number(f.calories) || 0) / currentGrams : 0;
+      const baseProPerG = f._base_protein_per_gram !== undefined
+        ? f._base_protein_per_gram
+        : currentGrams > 0 ? (Number(f.protein) || 0) / currentGrams : 0;
+      const baseCarbPerG = f._base_carbs_per_gram !== undefined
+        ? f._base_carbs_per_gram
+        : currentGrams > 0 ? (Number(f.carbs) || 0) / currentGrams : 0;
+      const baseFatPerG = f._base_fats_per_gram !== undefined
+        ? f._base_fats_per_gram
+        : currentGrams > 0 ? (Number(f.fats) || 0) / currentGrams : 0;
+      const baseFibPerG = f._base_fiber_per_gram !== undefined
+        ? f._base_fiber_per_gram
+        : currentGrams > 0 ? (Number(f.fiber) || 0) / currentGrams : 0;
 
       let newSize = currentSize;
-      let newUnit = currentUnit as 'g' | 'oz' | 'lb';
+      let newUnit = currentUnit;
 
       if (field === 'serving_size') {
         newSize = Number(value) || currentSize;
       } else if (field === 'serving_unit') {
-        newUnit = value as 'g' | 'oz' | 'lb';
-        // Convert serving_size to new unit so displayed grams stay the same
-        const currentGramsTotal = toGrams(currentSize, currentUnit);
-        if (newUnit === 'oz') newSize = currentGramsTotal / 28.3495;
-        else if (newUnit === 'lb') newSize = currentGramsTotal / 453.592;
-        else newSize = currentGramsTotal;
-        newSize = Math.round(newSize * 10) / 10;
+        newUnit = String(value);
+        // Convert current serving_size from currentUnit → grams → newUnit
+        const gramsTotal = currentSize * unitToGrams(currentUnit);
+        const newUnitGrams = unitToGrams(newUnit);
+        newSize = newUnitGrams > 0 ? Math.round((gramsTotal / newUnitGrams) * 10) / 10 : currentSize;
+        console.log('[AIMealPlanner] Unit conversion:', currentSize, currentUnit, '->', newSize, newUnit, '(', gramsTotal, 'g)');
       }
 
-      const newGrams = toGrams(newSize, newUnit);
+      const newGrams = newSize * unitToGrams(newUnit);
       return {
         ...f,
         serving_size: newSize,
         serving_unit: newUnit,
-        calories: Math.round(perGram.calories * newGrams),
-        protein: Math.round(perGram.protein * newGrams * 10) / 10,
-        carbs: Math.round(perGram.carbs * newGrams * 10) / 10,
-        fats: Math.round(perGram.fats * newGrams * 10) / 10,
-        fiber: Math.round(perGram.fiber * newGrams * 10) / 10,
+        calories: Math.round(baseCalPerG * newGrams),
+        protein: Math.round(baseProPerG * newGrams * 10) / 10,
+        carbs: Math.round(baseCarbPerG * newGrams * 10) / 10,
+        fats: Math.round(baseFatPerG * newGrams * 10) / 10,
+        fiber: Math.round(baseFibPerG * newGrams * 10) / 10,
+        _base_calories_per_gram: baseCalPerG,
+        _base_protein_per_gram: baseProPerG,
+        _base_carbs_per_gram: baseCarbPerG,
+        _base_fats_per_gram: baseFatPerG,
+        _base_fiber_per_gram: baseFibPerG,
       };
     });
 
@@ -1024,7 +1051,7 @@ function MealSectionCard({
 
 // ─── FoodRow ──────────────────────────────────────────────────────────────────
 
-const SERVING_UNITS: Array<'g' | 'oz' | 'lb'> = ['g', 'oz', 'lb'];
+const SERVING_UNITS_BASE = ['g', 'oz', 'lb', 'slice', 'cup', 'tbsp', 'tsp', 'piece'] as const;
 
 interface FoodRowProps {
   food: PlanFood;
@@ -1040,7 +1067,12 @@ interface FoodRowProps {
 }
 
 function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColor, inputBg, isLast, onAdd, onServingChange }: FoodRowProps) {
-  const [localSize, setLocalSize] = useState(String(food.serving_size ?? 100));
+  const [localSize, setLocalSize] = useState(String(food.serving_size ?? 1));
+
+  // Keep localSize in sync when parent recalculates serving_size after a unit change
+  useEffect(() => {
+    setLocalSize(String(food.serving_size ?? 1));
+  }, [food.serving_size, food.serving_unit]);
 
   const currentUnit = food.serving_unit || 'g';
 
@@ -1051,9 +1083,14 @@ function FoodRow({ food, mealType, isDark, textColor, secondaryColor, borderColo
 
   const servingDesc = food.serving_description || '';
 
+  // Build the cycling list: if current unit is not in the base list, prepend it
+  const cycleList: string[] = SERVING_UNITS_BASE.includes(currentUnit as typeof SERVING_UNITS_BASE[number])
+    ? [...SERVING_UNITS_BASE]
+    : [currentUnit, ...SERVING_UNITS_BASE];
+
   const handleCycleUnit = () => {
-    const currentIdx = SERVING_UNITS.indexOf(currentUnit);
-    const nextUnit = SERVING_UNITS[(currentIdx + 1) % SERVING_UNITS.length];
+    const currentIdx = cycleList.indexOf(currentUnit);
+    const nextUnit = cycleList[(currentIdx + 1) % cycleList.length];
     console.log('[AIMealPlanner] Unit cycled for', food.name, ':', currentUnit, '->', nextUnit);
     onServingChange('serving_unit', nextUnit);
   };
