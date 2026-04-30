@@ -150,16 +150,17 @@ PROTEIN RULE (highest priority):
 - Adjust carbs/fats to stay within calorie budget, never sacrifice protein
 
 FOOD ITEM FORMAT RULES (critical — follow exactly):
-- Every ingredient that contributes calories MUST be its own separate JSON item with its own macros
-- BAD example (wrong): { name: "Oatmeal", serving_size: 1, serving_unit: "g", serving_description: "80g cooked with honey and almond butter" }
-- GOOD example (correct): three separate items:
-  { name: "Rolled Oats", serving_size: 80, serving_unit: "g", serving_description: "cooked", calories: 300, protein: 10, carbs: 54, fats: 5, fiber: 8 }
-  { name: "Honey", serving_size: 15, serving_unit: "g", serving_description: "raw", calories: 45, protein: 0, carbs: 12, fats: 0, fiber: 0 }
-  { name: "Almond Butter", serving_size: 32, serving_unit: "g", serving_description: "raw", calories: 190, protein: 7, carbs: 6, fats: 17, fiber: 2 }
-- serving_size MUST be the actual quantity (e.g. 80, 150, 200, 30) — NEVER use 1 as serving_size for a gram-measured food
-- serving_unit: use "g" for solids weighed in grams, "ml" for liquids, "unit" for whole countable items (eggs, bananas, slices of bread)
-- serving_description: ONLY the cooking method — "cooked", "raw", "grilled", "scrambled", "steamed", "baked" — NO quantity info here
-- Do NOT list cooking oil, salt, pepper, or spices as separate items
+- Every ingredient that contributes ANY calories MUST be its own separate JSON item with its own macros
+- This includes: butter, olive oil, almond butter, peanut butter, honey, jam, cheese, cream, milk, nuts, seeds, dressings, sauces
+- NEVER mention caloric ingredients in serving_description — if it has calories, it MUST be a separate item
+- BAD: { name: "Eggs", serving_description: "scrambled with 1 tsp butter" } ← butter has calories, must be separate
+- BAD: { name: "Spinach", serving_description: "sautéed with 1 tsp olive oil" } ← olive oil has calories, must be separate  
+- BAD: { name: "Whole Wheat Toast", serving_size: 1, serving_unit: "g", serving_description: "1 slice toasted with almond butter" } ← wrong unit AND almond butter must be separate
+- GOOD: Three separate items: Eggs (serving_size:3, serving_unit:"unit"), Butter (serving_size:5, serving_unit:"g"), Spinach (serving_size:30, serving_unit:"g")
+- GOOD: { name: "Whole Wheat Bread", serving_size: 1, serving_unit: "slice", serving_description: "toasted" }
+- serving_size MUST be the actual quantity — for slices use serving_unit:"slice", for whole items use serving_unit:"unit", for grams use the actual gram amount (never serving_size:1 with serving_unit:"g" for a food that weighs more than 1g)
+- serving_description: ONLY the cooking method — "toasted", "cooked", "raw", "grilled", "scrambled", "steamed", "baked" — NO ingredient names, NO quantities here
+- Do NOT list salt, pepper, or dry spices as separate items (they have negligible calories)
 
 CREATIVITY RULES:
 - NEVER suggest grilled chicken salad, plain baked salmon, or scrambled eggs as standalone meals

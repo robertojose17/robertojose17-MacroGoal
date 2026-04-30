@@ -109,45 +109,46 @@ function normalizeServingDescription(food: PlanFood): PlanFood {
   const desc = (food.serving_description || '').trim();
   const currentSize = Number(food.serving_size) || 1;
 
-  // Always try to extract quantity from description if it starts with a number
-  // This catches cases like serving_size:1, serving_description:"80g cooked" 
-  // OR serving_size:50, serving_description:"50g raw" (duplicate info)
-  const match = desc.match(/^(\d+(?:\.\d+)?)\s*(g|ml|oz|lb|cup|cups|tbsp|tsp|slice|slices|piece|pieces|large|medium|small|gram|grams|ounce|ounces)?\s*(.*)$/i);
-  
-  if (match) {
-    const extractedSize = parseFloat(match[1]);
-    const extractedUnitRaw = (match[2] || '').trim().toLowerCase();
-    const cleanDesc = (match[3] || '').trim();
+  // Only attempt extraction when serving_size is suspiciously small (≤ 1)
+  // and the description appears to contain quantity info
+  if (currentSize > 1) return food;
 
-    if (!isNaN(extractedSize) && extractedSize > 1) {
-      const unitMap: Record<string, string> = {
-        'g': 'g', 'gram': 'g', 'grams': 'g',
-        'ml': 'ml',
-        'oz': 'oz', 'ounce': 'oz', 'ounces': 'oz',
-        'lb': 'lb',
-        'cup': 'cup', 'cups': 'cup',
-        'tbsp': 'tbsp',
-        'tsp': 'tsp',
-        'slice': 'slice', 'slices': 'slice',
-        'piece': 'piece', 'pieces': 'piece',
-        'large': 'unit', 'medium': 'unit', 'small': 'unit',
-      };
-      const mappedUnit = unitMap[extractedUnitRaw] || extractedUnitRaw || food.serving_unit || 'g';
-      
-      // Only override if current serving_size is 1 (AI put quantity in description)
-      // or if description has explicit unit that differs from current
-      if (currentSize <= 1 || extractedUnitRaw) {
-        return {
-          ...food,
-          serving_size: currentSize <= 1 ? extractedSize : currentSize,
-          serving_unit: currentSize <= 1 ? mappedUnit : food.serving_unit,
-          serving_description: cleanDesc || '',
-        };
-      }
-    }
-  }
+  // Match patterns like: "1 slice toasted...", "80g cooked", "2 cups raw", "150 g grilled"
+  const match = desc.match(/^(\d+(?:\.\d+)?)\s*(g|ml|oz|lb|cup|cups|tbsp|tsp|slice|slices|piece|pieces|large|medium|small|gram|grams|ounce|ounces|unit|units)?\s*(.*)$/i);
 
-  return food;
+  if (!match) return food;
+
+  const extractedSize = parseFloat(match[1]);
+  const extractedUnitRaw = (match[2] || '').trim().toLowerCase();
+  const cleanDesc = (match[3] || '').trim();
+
+  if (isNaN(extractedSize) || extractedSize < 0) return food;
+
+  const unitMap: Record<string, string> = {
+    'g': 'g', 'gram': 'g', 'grams': 'g',
+    'ml': 'ml',
+    'oz': 'oz', 'ounce': 'oz', 'ounces': 'oz',
+    'lb': 'lb',
+    'cup': 'cup', 'cups': 'cup',
+    'tbsp': 'tbsp',
+    'tsp': 'tsp',
+    'slice': 'slice', 'slices': 'slice',
+    'piece': 'piece', 'pieces': 'piece',
+    'unit': 'unit', 'units': 'unit',
+    'large': 'unit', 'medium': 'unit', 'small': 'unit',
+  };
+
+  // If no unit extracted, fall back to food's existing unit
+  const mappedUnit = extractedUnitRaw
+    ? (unitMap[extractedUnitRaw] || extractedUnitRaw)
+    : (food.serving_unit || 'g');
+
+  return {
+    ...food,
+    serving_size: extractedSize,
+    serving_unit: mappedUnit,
+    serving_description: cleanDesc || '',
+  };
 }
 
 function normalizePlan(plan: GeneratedPlan): GeneratedPlan {
