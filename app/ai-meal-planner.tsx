@@ -62,6 +62,13 @@ interface UserGoals {
   daily_fats: number;
 }
 
+interface UserPreferences {
+  dietary_restrictions: string[] | null;
+  cuisine_preferences: string[] | null;
+  disliked_foods: string | null;
+  cooking_level: string | null;
+}
+
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 type ScreenStep = 'preferences' | 'generating' | 'plan';
@@ -226,6 +233,111 @@ function LoadingDots({ color }: LoadingDotsProps) {
   );
 }
 
+// ─── ActivePreferencesSummary ─────────────────────────────────────────────────
+
+interface ActivePreferencesSummaryProps {
+  userPreferences: UserPreferences | null;
+  secondaryColor: string;
+  cardBg: string;
+  isDark: boolean;
+  onGoToProfile: () => void;
+}
+
+function ActivePreferencesSummary({ userPreferences, secondaryColor, cardBg, isDark, onGoToProfile }: ActivePreferencesSummaryProps) {
+  const hasRestrictions = userPreferences?.dietary_restrictions && userPreferences.dietary_restrictions.length > 0;
+  const hasCuisines = userPreferences?.cuisine_preferences && userPreferences.cuisine_preferences.length > 0;
+  const hasCookingLevel = !!userPreferences?.cooking_level;
+  const hasDisliked = !!userPreferences?.disliked_foods;
+  const hasAny = hasRestrictions || hasCuisines || hasCookingLevel || hasDisliked;
+
+  const restrictionEmojis: Record<string, string> = {
+    vegetarian: '🥗',
+    vegan: '🌱',
+    'gluten-free': '🌾',
+    'dairy-free': '🥛',
+    halal: '☪️',
+    'nut-free': '🥜',
+  };
+
+  const cuisineEmojis: Record<string, string> = {
+    mediterranean: '🫒',
+    asian: '🍜',
+    mexican: '🌮',
+    american: '🍔',
+    'middle eastern': '🧆',
+    indian: '🍛',
+    italian: '🍝',
+    caribbean: '🌴',
+    korean: '🍱',
+    japanese: '🍣',
+  };
+
+  const cookingEmojis: Record<string, string> = {
+    simple: '🍳',
+    moderate: '👨‍🍳',
+    advanced: '⭐',
+  };
+
+  if (!hasAny) {
+    return (
+      <View style={[styles.prefsHintCard, { backgroundColor: cardBg }]}>
+        <Text style={[styles.prefsHintText, { color: secondaryColor }]}>
+          No food preferences set.{' '}
+        </Text>
+        <TouchableOpacity onPress={onGoToProfile} activeOpacity={0.7}>
+          <Text style={styles.prefsHintLink}>Set food preferences in Profile →</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const chips: string[] = [];
+  if (hasRestrictions) {
+    userPreferences!.dietary_restrictions!.forEach(r => {
+      const emoji = restrictionEmojis[r] || '✓';
+      const label = r.charAt(0).toUpperCase() + r.slice(1);
+      chips.push(`${emoji} ${label}`);
+    });
+  }
+  if (hasCuisines) {
+    userPreferences!.cuisine_preferences!.forEach(c => {
+      const emoji = cuisineEmojis[c] || '🍽️';
+      const label = c.charAt(0).toUpperCase() + c.slice(1);
+      chips.push(`${emoji} ${label}`);
+    });
+  }
+  if (hasCookingLevel) {
+    const lvl = userPreferences!.cooking_level!;
+    chips.push(`${cookingEmojis[lvl] || '🍳'} ${lvl.charAt(0).toUpperCase() + lvl.slice(1)} cooking`);
+  }
+
+  return (
+    <View style={[styles.prefsHintCard, { backgroundColor: cardBg }]}>
+      <View style={styles.prefsHintHeader}>
+        <Text style={[styles.prefsHintLabel, { color: secondaryColor }]}>YOUR PREFERENCES APPLIED</Text>
+        <TouchableOpacity onPress={onGoToProfile} activeOpacity={0.7}>
+          <Text style={styles.prefsHintLink}>Edit →</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.prefsChipsRow}>
+        {chips.map((chip, i) => (
+          <View key={i} style={[styles.prefsChip, { backgroundColor: isDark ? '#1A3A38' : '#E6FAF8' }]}>
+            <Text style={[styles.prefsChipText, { color: TEAL }]}>{chip}</Text>
+          </View>
+        ))}
+        {hasDisliked && (
+          <View style={[styles.prefsChip, { backgroundColor: isDark ? '#2C2C2E' : '#F0F2F7' }]}>
+            <Text style={[styles.prefsChipText, { color: secondaryColor }]}>
+              {'🚫 Dislikes: '}
+              <Text numberOfLines={1}>{userPreferences!.disliked_foods}</Text>
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function AIMealPlannerScreen() {
@@ -258,11 +370,11 @@ export default function AIMealPlannerScreen() {
     return () => { show.remove(); hide.remove(); };
   }, []);
   const [userGoals, setUserGoals] = useState<UserGoals | null>(null);
+  const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedPlan | null>(null);
 
   // Preferences
   const [foodPrefs, setFoodPrefs] = useState('');
-  const [dietaryRestrictions, setDietaryRestrictions] = useState('');
 
   // Save plan modal
   const [saveModalVisible, setSaveModalVisible] = useState(false);
@@ -296,22 +408,42 @@ export default function AIMealPlannerScreen() {
         console.log('[AIMealPlanner] loadUserGoals: no authenticated user');
         return;
       }
-      const { data } = await supabase
-        .from('goals')
-        .select('daily_calories, protein_g, carbs_g, fats_g')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      if (data && isMounted.current) {
-        console.log('[AIMealPlanner] loadUserGoals success:', data);
+      const [goalsResult, prefsResult] = await Promise.all([
+        supabase
+          .from('goals')
+          .select('daily_calories, protein_g, carbs_g, fats_g')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle(),
+        supabase
+          .from('users')
+          .select('dietary_restrictions, cuisine_preferences, disliked_foods, cooking_level')
+          .eq('id', user.id)
+          .maybeSingle(),
+      ]);
+
+      if (goalsResult.data && isMounted.current) {
+        console.log('[AIMealPlanner] loadUserGoals success:', goalsResult.data);
         setUserGoals({
-          daily_calories: data.daily_calories,
-          daily_protein: data.protein_g,
-          daily_carbs: data.carbs_g,
-          daily_fats: data.fats_g,
+          daily_calories: goalsResult.data.daily_calories,
+          daily_protein: goalsResult.data.protein_g,
+          daily_carbs: goalsResult.data.carbs_g,
+          daily_fats: goalsResult.data.fats_g,
         });
       } else {
         console.log('[AIMealPlanner] loadUserGoals: no goals found');
+      }
+
+      if (prefsResult.data && isMounted.current) {
+        console.log('[AIMealPlanner] user preferences loaded:', prefsResult.data);
+        setUserPreferences({
+          dietary_restrictions: prefsResult.data.dietary_restrictions || null,
+          cuisine_preferences: prefsResult.data.cuisine_preferences || null,
+          disliked_foods: prefsResult.data.disliked_foods || null,
+          cooking_level: prefsResult.data.cooking_level || null,
+        });
+      } else {
+        console.log('[AIMealPlanner] no user preferences found');
       }
     } catch (e) {
       console.error('[AIMealPlanner] loadUserGoals error:', e);
@@ -325,18 +457,17 @@ export default function AIMealPlannerScreen() {
       Alert.alert('No Goals', 'Please set your macro goals first.');
       return;
     }
-    console.log('[AIMealPlanner] Generate My Plan pressed, foodPrefs:', foodPrefs, 'restrictions:', dietaryRestrictions);
+    console.log('[AIMealPlanner] Generate My Plan pressed, foodPrefs:', foodPrefs, 'userPreferences:', userPreferences);
     setStep('generating');
 
     const parts: string[] = ['GENERATE_PLAN: Please create a complete meal plan for me.'];
-    if (foodPrefs.trim()) parts.push(`Food preferences: ${foodPrefs.trim()}`);
-    if (dietaryRestrictions.trim()) parts.push(`Dietary restrictions: ${dietaryRestrictions.trim()}`);
+    if (foodPrefs.trim()) parts.push(`Additional preferences for today: ${foodPrefs.trim()}`);
     const prompt = parts.join(' ');
 
     try {
-      console.log('[AIMealPlanner] invoking generate-meal-plan, prompt:', prompt);
+      console.log('[AIMealPlanner] invoking generate-meal-plan, prompt:', prompt, 'userPreferences:', userPreferences);
       const { data, error } = await supabase.functions.invoke('generate-meal-plan', {
-        body: { messages: [{ role: 'user', content: prompt }], userGoals },
+        body: { messages: [{ role: 'user', content: prompt }], userGoals, userPreferences },
       });
       if (!isMounted.current) return;
       if (error) throw new Error(error.message);
@@ -356,7 +487,7 @@ export default function AIMealPlannerScreen() {
       setStep('preferences');
       Alert.alert('Error', e?.message || 'Failed to generate plan. Please try again.');
     }
-  }, [userGoals, foodPrefs, dietaryRestrictions]);
+  }, [userGoals, foodPrefs, userPreferences]);
 
   const handleRegenerate = useCallback(() => {
     console.log('[AIMealPlanner] Regenerate button pressed');
@@ -710,28 +841,27 @@ export default function AIMealPlannerScreen() {
             </View>
           )}
 
+          {/* Active preferences summary */}
+          <ActivePreferencesSummary
+            userPreferences={userPreferences}
+            secondaryColor={secondaryColor}
+            cardBg={cardBg}
+            isDark={isDark}
+            onGoToProfile={() => {
+              console.log('[AIMealPlanner] Set food preferences link pressed, navigating to profile tab');
+              router.push('/(tabs)/profile');
+            }}
+          />
+
           {/* Inputs */}
           <View style={styles.inputsSection}>
-            <Text style={[styles.inputLabel, { color: secondaryColor }]}>FOOD PREFERENCES</Text>
+            <Text style={[styles.inputLabel, { color: secondaryColor }]}>ANYTHING SPECIAL TODAY?</Text>
             <TextInput
               style={[styles.prefInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
-              placeholder="e.g. I love chicken, no seafood"
+              placeholder="e.g. I want something spicy, extra protein"
               placeholderTextColor={secondaryColor}
               value={foodPrefs}
               onChangeText={setFoodPrefs}
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-              maxLength={300}
-            />
-
-            <Text style={[styles.inputLabel, { color: secondaryColor, marginTop: spacing.md }]}>DIETARY RESTRICTIONS</Text>
-            <TextInput
-              style={[styles.prefInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
-              placeholder="e.g. lactose intolerant, vegetarian"
-              placeholderTextColor={secondaryColor}
-              value={dietaryRestrictions}
-              onChangeText={setDietaryRestrictions}
               multiline
               numberOfLines={2}
               textAlignVertical="top"
@@ -1318,6 +1448,48 @@ const styles = StyleSheet.create({
   },
   goalChipText: { fontSize: 15, fontWeight: '700' },
   goalChipUnit: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+
+  // Active preferences summary
+  prefsHintCard: {
+    borderRadius: 14,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  prefsHintHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  prefsHintLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  prefsHintText: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  prefsHintLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: TEAL,
+  },
+  prefsChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  prefsChip: {
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  prefsChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
 
   inputsSection: { marginBottom: spacing.md },
   inputLabel: {

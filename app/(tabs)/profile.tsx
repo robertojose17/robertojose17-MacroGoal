@@ -1,6 +1,6 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput, Linking } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator, Modal, TextInput, Linking, Animated } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '@/styles/commonStyles';
@@ -12,6 +12,36 @@ import { cmToFeetInches, kgToLbs, getLossRateDisplayText, feetInchesToCm, lbsToK
 import { toLocalDateString } from '@/utils/dateUtils';
 import { Sex, ActivityLevel, GoalType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
+const TEAL = '#14B8A6';
+
+const DIETARY_RESTRICTION_OPTIONS = [
+  { label: 'Vegetarian', value: 'vegetarian' },
+  { label: 'Vegan', value: 'vegan' },
+  { label: 'Gluten-Free', value: 'gluten-free' },
+  { label: 'Dairy-Free', value: 'dairy-free' },
+  { label: 'Halal', value: 'halal' },
+  { label: 'Nut-Free', value: 'nut-free' },
+];
+
+const CUISINE_OPTIONS = [
+  { label: 'Mediterranean', value: 'mediterranean' },
+  { label: 'Asian', value: 'asian' },
+  { label: 'Mexican', value: 'mexican' },
+  { label: 'American', value: 'american' },
+  { label: 'Middle Eastern', value: 'middle eastern' },
+  { label: 'Indian', value: 'indian' },
+  { label: 'Italian', value: 'italian' },
+  { label: 'Caribbean', value: 'caribbean' },
+  { label: 'Korean', value: 'korean' },
+  { label: 'Japanese', value: 'japanese' },
+];
+
+const COOKING_LEVELS = [
+  { label: 'Simple', value: 'simple' },
+  { label: 'Moderate', value: 'moderate' },
+  { label: 'Advanced', value: 'advanced' },
+];
 
 type EditField = 'name' | 'height' | 'weight' | 'goalWeight' | 'age' | 'sex' | 'activity' | 'lossRate' | 'startDate' | null;
 
@@ -40,6 +70,14 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
+  // Food preferences state
+  const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
+  const [cuisinePreferences, setCuisinePreferences] = useState<string[]>([]);
+  const [dislikedFoods, setDislikedFoods] = useState('');
+  const [cookingLevel, setCookingLevel] = useState<string | null>(null);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const prefsSaveOpacity = useRef(new Animated.Value(0)).current;
+
   const loadUserData = async () => {
     try {
       setLoading(true);
@@ -66,6 +104,11 @@ export default function ProfileScreen() {
           console.log('[Profile] Goal weight is missing, showing prompt');
           setShowGoalWeightPrompt(true);
         }
+        // Initialize food preferences from DB (new columns may be null on first load)
+        setDietaryRestrictions(Array.isArray(userResult.data.dietary_restrictions) ? userResult.data.dietary_restrictions : []);
+        setCuisinePreferences(Array.isArray(userResult.data.cuisine_preferences) ? userResult.data.cuisine_preferences : []);
+        setDislikedFoods(userResult.data.disliked_foods || '');
+        setCookingLevel(userResult.data.cooking_level || null);
       } else {
         console.log('[Profile] No user data found in database');
         setUser(authUser);
@@ -101,6 +144,59 @@ export default function ProfileScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([loadUserData(), refreshPremiumStatus()]);
+  };
+
+  const showPrefsSavedIndicator = () => {
+    Animated.sequence([
+      Animated.timing(prefsSaveOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.delay(1200),
+      Animated.timing(prefsSaveOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const saveFoodPrefsField = async (field: string, value: any) => {
+    if (!user) return;
+    console.log('[Profile] Saving food preference field:', field, value);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+      if (error) throw error;
+      console.log('[Profile] Food preference saved:', field, value);
+      showPrefsSavedIndicator();
+    } catch (err: any) {
+      console.error('[Profile] Error saving food preference:', field, err);
+    }
+  };
+
+  const toggleDietaryRestriction = async (value: string) => {
+    console.log('[Profile] Dietary restriction chip tapped:', value);
+    const next = dietaryRestrictions.includes(value)
+      ? dietaryRestrictions.filter(v => v !== value)
+      : [...dietaryRestrictions, value];
+    setDietaryRestrictions(next);
+    await saveFoodPrefsField('dietary_restrictions', next);
+  };
+
+  const toggleCuisinePreference = async (value: string) => {
+    console.log('[Profile] Cuisine preference chip tapped:', value);
+    const next = cuisinePreferences.includes(value)
+      ? cuisinePreferences.filter(v => v !== value)
+      : [...cuisinePreferences, value];
+    setCuisinePreferences(next);
+    await saveFoodPrefsField('cuisine_preferences', next);
+  };
+
+  const handleCookingLevelSelect = async (value: string) => {
+    console.log('[Profile] Cooking level selected:', value);
+    setCookingLevel(value);
+    await saveFoodPrefsField('cooking_level', value);
+  };
+
+  const handleDislikedFoodsBlur = async () => {
+    console.log('[Profile] Disliked foods field blurred, saving:', dislikedFoods);
+    await saveFoodPrefsField('disliked_foods', dislikedFoods);
   };
 
   const handleLogout = async () => {
@@ -864,6 +960,133 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Food Preferences Card */}
+        {user.onboarding_completed && (
+          <View style={[styles.goalsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
+            <View style={styles.prefCardHeader}>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text, marginBottom: 0 }]}>
+                Food Preferences
+              </Text>
+              <Animated.View style={[styles.savedBadge, { opacity: prefsSaveOpacity }]}>
+                <Text style={styles.savedBadgeText}>Saved ✓</Text>
+              </Animated.View>
+            </View>
+            <Text style={[styles.sectionSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginBottom: spacing.lg }]}>
+              Used by the AI Meal Planner to personalize your plans
+            </Text>
+
+            {/* Dietary Restrictions */}
+            <Text style={[styles.prefSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary }]}>
+              DIETARY RESTRICTIONS
+            </Text>
+            <View style={styles.chipsRow}>
+              {DIETARY_RESTRICTION_OPTIONS.map(opt => {
+                const isSelected = dietaryRestrictions.includes(opt.value);
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.chip,
+                      isSelected
+                        ? { backgroundColor: TEAL }
+                        : { backgroundColor: isDark ? '#2C2C2E' : '#F0F2F7' },
+                    ]}
+                    onPress={() => toggleDietaryRestriction(opt.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.chipText, { color: isSelected ? '#FFFFFF' : (isDark ? colors.textSecondaryDark : colors.textSecondary) }]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Cuisine Preferences */}
+            <Text style={[styles.prefSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+              CUISINE PREFERENCES
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScrollRow}
+            >
+              {CUISINE_OPTIONS.map(opt => {
+                const isSelected = cuisinePreferences.includes(opt.value);
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.chip,
+                      isSelected
+                        ? { backgroundColor: TEAL }
+                        : { backgroundColor: isDark ? '#2C2C2E' : '#F0F2F7' },
+                    ]}
+                    onPress={() => toggleCuisinePreference(opt.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.chipText, { color: isSelected ? '#FFFFFF' : (isDark ? colors.textSecondaryDark : colors.textSecondary) }]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Foods I Dislike */}
+            <Text style={[styles.prefSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+              FOODS I DISLIKE
+            </Text>
+            <TextInput
+              style={[
+                styles.prefTextInput,
+                {
+                  backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+                  color: isDark ? colors.textDark : colors.text,
+                  borderColor: isDark ? colors.borderDark : colors.border,
+                },
+              ]}
+              value={dislikedFoods}
+              onChangeText={setDislikedFoods}
+              onBlur={handleDislikedFoodsBlur}
+              placeholder="e.g. fish, broccoli, mushrooms"
+              placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+              returnKeyType="done"
+            />
+
+            {/* Cooking Level */}
+            <Text style={[styles.prefSectionLabel, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginTop: spacing.md }]}>
+              COOKING LEVEL
+            </Text>
+            <View style={styles.segmentedRow}>
+              {COOKING_LEVELS.map((lvl, idx) => {
+                const isSelected = cookingLevel === lvl.value;
+                const isFirst = idx === 0;
+                const isLast = idx === COOKING_LEVELS.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={lvl.value}
+                    style={[
+                      styles.segmentBtn,
+                      isFirst && styles.segmentBtnFirst,
+                      isLast && styles.segmentBtnLast,
+                      isSelected
+                        ? { backgroundColor: TEAL, borderColor: TEAL }
+                        : { backgroundColor: isDark ? '#2C2C2E' : '#F0F2F7', borderColor: isDark ? colors.borderDark : colors.border },
+                    ]}
+                    onPress={() => handleCookingLevelSelect(lvl.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.segmentBtnText, { color: isSelected ? '#FFFFFF' : (isDark ? colors.textSecondaryDark : colors.textSecondary) }]}>
+                      {lvl.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Feedback Section */}
         <TouchableOpacity
           style={[styles.feedbackCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
@@ -1543,5 +1766,78 @@ const styles = StyleSheet.create({
   datePickerButton: {
     ...typography.bodyBold,
     fontSize: 16,
+  },
+
+  // Food Preferences card
+  prefCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  savedBadge: {
+    backgroundColor: TEAL + '22',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  savedBadgeText: {
+    color: TEAL,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  prefSectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.sm,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chipsScrollRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  chip: {
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  prefTextInput: {
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 15,
+  },
+  segmentedRow: {
+    flexDirection: 'row',
+  },
+  segmentBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+  },
+  segmentBtnFirst: {
+    borderTopLeftRadius: borderRadius.md,
+    borderBottomLeftRadius: borderRadius.md,
+  },
+  segmentBtnLast: {
+    borderTopRightRadius: borderRadius.md,
+    borderBottomRightRadius: borderRadius.md,
+  },
+  segmentBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
