@@ -144,16 +144,26 @@ DAILY TARGETS:
 - Carbs: ${userGoals.daily_carbs}g (flexible — sacrifice carbs first to hit calorie/protein targets)
 - Fats: ${userGoals.daily_fats}g (flexible — sacrifice fats second)
 ${prefsSection}${recipeSection}
-MACRO PRIORITY ORDER: Calories (hard cap) > Protein (±10g) > Fats > Carbs
+MACRO RULES — NON-NEGOTIABLE, NEVER BREAK THESE:
+- Calories: total MUST be between ${calMin} and ${calMax} kcal (${userGoals.daily_calories} -100/+10)
+- Protein: total MUST be between ${protMin}g and ${protMax}g (${userGoals.daily_protein}g ±10g)
+- Carbs: total MUST be between ${userGoals.daily_carbs - 10}g and ${userGoals.daily_carbs + 10}g (${userGoals.daily_carbs}g ±10g)
+- Fats: total MUST be between ${userGoals.daily_fats - 10}g and ${userGoals.daily_fats + 10}g (${userGoals.daily_fats}g ±10g)
 
-CALORIE RULE — NON-NEGOTIABLE:
-- Sum of ALL item calories MUST be between ${calMin} and ${calMax} kcal
-- If over budget: reduce carb portions first, then fat portions, NEVER reduce protein
-- Count EVERY item including toppings, oils, butters, sauces, dressings
+PRIORITY ORDER when adjusting portions to fit targets:
+1. Never go over ${calMax} kcal or under ${calMin} kcal — calories are the hard cap
+2. Keep protein between ${protMin}g and ${protMax}g — highest priority macro
+3. Adjust carbs first to hit calorie budget
+4. Adjust fats second if still over budget
+5. Never sacrifice protein to hit calorie or carb targets
 
-PROTEIN RULE:
-- Total protein MUST be between ${protMin}g and ${protMax}g
-- Every meal must have at least one high-protein item
+SELF-CHECK before outputting (mandatory):
+1. Sum all item calories → must be ${calMin}–${calMax} kcal. If not, adjust carb/fat portions.
+2. Sum all protein → must be ${protMin}g–${protMax}g. If not, add or increase a protein source.
+3. Sum all carbs → must be ${userGoals.daily_carbs - 10}g–${userGoals.daily_carbs + 10}g.
+4. Sum all fats → must be ${userGoals.daily_fats - 10}g–${userGoals.daily_fats + 10}g.
+5. Every serving_size for gram-measured foods must be > 1.
+6. Every serving_description must be a cooking method only — no ingredient names.
 
 FOOD ITEM RULES — STRICT:
 - serving_description = cooking method ONLY: "cooked", "raw", "grilled", "toasted", "scrambled", "steamed", "baked", "boiled"
