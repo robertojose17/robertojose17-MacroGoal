@@ -105,50 +105,108 @@ function getMealDescription(meal: MealSection | PlanFood[] | undefined): string 
   return meal?.dish_description || null;
 }
 
+// Approximate calories per gram for common foods — used to infer serving size
+const CAL_PER_GRAM: Record<string, number> = {
+  // Grains/starches
+  'oat': 3.89, 'oats': 3.89, 'rolled oat': 3.89, 'quinoa': 1.2, 'rice': 1.3, 'brown rice': 1.11,
+  'white rice': 1.3, 'pasta': 1.31, 'bread': 2.65, 'toast': 2.65, 'whole wheat bread': 2.47,
+  'whole wheat toast': 2.47, 'bagel': 2.57, 'tortilla': 2.18, 'corn tortilla': 2.18,
+  // Proteins
+  'chicken breast': 1.65, 'chicken': 1.65, 'grilled chicken': 1.65, 'salmon': 2.08,
+  'tuna': 1.16, 'beef': 2.5, 'ground beef': 2.54, 'turkey': 1.89, 'egg': 1.43, 'eggs': 1.43,
+  'tofu': 0.76, 'shrimp': 0.99, 'cod': 0.82, 'tilapia': 0.96,
+  // Dairy
+  'greek yogurt': 0.59, 'yogurt': 0.61, 'cottage cheese': 0.98, 'milk': 0.42,
+  'cheese': 4.02, 'mozzarella': 2.8, 'cheddar': 4.03,
+  // Vegetables
+  'spinach': 0.23, 'broccoli': 0.34, 'mixed vegetables': 0.65, 'vegetables': 0.65,
+  'sweet potato': 0.86, 'potato': 0.77, 'carrot': 0.41, 'tomato': 0.18,
+  // Fruits
+  'banana': 0.89, 'apple': 0.52, 'mixed berries': 0.57, 'berries': 0.57,
+  'blueberries': 0.57, 'strawberries': 0.32, 'mango': 0.6,
+  // Fats/nuts
+  'almond butter': 6.14, 'peanut butter': 5.88, 'butter': 7.17, 'olive oil': 8.84,
+  'avocado': 1.6, 'almonds': 5.79, 'walnuts': 6.54, 'cashews': 5.53,
+  // Legumes
+  'black beans': 1.32, 'chickpeas': 1.64, 'lentils': 1.16,
+  // Sweeteners
+  'honey': 3.04, 'maple syrup': 2.6,
+};
+
+function inferServingSizeFromCalories(food: PlanFood): number | null {
+  const calories = Number(food.calories) || 0;
+  if (calories <= 0) return null;
+  const nameLower = food.name.toLowerCase();
+  // Try longest match first
+  const keys = Object.keys(CAL_PER_GRAM).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (nameLower.includes(key)) {
+      const calPerG = CAL_PER_GRAM[key];
+      if (calPerG > 0) {
+        return Math.round(calories / calPerG);
+      }
+    }
+  }
+  return null;
+}
+
 function normalizeServingDescription(food: PlanFood): PlanFood {
   const desc = (food.serving_description || '').trim();
   const currentSize = Number(food.serving_size) || 1;
 
-  // Only attempt extraction when serving_size is suspiciously small (≤ 1)
-  // and the description appears to contain quantity info
+  // Only attempt fixes when serving_size is suspiciously 1
   if (currentSize > 1) return food;
 
-  // Match patterns like: "1 slice toasted...", "80g cooked", "2 cups raw", "150 g grilled"
+  // Try to extract quantity from description if it starts with a number
+  // Matches: "1 slice toasted", "80g cooked", "2 cups raw", "150 g grilled"
   const match = desc.match(/^(\d+(?:\.\d+)?)\s*(g|ml|oz|lb|cup|cups|tbsp|tsp|slice|slices|piece|pieces|large|medium|small|gram|grams|ounce|ounces|unit|units)?\s*(.*)$/i);
 
-  if (!match) return food;
+  if (match) {
+    const extractedSize = parseFloat(match[1]);
+    const extractedUnitRaw = (match[2] || '').trim().toLowerCase();
+    const cleanDesc = (match[3] || '').trim();
 
-  const extractedSize = parseFloat(match[1]);
-  const extractedUnitRaw = (match[2] || '').trim().toLowerCase();
-  const cleanDesc = (match[3] || '').trim();
+    if (!isNaN(extractedSize) && extractedSize >= 1) {
+      const unitMap: Record<string, string> = {
+        'g': 'g', 'gram': 'g', 'grams': 'g',
+        'ml': 'ml',
+        'oz': 'oz', 'ounce': 'oz', 'ounces': 'oz',
+        'lb': 'lb',
+        'cup': 'cup', 'cups': 'cup',
+        'tbsp': 'tbsp',
+        'tsp': 'tsp',
+        'slice': 'slice', 'slices': 'slice',
+        'piece': 'piece', 'pieces': 'piece',
+        'unit': 'unit', 'units': 'unit',
+        'large': 'unit', 'medium': 'unit', 'small': 'unit',
+      };
+      const mappedUnit = extractedUnitRaw
+        ? (unitMap[extractedUnitRaw] || extractedUnitRaw)
+        : (food.serving_unit || 'g');
 
-  if (isNaN(extractedSize) || extractedSize < 0) return food;
+      return {
+        ...food,
+        serving_size: extractedSize,
+        serving_unit: mappedUnit,
+        serving_description: cleanDesc || '',
+      };
+    }
+  }
 
-  const unitMap: Record<string, string> = {
-    'g': 'g', 'gram': 'g', 'grams': 'g',
-    'ml': 'ml',
-    'oz': 'oz', 'ounce': 'oz', 'ounces': 'oz',
-    'lb': 'lb',
-    'cup': 'cup', 'cups': 'cup',
-    'tbsp': 'tbsp',
-    'tsp': 'tsp',
-    'slice': 'slice', 'slices': 'slice',
-    'piece': 'piece', 'pieces': 'piece',
-    'unit': 'unit', 'units': 'unit',
-    'large': 'unit', 'medium': 'unit', 'small': 'unit',
-  };
+  // Description doesn't start with a number — infer serving size from calories
+  if (food.serving_unit === 'g' || !food.serving_unit) {
+    const inferred = inferServingSizeFromCalories(food);
+    if (inferred && inferred > 1) {
+      return {
+        ...food,
+        serving_size: inferred,
+        serving_unit: 'g',
+        serving_description: desc,
+      };
+    }
+  }
 
-  // If no unit extracted, fall back to food's existing unit
-  const mappedUnit = extractedUnitRaw
-    ? (unitMap[extractedUnitRaw] || extractedUnitRaw)
-    : (food.serving_unit || 'g');
-
-  return {
-    ...food,
-    serving_size: extractedSize,
-    serving_unit: mappedUnit,
-    serving_description: cleanDesc || '',
-  };
+  return food;
 }
 
 function normalizePlan(plan: GeneratedPlan): GeneratedPlan {
