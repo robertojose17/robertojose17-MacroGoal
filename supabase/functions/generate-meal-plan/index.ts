@@ -155,12 +155,17 @@ PROTEIN RULE:
 - Total protein MUST be between ${protMin}g and ${protMax}g
 - Every meal must have at least one high-protein item
 
-FOOD ITEM RULES — READ CAREFULLY:
-- Every caloric ingredient = its own separate JSON item with its own macros
-- Items that MUST be separate: butter, olive oil, almond butter, peanut butter, honey, jam, cheese, cream, milk, nuts, seeds, any sauce or dressing
-- serving_size = the actual gram/unit amount (NEVER use 1 as serving_size for gram-measured foods)
-- serving_unit = "g" for solids, "ml" for liquids, "slice" for bread slices, "unit" for whole items (eggs, bananas)
-- serving_description = cooking method ONLY: "cooked", "raw", "grilled", "toasted", "scrambled", "steamed" — NO ingredient names, NO quantities
+FOOD ITEM RULES — STRICT:
+- serving_description = cooking method ONLY: "cooked", "raw", "grilled", "toasted", "scrambled", "steamed", "baked", "boiled"
+- serving_description must NEVER contain: ingredient names, quantities, "with", "topped with", "drizzled with", "cooked in", or any mention of other foods
+- BAD: "scrambled with butter" → just say "scrambled"
+- BAD: "cooked with olive oil" → just say "cooked"  
+- BAD: "topped with honey and almond butter" → just say "cooked"
+- BAD: "sautéed with 1 tsp olive oil" → just say "sautéed"
+- GOOD: "grilled", "steamed", "raw", "cooked", "toasted", "scrambled"
+- If a caloric topping or cooking fat is important to the meal (butter, olive oil, honey, nut butter, cheese, sauce), list it as its own separate item with correct macros. If you are not going to list it as a separate item, do NOT mention it anywhere — not in serving_description, not in dish_description, nowhere.
+- serving_size = actual quantity number. For gram-measured foods: use the real gram amount (e.g. 80, 150, 200). NEVER use 1 as serving_size for a food measured in grams.
+- serving_unit = "g" for solids, "ml" for liquids, "slice" for bread slices, "unit" for whole countable items (eggs, bananas, tortillas)
 
 CORRECT EXAMPLE for a breakfast with oatmeal:
 items: [
