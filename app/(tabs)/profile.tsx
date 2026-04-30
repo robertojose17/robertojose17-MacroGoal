@@ -961,7 +961,7 @@ export default function ProfileScreen() {
         )}
 
         {/* Food Preferences Card */}
-        {user && (
+        {!!user && (
           <View style={[styles.goalsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}>
             <View style={styles.prefCardHeader}>
               <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text, marginBottom: 0 }]}>
