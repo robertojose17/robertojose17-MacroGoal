@@ -16,19 +16,135 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
-function buildSystemPrompt(userGoals: {
-  daily_calories: number;
-  daily_protein: number;
-  daily_carbs: number;
-  daily_fats: number;
-}): string {
-  return `You are a friendly, expert nutritionist helping everyday people — not just gym enthusiasts — create realistic, delicious meal plans they'll actually enjoy and stick to.
+interface UserPreferences {
+  dietary_restrictions?: string[];
+  cuisine_preferences?: string[];
+  disliked_foods?: string;
+  cooking_level?: string;
+}
+
+async function fetchRecipePool(preferences: UserPreferences | null): Promise<any[]> {
+  try {
+    let query = supabase.from("meal_recipes").select("*");
+
+    // Filter by dietary restrictions
+    if (preferences?.dietary_restrictions && preferences.dietary_restrictions.length > 0) {
+      // Include recipes that have ALL required dietary tags OR have empty tags (flexible)
+      // We do a soft filter: prefer matching but don't hard-exclude
+    }
+
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) {
+      console.log("[MealPlan] No recipes in pool, using defaults");
+      return [];
+    }
+
+    // Filter out disliked foods
+    let filtered = data;
+    if (preferences?.disliked_foods) {
+      const dislikes = preferences.disliked_foods.toLowerCase().split(/[,\s]+/).filter(Boolean);
+      filtered = data.filter((r: any) => {
+        const nameAndDesc = (r.name + " " + r.description).toLowerCase();
+        return !dislikes.some((d: string) => nameAndDesc.includes(d));
+      });
+    }
+
+    // Filter by dietary restrictions (hard filter)
+    if (preferences?.dietary_restrictions && preferences.dietary_restrictions.length > 0) {
+      const restrictions = preferences.dietary_restrictions;
+      const strictFiltered = filtered.filter((r: any) => {
+        const tags: string[] = r.dietary_tags || [];
+        return restrictions.every((restriction: string) => tags.includes(restriction));
+      });
+      // Only apply strict filter if it leaves enough recipes
+      if (strictFiltered.length >= 12) {
+        filtered = strictFiltered;
+      }
+    }
+
+    // Prefer cuisine preferences
+    let preferred = filtered;
+    if (preferences?.cuisine_preferences && preferences.cuisine_preferences.length > 0) {
+      const cuisines = preferences.cuisine_preferences.map((c: string) => c.toLowerCase());
+      const cuisineFiltered = filtered.filter((r: any) =>
+        cuisines.some((c: string) => r.cuisine.toLowerCase().includes(c))
+      );
+      // Mix preferred cuisines (70%) with random others (30%) for variety
+      if (cuisineFiltered.length >= 8) {
+        const others = filtered.filter((r: any) =>
+          !cuisines.some((c: string) => r.cuisine.toLowerCase().includes(c))
+        );
+        preferred = [...cuisineFiltered, ...shuffle(others).slice(0, Math.floor(cuisineFiltered.length * 0.3))];
+      }
+    }
+
+    // Shuffle and pick a diverse subset
+    const shuffled = shuffle(preferred);
+
+    // Pick 5-6 per meal type for variety
+    const byType: Record<string, any[]> = { breakfast: [], lunch: [], dinner: [], snack: [] };
+    for (const r of shuffled) {
+      const type = r.meal_type as string;
+      if (byType[type] && byType[type].length < 6) {
+        byType[type].push(r);
+      }
+    }
+
+    return [
+      ...byType.breakfast,
+      ...byType.lunch,
+      ...byType.dinner,
+      ...byType.snack,
+    ];
+  } catch (err) {
+    console.error("[MealPlan] Error fetching recipe pool:", err);
+    return [];
+  }
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildSystemPrompt(
+  userGoals: { daily_calories: number; daily_protein: number; daily_carbs: number; daily_fats: number },
+  recipePool: any[],
+  preferences: UserPreferences | null
+): string {
+  const recipeSection = recipePool.length > 0
+    ? `\nINSPIRATION RECIPES — You MUST base the meal plan on recipes from this pool. Pick the best matches for the user's macros and preferences. You can adapt portions and preparation methods:\n${recipePool.map(r =>
+        `- [${r.meal_type.toUpperCase()}] ${r.name} (${r.cuisine}) — ~${r.calories} cal, ${r.protein}g protein, ${r.carbs}g carbs, ${r.fat}g fat — ${r.description}`
+      ).join("\n")}\n`
+    : "";
+
+  const prefsSection = preferences
+    ? `\nUSER FOOD PREFERENCES:
+${preferences.dietary_restrictions?.length ? `- Dietary restrictions: ${preferences.dietary_restrictions.join(", ")} — STRICTLY respect these` : ""}
+${preferences.cuisine_preferences?.length ? `- Preferred cuisines: ${preferences.cuisine_preferences.join(", ")} — prioritize these` : ""}
+${preferences.disliked_foods ? `- Dislikes: ${preferences.disliked_foods} — NEVER include these` : ""}
+${preferences.cooking_level ? `- Cooking level: ${preferences.cooking_level}${preferences.cooking_level === "simple" ? " (max 5 ingredients per meal, quick prep)" : preferences.cooking_level === "advanced" ? " (complex techniques welcome)" : ""}` : ""}
+`
+    : "";
+
+  return `You are a creative, world-class nutritionist who builds exciting, culturally diverse meal plans that surprise and delight users.
 
 The user's daily macro targets are:
 - Calories: ${userGoals.daily_calories} kcal
 - Protein: ${userGoals.daily_protein}g
 - Carbs: ${userGoals.daily_carbs}g
 - Fats: ${userGoals.daily_fats}g
+${prefsSection}${recipeSection}
+CREATIVITY RULES (critical):
+- NEVER suggest grilled chicken salad, plain baked salmon, or scrambled eggs as standalone meals
+- NEVER use the same cuisine twice in one day
+- Rotate cuisines across the plan: Mediterranean, Asian, Mexican, Middle Eastern, Indian, Italian, Caribbean, Korean, Japanese, American
+- Each meal should feel like a pleasant surprise — bold flavors, interesting combinations
+- Adapt the inspiration recipes to hit the user's exact macro targets by adjusting portions
 
 INGREDIENT RULES (critical):
 - List ONLY the main food ingredients — chicken, eggs, oats, banana, etc.
@@ -39,13 +155,12 @@ INGREDIENT RULES (critical):
 
 MEAL PLANNING RULES:
 1. Create a realistic, delicious daily meal plan with Breakfast, Lunch, Dinner, and Snack
-2. Suggest practical meals people actually cook at home or can find easily — variety is key, avoid repeating the same proteins or bases every meal
-3. The total macros must be as close as possible to the user's targets
-4. Use real, common foods with accurate nutritional data
-5. When the user asks for changes, adjust and show the updated plan
-6. Keep responses friendly and encouraging — this is for everyday people, not athletes
-7. When asked to replace a single food item, return the COMPLETE updated plan in JSON format keeping all other meals exactly the same, only adjusting macros for the replaced item
-8. For each meal section, always include a "dish_description" field: a short appetizing description of the overall meal (e.g. "Scrambled eggs with whole wheat toast and fresh orange juice" or "Grilled chicken breast with brown rice and steamed broccoli"). Keep it under 100 characters. This is shown to the user below the meal title.
+2. The total macros must be as close as possible to the user's targets
+3. Use real, common foods with accurate nutritional data
+4. When the user asks for changes, adjust and show the updated plan
+5. Keep responses friendly and encouraging
+6. When asked to replace a single food item, return the COMPLETE updated plan in JSON format keeping all other meals exactly the same
+7. For each meal section, always include a "dish_description" field: a short appetizing description of the overall meal (e.g. "Shakshuka with warm pita and fresh herbs" or "Korean bibimbap bowl with gochujang and sesame"). Keep it under 100 characters.
 
 SAVE TRIGGER: When the user is satisfied (says "save", "guardar", "listo", "looks good", "perfect", "save it", "save this", or similar), OR when the message starts with "GENERATE_PLAN:", you MUST respond with ONLY a raw JSON object (no markdown, no backticks, no explanation text). The JSON must have this exact structure:
 {"ready_to_save":true,"plan":{"breakfast":{"dish_description":"...","items":[...]},"lunch":{"dish_description":"...","items":[...]},"dinner":{"dish_description":"...","items":[...]},"snack":{"dish_description":"...","items":[...]}},"summary":"..."}
@@ -63,11 +178,9 @@ function parseMealPlanResponse(content: string): {
   readyToSave: boolean;
   summary: string | null;
 } {
-  // Try fenced code block first (case-insensitive, optional "json" label)
   const jsonBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   const candidate = jsonBlockMatch ? jsonBlockMatch[1].trim() : content.trim();
 
-  // Try to parse the candidate (or the full content as fallback)
   const attempts = [candidate, content.trim()];
   for (const attempt of attempts) {
     try {
@@ -83,7 +196,6 @@ function parseMealPlanResponse(content: string): {
     } catch (_) {}
   }
 
-  // Last resort: find a JSON object anywhere in the content
   const jsonObjectMatch = content.match(/\{[\s\S]*"ready_to_save"[\s\S]*\}/);
   if (jsonObjectMatch) {
     try {
@@ -169,6 +281,7 @@ Deno.serve(async (req) => {
       daily_carbs: 200,
       daily_fats: 65
     };
+    const userPreferences: UserPreferences | null = body.userPreferences || null;
 
     if (!messages || messages.length === 0) {
       return new Response(JSON.stringify({ error: "Invalid Request", detail: "messages array is required" }), {
@@ -177,7 +290,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    const systemPrompt = buildSystemPrompt(userGoals);
+    // Fetch recipe pool from DB (only on first message / GENERATE_PLAN)
+    const isFirstMessage = messages.length === 1;
+    const recipePool = isFirstMessage ? await fetchRecipePool(userPreferences) : [];
+    console.log("[MealPlan] Recipe pool size:", recipePool.length);
+
+    const systemPrompt = buildSystemPrompt(userGoals, recipePool, userPreferences);
     const apiMessages = [
       { role: "system", content: systemPrompt },
       ...messages.map((msg: any) => ({ role: msg.role, content: msg.content }))
@@ -199,7 +317,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           model: DEFAULT_MODEL,
           messages: apiMessages,
-          temperature: 0.7,
+          temperature: 0.95,
           max_tokens: 2000
         })
       });
