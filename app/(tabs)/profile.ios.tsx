@@ -40,6 +40,21 @@ export default function ProfileScreen() {
   // Goal weight prompt state
   const [showGoalWeightPrompt, setShowGoalWeightPrompt] = useState(false);
 
+  // Food preferences state
+  const [showFoodPrefsModal, setShowFoodPrefsModal] = useState(false);
+  const [foodPrefs, setFoodPrefs] = useState<{
+    dietary_restrictions: string[];
+    cuisine_preferences: string[];
+    disliked_foods: string;
+    cooking_level: string;
+  }>({
+    dietary_restrictions: [],
+    cuisine_preferences: [],
+    disliked_foods: '',
+    cooking_level: 'moderate',
+  });
+  const [savingFoodPrefs, setSavingFoodPrefs] = useState(false);
+
   const loadUserData = async () => {
     try {
       setLoading(true);
@@ -98,9 +113,73 @@ export default function ProfileScreen() {
     }, [refreshPremiumStatus])
   );
 
+  // Sync food preferences from user data whenever user changes
+  useEffect(() => {
+    if (user) {
+      setFoodPrefs({
+        dietary_restrictions: Array.isArray(user.dietary_restrictions) ? user.dietary_restrictions : [],
+        cuisine_preferences: Array.isArray(user.cuisine_preferences) ? user.cuisine_preferences : [],
+        disliked_foods: typeof user.disliked_foods === 'string' ? user.disliked_foods : '',
+        cooking_level: typeof user.cooking_level === 'string' && user.cooking_level ? user.cooking_level : 'moderate',
+      });
+    }
+  }, [user]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([loadUserData(), refreshPremiumStatus()]);
+  };
+
+  const saveFoodPrefs = async () => {
+    if (!user) return;
+    console.log('[Profile iOS] Save Food Preferences button pressed', foodPrefs);
+    setSavingFoodPrefs(true);
+    try {
+      const updateData = {
+        dietary_restrictions: foodPrefs.dietary_restrictions,
+        cuisine_preferences: foodPrefs.cuisine_preferences,
+        disliked_foods: foodPrefs.disliked_foods.trim(),
+        cooking_level: foodPrefs.cooking_level,
+        updated_at: new Date().toISOString(),
+      };
+      console.log('[Profile iOS] Saving food preferences to Supabase:', updateData);
+      const { error } = await supabase.from('users').update(updateData).eq('id', user.id);
+      if (error) throw error;
+      console.log('[Profile iOS] Food preferences saved successfully');
+      setShowFoodPrefsModal(false);
+      await loadUserData();
+    } catch (error: any) {
+      console.error('[Profile iOS] Error saving food preferences:', error);
+      Alert.alert('Error', error.message || 'Failed to save food preferences');
+    } finally {
+      setSavingFoodPrefs(false);
+    }
+  };
+
+  const toggleDietaryRestriction = (item: string) => {
+    console.log('[Profile iOS] Dietary restriction toggled:', item);
+    setFoodPrefs((prev) => {
+      const exists = prev.dietary_restrictions.includes(item);
+      return {
+        ...prev,
+        dietary_restrictions: exists
+          ? prev.dietary_restrictions.filter((r) => r !== item)
+          : [...prev.dietary_restrictions, item],
+      };
+    });
+  };
+
+  const toggleCuisinePreference = (item: string) => {
+    console.log('[Profile iOS] Cuisine preference toggled:', item);
+    setFoodPrefs((prev) => {
+      const exists = prev.cuisine_preferences.includes(item);
+      return {
+        ...prev,
+        cuisine_preferences: exists
+          ? prev.cuisine_preferences.filter((c) => c !== item)
+          : [...prev.cuisine_preferences, item],
+      };
+    });
   };
 
   const handleLogout = async () => {
@@ -565,6 +644,19 @@ export default function ProfileScreen() {
   const subscriptionStatusText = isPremium ? 'Premium' : 'Free';
   console.log('[Profile iOS] Displaying subscription status:', subscriptionStatusText, '(isPremium:', isPremium, ')');
 
+  const DIETARY_OPTIONS = ['Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free'];
+  const CUISINE_OPTIONS = ['Mediterranean', 'Asian', 'Mexican', 'American', 'Middle Eastern', 'Indian', 'Italian', 'Caribbean', 'Korean', 'Japanese'];
+  const COOKING_LEVELS = ['easy', 'moderate', 'advanced'];
+
+  const foodPrefsSummaryParts: string[] = [];
+  if (foodPrefs.dietary_restrictions.length > 0) {
+    foodPrefsSummaryParts.push(foodPrefs.dietary_restrictions.join(', '));
+  }
+  if (foodPrefs.cuisine_preferences.length > 0) {
+    foodPrefsSummaryParts.push(foodPrefs.cuisine_preferences.join(', '));
+  }
+  const foodPrefsSummary = foodPrefsSummaryParts.length > 0 ? foodPrefsSummaryParts.join(' · ') : 'No preferences set';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.backgroundDark : colors.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -864,6 +956,31 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Food Preferences Card */}
+        <TouchableOpacity
+          style={[styles.goalsCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+          onPress={() => {
+            console.log('[Profile iOS] Food Preferences card pressed');
+            setShowFoodPrefsModal(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: isDark ? colors.textDark : colors.text, marginBottom: 0 }]}>
+              Food Preferences
+            </Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={16}
+              color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+            />
+          </View>
+          <Text style={[styles.sectionSubtitle, { color: isDark ? colors.textSecondaryDark : colors.textSecondary, marginBottom: 0 }]}>
+            {foodPrefsSummary}
+          </Text>
+        </TouchableOpacity>
+
         {/* Feedback Section */}
         <TouchableOpacity
           style={[styles.feedbackCard, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
@@ -1095,6 +1212,160 @@ export default function ProfileScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Food Preferences Modal */}
+      <Modal
+        visible={showFoodPrefsModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFoodPrefsModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFoodPrefsModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.foodPrefsModal, { backgroundColor: isDark ? colors.cardDark : colors.card }]}
+            activeOpacity={1}
+          >
+            {/* Header */}
+            <View style={styles.foodPrefsHeader}>
+              <Text style={[styles.modalTitle, { color: isDark ? colors.textDark : colors.text }]}>
+                Food Preferences
+              </Text>
+              <TouchableOpacity onPress={() => setShowFoodPrefsModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={24}
+                  color={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.foodPrefsScroll}>
+              {/* Dietary Restrictions */}
+              <Text style={[styles.foodPrefsSectionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Dietary Restrictions
+              </Text>
+              <View style={styles.chipsRow}>
+                {DIETARY_OPTIONS.map((item) => {
+                  const isSelected = foodPrefs.dietary_restrictions.includes(item);
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.chip,
+                        isSelected
+                          ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                          : { backgroundColor: 'transparent', borderColor: isDark ? colors.textSecondaryDark : colors.border },
+                      ]}
+                      onPress={() => toggleDietaryRestriction(item)}
+                    >
+                      <Text style={[styles.chipText, { color: isSelected ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }]}>
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Cuisine Preferences */}
+              <Text style={[styles.foodPrefsSectionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Cuisine Preferences
+              </Text>
+              <View style={styles.chipsRow}>
+                {CUISINE_OPTIONS.map((item) => {
+                  const isSelected = foodPrefs.cuisine_preferences.includes(item);
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.chip,
+                        isSelected
+                          ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                          : { backgroundColor: 'transparent', borderColor: isDark ? colors.textSecondaryDark : colors.border },
+                      ]}
+                      onPress={() => toggleCuisinePreference(item)}
+                    >
+                      <Text style={[styles.chipText, { color: isSelected ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }]}>
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Disliked Foods */}
+              <Text style={[styles.foodPrefsSectionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Disliked Foods
+              </Text>
+              <TextInput
+                style={[
+                  styles.foodPrefsTextInput,
+                  {
+                    backgroundColor: isDark ? colors.backgroundDark : colors.background,
+                    color: isDark ? colors.textDark : colors.text,
+                    borderColor: isDark ? colors.textSecondaryDark + '40' : colors.border,
+                  },
+                ]}
+                value={foodPrefs.disliked_foods}
+                onChangeText={(text) => {
+                  console.log('[Profile iOS] Disliked foods text changed');
+                  setFoodPrefs((prev) => ({ ...prev, disliked_foods: text }));
+                }}
+                placeholder="e.g. mushrooms, cilantro"
+                placeholderTextColor={isDark ? colors.textSecondaryDark : colors.textSecondary}
+                multiline
+              />
+
+              {/* Cooking Level */}
+              <Text style={[styles.foodPrefsSectionLabel, { color: isDark ? colors.textDark : colors.text }]}>
+                Cooking Level
+              </Text>
+              <View style={styles.chipsRow}>
+                {COOKING_LEVELS.map((level) => {
+                  const isSelected = foodPrefs.cooking_level === level;
+                  const label = level.charAt(0).toUpperCase() + level.slice(1);
+                  return (
+                    <TouchableOpacity
+                      key={level}
+                      style={[
+                        styles.chip,
+                        isSelected
+                          ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                          : { backgroundColor: 'transparent', borderColor: isDark ? colors.textSecondaryDark : colors.border },
+                      ]}
+                      onPress={() => {
+                        console.log('[Profile iOS] Cooking level selected:', level);
+                        setFoodPrefs((prev) => ({ ...prev, cooking_level: level }));
+                      }}
+                    >
+                      <Text style={[styles.chipText, { color: isSelected ? '#FFFFFF' : (isDark ? colors.textDark : colors.text) }]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            {/* Save Button */}
+            <TouchableOpacity
+              style={[styles.foodPrefsSaveButton, { backgroundColor: colors.primary }]}
+              onPress={saveFoodPrefs}
+              disabled={savingFoodPrefs}
+            >
+              {savingFoodPrefs ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.foodPrefsSaveButtonText}>Save Preferences</Text>
+              )}
+            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -1542,6 +1813,64 @@ const styles = StyleSheet.create({
   },
   datePickerButton: {
     ...typography.bodyBold,
+    fontSize: 16,
+  },
+  foodPrefsModal: {
+    width: '92%',
+    maxHeight: '80%',
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  foodPrefsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  foodPrefsScroll: {
+    flexGrow: 0,
+  },
+  foodPrefsSectionLabel: {
+    ...typography.bodyBold,
+    fontSize: 14,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chip: {
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  foodPrefsTextInput: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    fontSize: 15,
+    minHeight: 60,
+    textAlignVertical: 'top',
+    marginBottom: spacing.xs,
+  },
+  foodPrefsSaveButton: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  foodPrefsSaveButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
     fontSize: 16,
   },
 });
