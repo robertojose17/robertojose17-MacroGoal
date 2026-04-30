@@ -150,12 +150,36 @@ function inferServingSizeFromCalories(food: PlanFood): number | null {
   return null;
 }
 
+function cleanServingDescription(desc: string): string {
+  if (!desc) return '';
+  // Remove everything from "with", "topped", "drizzled", "cooked in", "cooked with",
+  // "served with", "mixed with", "and" onwards when it introduces ingredients
+  const cleaned = desc
+    .replace(/\s*(,?\s*cooked\s+(in|with)\s+.*)$/i, '')
+    .replace(/\s*(,?\s*topped\s+with\s+.*)$/i, '')
+    .replace(/\s*(,?\s*drizzled\s+with\s+.*)$/i, '')
+    .replace(/\s*(,?\s*served\s+with\s+.*)$/i, '')
+    .replace(/\s*(,?\s*mixed\s+with\s+.*)$/i, '')
+    .replace(/\s*(,?\s*with\s+.*)$/i, '')
+    .replace(/\s*(,?\s*and\s+\d+.*)$/i, '')  // "and 1 tsp butter"
+    .trim();
+  // If nothing left, return empty string
+  return cleaned;
+}
+
 function normalizeServingDescription(food: PlanFood): PlanFood {
   const desc = (food.serving_description || '').trim();
   const currentSize = Number(food.serving_size) || 1;
 
   // Only attempt fixes when serving_size is suspiciously 1
-  if (currentSize > 1) return food;
+  if (currentSize > 1) {
+    // Always clean the description even if no other normalization happened
+    const cleanedDesc = cleanServingDescription(food.serving_description || '');
+    if (cleanedDesc !== food.serving_description) {
+      return { ...food, serving_description: cleanedDesc };
+    }
+    return food;
+  }
 
   // Try to extract quantity from description if it starts with a number
   // Matches: "1 slice toasted", "80g cooked", "2 cups raw", "150 g grilled"
@@ -188,7 +212,7 @@ function normalizeServingDescription(food: PlanFood): PlanFood {
         ...food,
         serving_size: extractedSize,
         serving_unit: mappedUnit,
-        serving_description: cleanDesc || '',
+        serving_description: cleanServingDescription(cleanDesc || ''),
       };
     }
   }
@@ -201,11 +225,16 @@ function normalizeServingDescription(food: PlanFood): PlanFood {
         ...food,
         serving_size: inferred,
         serving_unit: 'g',
-        serving_description: desc,
+        serving_description: cleanServingDescription(desc),
       };
     }
   }
 
+  // Always clean the description even if no other normalization happened
+  const cleanedDesc = cleanServingDescription(food.serving_description || '');
+  if (cleanedDesc !== food.serving_description) {
+    return { ...food, serving_description: cleanedDesc };
+  }
   return food;
 }
 
