@@ -111,16 +111,86 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+async function fetchSkinnytasteInspiration(
+  userGoals: { daily_calories: number; daily_protein: number; daily_carbs: number; daily_fats: number },
+  preferences: UserPreferences | null
+): Promise<string> {
+  try {
+    // Build targeted Skinnytaste URLs based on meal types and calorie range
+    const mealCalories = Math.round(userGoals.daily_calories / 3); // approx per-meal calories
+
+    // Pick a random category page to get variety each time
+    const categories = [
+      'https://www.skinnytaste.com/recipes/dinner-recipes/',
+      'https://www.skinnytaste.com/recipes/lunch-recipes/',
+      'https://www.skinnytaste.com/recipes/breakfast-recipes/',
+      'https://www.skinnytaste.com/recipes/chicken-recipes/',
+      'https://www.skinnytaste.com/recipes/fish-recipes/',
+      'https://www.skinnytaste.com/recipes/vegetarian-recipes/',
+      'https://www.skinnytaste.com/recipes/meal-prep/',
+      'https://www.skinnytaste.com/recipes/high-protein-recipes/',
+    ];
+
+    // Filter categories based on dietary preferences
+    let availableCategories = [...categories];
+    if (preferences?.dietary_restrictions?.includes('vegetarian') || preferences?.dietary_restrictions?.includes('vegan')) {
+      availableCategories = availableCategories.filter(u => u.includes('vegetarian') || u.includes('breakfast') || u.includes('lunch'));
+    }
+
+    // Pick 2 random categories for variety
+    const shuffled = availableCategories.sort(() => Math.random() - 0.5);
+    const selectedUrls = shuffled.slice(0, 2);
+
+    const results: string[] = [];
+
+    for (const url of selectedUrls) {
+      try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const response = await fetch(jinaUrl, {
+          headers: {
+            'Accept': 'text/plain',
+            'X-Return-Format': 'text',
+          },
+          signal: AbortSignal.timeout(8000), // 8 second timeout
+        });
+
+        if (!response.ok) continue;
+
+        const text = await response.text();
+
+        // Extract just recipe names and brief descriptions (first 3000 chars to keep prompt size manageable)
+        const truncated = text.slice(0, 3000);
+        results.push(truncated);
+      } catch (err) {
+        console.log('[MealPlan] Jina fetch failed for', url, '- skipping');
+        continue;
+      }
+    }
+
+    if (results.length === 0) return '';
+
+    return results.join('\n\n');
+  } catch (err) {
+    console.log('[MealPlan] fetchSkinnytasteInspiration failed - continuing without it');
+    return '';
+  }
+}
+
 function buildSystemPrompt(
   userGoals: { daily_calories: number; daily_protein: number; daily_carbs: number; daily_fats: number },
   recipePool: any[],
-  preferences: UserPreferences | null
+  preferences: UserPreferences | null,
+  skinnytasteContent: string
 ): string {
   const recipeSection = recipePool.length > 0
     ? `\nINSPIRATION RECIPES — Base the meal plan on these. Adapt portions to hit the user's exact macro targets:\n${recipePool.map(r =>
         `- [${r.meal_type.toUpperCase()}] ${r.name} (${r.cuisine}) — ~${r.calories} cal, ${r.protein}g protein, ${r.carbs}g carbs, ${r.fat}g fat`
       ).join("\n")}\n`
     : "";
+
+  const skinnytasteSection = skinnytasteContent
+    ? `\nSKINNYTASTE RECIPE INSPIRATION — These are real recipes from skinnytaste.com, a healthy eating website. Use these as creative inspiration for meal names and flavor combinations. Adapt portions to match the user's exact macro targets:\n${skinnytasteContent.slice(0, 2000)}\n`
+    : '';
 
   const prefsSection = preferences
     ? `\nUSER FOOD PREFERENCES:
@@ -143,7 +213,7 @@ DAILY TARGETS:
 - Protein: ${userGoals.daily_protein}g → plan MUST be between ${protMin}g and ${protMax}g total
 - Carbs: ${userGoals.daily_carbs}g (flexible — sacrifice carbs first to hit calorie/protein targets)
 - Fats: ${userGoals.daily_fats}g (flexible — sacrifice fats second)
-${prefsSection}${recipeSection}
+${prefsSection}${recipeSection}${skinnytasteSection}
 MACRO RULES — NON-NEGOTIABLE, NEVER BREAK THESE:
 - Calories: total MUST be between ${calMin} and ${calMax} kcal (${userGoals.daily_calories} -100/+10)
 - Protein: total MUST be between ${protMin}g and ${protMax}g (${userGoals.daily_protein}g ±10g)
@@ -330,10 +400,15 @@ Deno.serve(async (req) => {
 
     // Fetch recipe pool from DB (only on first message / GENERATE_PLAN)
     const isFirstMessage = messages.length === 1;
-    const recipePool = isFirstMessage ? await fetchRecipePool(userPreferences) : [];
-    console.log("[MealPlan] Recipe pool size:", recipePool.length);
+    const [recipePool, skinnytasteContent] = isFirstMessage
+      ? await Promise.all([
+          fetchRecipePool(userPreferences),
+          fetchSkinnytasteInspiration(userGoals, userPreferences),
+        ])
+      : [[], ''];
+    console.log('[MealPlan] Recipe pool size:', recipePool.length, '| Skinnytaste content length:', skinnytasteContent.length);
 
-    const systemPrompt = buildSystemPrompt(userGoals, recipePool, userPreferences);
+    const systemPrompt = buildSystemPrompt(userGoals, recipePool, userPreferences, skinnytasteContent);
     const apiMessages = [
       { role: "system", content: systemPrompt },
       ...messages.map((msg: any) => ({ role: msg.role, content: msg.content }))
